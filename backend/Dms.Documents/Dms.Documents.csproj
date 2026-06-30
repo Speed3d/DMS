@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="QuestPDF" Version="2026.6.1" />
+    <PackageReference Include="SkiaSharp" Version="4.148.0" />
+  </ItemGroup>
+
+  <!-- الخطوط العربية (OFL) تُضمَّن داخل المكتبة وتُحمَّل كـ Embedded Resource -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\Amiri-Regular.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\Amiri-Bold.ttf" />
+  </ItemGroup>
+
+</Project>

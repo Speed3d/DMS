@@ -1,0 +1,85 @@
+# مرجع الـ API
+
+كل المسارات تحت `/api`. الاستجابات JSON (enums كنصوص). المصادقة: `Authorization: Bearer <JWT>`.
+السوبر أدمن يحدّد الشركة الفعّالة بترويسة `X-Company-Id: <id>`.
+
+## المصادقة — `/api/auth`
+| الطريقة | المسار | الوصول | الوصف |
+|---|---|---|---|
+| POST | `/login` | عام | `{username,password}` → توكنات + بيانات المستخدم |
+| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) |
+| POST | `/logout` | مصادَق | إبطال refresh token |
+| GET | `/me` | مصادَق | بيانات المستخدم الحالي |
+| POST | `/change-password` | مصادَق | `{currentPassword,newPassword}` |
+
+## الشركات — `/api/companies`
+| GET `/` · GET `/{id}` | مصادَق | قائمة/عنصر (مفلتر بالشركة) |
+| POST `/` | **SuperAdmin** | إنشاء شركة |
+| PUT `/{id}` | SuperAdmin/President | تعديل |
+
+## القوالب — `/api/templates`
+| GET `/` · GET `/{id}` | مصادَق |
+| POST `/` · PUT `/{id}` | SuperAdmin/President/Manager |
+| POST `/{id}/images/{kind}` | Manager+ | رفع صورة (`header`/`footer`/`watermark`) multipart `file` |
+| GET `/{id}/images/{kind}` | مصادَق | جلب الصورة |
+
+## القوائم
+- `/api/entities` — GET (مصادَق) · POST/PUT (Manager+).
+- `/api/document-types` — GET (مصادَق) · POST/PUT (Manager+).
+- `/api/exchange-rates` — GET `/` · GET `/latest?currency=USD` · POST (Manager+).
+
+## المستخدمون والتفويض
+- `/api/users` (SuperAdmin/President/Manager): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية مفروضة في الخدمة.
+- `/api/delegations` (Manager+): GET، POST، DELETE `/{id}`.
+
+## الصادر — `/api/outgoing`
+| الطريقة | المسار | الوصف |
+|---|---|---|
+| GET | `/?status=&search=` | قائمة (الموظف يرى عمله فقط) |
+| GET | `/{id}` | تفاصيل (يتضمّن `rowVersion` base64) |
+| POST | `/` | إنشاء مسودّة (Employee+) |
+| PUT | `/{id}` | تعديل مسودّة |
+| POST | `/{id}/approve` | اعتماد → رقم + PDF + QR (CanApprove) |
+| PUT | `/{id}/edit-approved` | تعديل بعد الاعتماد (Manager+) — يتطلب `rowVersion` |
+| DELETE | `/{id}` | حذف ناعم |
+| GET | `/{id}/versions` | سجل الإصدارات |
+| GET | `/{id}/pdf` | تنزيل PDF |
+| GET | `/{id}/word` | تصدير Word |
+
+## الأرشيف — `/api/archive`
+| الطريقة | المسار | الوصف |
+|---|---|---|
+| GET | `/?search=&from=&to=&documentTypeId=&entityId=` | بحث (نصّي + فترة زمنية على BookDate أو CreatedAt). الموظف/القارئ: عمله فقط |
+| GET | `/{id}` | تفاصيل |
+| POST | `/` | إنشاء (Employee+) — ترقيم تلقائي `PREFIX-AR-YEAR-#####` |
+| PUT | `/{id}` | تعديل (المالك أو Manager+) |
+| DELETE | `/{id}` | حذف ناعم |
+| GET | `/{id}/attachments` | قائمة المرفقات |
+| POST | `/{id}/attachments` | رفع مرفق (multipart `file`) — PDF/JPG/PNG/DOCX/XLSX، حد 25MB |
+
+## المرفقات — `/api/attachments`
+| GET `/{id}` | تنزيل المرفق (مع تحقق صلاحية المالك) |
+| DELETE `/{id}` | حذف المرفق (Employee+) |
+
+## التقارير — `/api/reports`
+| الطريقة | المسار | الوصف |
+|---|---|---|
+| GET | `/financial?from=&to=&entityId=&source=` | تقرير مالي (JSON): يجمع الصادر المعتمد + الأرشيف بالدينار. `source`: All/Outgoing/Archive. الموظف/القارئ: عمله فقط |
+| GET | `/financial/pdf?...` | تصدير التقرير PDF (QuestPDF) |
+| GET | `/financial/excel?...` | تصدير التقرير Excel (.xlsx) |
+
+## النسخ الاحتياطي — `/api/backup` (SuperAdmin فقط)
+| الطريقة | المسار | الوصف |
+|---|---|---|
+| GET | `/` | قائمة النسخ السابقة |
+| POST | `/run` | تشغيل نسخة فورية (DB + ملفات → ZIP) |
+| GET | `/schedule` | إعداد الجدولة الحالي |
+| PUT | `/schedule` | تحديث الجدولة `{frequency:Off/Daily/Weekly, enabled, hour}` |
+| GET | `/{id}/download` | تنزيل أرشيف النسخة (ZIP) |
+
+## التدقيق والتحقق
+- `GET /api/audit?take=` (Manager+) — أحدث السجلات.
+- `POST /api/verify` (عام) — `{qrContent}` → `{isValid, message, number, date, entity, amountInIqd, foundInDb}`.
+
+## أكواد الأخطاء
+`400` خرق قاعدة عمل · `401` غير مصادَق · `403` صلاحية غير كافية · `404` غير موجود · `409` تعارض (تزامن/تكرار) · `500` غير متوقّع. الجسم: `{ "error": "..." }`.

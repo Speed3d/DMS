@@ -1,0 +1,22 @@
+# .NET
+bin/
+obj/
+*.user
+# Secrets (dev keys) + runtime storage
+backend/**/appsettings.Development.json
+backend/**/App_Data/
+# Spike output
+backend/**/output/
+# Flutter (Phase 1)
+.dart_tool/
+.packages
+build/
+# IDE
+.vs/
+.idea/
+*.swp
+# Claude project cache + local settings
+.claude/.cache/
+!.claude/.cache/.gitkeep
+!.claude/.cache/README.md
+.claude/settings.local.json
