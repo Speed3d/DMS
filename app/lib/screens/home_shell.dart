@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/session.dart';
+import '../widgets/sidebar.dart';
+import '../widgets/topbar.dart';
+
 import 'change_password_screen.dart';
 import 'archive_list_screen.dart';
 import 'dashboard_screen.dart';
@@ -11,6 +14,7 @@ import 'settings_screen.dart';
 import 'users_screen.dart';
 import 'backup_screen.dart';
 
+/// Hint: الهيكل الرئيسي للتطبيق (Shell) الذي يجمع القائمة الجانبية والشريط العلوي مع محتوى الشاشات
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
   @override
@@ -36,66 +40,72 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       if (canManageUsers) const UsersScreen(),
       if (isSuper) const BackupScreen(),
     ];
-    final destinations = <NavigationRailDestination>[
-      const NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('الرئيسية')),
-      const NavigationRailDestination(icon: Icon(Icons.cloud_off), label: Text('أوفلاين')),
-      const NavigationRailDestination(icon: Icon(Icons.outbox), label: Text('الصادر')),
-      const NavigationRailDestination(icon: Icon(Icons.folder_copy), label: Text('الأرشيف')),
-      const NavigationRailDestination(icon: Icon(Icons.bar_chart), label: Text('التقارير')),
-      const NavigationRailDestination(icon: Icon(Icons.settings), label: Text('الإعدادات')),
-      if (canManageUsers)
-        const NavigationRailDestination(icon: Icon(Icons.people), label: Text('المستخدمون')),
-      if (isSuper)
-        const NavigationRailDestination(icon: Icon(Icons.backup), label: Text('النسخ الاحتياطي')),
-    ];
+
     if (_index >= pages.length) _index = 0;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('نظام إدارة الوثائق — DEN LAND'),
-        actions: [
-          Center(child: Text('${auth.fullName} (${_roleLabel(auth.role)})')),
-          const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.account_circle),
-            onSelected: (v) {
-              if (v == 'password') {
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const ChangePasswordScreen()));
-              } else if (v == 'switch') {
-                _switchCompany();
-              } else if (v == 'logout') {
-                ref.read(sessionProvider.notifier).logout();
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'password', child: Text('تغيير كلمة المرور')),
-              if (auth.isSuperAdmin)
-                const PopupMenuItem(value: 'switch', child: Text('تبديل الشركة')),
-              const PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج')),
-            ],
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
       body: Row(
         children: [
-          NavigationRail(
+          // Hint: القائمة الجانبية (Sidebar)
+          Sidebar(
             selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
-            labelType: NavigationRailLabelType.all,
-            destinations: destinations,
+            onSelected: (i) => setState(() => _index = i),
+            canManageUsers: canManageUsers,
+            isSuperAdmin: isSuper,
           ),
-          const VerticalDivider(width: 1),
-          Expanded(child: pages[_index]),
+          
+          // Hint: القسم الأيسر (الرئيسي) يحتوي الشريط العلوي + محتوى الصفحة
+          Expanded(
+            child: Column(
+              children: [
+                Topbar(
+                  title: _getPageTitle(_index, canManageUsers, isSuper),
+                  subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
+                  onProfileTap: _showProfileMenu,
+                ),
+                Expanded(
+                  child: ClipRect( // لمنع المحتوى من التجاوز
+                    child: pages[_index],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  void _showProfileMenu() {
+    final auth = ref.read(sessionProvider).auth!;
+    // عرض القائمة أسفل ملف المستخدم
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(26, 70, 26, 0),
+      items: [
+        const PopupMenuItem(value: 'password', child: Text('تغيير كلمة المرور')),
+        if (auth.isSuperAdmin) const PopupMenuItem(value: 'switch', child: Text('تبديل الشركة')),
+        const PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج', style: TextStyle(color: Colors.red))),
+      ],
+    ).then((v) {
+      if (!mounted) return;
+      if (v == 'password') {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangePasswordScreen()));
+      } else if (v == 'switch') {
+        _switchCompany();
+      } else if (v == 'logout') {
+        ref.read(sessionProvider.notifier).logout();
+      }
+    });
   }
 
   void _switchCompany() async {
     final api = ref.read(apiClientProvider);
     final companies = await api.companies();
     if (!mounted) return;
+    if (!context.mounted) return;
+    
+    // ignore: use_build_context_synchronously
     showDialog(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -114,11 +124,27 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  String _roleLabel(String r) => switch (r) {
-        'SuperAdmin' => 'سوبر أدمن',
-        'President' => 'رئيس الشركة',
-        'Manager' => 'مدير',
-        'Employee' => 'موظف',
-        _ => 'قارئ',
-      };
+  String _getPageTitle(int index, bool canManageUsers, bool isSuper) {
+    if (index == 0) return 'الرئيسية';
+    if (index == 1) return 'المسودات (أوفلاين)';
+    if (index == 2) return 'الصادر';
+    if (index == 3) return 'الأرشيف';
+    if (index == 4) return 'التقارير المالية';
+    if (index == 5) return 'الإعدادات والقوالب';
+    if (canManageUsers && index == 6) return 'المستخدمون';
+    if (isSuper && index == (canManageUsers ? 7 : 6)) return 'النسخ الاحتياطي';
+    return '';
+  }
+
+  String _getPageSubtitle(int index, bool canManageUsers, bool isSuper) {
+    if (index == 0) return 'نظرة عامة على نشاط الشركة';
+    if (index == 1) return 'الكتب المحفوظة محلياً بانتظار الاتصال';
+    if (index == 2) return 'إدارة الكتب الصادرة والاعتمادات';
+    if (index == 3) return 'أرشفة الوثائق السابقة والبحث فيها';
+    if (index == 4) return 'إحصائيات مالية للصادر والوارد';
+    if (index == 5) return 'إدارة إعدادات النظام وقوالب الطباعة';
+    if (canManageUsers && index == 6) return 'إدارة صلاحيات وحسابات الموظفين';
+    if (isSuper && index == (canManageUsers ? 7 : 6)) return 'أخذ نسخ احتياطية واستعادتها';
+    return '';
+  }
 }

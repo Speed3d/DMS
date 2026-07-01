@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'core/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/session.dart';
@@ -20,15 +23,26 @@ class DmsApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Hint: نراقب مزود المظهر هنا لكي يتغير شكل التطبيق فوراً عند تبديله
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: 'نظام إدارة الوثائق — DEN LAND',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0B3D91)),
-        useMaterial3: true,
-        fontFamily: 'Tahoma',
-      ),
-      // فرض اتجاه RTL عربي على كامل التطبيق
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        quill.FlutterQuillLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ar', 'AE'), // Arabic
+      ],
+      locale: const Locale('ar', 'AE'),
+      // Hint: فرض اتجاه RTL عربي على كامل التطبيق
       builder: (context, child) =>
           Directionality(textDirection: TextDirection.rtl, child: child!),
       home: const _Gate(),

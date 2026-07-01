@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/custom_card.dart';
+import '../widgets/status_pill.dart';
 
+/// Hint: شاشة لوحة التحكم (Dashboard) الرئيسية مع الرسوم البيانية والإحصائيات
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
   @override
-  ConsumerState<DashboardScreen> createState() => _State();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _State extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   late Future<List<OutgoingListItem>> _future;
 
   @override
@@ -20,64 +25,295 @@ class _State extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<OutgoingListItem>>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
-        final items = snap.data ?? [];
-        final drafts = items.where((e) => e.status == 'Draft').length;
-        final finals = items.where((e) => e.status == 'Final').length;
-        final totalIqd = items.fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
-        return Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('لوحة التحكم', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  _card('إجمالي الصادر', '${items.length}', Icons.outbox, Colors.blue),
-                  _card('بانتظار الاعتماد', '$drafts', Icons.pending_actions, Colors.orange),
-                  _card('معتمدة', '$finals', Icons.verified, Colors.green),
-                  _card('إجمالي المبالغ (د.ع)', _fmt(totalIqd), Icons.payments, Colors.teal),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+    return Scaffold(
+      body: FutureBuilder<List<OutgoingListItem>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+          }
+          if (snap.hasError) {
+            return Center(child: Text('حدث خطأ: ${snap.error}', style: const TextStyle(color: AppColors.danger)));
+          }
+          final items = snap.data ?? [];
+          final drafts = items.where((e) => e.status.toLowerCase().contains('draft')).length;
+          final finals = items.where((e) => e.status.toLowerCase().contains('final')).length;
+          final totalIqd = items.fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
 
-  Widget _card(String title, String value, IconData icon, Color color) => SizedBox(
-        width: 230,
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(backgroundColor: color.withValues(alpha: 0.15), child: Icon(icon, color: color)),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                      Text(title, style: const TextStyle(color: Colors.black54)),
-                    ],
-                  ),
+                // Hint: البطاقات الإحصائية العلوية
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth;
+                    // تجاوب: إذا كانت الشاشة صغيرة نعرض عمودين، وإذا كانت كبيرة 4 أعمدة
+                    final crossAxisCount = width < 700 ? 2 : 4;
+                    return GridView.count(
+                      crossAxisCount: crossAxisCount,
+                      crossAxisSpacing: 24,
+                      mainAxisSpacing: 24,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      childAspectRatio: 2.2, // تناسب العرض للطول
+                      children: [
+                        _buildStatCard('إجمالي الصادر', '${items.length}', Icons.outbox_rounded, const Color(0xFF3B82F6)),
+                        _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn),
+                        _buildStatCard('كتب معتمدة', '$finals', Icons.verified_rounded, AppColors.success),
+                        _buildStatCard('إجمالي المبالغ', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold),
+                      ],
+                    );
+                  }
+                ),
+                const SizedBox(height: 32),
+
+                // Hint: القسم الأوسط (الرسوم البيانية + نشاطات أخيرة)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // الرسم البياني (يأخذ 70% من العرض تقريباً)
+                    Expanded(
+                      flex: 7,
+                      child: CustomCard(
+                        padding: const EdgeInsets.all(28),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('نشاط الصادر (الأسبوع الحالي)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            Text('مقارنة بين المسودات والكتب المعتمدة يومياً', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+                            const SizedBox(height: 32),
+                            SizedBox(
+                              height: 300,
+                              child: _buildChart(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    
+                    // النشاطات الأخيرة (تأخذ 30%)
+                    Expanded(
+                      flex: 4,
+                      child: CustomCard(
+                        padding: const EdgeInsets.all(28),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('أحدث الكتب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                TextButton(onPressed: (){}, child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold))),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            // عرض آخر 5 كتب
+                            ...items.take(5).map((e) => _buildActivityItem(e)),
+                            if (items.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Center(child: Text('لا توجد بيانات حالياً')),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Hint: تصميم بطاقة الإحصائيات (زجاجية ومضيئة)
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.dividerColor, width: 1.5),
+        boxShadow: [
+          // ظل ناعم جداً ولونه مأخوذ من لون الأيقونة ليعطي إحساساً بالإضاءة
+          BoxShadow(
+            color: color.withValues(alpha: isDark ? 0.15 : 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 26),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, fontFamily: 'Tahoma', letterSpacing: -0.5),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: 13, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6), fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Hint: تصميم عنصر النشاطات (القائمة المصغرة)
+  Widget _buildActivityItem(OutgoingListItem item) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.description_outlined, size: 18, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.subject, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 4),
+                Text(item.number ?? 'بلا رقم', style: TextStyle(fontSize: 11, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+              ],
+            ),
+          ),
+          StatusPill(status: item.status),
+        ],
+      ),
+    );
+  }
+
+  // Hint: رسم بياني باستخدام حزمة fl_chart
+  Widget _buildChart() {
+    final theme = Theme.of(context);
+    
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 10,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: theme.dividerColor,
+            strokeWidth: 1,
+            dashArray: [5, 5],
           ),
         ),
-      );
+        titlesData: FlTitlesData(
+          show: true,
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                if (value.toInt() >= 0 && value.toInt() < days.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(days[value.toInt()], style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+                  );
+                }
+                return const SizedBox();
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 10,
+              reservedSize: 42,
+              getTitlesWidget: (value, meta) {
+                return Text(value.toInt().toString(), style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5)));
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        minX: 0,
+        maxX: 6,
+        minY: 0,
+        maxY: 40,
+        lineBarsData: [
+          // الخط الأول (المسودات)
+          LineChartBarData(
+            spots: const [
+              FlSpot(0, 12), FlSpot(1, 15), FlSpot(2, 22), FlSpot(3, 18),
+              FlSpot(4, 28), FlSpot(5, 10), FlSpot(6, 14),
+            ],
+            isCurved: true,
+            color: AppColors.warn,
+            barWidth: 4,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: AppColors.warn.withValues(alpha: 0.1),
+            ),
+          ),
+          // الخط الثاني (المعتمدة)
+          LineChartBarData(
+            spots: const [
+              FlSpot(0, 5), FlSpot(1, 10), FlSpot(2, 18), FlSpot(3, 25),
+              FlSpot(4, 20), FlSpot(5, 8), FlSpot(6, 11),
+            ],
+            isCurved: true,
+            color: AppColors.success,
+            barWidth: 4,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: AppColors.success.withValues(alpha: 0.1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   String _fmt(num n) {
     final s = n.toStringAsFixed(0);

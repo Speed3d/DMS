@@ -16,25 +16,38 @@ public static class DbSeeder
 
         await db.Database.MigrateAsync();
 
-        if (await db.Users.IgnoreQueryFilters().AnyAsync()) return;
-
-        var username = config["Seed:AdminUsername"] ?? "admin";
-        var password = config["Seed:AdminPassword"] ?? "Admin@12345";
-
-        db.Users.Add(new User
+        if (!await db.Users.IgnoreQueryFilters().AnyAsync())
         {
-            FullName = "مدير النظام",
-            Username = username,
-            PasswordHash = hasher.Hash(password),
-            Role = UserRole.SuperAdmin,
-            CompanyId = null,
-            CanApprove = true,
-            IsActive = true,
-            MustChangePassword = true,
-            CreatedAt = DateTime.UtcNow,
-        });
-        await db.SaveChangesAsync();
+            var username = config["Seed:AdminUsername"] ?? "admin";
+            var password = config["Seed:AdminPassword"] ?? "Admin@12345";
 
-        logger.LogWarning("تم إنشاء حساب SuperAdmin الأول: '{User}' بكلمة مرور مؤقتة — غيّرها فوراً.", username);
+            db.Users.Add(new User
+            {
+                FullName = "مدير النظام",
+                Username = username,
+                PasswordHash = hasher.Hash(password),
+                Role = UserRole.SuperAdmin,
+                CompanyId = null,
+                CanApprove = true,
+                IsActive = true,
+                MustChangePassword = true,
+                CreatedAt = DateTime.UtcNow,
+            });
+            logger.LogWarning("تم إنشاء حساب SuperAdmin الأول: '{User}' بكلمة مرور مؤقتة — غيّرها فوراً.", username);
+        }
+
+        if (!await db.Companies.IgnoreQueryFilters().AnyAsync())
+        {
+            db.Companies.Add(new Company
+            {
+                Name = "أرض العرين للتجارة والمقاولات",
+                Prefix = "DEN",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            logger.LogInformation("تم إنشاء الشركة الافتراضية 'أرض العرين للتجارة والمقاولات'.");
+        }
+
+        await db.SaveChangesAsync();
     }
 }

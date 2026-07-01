@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:'Cairo',sans-serif;}
+  :root{
+    --bg:#E9EDF4;
+    --bg-grad:radial-gradient(1100px 560px at 88% -12%, rgba(190,154,71,.12), transparent 58%), #E9EDF4;
+    --surface:#FFFFFF; --surface-2:#F4F6FA; --surface-3:#ECEFF5;
+    --border:#E2E7EF; --border-strong:#CDD5E2;
+    --text:#0F1D38; --text-muted:#5E6F8C; --text-faint:#93A2BB;
+    --navy:#15315C; --navy-deep:#0C1B33;
+    --gold:#BE9A47; --gold-bright:#D6B158; --gold-soft:rgba(190,154,71,.14);
+    --success:#178A5B; --success-soft:rgba(23,138,91,.12);
+    --warn:#BE7A12; --warn-soft:rgba(190,122,18,.14);
+    --danger:#C13B33; --danger-soft:rgba(193,59,51,.12);
+    --info:#2563A8; --info-soft:rgba(37,99,168,.12);
+    --shadow-sm:0 1px 2px rgba(16,32,64,.06);
+    --shadow:0 2px 8px rgba(16,32,64,.05), 0 18px 40px -28px rgba(16,32,64,.35);
+    --shadow-lg:0 32px 64px -28px rgba(12,27,51,.42);
+    --radius:16px;
+  }
+  [data-theme="dark"]{
+    --bg:#070E1C;
+    --bg-grad:radial-gradient(1100px 560px at 88% -12%, rgba(190,154,71,.14), transparent 55%), #070E1C;
+    --surface:#0F1B30; --surface-2:#13223C; --surface-3:#17294A;
+    --border:#1E2F4E; --border-strong:#2B416A;
+    --text:#E8EEF9; --text-muted:#94A7C8; --text-faint:#5E7298;
+    --navy:#16294A; --navy-deep:#0A1428;
+    --gold:#D9B458; --gold-bright:#EDCC73; --gold-soft:rgba(217,180,88,.14);
+    --success:#34B27B; --success-soft:rgba(52,178,123,.16);
+    --warn:#E0A23C; --warn-soft:rgba(224,162,60,.16);
+    --danger:#E2655C; --danger-soft:rgba(226,101,92,.16);
+    --info:#5B9BE0; --info-soft:rgba(91,155,224,.16);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow:0 2px 10px rgba(0,0,0,.35), 0 20px 44px -28px rgba(0,0,0,.7);
+    --shadow-lg:0 40px 72px -28px rgba(0,0,0,.85);
+  }
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:99px;border:3px solid transparent;background-clip:content-box;}
+  @keyframes fadeUp{from{transform:translateY(13px);}to{transform:none;}}
+  @keyframes fadeIn{from{opacity:.15;}to{opacity:1;}}
+  @keyframes pop{0%{transform:scale(.96);}100%{transform:scale(1);}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes shimmer{0%{background-position:-300px 0;}100%{background-position:300px 0;}}
+  @keyframes sheen{0%{transform:translateX(-120%) skewX(-18deg);}60%,100%{transform:translateX(220%) skewX(-18deg);}}
+  @keyframes toastIn{from{opacity:0;transform:translateY(20px) scale(.96);}to{opacity:1;transform:none;}}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--bg-grad);color:var(--text);direction:rtl;">
+
+  <sc-if value="{{ showLogin }}" hint-placeholder-val="{{ true }}">
+    <div style="min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr;background:linear-gradient(135deg,#0B1830,#0C1B33 45%,#11264A);position:relative;overflow:hidden;">
+      <div style="position:absolute;inset:0;background:radial-gradient(680px 460px at 18% 22%, rgba(190,154,71,.22), transparent 62%),radial-gradient(560px 420px at 80% 88%, rgba(37,99,168,.28), transparent 60%);"></div>
+      <div style="position:relative;display:flex;flex-direction:column;justify-content:center;padding:64px 72px;color:#EAF0FB;">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:54px;animation:fadeUp .6s both;">
+          <div style="width:54px;height:54px;border-radius:14px;background:#fff;display:grid;place-items:center;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);overflow:hidden;"><img src="assets/den-land-logo.jpg" alt="DEN LAND" style="width:100%;height:100%;object-fit:contain;padding:5px;"></div>
+          <div><div style="font-weight:800;font-size:20px;letter-spacing:.5px;">DEN&nbsp;LAND</div><div style="font-size:12.5px;color:#9DB0D2;">أرض العرين للتجارة والمقاولات</div></div>
+        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--gold-bright);letter-spacing:3px;margin-bottom:14px;animation:fadeUp .6s .05s both;">نظام إدارة الوثائق الإلكتروني</div>
+        <h1 style="font-size:46px;line-height:1.18;font-weight:800;margin:0 0 18px;max-width:14ch;animation:fadeUp .6s .1s both;">إدارة <span style="color:var(--gold-bright);">الصادر والأرشيف</span> باحترافية وأمان</h1>
+        <p style="font-size:16px;line-height:1.9;color:#A9BAD8;max-width:46ch;margin:0 0 40px;animation:fadeUp .6s .15s both;">إنشاء الكتب الرسمية، توليد PDF مع رمز QR موقّع رقمياً، أرشفة ذكية وتقارير مالية دقيقة — في منصّة واحدة متعددة الشركات.</p>
+        <div style="display:flex;gap:30px;animation:fadeUp .6s .2s both;">
+          <div><div style="font-size:26px;font-weight:800;color:#fff;">QR موقّع</div><div style="font-size:13px;color:#8FA3C6;">غير قابل للتزوير</div></div>
+          <div style="width:1px;background:rgba(255,255,255,.12);"></div>
+          <div><div style="font-size:26px;font-weight:800;color:#fff;">متعدد الشركات</div><div style="font-size:13px;color:#8FA3C6;">عزل بيانات كامل</div></div>
+          <div style="width:1px;background:rgba(255,255,255,.12);"></div>
+          <div><div style="font-size:26px;font-weight:800;color:#fff;">سحابي</div><div style="font-size:13px;color:#8FA3C6;">يعمل دون اتصال</div></div>
+        </div>
+      </div>
+      <div style="position:relative;display:flex;align-items:center;justify-content:center;padding:40px;">
+        <div style="width:100%;max-width:420px;background:var(--surface);border-radius:24px;padding:40px;box-shadow:var(--shadow-lg);animation:pop .5s .1s both;">
+          <div style="text-align:center;margin-bottom:26px;">
+            <div style="font-size:22px;font-weight:800;color:var(--text);">تسجيل الدخول</div>
+            <div style="font-size:13.5px;color:var(--text-muted);margin-top:6px;">مرحباً بعودتك، أدخل بياناتك للمتابعة</div>
+          </div>
+          <label style="display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">اسم المستخدم</label>
+          <div style="position:relative;margin-bottom:18px;">
+            <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--text-faint);">{{ icoUser }}</span>
+            <input value="admin" style="width:100%;padding:13px 44px 13px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface-2);font-family:inherit;font-size:15px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);background:var(--surface);">
+          </div>
+          <label style="display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">كلمة المرور</label>
+          <div style="position:relative;margin-bottom:14px;">
+            <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--text-faint);">{{ icoLock }}</span>
+            <input type="password" value="123456" style="width:100%;padding:13px 44px 13px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface-2);font-family:inherit;font-size:15px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);background:var(--surface);">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;font-size:13px;">
+            <label style="display:flex;align-items:center;gap:7px;color:var(--text-muted);cursor:pointer;"><input type="checkbox" checked="" style="accent-color:var(--gold);width:15px;height:15px;">تذكّرني</label>
+            <a style="color:var(--info);text-decoration:none;font-weight:600;cursor:pointer;">نسيت كلمة المرور؟</a>
+          </div>
+          <button onClick="{{ doLogin }}" style="width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#1B3A6B,#0C1B33);color:#fff;font-family:inherit;font-size:15.5px;font-weight:700;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,27,51,.8);position:relative;overflow:hidden;transition:transform .15s;" style-hover="transform:translateY(-2px);" style-active="transform:translateY(0);">
+            <span style="position:absolute;top:0;bottom:0;width:40px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:sheen 3.4s ease-in-out infinite;"></span>
+            دخول إلى النظام
+          </button>
+          <div style="text-align:center;margin-top:22px;font-size:12px;color:var(--text-faint);">محميّ بتشفير TLS · جلسة JWT آمنة</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showApp }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;min-height:100vh;">
+      <!-- SIDEBAR -->
+      <aside style="width:266px;flex-shrink:0;background:linear-gradient(180deg,#102544,#0A1730);color:#A9BBD9;display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;height:100vh;border-left:1px solid rgba(255,255,255,.04);">
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 8px 22px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:#fff;display:grid;place-items:center;overflow:hidden;flex-shrink:0;"><img src="assets/den-land-logo.jpg" style="width:100%;height:100%;object-fit:contain;padding:4px;"></div>
+          <div style="line-height:1.3;"><div style="font-weight:800;color:#fff;font-size:15.5px;letter-spacing:.4px;">DEN LAND</div><div style="font-size:11.5px;color:#7F93B8;">إدارة الوثائق</div></div>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;color:#5E739B;letter-spacing:1px;padding:14px 12px 8px;">القائمة الرئيسية</div>
+        <nav style="display:flex;flex-direction:column;gap:4px;">
+          <button onClick="{{ go_dashboard }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_dashboard }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoGrid }}<span>الرئيسية</span></button>
+          <button onClick="{{ go_outgoing }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_outgoing }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoSend }}<span style="flex:1;">الصادر</span><span style="background:var(--gold);color:#0C1B33;font-size:11px;font-weight:800;padding:1px 8px;border-radius:99px;">5</span></button>
+          <button onClick="{{ go_archive }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_archive }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoArchive }}<span>الأرشيف</span></button>
+          <button onClick="{{ go_reports }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_reports }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoChart }}<span>التقارير المالية</span></button>
+        </nav>
+
+        <div style="font-size:11px;font-weight:700;color:#5E739B;letter-spacing:1px;padding:18px 12px 8px;">الإدارة</div>
+        <nav style="display:flex;flex-direction:column;gap:4px;">
+          <button onClick="{{ go_users }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_users }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoUsers }}<span>المستخدمون</span></button>
+          <button onClick="{{ go_settings }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_settings }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoCog }}<span>الإعدادات والقوالب</span></button>
+          <button onClick="{{ go_backup }}" style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;background:transparent;border-radius:12px;cursor:pointer;color:#A9BBD9;font-family:inherit;font-size:14.5px;font-weight:600;text-align:right;{{ navStyle_backup }}" style-hover="background:rgba(255,255,255,.05);color:#fff;">{{ icoShield }}<span>النسخ الاحتياطي</span></button>
+        </nav>
+
+        <div style="margin-top:auto;background:linear-gradient(135deg,rgba(190,154,71,.18),rgba(190,154,71,.05));border:1px solid rgba(190,154,71,.25);border-radius:16px;padding:16px;">
+          <div style="display:flex;align-items:center;gap:8px;color:var(--gold-bright);font-weight:700;font-size:13.5px;margin-bottom:6px;">{{ icoSpark }} وضع المزامنة</div>
+          <div style="font-size:12px;color:#9DB0D2;line-height:1.6;">جميع البيانات محدّثة. آخر مزامنة قبل دقيقتين.</div>
+          <div style="margin-top:10px;height:6px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;"><div style="width:100%;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-bright));"></div></div>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+        <!-- TOPBAR -->
+        <header style="height:70px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:18px;padding:0 26px;position:sticky;top:0;z-index:30;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:18px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ pageTitle }}</div>
+            <div style="font-size:12.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ pageSubtitle }}</div>
+          </div>
+          <div style="position:relative;width:260px;max-width:28vw;flex-shrink:0;">
+            <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-faint);">{{ icoSearch }}</span>
+            <input placeholder="ابحث في الكتب، الأرشيف، الأرقام…" style="width:100%;padding:10px 40px 10px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);font-family:inherit;font-size:13.5px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);background:var(--surface);">
+          </div>
+          <button onClick="{{ openVerify }}" style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:1.5px solid var(--border);background:var(--surface);border-radius:11px;cursor:pointer;color:var(--text);font-family:inherit;font-size:13.5px;font-weight:700;" style-hover="border-color:var(--gold);color:var(--gold);">{{ icoQr }} تحقق QR</button>
+          <button onClick="{{ toggleTheme }}" title="تبديل الوضع" style="width:42px;height:42px;border:1.5px solid var(--border);background:var(--surface);border-radius:11px;cursor:pointer;color:var(--text);display:grid;place-items:center;" style-hover="border-color:var(--gold);color:var(--gold);">{{ themeIcon }}</button>
+          <button style="position:relative;width:42px;height:42px;border:1.5px solid var(--border);background:var(--surface);border-radius:11px;cursor:pointer;color:var(--text);display:grid;place-items:center;" style-hover="border-color:var(--gold);color:var(--gold);">{{ icoBell }}<span style="position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:99px;background:var(--danger);border:2px solid var(--surface);"></span></button>
+          <div style="width:1px;height:34px;background:var(--border);"></div>
+          <div style="display:flex;align-items:center;gap:11px;">
+            <div style="text-align:left;line-height:1.35;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">بشار عبد المسيح<br></div><div style="font-size:11.5px;color:var(--gold);font-weight:700;">رئيس الشركة</div></div>
+            <div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#1B3A6B,#0C1B33);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px;box-shadow:var(--shadow-sm);">ع</div>
+          </div>
+        </header>
+
+        <main style="flex:1;min-width:0;padding:26px;overflow:auto;">
+
+          <!-- ===== DASHBOARD ===== -->
+          <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+            <div style="animation:fadeUp .4s both;">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:20px;">
+                <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden;">
+                    <div style="position:absolute;top:-20px;left:-20px;width:90px;height:90px;border-radius:50%;background:{{ s.glow }};filter:blur(8px);opacity:.5;"></div>
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative;">
+                      <div style="width:46px;height:46px;border-radius:13px;display:grid;place-items:center;{{ s.iconStyle }}">{{ s.icon }}</div>
+                      <span style="font-size:12px;font-weight:800;color:{{ s.trendColor }};background:{{ s.trendBg }};padding:3px 9px;border-radius:99px;">{{ s.trend }}</span>
+                    </div>
+                    <div style="font-size:30px;font-weight:800;color:var(--text);margin-top:16px;letter-spacing:-.5px;">{{ s.value }}</div>
+                    <div style="font-size:13.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">{{ s.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:18px;margin-bottom:18px;">
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+                    <div><div style="font-size:16px;font-weight:800;color:var(--text);">حركة الصادر</div><div style="font-size:12.5px;color:var(--text-muted);">آخر 7 أشهر</div></div>
+                    <div style="display:flex;gap:7px;">
+                      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);font-weight:600;"><span style="width:10px;height:10px;border-radius:3px;background:var(--navy);"></span>صادر</span>
+                      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);font-weight:600;"><span style="width:10px;height:10px;border-radius:3px;background:var(--gold);"></span>معتمد</span>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;height:190px;padding-top:10px;">
+                    <sc-for list="{{ chartBars }}" as="b" hint-placeholder-count="7">
+                      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;height:100%;justify-content:flex-end;">
+                        <div style="width:100%;max-width:34px;display:flex;flex-direction:column-reverse;gap:3px;height:100%;justify-content:flex-start;align-items:center;">
+                          <div style="width:100%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--navy),#0C1B33);height:{{ b.h1 }};transition:height .5s;"></div>
+                          <div style="width:100%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--gold-bright),var(--gold));height:{{ b.h2 }};"></div>
+                        </div>
+                        <div style="font-size:11.5px;color:var(--text-faint);font-weight:600;">{{ b.m }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);">
+                  <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;">بانتظار اعتمادك</div>
+                  <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:16px;">كتب تحتاج مراجعة وتوقيع</div>
+                  <div style="display:flex;flex-direction:column;gap:10px;">
+                    <sc-for list="{{ pending }}" as="p" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:12px;padding:11px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);" style-hover="border-color:var(--gold);">
+                        <div style="width:38px;height:38px;border-radius:10px;background:var(--warn-soft);color:var(--warn);display:grid;place-items:center;flex-shrink:0;">{{ icoDoc }}</div>
+                        <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.subject }}</div><div style="font-size:11.5px;color:var(--text-muted);">{{ p.meta }}</div></div>
+                        <button onClick="{{ p.onApprove }}" style="padding:7px 12px;border:none;border-radius:9px;background:var(--gold);color:#0C1B33;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;flex-shrink:0;" style-hover="background:var(--gold-bright);">اعتماد</button>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);">
+                <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:16px;">آخر النشاطات</div>
+                <div style="display:flex;flex-direction:column;">
+                  <sc-for list="{{ activities }}" as="a" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);">
+                      <div style="width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;{{ a.iconStyle }}">{{ a.icon }}</div>
+                      <div style="flex:1;"><span style="font-size:13.5px;color:var(--text);font-weight:600;">{{ a.text }}</span></div>
+                      <div style="font-size:12px;color:var(--text-faint);">{{ a.time }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== OUTGOING LIST ===== -->
+          <sc-if value="{{ isOutgoing }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+                <div style="display:flex;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:4px;box-shadow:var(--shadow-sm);">
+                  <button style="padding:8px 16px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">الكل</button>
+                  <button style="padding:8px 16px;border:none;border-radius:8px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="color:var(--text);">مسودّات</button>
+                  <button style="padding:8px 16px;border:none;border-radius:8px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="color:var(--text);">معتمدة</button>
+                </div>
+                <div style="position:relative;flex:1;min-width:200px;">
+                  <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-faint);">{{ icoSearch }}</span>
+                  <input placeholder="بحث بالموضوع أو الرقم…" style="width:100%;padding:10px 40px 10px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);font-family:inherit;font-size:13.5px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);">
+                </div>
+                <button onClick="{{ newOutgoing }}" style="display:flex;align-items:center;gap:8px;padding:11px 18px;border:none;border-radius:11px;background:linear-gradient(135deg,#1B3A6B,#0C1B33);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 12px 26px -14px rgba(12,27,51,.8);" style-hover="transform:translateY(-1px);">{{ icoPlus }} كتاب جديد</button>
+              </div>
+
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;">
+                <div style="display:grid;grid-template-columns:1.4fr 2.3fr 1.4fr 1fr 1.1fr .5fr;gap:14px;padding:14px 22px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted);">
+                  <div>رقم الكتاب</div><div>الموضوع</div><div>الجهة المستلمة</div><div>التاريخ</div><div>المبلغ</div><div>الحالة</div>
+                </div>
+                <sc-for list="{{ outgoingRows }}" as="r" hint-placeholder-count="6">
+                  <div onClick="{{ r.onOpen }}" style="display:grid;grid-template-columns:1.4fr 2.3fr 1.4fr 1fr 1.1fr .5fr;gap:14px;padding:15px 22px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;transition:background .14s;" style-hover="background:var(--surface-2);">
+                    <div style="font-weight:800;color:{{ r.numColor }};font-size:13.5px;font-family:monospace;direction:ltr;text-align:right;">{{ r.number }}</div>
+                    <div style="font-weight:600;color:var(--text);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.subject }}</div>
+                    <div style="color:var(--text-muted);font-size:13px;">{{ r.entity }}</div>
+                    <div style="color:var(--text-muted);font-size:13px;direction:ltr;text-align:right;">{{ r.date }}</div>
+                    <div style="font-weight:700;color:var(--text);font-size:13px;">{{ r.amount }}</div>
+                    <div><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:5px 11px;border-radius:99px;{{ r.pillStyle }}"><span style="width:7px;height:7px;border-radius:99px;background:currentColor;"></span>{{ r.statusLabel }}</span></div>
+                  </div>
+                </sc-for>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 22px;color:var(--text-muted);font-size:13px;">
+                  <span>عرض 6 من 248 كتاباً</span>
+                  <div style="display:flex;gap:6px;">
+                    <button style="width:34px;height:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;color:var(--text-muted);">{{ icoNext }}</button>
+                    <button style="width:34px;height:34px;border:none;background:var(--navy);color:#fff;border-radius:9px;cursor:pointer;font-family:inherit;font-weight:700;">1</button>
+                    <button style="width:34px;height:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;color:var(--text);font-family:inherit;font-weight:700;">2</button>
+                    <button style="width:34px;height:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;color:var(--text-muted);">{{ icoPrev }}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== OUTGOING DETAIL ===== -->
+          <sc-if value="{{ isOutgoingDetail }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <button onClick="{{ go_outgoing }}" style="display:flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--border);background:var(--surface);border-radius:10px;cursor:pointer;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;margin-bottom:16px;" style-hover="color:var(--text);border-color:var(--gold);">{{ icoBack }} رجوع إلى الصادر</button>
+              <div style="display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start;">
+                <!-- PDF preview -->
+                <div style="background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius);padding:30px;box-shadow:var(--shadow);display:flex;justify-content:center;">
+                  <div style="width:100%;max-width:560px;aspect-ratio:1/1.414;background:#fff;border-radius:6px;box-shadow:0 24px 60px -24px rgba(0,0,0,.4);padding:42px 40px;display:flex;flex-direction:column;color:#1a1a1a;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2.5px solid #0C1B33;padding-bottom:14px;">
+                      <div style="text-align:right;"><div style="font-weight:800;font-size:16px;color:#0C1B33;">شركة أرض العرين للتجارة والمقاولات</div><div style="font-size:10.5px;color:#888;">DEN LAND for Trading &amp; Contracting</div></div>
+                      <img src="assets/den-land-logo.jpg" style="width:54px;height:54px;object-fit:contain;">
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#444;margin-top:16px;">
+                      <span>العدد: <b style="direction:ltr;display:inline-block;">{{ current.number }}</b></span><span>التاريخ: {{ current.date }}</span>
+                    </div>
+                    <div style="text-align:center;font-weight:800;font-size:15px;color:#0C1B33;margin:18px 0;text-decoration:underline;text-underline-offset:5px;">{{ current.subject }}</div>
+                    <div style="font-size:12px;line-height:2.1;color:#333;text-align:justify;flex:1;">{{ current.body }}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:20px;">
+                      <div style="text-align:center;">
+                        <svg width="86" height="86" viewBox="0 0 86 86" style="border:1px solid #eee;border-radius:6px;padding:5px;background:#fff;">
+                          <rect x="6" y="6" width="20" height="20" fill="none" stroke="#0C1B33" stroke-width="4"></rect><rect x="13" y="13" width="6" height="6" fill="#0C1B33"></rect>
+                          <rect x="60" y="6" width="20" height="20" fill="none" stroke="#0C1B33" stroke-width="4"></rect><rect x="67" y="13" width="6" height="6" fill="#0C1B33"></rect>
+                          <rect x="6" y="60" width="20" height="20" fill="none" stroke="#0C1B33" stroke-width="4"></rect><rect x="13" y="67" width="6" height="6" fill="#0C1B33"></rect>
+                          <sc-for list="{{ qrCells }}" as="c" hint-placeholder-count="0"><rect x="{{ c.x }}" y="{{ c.y }}" width="4" height="4" fill="#0C1B33"></rect></sc-for>
+                        </svg>
+                        <div style="font-size:8.5px;color:#999;margin-top:3px;">امسح للتحقق</div>
+                      </div>
+                      <div style="text-align:center;font-size:11px;color:#444;"><div style="margin-bottom:34px;">المدير المفوّض</div><div style="border-top:1px solid #999;padding-top:4px;width:120px;">التوقيع والختم</div></div>
+                    </div>
+                  </div>
+                </div>
+                <!-- side panel -->
+                <div style="display:flex;flex-direction:column;gap:16px;position:sticky;top:96px;">
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;padding:6px 13px;border-radius:99px;{{ current.pillStyle }}"><span style="width:7px;height:7px;border-radius:99px;background:currentColor;"></span>{{ current.statusLabel }}</span>
+                      <span style="font-family:monospace;font-weight:800;color:var(--gold);direction:ltr;">{{ current.number }}</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:13px;font-size:13.5px;">
+                      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">الجهة المستلمة</span><span style="font-weight:700;color:var(--text);">{{ current.entity }}</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">التاريخ</span><span style="font-weight:700;color:var(--text);direction:ltr;">{{ current.date }}</span></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">القالب</span><span style="font-weight:700;color:var(--text);">رسمي — DEN</span></div>
+                      <div style="height:1px;background:var(--border);"></div>
+                      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">المبلغ</span><span style="font-weight:700;color:var(--text);">{{ current.amountRaw }}</span></div>
+                      <div style="display:flex;justify-content:space-between;align-items:center;"><span style="color:var(--text-muted);">المعادل بالدينار</span><span style="font-weight:800;color:var(--gold);font-size:15px;">{{ current.amount }}</span></div>
+                    </div>
+                  </div>
+
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);">
+                    <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:14px;">الإجراءات</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+                      <button onClick="{{ approveCurrent }}" style="grid-column:1/3;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border:none;border-radius:11px;background:var(--gold);color:#0C1B33;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;" style-hover="background:var(--gold-bright);">{{ icoCheck }} اعتماد وإصدار الرقم</button>
+                      <button style="display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="border-color:var(--gold);">{{ icoPdf }} PDF</button>
+                      <button style="display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="border-color:var(--gold);">{{ icoWord }} Word</button>
+                      <button style="display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="border-color:var(--gold);">{{ icoEdit }} تعديل</button>
+                      <button style="display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="border-color:var(--gold);">{{ icoPrint }} طباعة</button>
+                    </div>
+                  </div>
+
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);">
+                    <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:12px;">سجل الإصدارات</div>
+                    <div style="display:flex;flex-direction:column;gap:0;">
+                      <sc-for list="{{ versions }}" as="v" hint-placeholder-count="3">
+                        <div style="display:flex;gap:11px;">
+                          <div style="display:flex;flex-direction:column;align-items:center;"><div style="width:11px;height:11px;border-radius:99px;background:{{ v.dot }};border:2px solid var(--surface);box-shadow:0 0 0 2px {{ v.dot }};"></div><div style="width:2px;flex:1;background:var(--border);"></div></div>
+                          <div style="padding-bottom:14px;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ v.title }}</div><div style="font-size:11.5px;color:var(--text-muted);">{{ v.meta }}</div></div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== OUTGOING FORM ===== -->
+          <sc-if value="{{ isOutgoingForm }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <button onClick="{{ go_outgoing }}" style="display:flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--border);background:var(--surface);border-radius:10px;cursor:pointer;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;margin-bottom:16px;" style-hover="color:var(--text);border-color:var(--gold);">{{ icoBack }} رجوع</button>
+              <div style="display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start;">
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow);">
+                  <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:4px;">كتاب صادر جديد</div>
+                  <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px;">املأ الحقول التالية ثم احفظ كمسودّة أو أرسلها للاعتماد.</div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                    <div><label style="display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">الشركة</label><div style="position:relative;"><select style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);font-family:inherit;font-size:14px;color:var(--text);outline:none;appearance:none;"><option>أرض العرين للتجارة والمقاولات (DEN)</option></select><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-faint);">{{ icoChevron }}</span></div></div>
+                    <div><label style="display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">الجهة المستلمة</label><div style="position:relative;"><select style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);font-family:inherit;font-size:14px;color:var(--text);outline:none;appearance:none;"><option>وزارة الإعمار والإسكان</option><option>أمانة بغداد</option><option>دائرة العقود الحكومية</option></select><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-faint);">{{ icoChevron }}</span></div></div>
+                  </div>
+
+                  <div style="margin-bottom:16px;"><label style="display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">الموضوع</label><input value="بشأن تمديد عقد المقاولة رقم 2026/14" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);font-family:inherit;font-size:14px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);"></div>
+
+                  <div style="margin-bottom:8px;"><label style="display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">نص الكتاب</label>
+                    <div style="border:1.5px solid var(--border);border-radius:11px;overflow:hidden;background:var(--surface-2);">
+                      <div style="display:flex;gap:2px;padding:8px;border-bottom:1px solid var(--border);background:var(--surface-3);">
+                        <button style="width:32px;height:32px;border:none;background:transparent;border-radius:7px;cursor:pointer;color:var(--text-muted);font-weight:800;" style-hover="background:var(--surface);color:var(--text);">B</button>
+                        <button style="width:32px;height:32px;border:none;background:transparent;border-radius:7px;cursor:pointer;color:var(--text-muted);font-style:italic;" style-hover="background:var(--surface);color:var(--text);">I</button>
+                        <button style="width:32px;height:32px;border:none;background:transparent;border-radius:7px;cursor:pointer;color:var(--text-muted);text-decoration:underline;" style-hover="background:var(--surface);color:var(--text);">U</button>
+                        <div style="width:1px;background:var(--border);margin:4px 4px;"></div>
+                        <button style="width:32px;height:32px;border:none;background:transparent;border-radius:7px;cursor:pointer;color:var(--text-muted);" style-hover="background:var(--surface);color:var(--text);">{{ icoList }}</button>
+                      </div>
+                      <textarea style="width:100%;min-height:170px;padding:14px;border:none;background:transparent;font-family:inherit;font-size:14px;line-height:2;color:var(--text);outline:none;resize:vertical;direction:rtl;">تحية طيبة وبعد،
+
+نظراً لسير العمل بالوتيرة المطلوبة، نرجو الموافقة على تمديد عقد المقاولة المشار إليه أعلاه لمدة ستين يوماً إضافية اعتباراً من تاريخه، مع بقاء كافة الشروط التعاقدية الأخرى نافذة دون تغيير.
+
+شاكرين تعاونكم.</textarea>
+                    </div>
+                  </div>
+
+                  <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:18px;">
+                    <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:var(--text);margin-bottom:16px;">{{ icoMoney }} الحقول المالية <span style="font-size:11.5px;font-weight:600;color:var(--text-faint);">(اختياري)</span></div>
+                    <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px;align-items:end;">
+                      <div><label style="display:block;font-size:12.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">المبلغ</label><input value="45,000" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);font-family:inherit;font-size:14px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);"></div>
+                      <div><label style="display:block;font-size:12.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">العملة</label><div style="display:flex;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:3px;"><button style="flex:1;padding:8px;border:none;border-radius:7px;background:var(--navy);color:#fff;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">$</button><button style="flex:1;padding:8px;border:none;border-radius:7px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">د.ع</button></div></div>
+                      <div><label style="display:block;font-size:12.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">سعر الصرف</label><input value="1,310" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);font-family:inherit;font-size:14px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:12px 14px;background:var(--gold-soft);border-radius:10px;"><span style="font-size:13px;font-weight:700;color:var(--text);">المعادل بالدينار العراقي</span><span style="font-size:17px;font-weight:800;color:var(--gold);">58,950,000 د.ع</span></div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:16px;position:sticky;top:96px;">
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);">
+                    <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:14px;">المرفقات</div>
+                    <div style="border:2px dashed var(--border-strong);border-radius:13px;padding:26px 14px;text-align:center;cursor:pointer;transition:all .16s;" style-hover="border-color:var(--gold);background:var(--gold-soft);">
+                      <div style="color:var(--gold);margin-bottom:8px;display:flex;justify-content:center;">{{ icoUpload }}</div>
+                      <div style="font-size:13px;font-weight:700;color:var(--text);">اسحب الملفات هنا</div>
+                      <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">PDF · JPG · PNG · DOCX · XLSX</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:10px;">
+                      <div style="width:32px;height:32px;border-radius:8px;background:var(--danger-soft);color:var(--danger);display:grid;place-items:center;flex-shrink:0;">{{ icoPdf }}</div>
+                      <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:700;color:var(--text);">العقد-الأصلي.pdf</div><div style="font-size:11px;color:var(--text-faint);">1.4 MB</div></div>
+                      <button style="border:none;background:transparent;color:var(--text-faint);cursor:pointer;" style-hover="color:var(--danger);">{{ icoClose }}</button>
+                    </div>
+                  </div>
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:9px;">
+                    <button onClick="{{ saveDraft }}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#1B3A6B,#0C1B33);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;" style-hover="transform:translateY(-1px);">{{ icoSave }} حفظ كمسودّة</button>
+                    <button onClick="{{ approveCurrent }}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border:none;border-radius:11px;background:var(--gold);color:#0C1B33;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;" style-hover="background:var(--gold-bright);">{{ icoCheck }} حفظ واعتماد</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== ARCHIVE ===== -->
+          <sc-if value="{{ isArchive }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+                <div style="position:relative;flex:1;min-width:220px;">
+                  <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-faint);">{{ icoSearch }}</span>
+                  <input placeholder="بحث في الأرشيف بالعنوان، رقم الكتاب، الكلمات المفتاحية…" style="width:100%;padding:10px 40px 10px 14px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);font-family:inherit;font-size:13.5px;color:var(--text);outline:none;" style-focus="border-color:var(--gold);">
+                </div>
+                <button style="display:flex;align-items:center;gap:7px;padding:10px 15px;border:1.5px solid var(--border);background:var(--surface);border-radius:11px;cursor:pointer;color:var(--text);font-family:inherit;font-size:13.5px;font-weight:700;" style-hover="border-color:var(--gold);">{{ icoFilter }} تصفية</button>
+                <button style="display:flex;align-items:center;gap:8px;padding:11px 18px;border:none;border-radius:11px;background:linear-gradient(135deg,#1B3A6B,#0C1B33);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 12px 26px -14px rgba(12,27,51,.8);" style-hover="transform:translateY(-1px);">{{ icoPlus }} إضافة مستند</button>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+                <sc-for list="{{ archiveRows }}" as="a" hint-placeholder-count="6">
+                  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);cursor:pointer;transition:all .16s;" style-hover="transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--gold);">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+                      <div style="width:46px;height:46px;border-radius:12px;display:grid;place-items:center;{{ a.iconStyle }}">{{ a.icon }}</div>
+                      <span style="font-size:11px;font-weight:800;color:var(--text-muted);background:var(--surface-2);padding:4px 10px;border-radius:99px;font-family:monospace;direction:ltr;">{{ a.archiveNo }}</span>
+                    </div>
+                    <div style="font-size:14.5px;font-weight:700;color:var(--text);margin-bottom:6px;line-height:1.5;">{{ a.title }}</div>
+                    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">{{ a.entity }} · {{ a.date }}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:13px;border-top:1px solid var(--border);">
+                      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);">{{ a.fileIcon }} {{ a.files }} مرفق</div>
+                      <span style="font-size:13px;font-weight:800;color:var(--gold);">{{ a.amount }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== REPORTS ===== -->
+          <sc-if value="{{ isReports }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);margin-bottom:18px;display:flex;gap:14px;align-items:end;flex-wrap:wrap;">
+                <div><label style="display:block;font-size:12.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">من تاريخ</label><input value="2026-01-01" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);font-family:inherit;font-size:13.5px;color:var(--text);outline:none;direction:ltr;"></div>
+                <div><label style="display:block;font-size:12.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">إلى تاريخ</label><input value="2026-06-30" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);font-family:inherit;font-size:13.5px;color:var(--text);outline:none;direction:ltr;"></div>
+                <div><label style="display:block;font-size:12.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;">الجهة</label><div style="position:relative;"><select style="padding:10px 30px 10px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);font-family:inherit;font-size:13.5px;color:var(--text);outline:none;appearance:none;"><option>كل الجهات</option></select><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-faint);">{{ icoChevron }}</span></div></div>
+                <button style="padding:11px 20px;border:none;border-radius:10px;background:var(--navy);color:#fff;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;" style-hover="opacity:.92;">عرض التقرير</button>
+                <div style="flex:1;"></div>
+                <button style="display:flex;align-items:center;gap:7px;padding:11px 16px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;cursor:pointer;color:var(--text);font-family:inherit;font-size:13.5px;font-weight:700;" style-hover="border-color:var(--gold);">{{ icoPdf }} PDF</button>
+                <button style="display:flex;align-items:center;gap:7px;padding:11px 16px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;cursor:pointer;color:var(--text);font-family:inherit;font-size:13.5px;font-weight:700;" style-hover="border-color:var(--gold);">{{ icoExcel }} Excel</button>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:18px;">
+                <div style="background:linear-gradient(135deg,#15315C,#0C1B33);border-radius:var(--radius);padding:24px;color:#fff;box-shadow:var(--shadow);position:relative;overflow:hidden;">
+                  <div style="position:absolute;top:-30px;left:-20px;width:120px;height:120px;border-radius:50%;background:rgba(190,154,71,.25);filter:blur(10px);"></div>
+                  <div style="font-size:13px;color:#A9BBD9;font-weight:600;position:relative;">إجمالي المبالغ (بالدينار)</div>
+                  <div style="font-size:30px;font-weight:800;margin-top:10px;position:relative;">1,284,500,000</div>
+                  <div style="font-size:12.5px;color:var(--gold-bright);margin-top:6px;position:relative;">د.ع · للفترة المحددة</div>
+                </div>
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);"><div style="font-size:13px;color:var(--text-muted);font-weight:600;">عدد الكتب</div><div style="font-size:30px;font-weight:800;color:var(--text);margin-top:10px;">186</div><div style="font-size:12.5px;color:var(--success);margin-top:6px;">↑ 12% عن الفترة السابقة</div></div>
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);"><div style="font-size:13px;color:var(--text-muted);font-weight:600;">متوسط قيمة الكتاب</div><div style="font-size:30px;font-weight:800;color:var(--text);margin-top:10px;">6.9M</div><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px;">د.ع لكل كتاب</div></div>
+              </div>
+
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;">
+                <div style="display:grid;grid-template-columns:1fr 1.2fr 2fr 1.4fr 1fr 1.2fr;gap:14px;padding:14px 22px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted);"><div>المصدر</div><div>الرقم</div><div>الجهة</div><div>المبلغ</div><div>العملة</div><div>بالدينار</div></div>
+                <sc-for list="{{ financial }}" as="f" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:1fr 1.2fr 2fr 1.4fr 1fr 1.2fr;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;">
+                    <div><span style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px;{{ f.srcStyle }}">{{ f.source }}</span></div>
+                    <div style="font-family:monospace;direction:ltr;text-align:right;color:var(--text);font-weight:700;">{{ f.number }}</div>
+                    <div style="color:var(--text);">{{ f.entity }}</div>
+                    <div style="color:var(--text-muted);">{{ f.amount }}</div>
+                    <div style="color:var(--text-muted);">{{ f.currency }}</div>
+                    <div style="font-weight:800;color:var(--text);">{{ f.iqd }}</div>
+                  </div>
+                </sc-for>
+                <div style="display:grid;grid-template-columns:1fr 1.2fr 2fr 1.4fr 1fr 1.2fr;gap:14px;padding:16px 22px;background:var(--gold-soft);align-items:center;"><div style="grid-column:1/5;font-weight:800;color:var(--text);">الإجمالي</div><div></div><div style="font-weight:800;color:var(--gold);font-size:15px;">312.4M</div></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== USERS ===== -->
+          <sc-if value="{{ isUsers }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+                <div style="flex:1;display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text-muted);flex-wrap:wrap;">
+                  <span style="font-weight:700;color:var(--text);">التسلسل:</span>
+                  <span style="padding:4px 11px;border-radius:99px;background:var(--gold-soft);color:var(--gold);font-weight:700;">سوبر أدمن</span>{{ icoArrowSmall }}
+                  <span style="padding:4px 11px;border-radius:99px;background:var(--info-soft);color:var(--info);font-weight:700;">رئيس الشركة</span>{{ icoArrowSmall }}
+                  <span style="padding:4px 11px;border-radius:99px;background:var(--surface-2);color:var(--text-muted);font-weight:700;">مدير</span>{{ icoArrowSmall }}
+                  <span style="padding:4px 11px;border-radius:99px;background:var(--surface-2);color:var(--text-muted);font-weight:700;">موظف</span>{{ icoArrowSmall }}
+                  <span style="padding:4px 11px;border-radius:99px;background:var(--surface-2);color:var(--text-muted);font-weight:700;">قارئ</span>
+                </div>
+                <button style="display:flex;align-items:center;gap:8px;padding:11px 18px;border:none;border-radius:11px;background:linear-gradient(135deg,#1B3A6B,#0C1B33);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 12px 26px -14px rgba(12,27,51,.8);" style-hover="transform:translateY(-1px);">{{ icoPlus }} مستخدم جديد</button>
+              </div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;">
+                <div style="display:grid;grid-template-columns:2.2fr 1.3fr 1.6fr 1fr 1fr .8fr;gap:14px;padding:14px 22px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted);"><div>المستخدم</div><div>الدور</div><div>الشركة</div><div>الاعتماد</div><div>الحالة</div><div></div></div>
+                <sc-for list="{{ userRows }}" as="u" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:2.2fr 1.3fr 1.6fr 1fr 1fr .8fr;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);align-items:center;">
+                    <div style="display:flex;align-items:center;gap:12px;"><div style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;font-weight:800;color:#fff;font-size:14px;background:{{ u.avatarBg }};">{{ u.initial }}</div><div><div style="font-size:13.5px;font-weight:700;color:var(--text);">test<br></div><div style="font-size:12px;color:var(--text-faint);direction:ltr;text-align:right;">@{{ Bashar }}</div></div></div>
+                    <div><span style="font-size:12px;font-weight:700;padding:5px 11px;border-radius:99px;{{ u.roleStyle }}">{{ u.role }}</span></div>
+                    <div style="font-size:13px;color:var(--text-muted);">{{ u.company }}</div>
+                    <div>{{ u.approve }}</div>
+                    <div><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:{{ u.statusColor }};"><span style="width:7px;height:7px;border-radius:99px;background:currentColor;"></span>{{ u.status }}</span></div>
+                    <div style="text-align:left;"><button style="width:34px;height:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;color:var(--text-muted);" style-hover="border-color:var(--gold);color:var(--gold);">{{ icoDots }}</button></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== SETTINGS ===== -->
+          <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;">
+              <div style="display:flex;gap:8px;margin-bottom:18px;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:5px;box-shadow:var(--shadow-sm);width:fit-content;flex-wrap:wrap;">
+                <button style="padding:9px 18px;border:none;border-radius:9px;background:var(--navy);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">القوالب</button>
+                <button style="padding:9px 18px;border:none;border-radius:9px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="color:var(--text);">الشركات</button>
+                <button style="padding:9px 18px;border:none;border-radius:9px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="color:var(--text);">الجهات</button>
+                <button style="padding:9px 18px;border:none;border-radius:9px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="color:var(--text);">أنواع الكتب</button>
+                <button style="padding:9px 18px;border:none;border-radius:9px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;" style-hover="color:var(--text);">أسعار الصرف</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 360px;gap:18px;align-items:start;">
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);">
+                  <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;">قالب الكتاب الرسمي — DEN</div>
+                  <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:22px;">ارفع صور الهيدر والفوتر والعلامة المائية واضبط الهوامش.</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;">
+                    <div><div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">صورة الهيدر</div><div style="border:2px dashed var(--border-strong);border-radius:12px;height:110px;display:grid;place-items:center;background:var(--surface-2);cursor:pointer;" style-hover="border-color:var(--gold);"><div style="text-align:center;color:var(--text-faint);">{{ icoImage }}<div style="font-size:11.5px;margin-top:5px;">رفع صورة</div></div></div></div>
+                    <div><div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">صورة الفوتر</div><div style="border:2px dashed var(--border-strong);border-radius:12px;height:110px;display:grid;place-items:center;background:var(--surface-2);cursor:pointer;" style-hover="border-color:var(--gold);"><div style="text-align:center;color:var(--text-faint);">{{ icoImage }}<div style="font-size:11.5px;margin-top:5px;">رفع صورة</div></div></div></div>
+                  </div>
+                  <div style="margin-bottom:18px;"><div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:10px;">شفافية العلامة المائية — 12%</div><div style="height:7px;border-radius:99px;background:var(--surface-3);position:relative;"><div style="position:absolute;right:0;top:0;height:100%;width:12%;background:linear-gradient(90deg,var(--gold),var(--gold-bright));border-radius:99px;"></div><div style="position:absolute;right:calc(12% - 9px);top:50%;transform:translateY(-50%);width:18px;height:18px;border-radius:99px;background:#fff;border:2px solid var(--gold);box-shadow:var(--shadow-sm);"></div></div></div>
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+                    <div><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">هامش علوي</div><input value="24" style="width:100%;padding:9px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface-2);font-family:inherit;text-align:center;color:var(--text);outline:none;"></div>
+                    <div><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">سفلي</div><input value="24" style="width:100%;padding:9px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface-2);font-family:inherit;text-align:center;color:var(--text);outline:none;"></div>
+                    <div><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">يمين</div><input value="40" style="width:100%;padding:9px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface-2);font-family:inherit;text-align:center;color:var(--text);outline:none;"></div>
+                    <div><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">يسار</div><input value="40" style="width:100%;padding:9px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface-2);font-family:inherit;text-align:center;color:var(--text);outline:none;"></div>
+                  </div>
+                  <button style="margin-top:22px;padding:12px 22px;border:none;border-radius:11px;background:var(--gold);color:#0C1B33;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;" style-hover="background:var(--gold-bright);">حفظ القالب</button>
+                </div>
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);">
+                  <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:14px;">معاينة مباشرة</div>
+                  <div style="aspect-ratio:1/1.414;background:#fff;border-radius:6px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;">
+                    <div style="background:linear-gradient(135deg,#15315C,#0C1B33);height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;"><div style="color:#fff;font-size:11px;font-weight:700;">ترويسة الشركة</div><img src="assets/den-land-logo.jpg" style="width:34px;height:34px;object-fit:contain;background:#fff;border-radius:6px;padding:2px;"></div>
+                    <div style="flex:1;padding:16px;position:relative;"><div style="position:absolute;inset:0;display:grid;place-items:center;opacity:.06;"><img src="assets/den-land-logo.jpg" style="width:120px;"></div><div style="height:8px;width:60%;background:#e5e5e5;border-radius:3px;margin-bottom:10px;"></div><div style="height:6px;width:100%;background:#eee;border-radius:3px;margin-bottom:6px;"></div><div style="height:6px;width:90%;background:#eee;border-radius:3px;margin-bottom:6px;"></div><div style="height:6px;width:95%;background:#eee;border-radius:3px;"></div></div>
+                    <div style="background:#0C1B33;height:34px;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ===== BACKUP ===== -->
+          <sc-if value="{{ isBackup }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:fadeUp .4s both;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);">
+                <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;">جدولة النسخ الاحتياطي</div>
+                <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:22px;">متاح للسوبر أدمن فقط. تُرفع النسخ تلقائياً إلى OneDrive.</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:10px;">التكرار</div>
+                <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:4px;margin-bottom:20px;">
+                  <button style="flex:1;padding:10px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">يومي</button>
+                  <button style="flex:1;padding:10px;border:none;border-radius:8px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">أسبوعي</button>
+                  <button style="flex:1;padding:10px;border:none;border-radius:8px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">يدوي</button>
+                  <button style="flex:1;padding:10px;border:none;border-radius:8px;background:transparent;color:var(--text-muted);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">إيقاف</button>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid var(--border);border-radius:12px;margin-bottom:14px;"><div><div style="font-size:13.5px;font-weight:700;color:var(--text);">وقت التنفيذ</div><div style="font-size:12px;color:var(--text-muted);">يومياً الساعة 02:00 صباحاً</div></div><input value="02:00" style="padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface-2);font-family:inherit;color:var(--text);outline:none;direction:ltr;width:90px;text-align:center;"></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:14px;border:1px solid var(--border);border-radius:12px;"><div><div style="font-size:13.5px;font-weight:700;color:var(--text);">الرفع إلى OneDrive</div><div style="font-size:12px;color:var(--success);">● متصل</div></div><div style="width:46px;height:26px;border-radius:99px;background:var(--success);position:relative;cursor:pointer;"><div style="position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:99px;background:#fff;"></div></div></div>
+                <button style="margin-top:22px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border:none;border-radius:11px;background:var(--gold);color:#0C1B33;font-family:inherit;font-size:14.5px;font-weight:800;cursor:pointer;" style-hover="background:var(--gold-bright);">{{ icoShield }} إنشاء نسخة الآن</button>
+              </div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);">
+                <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:18px;">آخر النسخ</div>
+                <div style="display:flex;flex-direction:column;gap:11px;">
+                  <sc-for list="{{ backups }}" as="bk" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--border);border-radius:12px;">
+                      <div style="width:40px;height:40px;border-radius:11px;background:var(--success-soft);color:var(--success);display:grid;place-items:center;flex-shrink:0;">{{ icoCheck }}</div>
+                      <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);direction:ltr;text-align:right;">{{ bk.file }}</div><div style="font-size:11.5px;color:var(--text-muted);">{{ bk.meta }}</div></div>
+                      <button style="border:1px solid var(--border);background:var(--surface);border-radius:9px;padding:7px 11px;cursor:pointer;color:var(--text-muted);font-family:inherit;font-size:12px;font-weight:700;" style-hover="border-color:var(--gold);color:var(--gold);">استعادة</button>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+        </main>
+      </div>
+    </div>
+
+    <!-- VERIFY MODAL -->
+    <sc-if value="{{ verifyOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeVerify }}" style="position:fixed;inset:0;background:rgba(8,16,30,.55);backdrop-filter:blur(4px);display:grid;place-items:center;z-index:90;animation:fadeIn .2s both;">
+        <div style="width:420px;max-width:92vw;background:var(--surface);border-radius:22px;padding:30px;box-shadow:var(--shadow-lg);animation:pop .3s both;text-align:center;">
+          <div style="width:130px;height:130px;margin:0 auto 18px;border-radius:18px;background:#fff;border:1px solid var(--border);display:grid;place-items:center;padding:12px;">
+            <svg width="100" height="100" viewBox="0 0 86 86">
+              <rect x="6" y="6" width="20" height="20" fill="none" stroke="#0C1B33" stroke-width="4"></rect><rect x="13" y="13" width="6" height="6" fill="#0C1B33"></rect>
+              <rect x="60" y="6" width="20" height="20" fill="none" stroke="#0C1B33" stroke-width="4"></rect><rect x="67" y="13" width="6" height="6" fill="#0C1B33"></rect>
+              <rect x="6" y="60" width="20" height="20" fill="none" stroke="#0C1B33" stroke-width="4"></rect><rect x="13" y="67" width="6" height="6" fill="#0C1B33"></rect>
+              <sc-for list="{{ qrCells }}" as="c" hint-placeholder-count="0"><rect x="{{ c.x }}" y="{{ c.y }}" width="4" height="4" fill="#0C1B33"></rect></sc-for>
+            </svg>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:99px;background:var(--success-soft);color:var(--success);font-weight:800;font-size:13.5px;margin-bottom:16px;">{{ icoCheck }} التوقيع صحيح — وثيقة أصلية</div>
+          <div style="text-align:right;background:var(--surface-2);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:11px;font-size:13.5px;">
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">رقم الكتاب</span><span style="font-weight:800;color:var(--gold);direction:ltr;">DEN-2026-00124</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">التاريخ</span><span style="font-weight:700;color:var(--text);direction:ltr;">2026-06-22</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">الجهة</span><span style="font-weight:700;color:var(--text);">وزارة الإعمار والإسكان</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-muted);">الحالة</span><span style="font-weight:700;color:var(--success);">معتمد ومقفل</span></div>
+          </div>
+          <button onClick="{{ closeVerify }}" style="margin-top:18px;width:100%;padding:13px;border:none;border-radius:11px;background:var(--navy);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;">إغلاق</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- TOAST -->
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:95;display:flex;align-items:center;gap:11px;padding:14px 22px;background:var(--navy-deep);color:#fff;border-radius:14px;box-shadow:var(--shadow-lg);animation:toastIn .3s both;border:1px solid rgba(190,154,71,.4);">
+        <span style="color:var(--gold-bright);">{{ icoCheck }}</span><span style="font-size:14px;font-weight:700;">{{ toast }}</span>
+      </div>
+    </sc-if>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { theme:'light', loggedIn:false, screen:'dashboard', selId:1, toast:null, verifyOpen:false };
+
+  componentDidMount(){
+    // build a deterministic QR-like module field (avoids finder corners)
+    const cells=[]; let seed=7;
+    const rnd=()=>{ seed=(seed*9301+49297)%233280; return seed/233280; };
+    for(let gx=0; gx<19; gx++){
+      for(let gy=0; gy<19; gy++){
+        const x=4+gx*4, y=4+gy*4;
+        const inFinder=(x<30&&y<30)||(x>56&&y<30)||(x<30&&y>56);
+        if(inFinder) continue;
+        if(rnd()>0.52) cells.push({x,y});
+      }
+    }
+    this._qr=cells; this.forceUpdate();
+  }
+
+  go(s){ this.setState({screen:s}); }
+  toggleTheme(){ this.setState(st=>({theme:st.theme==='light'?'dark':'light'})); }
+  showToast(msg){ this.setState({toast:msg}); clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:null}),2600); }
+
+  fmt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+
+  data(){
+    const outgoing=[
+      {id:1, number:'DEN-2026-00124', subject:'بشأن تمديد عقد المقاولة رقم 2026/14', entity:'وزارة الإعمار والإسكان', date:'2026-06-22', status:'Final', amount:58950000, amountRaw:'45,000 $', cur:'USD'},
+      {id:2, number:'DEN-2026-00123', subject:'طلب صرف مستحقات الدفعة الثالثة', entity:'دائرة العقود الحكومية', date:'2026-06-20', status:'Final', amount:124500000, amountRaw:'124,500,000 د.ع', cur:'IQD'},
+      {id:3, number:null, subject:'مخاطبة بخصوص تجهيز المواد الإنشائية', entity:'أمانة بغداد', date:'2026-06-19', status:'Draft', amount:0, amountRaw:'—', cur:'IQD'},
+      {id:4, number:'DEN-2026-00122', subject:'إشعار استلام موقع المشروع', entity:'مديرية بلدية الكرخ', date:'2026-06-17', status:'Final', amount:0, amountRaw:'—', cur:'IQD'},
+      {id:5, number:null, subject:'تأييد إنجاز نسبة 60% من العمل', entity:'الشركة العامة للمقاولات', date:'2026-06-15', status:'Draft', amount:0, amountRaw:'—', cur:'IQD'},
+      {id:6, number:'DEN-2026-00121', subject:'طلب تمديد فترة الضمان الهندسي', entity:'وزارة الإعمار والإسكان', date:'2026-06-12', status:'Final', amount:18200000, amountRaw:'18,200,000 د.ع', cur:'IQD'},
+    ];
+    return {outgoing};
+  }
+
+  openOutgoing(id){ this.setState({screen:'outgoingDetail', selId:id}); }
+  approveCurrent(){ this.showToast('تم الاعتماد وإصدار الرقم DEN-2026-00125 بنجاح'); this.setState({screen:'outgoing'}); }
+  saveDraft(){ this.showToast('تم حفظ المسودّة'); this.setState({screen:'outgoing'}); }
+
+  ico(p, vb='0 0 24 24', sw=2){ return React.createElement('svg',{width:19,height:19,viewBox:vb,fill:'none',stroke:'currentColor','strokeWidth':sw,'strokeLinecap':'round','strokeLinejoin':'round'}, p.map((d,i)=>React.createElement('path',{key:i,d}))); }
+  icoEl(children){ return React.createElement('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}, children); }
+
+  renderVals(){
+    const st=this.state;
+    const {outgoing}=this.data();
+    const navOn=(k)=> st.screen===k ? 'background:rgba(217,180,88,.16);color:#F0DFA8;box-shadow:inset -3px 0 0 var(--gold);' : '';
+    const detailScreens={outgoingDetail:'outgoing'};
+    const screenKey = detailScreens[st.screen] || (st.screen==='outgoingForm'?'outgoing':st.screen);
+
+    const pill=(status)=> status==='Final'
+      ? 'background:var(--success-soft);color:var(--success);'
+      : 'background:var(--warn-soft);color:var(--warn);';
+    const label=(status)=> status==='Final'?'معتمد':'مسودّة';
+
+    const e=React.createElement;
+    const icons={
+      icoUser:this.icoEl([e('path',{key:1,d:'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'}),e('circle',{key:2,cx:12,cy:7,r:4})]),
+      icoLock:this.icoEl([e('rect',{key:1,x:3,y:11,width:18,height:11,rx:2}),e('path',{key:2,d:'M7 11V7a5 5 0 0 1 10 0v4'})]),
+      icoGrid:this.icoEl([e('rect',{key:1,x:3,y:3,width:7,height:7,rx:1}),e('rect',{key:2,x:14,y:3,width:7,height:7,rx:1}),e('rect',{key:3,x:3,y:14,width:7,height:7,rx:1}),e('rect',{key:4,x:14,y:14,width:7,height:7,rx:1})]),
+      icoSend:this.icoEl([e('path',{key:1,d:'M22 2 11 13'}),e('path',{key:2,d:'M22 2 15 22l-4-9-9-4Z'})]),
+      icoArchive:this.icoEl([e('rect',{key:1,x:3,y:4,width:18,height:4,rx:1}),e('path',{key:2,d:'M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8'}),e('path',{key:3,d:'M10 12h4'})]),
+      icoChart:this.icoEl([e('path',{key:1,d:'M3 3v18h18'}),e('rect',{key:2,x:7,y:12,width:3,height:6}),e('rect',{key:3,x:13,y:8,width:3,height:10}),e('rect',{key:4,x:19,y:5,width:0.1,height:0.1})]),
+      icoUsers:this.icoEl([e('path',{key:1,d:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'}),e('circle',{key:2,cx:9,cy:7,r:4}),e('path',{key:3,d:'M23 21v-2a4 4 0 0 0-3-3.87'}),e('path',{key:4,d:'M16 3.13a4 4 0 0 1 0 7.75'})]),
+      icoCog:this.icoEl([e('circle',{key:1,cx:12,cy:12,r:3}),e('path',{key:2,d:'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z'})]),
+      icoShield:this.icoEl([e('path',{key:1,d:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z'})]),
+      icoSpark:this.icoEl([e('path',{key:1,d:'m12 3 1.9 5.8L20 10l-5.1 2.2L12 18l-2.9-5.8L4 10l6.1-1.2Z'})]),
+      icoSearch:this.icoEl([e('circle',{key:1,cx:11,cy:11,r:8}),e('path',{key:2,d:'m21 21-4.3-4.3'})]),
+      icoBell:this.icoEl([e('path',{key:1,d:'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'}),e('path',{key:2,d:'M13.7 21a2 2 0 0 1-3.4 0'})]),
+      icoQr:this.icoEl([e('rect',{key:1,x:3,y:3,width:7,height:7,rx:1}),e('rect',{key:2,x:14,y:3,width:7,height:7,rx:1}),e('rect',{key:3,x:3,y:14,width:7,height:7,rx:1}),e('path',{key:4,d:'M14 14h3v3h-3zM20 14v3M14 20h7'})]),
+      icoPlus:this.icoEl([e('path',{key:1,d:'M12 5v14M5 12h14'})]),
+      icoDoc:this.icoEl([e('path',{key:1,d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z'}),e('path',{key:2,d:'M14 2v6h6M9 13h6M9 17h4'})]),
+      icoBack:this.icoEl([e('path',{key:1,d:'M9 18l6-6-6-6'})]),
+      icoNext:this.icoEl([e('path',{key:1,d:'M15 18l-6-6 6-6'})]),
+      icoPrev:this.icoEl([e('path',{key:1,d:'M9 18l6-6-6-6'})]),
+      icoCheck:this.icoEl([e('path',{key:1,d:'M20 6 9 17l-5-5'})]),
+      icoPdf:this.icoEl([e('path',{key:1,d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z'}),e('path',{key:2,d:'M14 2v6h6'})]),
+      icoWord:this.icoEl([e('path',{key:1,d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z'}),e('path',{key:2,d:'M14 2v6h6M8 13l1.5 5L11 14l1.5 4L14 13'})]),
+      icoExcel:this.icoEl([e('path',{key:1,d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z'}),e('path',{key:2,d:'M14 2v6h6M9 13l6 5M15 13l-6 5'})]),
+      icoEdit:this.icoEl([e('path',{key:1,d:'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'}),e('path',{key:2,d:'M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z'})]),
+      icoPrint:this.icoEl([e('path',{key:1,d:'M6 9V2h12v7'}),e('path',{key:2,d:'M6 18H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2'}),e('rect',{key:3,x:6,y:14,width:12,height:8,rx:1})]),
+      icoSave:this.icoEl([e('path',{key:1,d:'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z'}),e('path',{key:2,d:'M17 21v-8H7v8M7 3v5h8'})]),
+      icoMoney:this.icoEl([e('rect',{key:1,x:2,y:5,width:20,height:14,rx:2}),e('circle',{key:2,cx:12,cy:12,r:3})]),
+      icoUpload:React.createElement('svg',{width:28,height:28,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round'},[e('path',{key:1,d:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'}),e('path',{key:2,d:'M17 8l-5-5-5 5M12 3v12'})]),
+      icoClose:this.icoEl([e('path',{key:1,d:'M18 6 6 18M6 6l12 12'})]),
+      icoList:this.icoEl([e('path',{key:1,d:'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01'})]),
+      icoFilter:this.icoEl([e('path',{key:1,d:'M22 3H2l8 9.5V19l4 2v-8.5L22 3Z'})]),
+      icoChevron:this.icoEl([e('path',{key:1,d:'M6 9l6 6 6-6'})]),
+      icoImage:React.createElement('svg',{width:24,height:24,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round'},[e('rect',{key:1,x:3,y:3,width:18,height:18,rx:2}),e('circle',{key:2,cx:9,cy:9,r:2}),e('path',{key:3,d:'m21 15-5-5L5 21'})]),
+      icoDots:this.icoEl([e('circle',{key:1,cx:12,cy:5,r:1}),e('circle',{key:2,cx:12,cy:12,r:1}),e('circle',{key:3,cx:12,cy:19,r:1})]),
+      icoPaperclip:this.icoEl([e('path',{key:1,d:'M21.4 11.05 12.25 20.2a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.49-8.49'})]),
+    };
+
+    const stats=[
+      {label:'إجمالي الصادر', value:'248', trend:'+12%', icon:icons.icoSend, iconStyle:'background:var(--info-soft);color:var(--info);', trendColor:'var(--success)', trendBg:'var(--success-soft)', glow:'var(--info)'},
+      {label:'بانتظار الاعتماد', value:'5', trend:'عاجل', icon:icons.icoDoc, iconStyle:'background:var(--warn-soft);color:var(--warn);', trendColor:'var(--warn)', trendBg:'var(--warn-soft)', glow:'var(--warn)'},
+      {label:'كتب معتمدة', value:'236', trend:'+8%', icon:icons.icoCheck, iconStyle:'background:var(--success-soft);color:var(--success);', trendColor:'var(--success)', trendBg:'var(--success-soft)', glow:'var(--success)'},
+      {label:'إجمالي المبالغ (د.ع)', value:'1.28B', trend:'+15%', icon:icons.icoMoney, iconStyle:'background:var(--gold-soft);color:var(--gold);', trendColor:'var(--gold)', trendBg:'var(--gold-soft)', glow:'var(--gold)'},
+    ];
+
+    const chartBars=[
+      {m:'كانون', h1:'48%', h2:'30%'},{m:'شباط', h1:'62%', h2:'40%'},{m:'آذار', h1:'54%', h2:'38%'},
+      {m:'نيسان', h1:'78%', h2:'52%'},{m:'أيار', h1:'66%', h2:'46%'},{m:'حزيران', h1:'90%', h2:'64%'},{m:'تموز', h1:'72%', h2:'50%'},
+    ];
+
+    const pending=[
+      {subject:'مخاطبة بخصوص تجهيز المواد الإنشائية', meta:'أمانة بغداد · أحمد سالم', onApprove:()=>this.showToast('تم اعتماد الكتاب بنجاح')},
+      {subject:'تأييد إنجاز نسبة 60% من العمل', meta:'الشركة العامة · ليلى كريم', onApprove:()=>this.showToast('تم اعتماد الكتاب بنجاح')},
+      {subject:'طلب تخصيص دفعة مقدمة للمشروع', meta:'وزارة الإعمار · مازن جابر', onApprove:()=>this.showToast('تم اعتماد الكتاب بنجاح')},
+    ];
+
+    const act=(icon,style)=>({icon,iconStyle:style});
+    const activities=[
+      {text:'اعتمد عبدالله الجبوري الكتاب DEN-2026-00124', time:'قبل 8 دقائق', icon:icons.icoCheck, iconStyle:'background:var(--success-soft);color:var(--success);'},
+      {text:'أنشأ أحمد سالم مسودّة كتاب جديد', time:'قبل 24 دقيقة', icon:icons.icoPlus, iconStyle:'background:var(--info-soft);color:var(--info);'},
+      {text:'أضافت ليلى كريم مستنداً للأرشيف', time:'قبل ساعة', icon:icons.icoArchive, iconStyle:'background:var(--gold-soft);color:var(--gold);'},
+      {text:'تم إنشاء نسخة احتياطية تلقائية', time:'قبل 3 ساعات', icon:icons.icoShield, iconStyle:'background:var(--surface-3);color:var(--text-muted);'},
+    ];
+
+    const outgoingRows=outgoing.map(r=>({
+      number: r.number || 'مسودّة',
+      numColor: r.number ? 'var(--gold)' : 'var(--text-faint)',
+      subject:r.subject, entity:r.entity, date:r.date,
+      amount: r.amount? this.fmt(r.amount)+' د.ع' : '—',
+      statusLabel:label(r.status), pillStyle:pill(r.status),
+      onOpen:()=>this.openOutgoing(r.id),
+    }));
+
+    const sel=outgoing.find(o=>o.id===st.selId)||outgoing[0];
+    const current={
+      number: sel.number||'مسودّة', subject:sel.subject, entity:sel.entity, date:sel.date,
+      amount: sel.amount? this.fmt(sel.amount)+' د.ع':'—', amountRaw:sel.amountRaw,
+      statusLabel:label(sel.status), pillStyle:pill(sel.status),
+      body:'تحية طيبة وبعد،\n\nنظراً لسير العمل بالوتيرة المطلوبة، نرجو الموافقة على ما جاء أعلاه ومنحنا المدة الإضافية اللازمة لإكمال الأعمال وفق المخططات المعتمدة، مع بقاء كافة الشروط التعاقدية الأخرى نافذة دون تغيير.\n\nشاكرين تعاونكم.',
+    };
+
+    const versions=[
+      {title:'الإصدار 2 — تعديل المبلغ', meta:'عبدالله الجبوري · 2026-06-23', dot:'var(--gold)'},
+      {title:'الإصدار 1 — الاعتماد الأول', meta:'عبدالله الجبوري · 2026-06-22', dot:'var(--success)'},
+      {title:'إنشاء المسودّة', meta:'أحمد سالم · 2026-06-21', dot:'var(--text-faint)'},
+    ];
+
+    const archIcon=(c1)=>({iconStyle:`background:${c1}-soft;color:${c1};`});
+    const archiveRows=[
+      {title:'عقد المقاولة الأصلي — مشروع الكرخ', entity:'وزارة الإعمار', date:'2026-06-10', archiveNo:'ARC-0451', files:3, amount:'215M', icon:icons.icoDoc, iconStyle:'background:var(--info-soft);color:var(--info);', fileIcon:icons.icoPaperclip},
+      {title:'فاتورة تجهيز المواد الإنشائية', entity:'شركة الإعمار الحديث', date:'2026-06-08', archiveNo:'ARC-0450', files:2, amount:'48M', icon:icons.icoMoney, iconStyle:'background:var(--gold-soft);color:var(--gold);', fileIcon:icons.icoPaperclip},
+      {title:'كتاب شكر وتقدير', entity:'أمانة بغداد', date:'2026-06-05', archiveNo:'ARC-0449', files:1, amount:'—', icon:icons.icoDoc, iconStyle:'background:var(--success-soft);color:var(--success);', fileIcon:icons.icoPaperclip},
+      {title:'تقرير الكشف الهندسي الفصلي', entity:'مديرية بلدية الكرخ', date:'2026-06-02', archiveNo:'ARC-0448', files:5, amount:'—', icon:icons.icoChart, iconStyle:'background:var(--info-soft);color:var(--info);', fileIcon:icons.icoPaperclip},
+      {title:'محضر استلام أولي للموقع', entity:'الشركة العامة للمقاولات', date:'2026-05-28', archiveNo:'ARC-0447', files:2, amount:'—', icon:icons.icoDoc, iconStyle:'background:var(--surface-3);color:var(--text-muted);', fileIcon:icons.icoPaperclip},
+      {title:'مستخلص الدفعة الثانية', entity:'دائرة العقود الحكومية', date:'2026-05-24', archiveNo:'ARC-0446', files:4, amount:'132M', icon:icons.icoMoney, iconStyle:'background:var(--gold-soft);color:var(--gold);', fileIcon:icons.icoPaperclip},
+    ];
+
+    const srcOut='background:var(--info-soft);color:var(--info);';
+    const srcArc='background:var(--gold-soft);color:var(--gold);';
+    const financial=[
+      {source:'صادر', srcStyle:srcOut, number:'DEN-2026-00124', entity:'وزارة الإعمار والإسكان', amount:'45,000', currency:'$', iqd:'58.9M'},
+      {source:'صادر', srcStyle:srcOut, number:'DEN-2026-00123', entity:'دائرة العقود الحكومية', amount:'124,500,000', currency:'د.ع', iqd:'124.5M'},
+      {source:'أرشيف', srcStyle:srcArc, number:'ARC-0446', entity:'دائرة العقود الحكومية', amount:'132,000,000', currency:'د.ع', iqd:'132.0M'},
+      {source:'صادر', srcStyle:srcOut, number:'DEN-2026-00121', entity:'وزارة الإعمار والإسكان', amount:'18,200,000', currency:'د.ع', iqd:'18.2M'},
+      {source:'أرشيف', srcStyle:srcArc, number:'ARC-0450', entity:'شركة الإعمار الحديث', amount:'48,000,000', currency:'د.ع', iqd:'48.0M'},
+    ];
+
+    const roleStyle={
+      'رئيس الشركة':'background:var(--info-soft);color:var(--info);',
+      'مدير':'background:var(--gold-soft);color:var(--gold);',
+      'موظف':'background:var(--surface-2);color:var(--text-muted);',
+      'قارئ':'background:var(--surface-2);color:var(--text-faint);',
+    };
+    const yes=this.icoEl([e('path',{key:1,d:'M20 6 9 17l-5-5'})]);
+    const dash=React.createElement('span',{style:{color:'var(--text-faint)'}},'—');
+    const userRows=[
+      {name:'عبدالله الجبوري', username:'abdullah', initial:'ع', avatarBg:'linear-gradient(135deg,#1B3A6B,#0C1B33)', role:'رئيس الشركة', roleStyle:roleStyle['رئيس الشركة'], company:'أرض العرين', approve:React.createElement('span',{style:{color:'var(--success)'}},yes), status:'نشط', statusColor:'var(--success)'},
+      {name:'أحمد سالم', username:'ahmed', initial:'أ', avatarBg:'linear-gradient(135deg,#2563A8,#15315C)', role:'مدير', roleStyle:roleStyle['مدير'], company:'أرض العرين', approve:React.createElement('span',{style:{color:'var(--success)'}},yes), status:'نشط', statusColor:'var(--success)'},
+      {name:'ليلى كريم', username:'laila', initial:'ل', avatarBg:'linear-gradient(135deg,#BE9A47,#8A6F2E)', role:'موظف', roleStyle:roleStyle['موظف'], company:'أرض العرين', approve:dash, status:'نشط', statusColor:'var(--success)'},
+      {name:'مازن جابر', username:'mazen', initial:'م', avatarBg:'linear-gradient(135deg,#178A5B,#0E5A3B)', role:'موظف', roleStyle:roleStyle['موظف'], company:'العرين للمقاولات', approve:React.createElement('span',{style:{color:'var(--success)'}},yes), status:'نشط', statusColor:'var(--success)'},
+      {name:'سارة هادي', username:'sara', initial:'س', avatarBg:'linear-gradient(135deg,#7A4FB0,#4A2E73)', role:'قارئ', roleStyle:roleStyle['قارئ'], company:'العرين للمقاولات', approve:dash, status:'موقوف', statusColor:'var(--text-faint)'},
+    ];
+
+    const backups=[
+      {file:'dms_backup_2026-06-30_02-00.bacpac', meta:'نسخة كاملة · 1.8 GB · ناجحة · OneDrive ✓'},
+      {file:'dms_backup_2026-06-29_02-00.bacpac', meta:'نسخة كاملة · 1.8 GB · ناجحة · OneDrive ✓'},
+      {file:'dms_backup_2026-06-28_14-22.bacpac', meta:'يدوية · 1.7 GB · ناجحة · OneDrive ✓'},
+      {file:'dms_backup_2026-06-28_02-00.bacpac', meta:'نسخة كاملة · 1.7 GB · ناجحة · OneDrive ✓'},
+    ];
+
+    const titles={
+      dashboard:['لوحة التحكم','نظرة عامة على نشاط النظام اليوم'],
+      outgoing:['الصادر','إدارة الكتب الرسمية الصادرة'],
+      outgoingDetail:['تفاصيل الكتاب','معاينة، اعتماد، وتصدير الكتاب'],
+      outgoingForm:['كتاب صادر جديد','إنشاء وإعداد كتاب رسمي'],
+      archive:['الأرشيف','المستندات والمرفقات المحفوظة'],
+      reports:['التقارير المالية','تحليل المبالغ بالدينار العراقي'],
+      users:['المستخدمون والصلاحيات','إدارة الحسابات حسب التسلسل الهرمي'],
+      settings:['الإعدادات والقوالب','الشركات، القوالب، القوائم وأسعار الصرف'],
+      backup:['النسخ الاحتياطي','حماية البيانات والاستعادة'],
+    };
+    const t=titles[st.screen]||titles.dashboard;
+
+    const qrCells=(this._qr||[]);
+
+    return {
+      theme:st.theme,
+      themeIcon: st.theme==='light'
+        ? this.icoEl([e('path',{key:1,d:'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z'})])
+        : this.icoEl([e('circle',{key:1,cx:12,cy:12,r:5}),e('path',{key:2,d:'M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4'})]),
+      showLogin: !st.loggedIn,
+      showApp: st.loggedIn,
+      isDashboard: st.screen==='dashboard',
+      isOutgoing: st.screen==='outgoing',
+      isOutgoingDetail: st.screen==='outgoingDetail',
+      isOutgoingForm: st.screen==='outgoingForm',
+      isArchive: st.screen==='archive',
+      isReports: st.screen==='reports',
+      isUsers: st.screen==='users',
+      isSettings: st.screen==='settings',
+      isBackup: st.screen==='backup',
+      pageTitle:t[0], pageSubtitle:t[1],
+      nav_dashboard:navOn('dashboard'),
+      nav_outgoing: (screenKey==='outgoing')?'background:rgba(217,180,88,.16);color:#F0DFA8;box-shadow:inset -3px 0 0 var(--gold);':'',
+      nav_archive:navOn('archive'),
+      nav_reports:navOn('reports'),
+      nav_users:navOn('users'),
+      nav_settings:navOn('settings'),
+      nav_backup:navOn('backup'),
+      doLogin:()=>this.setState({loggedIn:true}),
+      doLogout:()=>this.setState({loggedIn:false}),
+      toggleTheme:()=>this.toggleTheme(),
+      go_dashboard:()=>this.go('dashboard'),
+      go_outgoing:()=>this.go('outgoing'),
+      go_archive:()=>this.go('archive'),
+      go_reports:()=>this.go('reports'),
+      go_users:()=>this.go('users'),
+      go_settings:()=>this.go('settings'),
+      go_backup:()=>this.go('backup'),
+      newOutgoing:()=>this.go('outgoingForm'),
+      approveCurrent:()=>this.approveCurrent(),
+      saveDraft:()=>this.saveDraft(),
+      openVerify:()=>this.setState({verifyOpen:true}),
+      closeVerify:()=>this.setState({verifyOpen:false}),
+      verifyOpen:st.verifyOpen,
+      toast:st.toast,
+      stats, chartBars, pending, activities, outgoingRows, current, versions,
+      archiveRows, financial, userRows, backups, qrCells,
+      ...icons,
+      icoArrowSmall: React.createElement('span',{style:{color:'var(--text-faint)',fontSize:'12px'}},'‹'),
+    };
+  }
+}
+</script>
+</body>
+</html>

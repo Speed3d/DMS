@@ -1,24 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/custom_card.dart';
 
-/// تعديل كتاب معتمد (Final) — ينشئ إصداراً جديداً ويعيد توليد PDF/QR. الرقم يبقى ثابتاً.
+/// Hint: شاشة تعديل كتاب معتمد لإنشاء إصدار جديد (Version)
 class OutgoingEditApprovedScreen extends ConsumerStatefulWidget {
   final OutgoingDetail book;
   const OutgoingEditApprovedScreen({super.key, required this.book});
   @override
-  ConsumerState<OutgoingEditApprovedScreen> createState() => _State();
+  ConsumerState<OutgoingEditApprovedScreen> createState() => _OutgoingEditApprovedScreenState();
 }
 
-class _State extends ConsumerState<OutgoingEditApprovedScreen> {
+class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprovedScreen> {
   late final TextEditingController _subject;
-  late final TextEditingController _body;
   late final TextEditingController _amount;
   late final TextEditingController _rate;
-  final _note = TextEditingController();
+  late final TextEditingController _note;
+  late final quill.QuillController _quillController;
+  
   late DateTime _date;
   late int _entityId;
   late int _templateId;
@@ -32,9 +36,16 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
     super.initState();
     final b = widget.book;
     _subject = TextEditingController(text: b.subject);
-    _body = TextEditingController(text: b.bodyHtml);
     _amount = TextEditingController(text: b.amount?.toString() ?? '');
     _rate = TextEditingController(text: b.exchangeRate?.toString() ?? '');
+    _note = TextEditingController();
+    
+    // إعداد محرر النصوص بمحتوى الكتاب القديم
+    _quillController = quill.QuillController(
+      document: quill.Document()..insert(0, '${b.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), '')}\n'),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+
     _date = b.date;
     _entityId = b.entityId;
     _templateId = b.templateId;
@@ -44,7 +55,11 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
 
   @override
   void dispose() {
-    _subject.dispose(); _body.dispose(); _amount.dispose(); _rate.dispose(); _note.dispose();
+    _subject.dispose();
+    _amount.dispose();
+    _rate.dispose();
+    _note.dispose();
+    _quillController.dispose();
     super.dispose();
   }
 
@@ -55,11 +70,20 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
     return _Refs(entities, templates.where((t) => t.isActive).toList());
   }
 
+  String _getHtmlFromBody() {
+    return _quillController.document.toPlainText().replaceAll('\n', '<br>');
+  }
+
   Future<void> _save() async {
-    if (_subject.text.trim().isEmpty || _body.text.trim().isEmpty) {
-      setState(() => _error = 'الموضوع والنص مطلوبان.');
+    if (_subject.text.trim().isEmpty) {
+      setState(() => _error = 'الموضوع مطلوب.');
       return;
     }
+    if (_quillController.document.isEmpty()) {
+      setState(() => _error = 'نص الكتاب مطلوب.');
+      return;
+    }
+    
     num? amount;
     num? rate;
     if (_amount.text.trim().isNotEmpty) {
@@ -71,6 +95,7 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
         if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي للدولار.'); return; }
       }
     }
+    
     setState(() { _busy = true; _error = null; });
     try {
       await ref.read(apiClientProvider).editApproved(widget.book.outgoingId, {
@@ -78,7 +103,7 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
         'templateId': _templateId,
         'date': _date.toIso8601String(),
         'subject': _subject.text.trim(),
-        'bodyHtml': _body.text,
+        'bodyHtml': _getHtmlFromBody(),
         'amount': amount,
         'currency': amount == null ? null : _currency,
         'exchangeRate': rate,
@@ -95,83 +120,256 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      appBar: AppBar(title: Text('تعديل كتاب معتمد ${widget.book.number ?? ''}')),
+      appBar: AppBar(
+        title: Text('تعديل إصدار: ${widget.book.number ?? ''}'),
+        centerTitle: true,
+      ),
       body: FutureBuilder<_Refs>(
         future: _refs,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
           }
-          if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
+          if (snap.hasError) {
+            return Center(child: Text('خطأ: ${snap.error}', style: const TextStyle(color: AppColors.danger)));
+          }
           final refs = snap.data!;
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: ListView(
-                padding: const EdgeInsets.all(24),
+              constraints: const BoxConstraints(maxWidth: 1000),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    color: Colors.amber.shade100,
-                    child: const Text('سيُحفظ إصدار من النسخة الحالية ويُعاد توليد PDF/QR. الرقم لا يتغيّر.'),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<int>(
-                    initialValue: _entityId,
-                    decoration: const InputDecoration(labelText: 'الجهة المستلمة'),
-                    items: refs.entities.map((e) => DropdownMenuItem(value: e.entityId, child: Text(e.name))).toList(),
-                    onChanged: (v) => setState(() => _entityId = v ?? _entityId),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: _templateId,
-                    decoration: const InputDecoration(labelText: 'القالب'),
-                    items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name))).toList(),
-                    onChanged: (v) => setState(() => _templateId = v ?? _templateId),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: Text('التاريخ: ${DateFormat('yyyy-MM-dd').format(_date)}')),
-                    TextButton.icon(
-                      onPressed: () async {
-                        final d = await showDatePicker(context: context, initialDate: _date, firstDate: DateTime(2020), lastDate: DateTime(2100));
-                        if (d != null) setState(() => _date = d);
-                      },
-                      icon: const Icon(Icons.calendar_today),
-                      label: const Text('تغيير'),
-                    ),
-                  ]),
-                  const SizedBox(height: 12),
-                  TextField(controller: _subject, decoration: const InputDecoration(labelText: 'الموضوع')),
-                  const SizedBox(height: 12),
-                  TextField(controller: _body, maxLines: 6, decoration: const InputDecoration(labelText: 'نص الكتاب', alignLabelWithHint: true)),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: TextField(controller: _amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ'))),
-                    const SizedBox(width: 12),
-                    Expanded(child: DropdownButtonFormField<String>(
-                      initialValue: _currency,
-                      decoration: const InputDecoration(labelText: 'العملة'),
-                      items: const [
-                        DropdownMenuItem(value: 'IQD', child: Text('دينار')),
-                        DropdownMenuItem(value: 'USD', child: Text('دولار')),
+                  Expanded(
+                    flex: 4,
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.warn.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.warn.withValues(alpha: 0.3)),
+                          ),
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: AppColors.warn),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'تنبيه: هذا الكتاب معتمد. أي حفظ للتعديلات سيولد (إصدار جديد) منه مع إعادة توليد الـ PDF والـ QR. رقم الكتاب لن يتغير.',
+                                  style: TextStyle(height: 1.5, fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        CustomCard(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('معلومات الإصدار الجديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              const Divider(height: 32),
+                              
+                              DropdownButtonFormField<int>(
+                                isExpanded: true,
+                                initialValue: _entityId,
+                                decoration: _inputDecoration('الجهة المستلمة', Icons.business_rounded),
+                                items: refs.entities.map((e) => DropdownMenuItem(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))).toList(),
+                                onChanged: (v) => setState(() => _entityId = v ?? _entityId),
+                              ),
+                              const SizedBox(height: 16),
+                              
+                              DropdownButtonFormField<int>(
+                                isExpanded: true,
+                                initialValue: _templateId,
+                                decoration: _inputDecoration('القالب المعتمد', Icons.style_rounded),
+                                items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name, overflow: TextOverflow.ellipsis))).toList(),
+                                onChanged: (v) => setState(() => _templateId = v ?? _templateId),
+                              ),
+                              const SizedBox(height: 16),
+                              
+                              InkWell(
+                                onTap: () async {
+                                  final d = await showDatePicker(
+                                    context: context,
+                                    initialDate: _date,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (d != null) setState(() => _date = d);
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: InputDecorator(
+                                  decoration: _inputDecoration('تاريخ الكتاب', Icons.calendar_today_rounded),
+                                  child: Text(DateFormat('yyyy/MM/dd').format(_date), style: const TextStyle(fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              
+                              TextField(
+                                controller: _subject,
+                                decoration: _inputDecoration('موضوع الكتاب', Icons.subject_rounded),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        
+                        CustomCard(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('التفاصيل المالية والملاحظات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              const Divider(height: 32),
+                              
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextField(
+                                      controller: _amount,
+                                      keyboardType: TextInputType.number,
+                                      decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 1,
+                                    child: DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      initialValue: _currency,
+                                      decoration: _inputDecoration('العملة', Icons.currency_exchange_rounded),
+                                      items: const [
+                                        DropdownMenuItem(value: 'IQD', child: Text('دينار', overflow: TextOverflow.ellipsis)),
+                                        DropdownMenuItem(value: 'USD', child: Text('دولار', overflow: TextOverflow.ellipsis)),
+                                      ],
+                                      onChanged: (v) => setState(() => _currency = v),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_currency == 'USD') ...[
+                                const SizedBox(height: 16),
+                                TextField(
+                                  controller: _rate,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _inputDecoration('سعر الصرف', Icons.price_change_rounded),
+                                ),
+                              ],
+                              const SizedBox(height: 16),
+                              TextField(
+                                controller: _note,
+                                decoration: _inputDecoration('ملاحظة التغيير (اختياري)', Icons.edit_note_rounded),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                      onChanged: (v) => setState(() => _currency = v),
-                    )),
-                  ]),
-                  if (_currency == 'USD') ...[
-                    const SizedBox(height: 12),
-                    TextField(controller: _rate, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر الصرف')),
-                  ],
-                  const SizedBox(height: 12),
-                  TextField(controller: _note, decoration: const InputDecoration(labelText: 'ملاحظة التغيير (اختياري)')),
-                  if (_error != null) ...[const SizedBox(height: 12), Text(_error!, style: const TextStyle(color: Colors.red))],
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: _busy ? null : _save,
-                    icon: const Icon(Icons.save),
-                    label: Text(_busy ? 'جارٍ الحفظ...' : 'حفظ التعديل (إصدار جديد)'),
+                    ),
+                  ),
+                  
+                  // القسم الأيسر (المحرر)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: CustomCard(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.edit_document, color: AppColors.navyDeep),
+                                      const SizedBox(width: 12),
+                                      const Text('تعديل نص الكتاب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                      const Spacer(),
+                                      if (_error != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                          child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ),
+                                    ],
+                                  ),
+                                  const Divider(height: 24),
+                                  
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: isDark ? theme.colorScheme.surfaceContainerHighest : Colors.grey.shade100,
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                      border: Border.all(color: theme.dividerColor),
+                                    ),
+                                    padding: const EdgeInsets.all(8),
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: quill.QuillSimpleToolbar(
+                                        controller: _quillController,
+                                      ),
+                                    ),
+                                  ),
+                                  
+                                  Expanded(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          left: BorderSide(color: theme.dividerColor),
+                                          right: BorderSide(color: theme.dividerColor),
+                                          bottom: BorderSide(color: theme.dividerColor),
+                                        ),
+                                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                                      ),
+                                      padding: const EdgeInsets.all(16),
+                                      child: quill.QuillEditor.basic(
+                                        controller: _quillController,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: FilledButton.icon(
+                              onPressed: _busy ? null : _save,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.warn,
+                                foregroundColor: Colors.black,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 8,
+                                shadowColor: AppColors.warn.withValues(alpha: 0.5),
+                              ),
+                              icon: _busy 
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                                : const Icon(Icons.save_rounded),
+                              label: Text(
+                                _busy ? 'جارٍ الحفظ...' : 'حفظ كإصدار جديد',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -179,6 +377,19 @@ class _State extends ConsumerState<OutgoingEditApprovedScreen> {
           );
         },
       ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label, IconData icon) {
+    final theme = Theme.of(context);
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
+      filled: true,
+      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.navyDeep, width: 1.5)),
     );
   }
 }
