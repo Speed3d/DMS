@@ -1,0 +1,20 @@
+using System;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
+class Program {
+    static void Main() {
+        QuestPDF.Settings.License = LicenseType.Community;
+        var document = Document.Create(container => {
+            container.Page(page => {
+                page.Size(PageSizes.A4);
+                page.Content().Text(text => {
+                    text.Span("Hello ").FontColor("red");
+                });
+            });
+        });
+        document.GeneratePdf("test_color.pdf");
+        Console.WriteLine("PDF generated");
+    }
+}

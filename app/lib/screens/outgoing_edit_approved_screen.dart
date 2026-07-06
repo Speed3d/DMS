@@ -82,11 +82,14 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
     return _Refs(entities, templates.where((t) => t.isActive).toList());
   }
 
-  /// Hint: تحويل من Quill Delta إلى HTML للإرسال إلى السيرفر
   String _getHtmlFromBody() {
     final delta = _quillController.document.toDelta();
     final converter = QuillDeltaToHtmlConverter(
       delta.toJson().cast<Map<String, dynamic>>(),
+      ConverterOptions(
+        converterOptions: OpConverterOptions(inlineStylesFlag: true),
+        sanitizerOptions: OpAttributeSanitizerOptions(allow8DigitHexColors: true),
+      ),
     );
     return converter.convert();
   }
@@ -361,10 +364,19 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
                                       border: Border.all(color: theme.dividerColor),
                                     ),
                                     padding: const EdgeInsets.all(8),
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: quill.QuillSimpleToolbar(
-                                        controller: _quillController,
+                                    child: quill.QuillSimpleToolbar(
+                                      controller: _quillController,
+                                      config: const quill.QuillSimpleToolbarConfig(
+                                        multiRowsDisplay: true,
+                                        showAlignmentButtons: true,
+                                        showCodeBlock: false,
+                                        showInlineCode: false,
+                                        showQuote: false,
+                                        showClearFormat: false,
+                                        showSearchButton: false,
+                                        showSubscript: false,
+                                        showSuperscript: false,
+                                        showListCheck: false,
                                       ),
                                     ),
                                   ),
