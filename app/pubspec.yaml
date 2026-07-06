@@ -45,7 +45,7 @@ dependencies:
   intl: any
   google_fonts: ^6.2.1
   fl_chart: ^0.69.2
-  flutter_quill: ^11.5.1
+  flutter_quill: 11.5.0
   flutter_svg: ^2.0.10
   flutter_html: ^3.0.0
   vsc_quill_delta_to_html: ^1.0.5
