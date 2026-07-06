@@ -271,7 +271,7 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
                                   const Expanded(child: Text('التفاصيل المالية والملاحظات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
                                   Switch(
                                     value: _showFinancials,
-                                    activeColor: AppColors.gold,
+                                    activeThumbColor: AppColors.gold,
                                     onChanged: (v) => setState(() => _showFinancials = v),
                                   ),
                                 ],

@@ -125,6 +125,15 @@ class ApiClient {
   Future<OutgoingDetail> createOutgoing(Map<String, dynamic> body) async =>
       OutgoingDetail.fromJson(await _post('/outgoing', body));
 
+  Future<Uint8List> previewOutgoing(Map<String, dynamic> body) async {
+    try {
+      final res = await _dio.post<List<int>>('/outgoing/preview', data: body, options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<OutgoingDetail> updateOutgoing(int id, Map<String, dynamic> body) async =>
       OutgoingDetail.fromJson(await _put('/outgoing/$id', body));
 

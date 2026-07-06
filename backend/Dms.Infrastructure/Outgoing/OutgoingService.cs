@@ -36,6 +36,7 @@ public interface IOutgoingService
     Task SoftDeleteAsync(int id, CancellationToken ct = default);
     Task<byte[]> GetPdfAsync(int id, CancellationToken ct = default);
     Task<byte[]> GetWordAsync(int id, CancellationToken ct = default);
+    Task<byte[]> PreviewPdfAsync(CreateOutgoingInput input, CancellationToken ct = default);
 }
 
 public sealed class OutgoingService(
@@ -152,7 +153,7 @@ public sealed class OutgoingService(
             book.ApprovedAt = DateTime.UtcNow;
             book.AmountInIqd = FinancialCalculator.ComputeIqd(book.Amount, book.Currency, book.ExchangeRate);
 
-            var render = await renderer.RenderPdfAsync(book, template, entity, company, ct);
+            var render = await renderer.RenderPdfAsync(book, template, entity, company, false, ct);
             book.QrContent = render.QrContent;
             book.QrSignature = render.QrSignature;
             book.GeneratedPdfBlobKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
@@ -208,7 +209,7 @@ public sealed class OutgoingService(
 
         // إعادة توليد PDF/QR
         var (company, template, entity) = await LoadRefsAsync(book, ct);
-        var render = await renderer.RenderPdfAsync(book, template, entity, company, ct);
+        var render = await renderer.RenderPdfAsync(book, template, entity, company, false, ct);
         book.QrContent = render.QrContent;
         book.QrSignature = render.QrSignature;
         book.GeneratedPdfBlobKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
@@ -252,11 +253,48 @@ public sealed class OutgoingService(
     public async Task<byte[]> GetWordAsync(int id, CancellationToken ct = default)
     {
         var book = await GetAsync(id, ct);
-        var (company, _, entity) = await LoadRefsAsync(book, ct);
-        return renderer.RenderWord(book, entity, company);
+        var entity = await db.Entities.FindAsync([book.EntityId], ct);
+        var company = await db.Companies.FindAsync([book.CompanyId], ct);
+        return renderer.RenderWord(book, entity!, company!);
     }
 
-    // ---------------- مساعدات ----------------
+    public async Task<byte[]> PreviewPdfAsync(CreateOutgoingInput input, CancellationToken ct = default)
+    {
+        var companyId = ResolveCompanyId(input.CompanyId);
+        await ValidateRefsAsync(companyId, input.EntityId, input.TemplateId, ct);
+
+        var company = await db.Companies.FindAsync([companyId], ct);
+        var template = await db.Templates.FindAsync([input.TemplateId], ct);
+        var entity = await db.Entities.FindAsync([input.EntityId], ct);
+
+        var amountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
+
+        var book = new OutgoingBook
+        {
+            CompanyId = companyId,
+            EntityId = input.EntityId,
+            TemplateId = input.TemplateId,
+            Date = input.Date,
+            HeaderPhrase = input.HeaderPhrase?.Trim(),
+            SignatoryName = input.SignatoryName?.Trim(),
+            SignatoryTitle = input.SignatoryTitle?.Trim(),
+            Subject = input.Subject.Trim(),
+            BodyHtml = input.BodyHtml,
+            Amount = input.Amount,
+            Currency = input.Currency,
+            ExchangeRate = input.ExchangeRate,
+            AmountInIqd = amountInIqd,
+            Status = BookStatus.Draft,
+            Number = "مسودة (معاينة)", // نص وهمي لغرض العرض
+            CreatedByUserId = current.UserId ?? 0,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        var result = await renderer.RenderPdfAsync(book, template!, entity!, company!, isPreview: true, ct);
+        return result.Pdf;
+    }
+
+    // --- الوظائف المساعدة ----------------
 
     private int ResolveCompanyId(int? requested)
     {

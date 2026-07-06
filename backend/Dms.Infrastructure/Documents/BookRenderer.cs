@@ -21,14 +21,21 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
     private readonly WordExporter _word = new();
 
     public async Task<PdfRenderResult> RenderPdfAsync(
-        OutgoingBook book, Template template, Entity entity, Company company, CancellationToken ct = default)
+        OutgoingBook book, Template template, Entity entity, Company company, bool isPreview = false, CancellationToken ct = default)
     {
         var model = ToModel(book, entity, company);
 
         // توقيع محتوى الـ QR (يتطلب رقماً رسمياً — متاح بعد الاعتماد)
-        var qrContent = QrSigner.CreateQrContent(model, _qr.PrivateKeyBase64);
-        var signature = qrContent[(qrContent.LastIndexOf('|') + 1)..];
-        var qrPng = QrSigner.CreateQrPng(qrContent);
+        string qrContent = string.Empty;
+        string signature = string.Empty;
+        byte[]? qrPng = null;
+
+        if (!isPreview)
+        {
+            qrContent = QrSigner.CreateQrContent(model, _qr.PrivateKeyBase64);
+            signature = qrContent[(qrContent.LastIndexOf('|') + 1)..];
+            qrPng = QrSigner.CreateQrPng(qrContent);
+        }
 
         var assets = new DocumentAssets(
             Header: await LoadOrPlaceholderAsync(template.HeaderImageKey, () => PlaceholderImages.CreateHeader(), ct),
@@ -53,7 +60,7 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
         SignatoryName = book.SignatoryName,
         SignatoryTitle = book.SignatoryTitle,
         Subject = book.Subject,
-        Body = book.BodyHtml?.Replace("<br>", "\n").Replace("<br/>", "\n").Replace("<p>", "").Replace("</p>", "\n").Trim() ?? "",
+        Body = book.BodyHtml ?? "",
         Amount = book.Amount,
         Currency = book.Currency?.ToString(),
         ExchangeRate = book.ExchangeRate,

@@ -7,7 +7,7 @@ using QuestPDF.Infrastructure;
 namespace Dms.Documents.Pdf;
 
 /// <summary>الصور الجاهزة للقالب (تأتي من الشركة في الإنتاج، ومن المولّد البديل في الاختبار).</summary>
-public sealed record DocumentAssets(byte[] Header, byte[] Footer, byte[] Watermark, byte[] QrPng);
+public sealed record DocumentAssets(byte[] Header, byte[] Footer, byte[] Watermark, byte[]? QrPng);
 
 /// <summary>
 /// مولّد PDF بـ QuestPDF (أصلي، بلا متصفح) — يثبت:
@@ -135,12 +135,23 @@ public sealed class PdfGenerator
                                 }
                             });
 
-                            // اليمين الفيزيائي: الباركود
-                            row.AutoItem().AlignRight().AlignBottom().Width(70).Column(qr =>
+                            // اليمين الفيزيائي: الباركود (يُخفى في المعاينة)
+                            if (assets.QrPng != null)
                             {
-                                qr.Item().AlignCenter().Image(assets.QrPng).FitWidth();
-                                qr.Item().AlignCenter().Text("امسح الرمز للتحقق").FontSize(8).FontColor(Colors.Grey.Darken3);
-                            });
+                                row.AutoItem().AlignRight().AlignBottom().Width(70).Column(qr =>
+                                {
+                                    qr.Item().AlignCenter().Image(assets.QrPng).FitWidth();
+                                    qr.Item().AlignCenter().Text("امسح الرمز للتحقق").FontSize(8).FontColor(Colors.Grey.Darken3);
+                                });
+                            }
+                            else
+                            {
+                                row.AutoItem().AlignRight().AlignBottom().Width(70).Height(70).AlignCenter().AlignMiddle()
+                                    .Border(1).BorderColor(Colors.Grey.Medium)
+                                    .Background(Colors.Grey.Lighten4)
+                                    .Padding(5)
+                                    .Text("نسخة\nللمعاينة").FontSize(10).FontColor(Colors.Grey.Darken3).AlignCenter();
+                            }
                         });
 
                     // ترقيم الصفحات: لا يظهر في الصفحة الأولى، ويظهر من الصفحة الثانية فصاعداً

@@ -9,6 +9,7 @@ import '../core/local_storage.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import 'package:printing/printing.dart';
 
 /// Hint: شاشة إضافة كتاب صادر جديد مع محرر النصوص الاحترافي Quill
 class OutgoingFormScreen extends ConsumerStatefulWidget {
@@ -90,65 +91,92 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
     return converter.convert();
   }
 
-  Future<void> _save() async {
+  Map<String, dynamic>? _buildPayload() {
     if (_entityId == null || _templateId == null) {
       setState(() => _error = 'يرجى اختيار الجهة المقصودة والقالب.');
-      return;
+      return null;
     }
     if (_subject.text.trim().isEmpty) {
       setState(() => _error = 'موضوع الكتاب مطلوب.');
-      return;
+      return null;
     }
     if (_quillController.document.isEmpty()) {
       setState(() => _error = 'نص الكتاب لا يمكن أن يكون فارغاً.');
-      return;
+      return null;
     }
     
     num? amount;
     num? rate;
     if (_amount.text.trim().isNotEmpty) {
       amount = num.tryParse(_amount.text.trim());
-      if (amount == null) { setState(() => _error = 'صيغة المبلغ غير صالحة.'); return; }
-      if (_currency == null) { setState(() => _error = 'يرجى اختيار العملة.'); return; }
+      if (amount == null) { setState(() => _error = 'صيغة المبلغ غير صالحة.'); return null; }
+      if (_currency == null) { setState(() => _error = 'يرجى اختيار العملة.'); return null; }
       if (_currency == 'USD') {
         rate = num.tryParse(_rate.text.trim());
-        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي عند اختيار الدولار.'); return; }
+        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي عند اختيار الدولار.'); return null; }
       }
     }
+
+    return {
+      'entityId': _entityId,
+      'templateId': _templateId,
+      'date': _date.toIso8601String(),
+      'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
+      'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
+      'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
+      'subject': _subject.text.trim(),
+      'bodyHtml': _getHtmlFromBody(),
+      'amount': amount,
+      'currency': amount == null ? null : _currency,
+      'exchangeRate': rate,
+    };
+  }
+
+  Future<void> _preview() async {
+    final payload = _buildPayload();
+    if (payload == null) return;
+
+    setState(() { _busy = true; _error = null; });
+    
+    try {
+      final bytes = await ref.read(apiClientProvider).previewOutgoing(payload);
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: PdfPreview(
+              build: (format) => bytes,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+              pdfFileName: 'preview-outgoing.pdf',
+            ),
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final payload = _buildPayload();
+    if (payload == null) return;
     
     setState(() { _busy = true; _error = null; });
     
     try {
-      final payload = {
-        'entityId': _entityId,
-        'templateId': _templateId,
-        'date': _date.toIso8601String(),
-        'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
-        'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
-        'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
-        'subject': _subject.text.trim(),
-        'bodyHtml': _getHtmlFromBody(),
-        'amount': amount,
-        'currency': amount == null ? null : _currency,
-        'exchangeRate': rate,
-      };
       await ref.read(apiClientProvider).createOutgoing(payload);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (e.isNetworkError) {
-        final payload = {
-          'entityId': _entityId,
-          'templateId': _templateId,
-          'date': _date.toIso8601String(),
-          'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
-          'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
-          'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
-          'subject': _subject.text.trim(),
-          'bodyHtml': _getHtmlFromBody(),
-          'amount': amount,
-          'currency': amount == null ? null : _currency,
-          'exchangeRate': rate,
-        };
         await ref.read(localStorageProvider).saveDraft(payload);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا يوجد اتصال بالإنترنت. تم حفظ الكتاب كمسودة محلية بنجاح.')));
@@ -312,7 +340,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                               const Spacer(),
                               Switch(
                                 value: _showFinancials,
-                                activeColor: AppColors.gold,
+                                activeThumbColor: AppColors.gold,
                                 onChanged: (v) => setState(() => _showFinancials = v),
                               ),
                             ],
@@ -421,25 +449,47 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                     ),
                   );
 
-                  final saveButton = SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: FilledButton.icon(
-                      onPressed: _busy ? null : _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.navyDeep,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 8,
-                        shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                  final actionButtons = Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 56,
+                          child: FilledButton.icon(
+                            onPressed: _busy ? null : _preview,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.gold,
+                              foregroundColor: AppColors.navyDeep,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.preview_rounded),
+                            label: const Text('معاينة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
                       ),
-                      icon: _busy 
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))
-                        : const Icon(Icons.save_rounded),
-                      label: Text(
-                        _busy ? 'جارٍ الحفظ...' : 'حفظ كمسودة نهائية',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: SizedBox(
+                          height: 56,
+                          child: FilledButton.icon(
+                            onPressed: _busy ? null : _save,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.navyDeep,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 8,
+                              shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                            ),
+                            icon: _busy 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))
+                              : const Icon(Icons.save_rounded),
+                            label: Text(
+                              _busy ? 'جارٍ العمل...' : 'حفظ كمسودة نهائية',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   );
 
                   if (isSmall) {
@@ -450,7 +500,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                         const SizedBox(height: 24),
                         editorSection,
                         const SizedBox(height: 24),
-                        saveButton,
+                        actionButtons,
                       ],
                     );
                   }
@@ -476,7 +526,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                             children: [
                               Expanded(child: editorSection),
                               const SizedBox(height: 24),
-                              saveButton,
+                              actionButtons,
                             ],
                           ),
                         ),

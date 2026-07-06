@@ -98,6 +98,15 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
         return File(bytes, "application/pdf");
     }
 
+    [HttpPost("preview")]
+    public async Task<IActionResult> Preview(CreateOutgoingRequest req, CancellationToken ct)
+    {
+        var bytes = await svc.PreviewPdfAsync(new CreateOutgoingInput(
+            req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
+            req.Amount, req.Currency, req.ExchangeRate), ct);
+        return File(bytes, "application/pdf");
+    }
+
     [HttpGet("{id:int}/word")]
     public async Task<IActionResult> Word(int id, CancellationToken ct)
     {

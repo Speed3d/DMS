@@ -49,6 +49,8 @@ dependencies:
   flutter_svg: ^2.0.10
   flutter_html: ^3.0.0
   vsc_quill_delta_to_html: ^1.0.5
+  printing: ^5.14.3
+  pdf: ^3.12.0
 
 dev_dependencies:
   flutter_test:

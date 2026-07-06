@@ -68,7 +68,7 @@ Future<Map<String, String>?> _prompt(BuildContext context, String title, List<_F
 class _Field {
   final String key, label;
   String val;
-  _Field(this.key, this.label, {this.val = ''});
+  _Field(this.key, this.label) : val = '';
 }
 
 class _PromptPage extends StatefulWidget {
