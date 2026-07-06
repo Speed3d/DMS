@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Dms.Documents\Dms.Documents.csproj" />
+    <ProjectReference Include="..\..\backend\Dms.Documents\Dms.Documents.csproj" />
   </ItemGroup>
 
   <ItemGroup>

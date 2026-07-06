@@ -97,12 +97,13 @@ public sealed class PdfGenerator
                                 c.Item().AlignCenter().Text($"الموضوع / {book.Subject}").SemiBold().FontSize(14);
                             });
 
-                            // المتن الرئيسي للكتاب (نستخدم المترجم الجديد للـ HTML لدعم التنسيقات)
-                            col.Item().PaddingTop(15).Text(text =>
+                            // المتن الرئيسي للكتاب (نستخدم المترجم الجديد للـ HTML لدعم التنسيقات والمحاذاة)
+                            col.Item().PaddingTop(15).Column(bodyCol =>
                             {
-                                text.DefaultTextStyle(x => x.LineHeight(1.6f));
-                                text.Justify();
-                                text.RenderHtml(book.Body);
+                                Console.WriteLine("=== HTML FROM FRONTEND ===");
+                                Console.WriteLine(book.Body);
+                                Console.WriteLine("==========================");
+                                bodyCol.RenderHtml(book.Body);
                             });
 
                             // (تم إخفاء التفاصيل المالية من الطباعة بناءً على طلب المستخدم، لكنها تظل محفوظة في قاعدة البيانات)

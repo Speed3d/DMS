@@ -1,0 +1,14 @@
+using System;
+using System.Text.RegularExpressions;
+
+class Program {
+    static void Main() {
+        var style = "color:#e60000";
+        var colorMatch = Regex.Match(style, @"color:\s*([^;]+)");
+        if (colorMatch.Success) {
+            Console.WriteLine("Matched: " + colorMatch.Groups[1].Value.Trim());
+        } else {
+            Console.WriteLine("No match");
+        }
+    }
+}

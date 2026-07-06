@@ -1,0 +1,9 @@
+name: experiments
+description: A new Flutter project.
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  vsc_quill_delta_to_html: any
