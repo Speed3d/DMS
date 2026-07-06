@@ -23,6 +23,19 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
+  bool _isSidebarOpen = true;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      if (MediaQuery.of(context).size.width < 900) {
+        _isSidebarOpen = false;
+      }
+      _initialized = true;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,12 +59,24 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     return Scaffold(
       body: Row(
         children: [
-          // Hint: القائمة الجانبية (Sidebar)
-          Sidebar(
-            selectedIndex: _index,
-            onSelected: (i) => setState(() => _index = i),
-            canManageUsers: canManageUsers,
-            isSuperAdmin: isSuper,
+          // Hint: القائمة الجانبية (Sidebar) مع حركة انزلاق ناعمة
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            width: _isSidebarOpen ? 266 : 0,
+            child: ClipRect(
+              child: OverflowBox(
+                minWidth: 266,
+                maxWidth: 266,
+                alignment: Alignment.centerRight,
+                child: Sidebar(
+                  selectedIndex: _index,
+                  onSelected: (i) => setState(() => _index = i),
+                  canManageUsers: canManageUsers,
+                  isSuperAdmin: isSuper,
+                ),
+              ),
+            ),
           ),
           
           // Hint: القسم الأيسر (الرئيسي) يحتوي الشريط العلوي + محتوى الصفحة
@@ -62,6 +87,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   title: _getPageTitle(_index, canManageUsers, isSuper),
                   subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
                   onProfileTap: _showProfileMenu,
+                  onMenuTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
                 ),
                 Expanded(
                   child: ClipRect( // لمنع المحتوى من التجاوز

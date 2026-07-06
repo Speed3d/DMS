@@ -59,9 +59,11 @@ class Company {
   final String name;
   final String prefix;
   final bool isActive;
-  Company(this.companyId, this.name, this.prefix, this.isActive);
+  final String? defaultSignatoryName;
+  final String? defaultSignatoryTitle;
+  Company(this.companyId, this.name, this.prefix, this.isActive, this.defaultSignatoryName, this.defaultSignatoryTitle);
   factory Company.fromJson(Map<String, dynamic> j) =>
-      Company(j['companyId'], j['name'] ?? '', j['prefix'] ?? '', j['isActive'] ?? true);
+      Company(j['companyId'], j['name'] ?? '', j['prefix'] ?? '', j['isActive'] ?? true, j['defaultSignatoryName'], j['defaultSignatoryTitle']);
 }
 
 class EntityModel {
@@ -290,13 +292,13 @@ class ArchiveDetail {
   final String? currency;
   final num? exchangeRate;
   final num? amountInIqd;
-  final String? keywords, notes;
+  final String? keywords, notes, bodyHtml;
   ArchiveDetail({
     required this.archiveId, required this.archiveNumber, required this.title,
     required this.bookNumber, required this.bookDate,
     required this.fromEntityId, required this.toEntityId, required this.documentTypeId,
     required this.amount, required this.currency, required this.exchangeRate, required this.amountInIqd,
-    required this.keywords, required this.notes,
+    required this.keywords, required this.notes, required this.bodyHtml,
   });
   factory ArchiveDetail.fromJson(Map<String, dynamic> j) => ArchiveDetail(
         archiveId: j['archiveId'], archiveNumber: j['archiveNumber'] ?? '', title: j['title'] ?? '',
@@ -304,7 +306,7 @@ class ArchiveDetail {
         bookDate: j['bookDate'] == null ? null : DateTime.tryParse(j['bookDate']),
         fromEntityId: j['fromEntityId'], toEntityId: j['toEntityId'], documentTypeId: j['documentTypeId'],
         amount: j['amount'], currency: j['currency'], exchangeRate: j['exchangeRate'], amountInIqd: j['amountInIqd'],
-        keywords: j['keywords'], notes: j['notes'],
+        keywords: j['keywords'], notes: j['notes'], bodyHtml: j['bodyHtml'],
       );
 }
 
@@ -348,6 +350,9 @@ class OutgoingDetail {
   final int entityId;
   final String entityName;
   final int templateId;
+  final String? headerPhrase;
+  final String? signatoryName;
+  final String? signatoryTitle;
   final String subject;
   final String bodyHtml;
   final String status;
@@ -366,6 +371,9 @@ class OutgoingDetail {
     required this.entityId,
     required this.entityName,
     required this.templateId,
+    required this.headerPhrase,
+    required this.signatoryName,
+    required this.signatoryTitle,
     required this.subject,
     required this.bodyHtml,
     required this.status,
@@ -386,6 +394,9 @@ class OutgoingDetail {
         entityId: j['entityId'],
         entityName: j['entityName'] ?? '',
         templateId: j['templateId'],
+        headerPhrase: j['headerPhrase'],
+        signatoryName: j['signatoryName'],
+        signatoryTitle: j['signatoryTitle'],
         subject: j['subject'] ?? '',
         bodyHtml: j['bodyHtml'] ?? '',
         status: j['status'] ?? 'Draft',

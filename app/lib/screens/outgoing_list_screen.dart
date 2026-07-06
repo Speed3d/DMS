@@ -44,41 +44,40 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Hint: شريط الأدوات العلوي (بحث، فلترة، إضافة)
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: theme.dividerColor, width: 1.5),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Icon(Icons.search_rounded, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _search,
-                            onSubmitted: (_) => _reload(),
-                            decoration: InputDecoration(
-                              hintText: 'ابحث برقم الكتاب، الموضوع، أو اسم الجهة...',
-                              border: InputBorder.none,
-                              hintStyle: TextStyle(fontSize: 14, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
-                            ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final isMedium = width < 800;
+                final isSmall = width < 500;
+
+                final searchWidget = Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.dividerColor, width: 1.5),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _search,
+                          onSubmitted: (_) => _reload(),
+                          decoration: InputDecoration(
+                            hintText: 'ابحث برقم الكتاب، الموضوع، أو اسم الجهة...',
+                            border: InputBorder.none,
+                            hintStyle: TextStyle(fontSize: 14, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                
-                // فلتر الحالة
-                Container(
+                );
+
+                final filterWidget = Container(
                   height: 48,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
@@ -89,6 +88,7 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String?>(
                       value: _status,
+                      isExpanded: true,
                       hint: const Text('حالة الكتاب', style: TextStyle(fontSize: 14)),
                       icon: const Icon(Icons.keyboard_arrow_down_rounded),
                       items: const [
@@ -100,11 +100,9 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                       onChanged: (v) { _status = v; _reload(); },
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
+                );
 
-                // زر إنشاء كتاب جديد
-                SizedBox(
+                final buttonWidget = SizedBox(
                   height: 48,
                   child: ElevatedButton.icon(
                     onPressed: () async {
@@ -123,8 +121,46 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
                   ),
-                ),
-              ],
+                );
+
+                if (isSmall) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      searchWidget,
+                      const SizedBox(height: 16),
+                      filterWidget,
+                      const SizedBox(height: 16),
+                      buttonWidget,
+                    ],
+                  );
+                } else if (isMedium) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      searchWidget,
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(child: filterWidget),
+                          const SizedBox(width: 16),
+                          Expanded(child: buttonWidget),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(flex: 3, child: searchWidget),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 2, child: filterWidget),
+                    const SizedBox(width: 16),
+                    buttonWidget,
+                  ],
+                );
+              }
             ),
             const SizedBox(height: 32),
 
@@ -146,117 +182,137 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                       return _buildEmptyState();
                     }
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // ترويسة الجدول (Header)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                          decoration: BoxDecoration(
-                            color: isDark ? AppColors.navyDeepDark : theme.colorScheme.surfaceContainerHighest,
-                            border: Border(bottom: BorderSide(color: theme.dividerColor)),
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                          ),
-                          child: Row(
-                            children: [
-                              _headerCell('رقم وتاريخ الكتاب', flex: 2),
-                              _headerCell('الجهة المقصودة', flex: 2),
-                              _headerCell('الموضوع', flex: 3),
-                              _headerCell('المبلغ (د.ع)', flex: 2),
-                              _headerCell('الحالة', flex: 1),
-                              _headerCell('إجراءات', flex: 1, align: TextAlign.center),
-                            ],
-                          ),
-                        ),
-                        
-                        // محتوى الجدول
-                        Expanded(
-                          child: ListView.separated(
-                            itemCount: items.length,
-                            separatorBuilder: (_, __) => Divider(height: 1, color: theme.dividerColor),
-                            itemBuilder: (_, i) {
-                              final it = items[i];
-                              return InkWell(
-                                onTap: () => _openDetail(it.outgoingId),
-                                hoverColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      // الرقم والتاريخ
-                                      Expanded(
-                                        flex: 2,
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(it.number ?? 'مسودة (بلا رقم)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                                            const SizedBox(height: 4),
-                                            Text(DateFormat('yyyy/MM/dd').format(it.date), style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6), fontSize: 12)),
-                                          ],
-                                        ),
-                                      ),
-                                      
-                                      // الجهة
-                                      Expanded(
-                                        flex: 2,
-                                        child: Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                                              child: const Icon(Icons.business_rounded, size: 16, color: AppColors.gold),
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final minWidth = 900.0;
+                        final needsScroll = constraints.maxWidth < minWidth;
+
+                        Widget tableContent = Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // ترويسة الجدول (Header)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: isDark ? AppColors.navyDeepDark : theme.colorScheme.surfaceContainerHighest,
+                                border: Border(bottom: BorderSide(color: theme.dividerColor)),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                              ),
+                              child: Row(
+                                children: [
+                                  _headerCell('رقم وتاريخ الكتاب', flex: 2),
+                                  _headerCell('الجهة المقصودة', flex: 2),
+                                  _headerCell('الموضوع', flex: 3),
+                                  _headerCell('المبلغ (د.ع)', flex: 2),
+                                  _headerCell('الحالة', flex: 1),
+                                  _headerCell('إجراءات', flex: 1, align: TextAlign.center),
+                                ],
+                              ),
+                            ),
+                            
+                            // محتوى الجدول
+                            Expanded(
+                              child: ListView.separated(
+                                itemCount: items.length,
+                                separatorBuilder: (_, __) => Divider(height: 1, color: theme.dividerColor),
+                                itemBuilder: (_, i) {
+                                  final it = items[i];
+                                  return InkWell(
+                                    onTap: () => _openDetail(it.outgoingId),
+                                    hoverColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          // الرقم والتاريخ
+                                          Expanded(
+                                            flex: 2,
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(it.number ?? 'مسودة (بلا رقم)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                                                const SizedBox(height: 4),
+                                                Text(DateFormat('yyyy/MM/dd').format(it.date), style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6), fontSize: 12)),
+                                              ],
                                             ),
-                                            const SizedBox(width: 8),
-                                            Expanded(child: Text(it.entityName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                          ],
-                                        ),
-                                      ),
-
-                                      // الموضوع
-                                      Expanded(
-                                        flex: 3,
-                                        child: Text(it.subject, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, height: 1.5)),
-                                      ),
-
-                                      // المبلغ
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          it.amountInIqd != null && it.amountInIqd! > 0 ? '${_fmt(it.amountInIqd!)} د.ع' : '-',
-                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                                        ),
-                                      ),
-
-                                      // الحالة
-                                      Expanded(
-                                        flex: 1,
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: StatusPill(status: it.status),
-                                        ),
-                                      ),
-
-                                      // إجراءات
-                                      Expanded(
-                                        flex: 1,
-                                        child: Align(
-                                          alignment: Alignment.center,
-                                          child: IconButton(
-                                            icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                                            color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4),
-                                            onPressed: () => _openDetail(it.outgoingId),
                                           ),
-                                        ),
+                                          
+                                          // الجهة
+                                          Expanded(
+                                            flex: 2,
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.all(6),
+                                                  decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+                                                  child: const Icon(Icons.business_rounded, size: 16, color: AppColors.gold),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(child: Text(it.entityName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // الموضوع
+                                          Expanded(
+                                            flex: 3,
+                                            child: Text(it.subject, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, height: 1.5)),
+                                          ),
+
+                                          // المبلغ
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(
+                                              it.amountInIqd != null && it.amountInIqd! > 0 ? '${_fmt(it.amountInIqd!)} د.ع' : '-',
+                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                            ),
+                                          ),
+
+                                          // الحالة
+                                          Expanded(
+                                            flex: 1,
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: StatusPill(status: it.status),
+                                            ),
+                                          ),
+
+                                          // إجراءات
+                                          Expanded(
+                                            flex: 1,
+                                            child: Align(
+                                              alignment: Alignment.center,
+                                              child: IconButton(
+                                                icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                                                color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4),
+                                                onPressed: () => _openDetail(it.outgoingId),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        );
+
+                        if (needsScroll) {
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: SizedBox(
+                              width: minWidth,
+                              height: constraints.maxHeight,
+                              child: tableContent,
+                            ),
+                          );
+                        }
+
+                        return tableContent;
+                      }
                     );
                   },
                 ),

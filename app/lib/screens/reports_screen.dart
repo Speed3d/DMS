@@ -122,11 +122,14 @@ class _State extends ConsumerState<ReportsScreen> {
           ]),
           const SizedBox(height: 8),
           if (_report != null)
-            Row(children: [
-              OutlinedButton.icon(onPressed: () => _export('pdf'), icon: const Icon(Icons.picture_as_pdf), label: const Text('تصدير PDF')),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(onPressed: () => _export('excel'), icon: const Icon(Icons.table_chart), label: const Text('تصدير Excel')),
-            ]),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(onPressed: () => _export('pdf'), icon: const Icon(Icons.picture_as_pdf), label: const Text('تصدير PDF')),
+                OutlinedButton.icon(onPressed: () => _export('excel'), icon: const Icon(Icons.table_chart), label: const Text('تصدير Excel')),
+              ],
+            ),
           const SizedBox(height: 12),
           if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
           Expanded(child: _busy ? const Center(child: CircularProgressIndicator()) : _results()),
@@ -143,11 +146,9 @@ class _State extends ConsumerState<ReportsScreen> {
       children: [
         Expanded(
           child: Card(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SizedBox(
-                width: double.infinity,
-                child: DataTable(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final table = DataTable(
                   columns: const [
                     DataColumn(label: Text('المصدر')),
                     DataColumn(label: Text('الرقم')),
@@ -167,8 +168,24 @@ class _State extends ConsumerState<ReportsScreen> {
                         DataCell(Text(row.amountInIqd == null ? '—' : _fmt(row.amountInIqd!))),
                       ]),
                   ],
-                ),
-              ),
+                );
+                
+                Widget content = SizedBox(width: double.infinity, child: table);
+                if (constraints.maxWidth < 900) {
+                  content = SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 900),
+                      child: table,
+                    ),
+                  );
+                }
+                
+                return SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: content,
+                );
+              }
             ),
           ),
         ),
@@ -177,8 +194,9 @@ class _State extends ConsumerState<ReportsScreen> {
           padding: const EdgeInsets.all(14),
           margin: const EdgeInsets.only(top: 8),
           decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(8)),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            runSpacing: 8,
             children: [
               Text('عدد السجلات: ${r.count}', style: const TextStyle(fontWeight: FontWeight.bold)),
               Text('الإجمالي بالدينار العراقي: ${_fmt(r.totalIqd)} د.ع',

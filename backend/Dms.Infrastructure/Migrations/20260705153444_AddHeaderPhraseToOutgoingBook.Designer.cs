@@ -4,6 +4,7 @@ using Dms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Dms.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260705153444_AddHeaderPhraseToOutgoingBook")]
+    partial class AddHeaderPhraseToOutgoingBook
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -307,12 +310,6 @@ namespace Dms.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("DefaultSignatoryName")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("DefaultSignatoryTitle")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -552,12 +549,6 @@ namespace Dms.Infrastructure.Migrations
 
                     b.Property<int?>("SerialNo")
                         .HasColumnType("int");
-
-                    b.Property<string>("SignatoryName")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("SignatoryTitle")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");

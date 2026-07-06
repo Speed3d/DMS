@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -11,6 +11,7 @@
     <PackageReference Include="QRCoder" Version="1.8.0" />
     <PackageReference Include="QuestPDF" Version="2026.6.1" />
     <PackageReference Include="SkiaSharp" Version="4.148.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.72" />
   </ItemGroup>
 
   <!-- الخطوط العربية (OFL) تُضمَّن داخل المكتبة وتُحمَّل كـ Embedded Resource -->

@@ -148,15 +148,18 @@ class _State extends ConsumerState<BackupScreen> {
           ),
           const SizedBox(height: 16),
 
-          Row(children: [
-            FilledButton.icon(
-              onPressed: _busy ? null : _runNow,
-              icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.backup),
-              label: const Text('نسخة احتياطية الآن'),
-            ),
-            const SizedBox(width: 12),
-            TextButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh), label: const Text('تحديث')),
-          ]),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              FilledButton.icon(
+                onPressed: _busy ? null : _runNow,
+                icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.backup),
+                label: const Text('نسخة احتياطية الآن'),
+              ),
+              TextButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh), label: const Text('تحديث')),
+            ],
+          ),
           if (_info != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_info!, style: const TextStyle(color: Colors.green))),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
           const SizedBox(height: 16),

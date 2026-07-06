@@ -5,9 +5,12 @@ import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/custom_card.dart';
 import 'archive_form_screen.dart';
 
+/// Hint: شاشة تفاصيل الأرشيف مع التصميم الموحد ومساحة عرض المستندات والمرفقات
 class ArchiveDetailScreen extends ConsumerStatefulWidget {
   final int id;
   const ArchiveDetailScreen({super.key, required this.id});
@@ -34,7 +37,12 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
 
   void _snack(String m, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: error ? Colors.red : null));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(m, style: const TextStyle(fontWeight: FontWeight.bold)),
+      backgroundColor: error ? AppColors.danger : AppColors.navyDeep,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ));
   }
 
   Future<void> _edit(ArchiveDetail d) async {
@@ -54,7 +62,7 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
     setState(() => _busy = true);
     try {
       await ref.read(apiClientProvider).uploadArchiveAttachment(widget.id, f.bytes!, f.name);
-      _snack('تم رفع المرفق.');
+      _snack('تم رفع المرفق بنجاح.');
       _reload();
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -89,10 +97,15 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('تأكيد الحذف'),
-        content: const Text('حذف ناعم لهذا المستند؟'),
+        content: const Text('هل أنت متأكد من نقل هذا المستند إلى سلة المهملات؟'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('حذف')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(c, true),
+            icon: const Icon(Icons.delete_rounded, size: 18),
+            label: const Text('حذف'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+          ),
         ],
       ),
     );
@@ -107,69 +120,275 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('تفاصيل مستند الأرشيف'),
-        actions: [IconButton(onPressed: _deleteArchive, icon: const Icon(Icons.delete_outline))],
+        title: const Text('تفاصيل الأرشيف'),
+        centerTitle: true,
       ),
       body: FutureBuilder<ArchiveDetail>(
         future: _doc,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-          if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+          }
+          if (snap.hasError) {
+            return Center(child: Text('حدث خطأ أثناء تحميل البيانات: ${snap.error}', style: const TextStyle(color: AppColors.danger)));
+          }
           final d = snap.data!;
+          
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: ListView(
-                padding: const EdgeInsets.all(24),
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(children: [
-                    Text(d.archiveNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    const Spacer(),
-                    TextButton.icon(onPressed: () => _edit(d), icon: const Icon(Icons.edit), label: const Text('تعديل')),
-                  ]),
-                  const Divider(height: 24),
-                  _row('العنوان', d.title),
-                  if (d.bookNumber != null) _row('رقم الكتاب', d.bookNumber!),
-                  if (d.bookDate != null) _row('تاريخ الكتاب', DateFormat('yyyy-MM-dd').format(d.bookDate!)),
-                  if (d.amount != null) ...[
-                    _row('المبلغ', '${d.amount} ${d.currency == 'USD' ? 'دولار' : 'دينار'}'),
-                    if (d.currency == 'USD') _row('سعر الصرف', '${d.exchangeRate}'),
-                    _row('المعادل بالدينار', '${d.amountInIqd} د.ع'),
-                  ],
-                  if (d.keywords != null) _row('كلمات مفتاحية', d.keywords!),
-                  if (d.notes != null) _row('ملاحظات', d.notes!),
-                  const Divider(height: 32),
-                  Row(children: [
-                    const Text('المرفقات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const Spacer(),
-                    FilledButton.icon(onPressed: _busy ? null : _addAttachment, icon: const Icon(Icons.attach_file), label: const Text('إضافة مرفق')),
-                  ]),
-                  const SizedBox(height: 8),
-                  FutureBuilder<List<AttachmentModel>>(
-                    future: _attachments,
-                    builder: (context, asnap) {
-                      if (asnap.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator());
-                      final list = asnap.data ?? [];
-                      if (list.isEmpty) return const Padding(padding: EdgeInsets.all(12), child: Text('لا توجد مرفقات.', style: TextStyle(color: Colors.black54)));
-                      return Card(
-                        child: Column(
-                          children: [
-                            for (final a in list)
-                              ListTile(
-                                leading: const Icon(Icons.insert_drive_file),
-                                title: Text(a.fileName),
-                                subtitle: Text('${a.fileType.toUpperCase()} • ${(a.fileSize / 1024).toStringAsFixed(0)} KB'),
-                                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                                  IconButton(icon: const Icon(Icons.download), onPressed: _busy ? null : () => _download(a)),
-                                  IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteAttachment(a)),
-                                ]),
+                  // القسم الأيمن (البيانات الأساسية والإجراءات والمرفقات)
+                  Expanded(
+                    flex: 4,
+                    child: ListView(
+                      padding: const EdgeInsets.all(32),
+                      children: [
+                        // بطاقة التحكم (إجراءات)
+                        CustomCard(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(d.archiveNumber, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.navyDeep)),
+                                  const Spacer(),
+                                  Text('رقم الأرشيف', style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5), fontSize: 12)),
+                                ],
                               ),
+                              const Divider(height: 32),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _edit(d),
+                                      icon: const Icon(Icons.edit_rounded, size: 18),
+                                      label: const Text('تعديل المستند'),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: _deleteArchive,
+                                      icon: const Icon(Icons.delete_rounded, size: 18),
+                                      label: const Text('حذف'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppColors.danger,
+                                        side: const BorderSide(color: AppColors.danger),
+                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // بطاقة المعلومات الأساسية
+                        CustomCard(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.info_outline_rounded, color: AppColors.navyDeep),
+                                  SizedBox(width: 8),
+                                  Text('المعلومات الأساسية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                              const Divider(height: 24),
+                              _detailRow('عنوان المستند', d.title, theme),
+                              if (d.bookNumber != null) _detailRow('رقم الكتاب', d.bookNumber!, theme),
+                              if (d.bookDate != null) _detailRow('تاريخ الكتاب', DateFormat('yyyy/MM/dd').format(d.bookDate!), theme),
+                              _detailRow('تاريخ الأرشفة', d.bookDate == null ? '-' : DateFormat('yyyy/MM/dd HH:mm').format(d.bookDate!), theme),
+                              if (d.documentTypeId != null) _detailRow('نوع المستند', 'مستند ذو نوع #${d.documentTypeId}', theme), // يمكن تحسينه لاحقاً إذا جلبنا الاسم
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // التفاصيل المالية والإضافية
+                        if (d.amount != null || d.keywords != null || d.notes != null)
+                          CustomCard(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.feed_rounded, color: AppColors.navyDeep),
+                                    SizedBox(width: 8),
+                                    Text('التفاصيل الإضافية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const Divider(height: 24),
+                                if (d.amount != null) ...[
+                                  _detailRow('المبلغ', '${_fmt(d.amount!)} ${d.currency == 'USD' ? 'دولار' : 'دينار'}', theme),
+                                  if (d.currency == 'USD') _detailRow('سعر الصرف', '${d.exchangeRate}', theme),
+                                  _detailRow('المعادل بالدينار', '${_fmt(d.amountInIqd!)} د.ع', theme),
+                                ],
+                                if (d.keywords != null) _detailRow('كلمات مفتاحية', d.keywords!, theme),
+                                if (d.notes != null) _detailRow('ملاحظات', d.notes!, theme),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // القسم الأيسر (عرض محتوى HTML والمرفقات)
+                  Expanded(
+                    flex: 5,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 32, top: 32, bottom: 32),
+                      child: CustomCard(
+                        padding: const EdgeInsets.all(0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // رأس التبويبات أو العنوان
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                border: Border(bottom: BorderSide(color: theme.dividerColor)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.visibility_rounded, color: AppColors.navyDeep),
+                                  SizedBox(width: 8),
+                                  Text('محتوى الأرشيف والمرفقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                            
+                            // محتوى HTML إذا وجد
+                            if (d.bodyHtml != null && d.bodyHtml!.trim().isNotEmpty) ...[
+                              Container(
+                                padding: const EdgeInsets.all(24),
+                                constraints: const BoxConstraints(minHeight: 200),
+                                decoration: BoxDecoration(
+                                  border: Border(bottom: BorderSide(color: theme.dividerColor)),
+                                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Text(
+                                    // Hint: كحل مؤقت لعرض النص إذا لم نستخدم حزمة Html مباشرة. نستبدل <br> بـسطر جديد.
+                                    d.bodyHtml!.replaceAll('<br>', '\n'),
+                                    style: const TextStyle(fontSize: 15, height: 1.6),
+                                  ),
+                                ),
+                              ),
+                            ],
+
+                            // قسم المرفقات
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Row(
+                                      children: [
+                                        const Text('المرفقات المحفوظة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                        const Spacer(),
+                                        FilledButton.icon(
+                                          onPressed: _busy ? null : _addAttachment,
+                                          icon: const Icon(Icons.upload_file_rounded, size: 18),
+                                          label: const Text('رفع ملف'),
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: AppColors.navyDeep,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: FutureBuilder<List<AttachmentModel>>(
+                                      future: _attachments,
+                                      builder: (context, asnap) {
+                                        if (asnap.connectionState != ConnectionState.done) {
+                                          return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+                                        }
+                                        final list = asnap.data ?? [];
+                                        if (list.isEmpty) {
+                                          return Center(
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.attachment_rounded, size: 48, color: theme.dividerColor),
+                                                const SizedBox(height: 16),
+                                                Text('لا توجد مرفقات لهذا المستند', style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+                                              ],
+                                            ),
+                                          );
+                                        }
+                                        return ListView.separated(
+                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                                          itemCount: list.length,
+                                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                                          itemBuilder: (_, i) {
+                                            final a = list[i];
+                                            return Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(color: theme.dividerColor),
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: ListTile(
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                leading: Container(
+                                                  padding: const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+                                                  child: Icon(_fileIcon(a.fileType), color: AppColors.navyDeep),
+                                                ),
+                                                title: Text(a.fileName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                                subtitle: Text('${a.fileType.toUpperCase()} • ${(a.fileSize / 1024).toStringAsFixed(0)} KB', style: const TextStyle(fontSize: 12)),
+                                                trailing: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    IconButton(
+                                                      icon: const Icon(Icons.download_rounded),
+                                                      color: AppColors.navyDeep,
+                                                      onPressed: _busy ? null : () => _download(a),
+                                                      tooltip: 'تحميل',
+                                                    ),
+                                                    IconButton(
+                                                      icon: const Icon(Icons.delete_outline_rounded),
+                                                      color: AppColors.danger,
+                                                      onPressed: () => _deleteAttachment(a),
+                                                      tooltip: 'حذف المرفق',
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -180,11 +399,34 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
     );
   }
 
-  Widget _row(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 130, child: Text(k, style: const TextStyle(color: Colors.black54))),
-          Expanded(child: Text(v)),
-        ]),
-      );
+  IconData _fileIcon(String type) {
+    switch (type.toLowerCase()) {
+      case 'pdf': return Icons.picture_as_pdf_rounded;
+      case 'jpg': case 'jpeg': case 'png': return Icons.image_rounded;
+      case 'docx': case 'doc': return Icons.description_rounded;
+      case 'xlsx': case 'xls': return Icons.table_chart_rounded;
+      default: return Icons.insert_drive_file_rounded;
+    }
+  }
+
+  Widget _detailRow(String label, String value, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label, style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6), fontSize: 13, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(num n) =>
+      n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }

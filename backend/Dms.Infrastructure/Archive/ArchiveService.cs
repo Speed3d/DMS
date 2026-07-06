@@ -9,13 +9,13 @@ public sealed record CreateArchiveInput(
     int? CompanyId, string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string? Keywords, string? Notes);
+    string? Keywords, string? Notes, string? BodyHtml);
 
 public sealed record UpdateArchiveInput(
     string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string? Keywords, string? Notes);
+    string? Keywords, string? Notes, string? BodyHtml);
 
 public sealed record ArchiveSearchInput(
     string? Text, DateTime? From, DateTime? To, int? DocumentTypeId, int? EntityId);
@@ -100,6 +100,7 @@ public sealed class ArchiveService(
                 AmountInIqd = amountInIqd,
                 Keywords = input.Keywords,
                 Notes = input.Notes,
+                BodyHtml = input.BodyHtml,
                 CreatedByUserId = current.UserId!.Value,
                 CreatedAt = DateTime.UtcNow,
             };
@@ -130,6 +131,7 @@ public sealed class ArchiveService(
         doc.AmountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
         doc.Keywords = input.Keywords;
         doc.Notes = input.Notes;
+        doc.BodyHtml = input.BodyHtml;
 
         audit.Add("Update", nameof(ArchiveDoc), id.ToString(), null, doc.CompanyId);
         await db.SaveChangesAsync(ct);

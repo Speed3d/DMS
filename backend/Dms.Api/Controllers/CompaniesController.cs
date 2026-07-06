@@ -16,7 +16,7 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit) : 
     [HttpGet]
     public async Task<ActionResult<List<CompanyResponse>>> List(CancellationToken ct)
         => await db.Companies.OrderBy(c => c.Name)
-            .Select(c => new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive))
+            .Select(c => new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive, c.DefaultSignatoryName, c.DefaultSignatoryTitle))
             .ToListAsync(ct);
 
     [HttpGet("{id:int}")]
@@ -24,7 +24,7 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit) : 
     {
         var c = await db.Companies.FirstOrDefaultAsync(x => x.CompanyId == id, ct)
                 ?? throw new NotFoundException("الشركة غير موجودة.");
-        return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive);
+        return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive, c.DefaultSignatoryName, c.DefaultSignatoryTitle);
     }
 
     [HttpPost]
@@ -41,12 +41,14 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit) : 
             Name = req.Name.Trim(),
             Prefix = req.Prefix.Trim().ToUpperInvariant(),
             IsActive = req.IsActive,
+            DefaultSignatoryName = req.DefaultSignatoryName,
+            DefaultSignatoryTitle = req.DefaultSignatoryTitle,
             CreatedAt = DateTime.UtcNow,
         };
         db.Companies.Add(c);
         audit.Add("Create", nameof(Company), null, $"إنشاء شركة {c.Name}", null);
         await db.SaveChangesAsync(ct);
-        return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive);
+        return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive, c.DefaultSignatoryName, c.DefaultSignatoryTitle);
     }
 
     [HttpPut("{id:int}")]
@@ -61,8 +63,10 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit) : 
         c.Name = req.Name.Trim();
         c.Prefix = req.Prefix.Trim().ToUpperInvariant();
         c.IsActive = req.IsActive;
+        c.DefaultSignatoryName = req.DefaultSignatoryName;
+        c.DefaultSignatoryTitle = req.DefaultSignatoryTitle;
         audit.Add("Update", nameof(Company), id.ToString(), null, id);
         await db.SaveChangesAsync(ct);
-        return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive);
+        return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive, c.DefaultSignatoryName, c.DefaultSignatoryTitle);
     }
 }

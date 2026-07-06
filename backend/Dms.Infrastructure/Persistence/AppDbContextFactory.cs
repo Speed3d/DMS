@@ -13,7 +13,7 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
     public AppDbContext CreateDbContext(string[] args)
     {
         const string conn =
-            @"Server=(localdb)\MSSQLLocalDB;Database=DmsDb;Trusted_Connection=True;" +
+            "Server=localhost,1433;Database=DmsDb;User Id=sa;Password=Sinan@2026Strong;" +
             "MultipleActiveResultSets=true;TrustServerCertificate=True";
 
         var options = new DbContextOptionsBuilder<AppDbContext>()

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -18,10 +19,14 @@ class OutgoingEditApprovedScreen extends ConsumerStatefulWidget {
 
 class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprovedScreen> {
   late final TextEditingController _subject;
+  late final TextEditingController _headerPhrase;
+  late final TextEditingController _signatoryName;
+  late final TextEditingController _signatoryTitle;
   late final TextEditingController _amount;
   late final TextEditingController _rate;
   late final TextEditingController _note;
   late final quill.QuillController _quillController;
+  bool _showFinancials = false;
   
   late DateTime _date;
   late int _entityId;
@@ -36,9 +41,13 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
     super.initState();
     final b = widget.book;
     _subject = TextEditingController(text: b.subject);
+    _headerPhrase = TextEditingController(text: b.headerPhrase ?? '');
+    _signatoryName = TextEditingController(text: b.signatoryName ?? '');
+    _signatoryTitle = TextEditingController(text: b.signatoryTitle ?? '');
     _amount = TextEditingController(text: b.amount?.toString() ?? '');
     _rate = TextEditingController(text: b.exchangeRate?.toString() ?? '');
     _note = TextEditingController();
+    _showFinancials = b.amount != null;
     
     // إعداد محرر النصوص بمحتوى الكتاب القديم
     _quillController = quill.QuillController(
@@ -56,6 +65,9 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
   @override
   void dispose() {
     _subject.dispose();
+    _headerPhrase.dispose();
+    _signatoryName.dispose();
+    _signatoryTitle.dispose();
     _amount.dispose();
     _rate.dispose();
     _note.dispose();
@@ -70,8 +82,13 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
     return _Refs(entities, templates.where((t) => t.isActive).toList());
   }
 
+  /// Hint: تحويل من Quill Delta إلى HTML للإرسال إلى السيرفر
   String _getHtmlFromBody() {
-    return _quillController.document.toPlainText().replaceAll('\n', '<br>');
+    final delta = _quillController.document.toDelta();
+    final converter = QuillDeltaToHtmlConverter(
+      delta.toJson().cast<Map<String, dynamic>>(),
+    );
+    return converter.convert();
   }
 
   Future<void> _save() async {
@@ -102,6 +119,9 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
         'entityId': _entityId,
         'templateId': _templateId,
         'date': _date.toIso8601String(),
+        'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
+        'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
+        'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
         'subject': _subject.text.trim(),
         'bodyHtml': _getHtmlFromBody(),
         'amount': amount,
@@ -220,6 +240,21 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
                                 controller: _subject,
                                 decoration: _inputDecoration('موضوع الكتاب', Icons.subject_rounded),
                               ),
+                              const SizedBox(height: 16),
+                              TextField(
+                                controller: _headerPhrase,
+                                decoration: _inputDecoration('عبارة رأسية اختيارية (إلى، أمر إداري، إلخ)', Icons.title_rounded),
+                              ),
+                              const SizedBox(height: 16),
+                              TextField(
+                                controller: _signatoryName,
+                                decoration: _inputDecoration('اسم الموقّع (اختياري)', Icons.person_rounded),
+                              ),
+                              const SizedBox(height: 16),
+                              TextField(
+                                controller: _signatoryTitle,
+                                decoration: _inputDecoration('المنصب (اختياري)', Icons.badge_rounded),
+                              ),
                             ],
                           ),
                         ),
@@ -231,42 +266,52 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('التفاصيل المالية والملاحظات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              const Divider(height: 32),
-                              
                               Row(
                                 children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: TextField(
-                                      controller: _amount,
-                                      keyboardType: TextInputType.number,
-                                      decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    flex: 1,
-                                    child: DropdownButtonFormField<String>(
-                                      isExpanded: true,
-                                      initialValue: _currency,
-                                      decoration: _inputDecoration('العملة', Icons.currency_exchange_rounded),
-                                      items: const [
-                                        DropdownMenuItem(value: 'IQD', child: Text('دينار', overflow: TextOverflow.ellipsis)),
-                                        DropdownMenuItem(value: 'USD', child: Text('دولار', overflow: TextOverflow.ellipsis)),
-                                      ],
-                                      onChanged: (v) => setState(() => _currency = v),
-                                    ),
+                                  const Expanded(child: Text('التفاصيل المالية والملاحظات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                                  Switch(
+                                    value: _showFinancials,
+                                    activeColor: AppColors.gold,
+                                    onChanged: (v) => setState(() => _showFinancials = v),
                                   ),
                                 ],
                               ),
-                              if (_currency == 'USD') ...[
-                                const SizedBox(height: 16),
-                                TextField(
-                                  controller: _rate,
-                                  keyboardType: TextInputType.number,
-                                  decoration: _inputDecoration('سعر الصرف', Icons.price_change_rounded),
+                              if (_showFinancials) ...[
+                                const Divider(height: 32),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: TextField(
+                                        controller: _amount,
+                                        keyboardType: TextInputType.number,
+                                        decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      flex: 1,
+                                      child: DropdownButtonFormField<String>(
+                                        isExpanded: true,
+                                        initialValue: _currency,
+                                        decoration: _inputDecoration('العملة', Icons.currency_exchange_rounded),
+                                        items: const [
+                                          DropdownMenuItem(value: 'IQD', child: Text('دينار', overflow: TextOverflow.ellipsis)),
+                                          DropdownMenuItem(value: 'USD', child: Text('دولار', overflow: TextOverflow.ellipsis)),
+                                        ],
+                                        onChanged: (v) => setState(() => _currency = v),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                                if (_currency == 'USD') ...[
+                                  const SizedBox(height: 16),
+                                  TextField(
+                                    controller: _rate,
+                                    keyboardType: TextInputType.number,
+                                    decoration: _inputDecoration('سعر الصرف', Icons.price_change_rounded),
+                                  ),
+                                ],
                               ],
                               const SizedBox(height: 16),
                               TextField(

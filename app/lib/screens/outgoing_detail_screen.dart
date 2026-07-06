@@ -226,6 +226,10 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                               _buildInfoRow('تاريخ الكتاب', DateFormat('yyyy/MM/dd').format(d.date), Icons.calendar_month_rounded),
                               const SizedBox(height: 16),
                               _buildInfoRow('الجهة المقصودة', d.entityName, Icons.business_rounded),
+                              if (d.signatoryName != null && d.signatoryName!.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                _buildInfoRow('الموقّع', '${d.signatoryName}${d.signatoryTitle != null && d.signatoryTitle!.isNotEmpty ? ' - ${d.signatoryTitle}' : ''}', Icons.person_rounded),
+                              ],
                               
                               if (d.amount != null) ...[
                                 const Divider(height: 32),

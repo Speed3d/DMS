@@ -22,6 +22,7 @@ public class ArchiveDoc
 
     public string? Keywords { get; set; }
     public string? Notes { get; set; }
+    public string? BodyHtml { get; set; }
 
     public int CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }

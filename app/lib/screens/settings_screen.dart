@@ -67,7 +67,8 @@ Future<Map<String, String>?> _prompt(BuildContext context, String title, List<_F
 
 class _Field {
   final String key, label;
-  _Field(this.key, this.label);
+  String val;
+  _Field(this.key, this.label, {this.val = ''});
 }
 
 class _PromptPage extends StatefulWidget {
@@ -84,7 +85,7 @@ class _PromptPageState extends State<_PromptPage> {
   @override
   void initState() {
     super.initState();
-    _ctrls = {for (final f in widget.fields) f.key: TextEditingController()};
+    _ctrls = {for (final f in widget.fields) f.key: TextEditingController(text: f.val)};
   }
 
   @override
@@ -147,10 +148,15 @@ class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
 
   Future<void> _add() async {
     final messenger = ScaffoldMessenger.of(context);
-    final r = await _prompt(context, 'شركة جديدة', [_Field('name', 'الاسم'), _Field('prefix', 'الرمز (DEN)')]);
+    final r = await _prompt(context, 'شركة جديدة', [
+      _Field('name', 'الاسم'),
+      _Field('prefix', 'الرمز (DEN)'),
+      _Field('sigName', 'الاسم الافتراضي للموقّع (اختياري)'),
+      _Field('sigTitle', 'المنصب الافتراضي للموقّع (اختياري)'),
+    ]);
     if (r == null) return;
     try {
-      await ref.read(apiClientProvider).createCompany(r['name']!, r['prefix']!);
+      await ref.read(apiClientProvider).createCompany(r['name']!, r['prefix']!, defaultSignatoryName: r['sigName'], defaultSignatoryTitle: r['sigTitle']);
       if (mounted) _reload();
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
@@ -167,7 +173,39 @@ class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
           return _Section(
             addLabel: 'شركة جديدة',
             onAdd: widget.canCreate ? _add : null,
-            children: [for (final c in list) ListTile(leading: const Icon(Icons.business), title: Text(c.name), subtitle: Text('الرمز: ${c.prefix}'))],
+            children: [
+              for (final c in list)
+                ListTile(
+                  leading: const Icon(Icons.business),
+                  title: Text(c.name),
+                  subtitle: Text('الرمز: ${c.prefix}${c.defaultSignatoryName != null && c.defaultSignatoryName.isNotEmpty ? ' | الموقّع: ${c.defaultSignatoryName}' : ''}'),
+                  trailing: widget.canCreate
+                      ? IconButton(
+                          icon: const Icon(Icons.edit),
+                          onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final r = await _prompt(context, 'تعديل شركة', [
+                              _Field('name', 'الاسم')..val = c.name,
+                              _Field('prefix', 'الرمز (DEN)')..val = c.prefix,
+                              _Field('sigName', 'الاسم الافتراضي للموقّع')..val = c.defaultSignatoryName ?? '',
+                              _Field('sigTitle', 'المنصب الافتراضي للموقّع')..val = c.defaultSignatoryTitle ?? '',
+                            ]);
+                            if (r == null) return;
+                            try {
+                              await ref.read(apiClientProvider).updateCompany(
+                                c.companyId, r['name']!, r['prefix']!, c.isActive,
+                                defaultSignatoryName: r['sigName'],
+                                defaultSignatoryTitle: r['sigTitle'],
+                              );
+                              if (mounted) _reload();
+                            } on ApiException catch (e) {
+                              messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+                            }
+                          },
+                        )
+                      : null,
+                )
+            ],
           );
         },
       );

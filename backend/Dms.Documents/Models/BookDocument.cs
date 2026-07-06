@@ -10,6 +10,9 @@ public sealed record BookDocument
     public required string Number { get; init; }      // مثال: DEN-2026-00124
     public required DateOnly Date { get; init; }
     public required string Entity { get; init; }       // الجهة المستلمة
+    public string? HeaderPhrase { get; init; }         // حقل اختياري (مثل أمر إداري، إلى)
+    public string? SignatoryName { get; init; }        // اسم الموقع
+    public string? SignatoryTitle { get; init; }       // الوظيفة
     public required string Subject { get; init; }      // الموضوع
     public required string Body { get; init; }         // نص الكتاب (عربي RTL)
 

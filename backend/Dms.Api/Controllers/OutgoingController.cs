@@ -42,7 +42,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     public async Task<ActionResult<OutgoingDetail>> Create(CreateOutgoingRequest req, CancellationToken ct)
     {
         var book = await svc.CreateDraftAsync(new CreateOutgoingInput(
-            req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.Subject, req.BodyHtml,
+            req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
             req.Amount, req.Currency, req.ExchangeRate), ct);
         return await Get(book.OutgoingId, ct);
     }
@@ -51,7 +51,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     public async Task<ActionResult<OutgoingDetail>> Update(int id, UpdateOutgoingRequest req, CancellationToken ct)
     {
         await svc.UpdateDraftAsync(id, new UpdateOutgoingInput(
-            req.EntityId, req.TemplateId, req.Date, req.Subject, req.BodyHtml,
+            req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
             req.Amount, req.Currency, req.ExchangeRate), ct);
         return await Get(id, ct);
     }
@@ -67,7 +67,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     public async Task<ActionResult<OutgoingDetail>> EditApproved(int id, EditApprovedRequest req, CancellationToken ct)
     {
         await svc.EditAfterApprovalAsync(id, new EditApprovedInput(
-            req.EntityId, req.TemplateId, req.Date, req.Subject, req.BodyHtml,
+            req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
             req.Amount, req.Currency, req.ExchangeRate,
             Convert.FromBase64String(req.RowVersion), req.ChangeNote), ct);
         return await Get(id, ct);
@@ -108,7 +108,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
 
     private static OutgoingDetail Detail(OutgoingBook b, string entityName) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
-        b.EntityId, entityName, b.TemplateId, b.Subject, b.BodyHtml,
+        b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
         b.QrContent, b.GeneratedPdfBlobKey != null, b.ApprovedByUserId, b.ApprovedAt,
         b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion));

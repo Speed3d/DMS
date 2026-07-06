@@ -13,8 +13,8 @@ public sealed record AuthResponse(
 public sealed record MeResponse(int UserId, string FullName, string Username, UserRole Role, int? CompanyId, bool CanApprove);
 
 // ----------------- Company -----------------
-public sealed record CompanyRequest(string Name, string Prefix, bool IsActive);
-public sealed record CompanyResponse(int CompanyId, string Name, string Prefix, bool IsActive);
+public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
+public sealed record CompanyResponse(int CompanyId, string Name, string Prefix, bool IsActive, string? DefaultSignatoryName, string? DefaultSignatoryTitle);
 
 // ----------------- Template -----------------
 public sealed record TemplateRequest(
@@ -49,17 +49,17 @@ public sealed record DelegationResponse(int DelegationId, int FromUserId, int To
 // ----------------- Outgoing -----------------
 public sealed record CreateOutgoingRequest(
     int? CompanyId, int EntityId, int TemplateId, DateTime Date,
-    string Subject, string BodyHtml,
+    string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record UpdateOutgoingRequest(
     int EntityId, int TemplateId, DateTime Date,
-    string Subject, string BodyHtml,
+    string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record EditApprovedRequest(
     int EntityId, int TemplateId, DateTime Date,
-    string Subject, string BodyHtml,
+    string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
     string RowVersion, string? ChangeNote);
 
@@ -69,7 +69,7 @@ public sealed record OutgoingListItem(
 
 public sealed record OutgoingDetail(
     int OutgoingId, int CompanyId, string? Number, int? Year, int? SerialNo, DateTime Date,
-    int EntityId, string EntityName, int TemplateId, string Subject, string BodyHtml,
+    int EntityId, string EntityName, int TemplateId, string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     BookStatus Status, decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
     string? QrContent, bool HasPdf, int? ApprovedByUserId, DateTime? ApprovedAt,
     DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion);
@@ -81,7 +81,7 @@ public sealed record ArchiveRequest(
     int? CompanyId, string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string? Keywords, string? Notes);
+    string? Keywords, string? Notes, string? BodyHtml);
 
 public sealed record ArchiveListItem(
     int ArchiveId, string ArchiveNumber, string Title, string? BookNumber,
@@ -91,7 +91,7 @@ public sealed record ArchiveDetail(
     int ArchiveId, int CompanyId, string ArchiveNumber, string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
-    string? Keywords, string? Notes, DateTime CreatedAt);
+    string? Keywords, string? Notes, string? BodyHtml, DateTime CreatedAt);
 
 public sealed record AttachmentResponse(int AttachmentId, string FileName, string FileType, long FileSize, DateTime UploadedAt);
 

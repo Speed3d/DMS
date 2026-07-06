@@ -51,7 +51,8 @@ public sealed class PdfGenerator
                 // المتن: علامة مائية خلف المحتوى + الحقول
                 page.Content()
                     .PaddingHorizontal(40)
-                    .PaddingVertical(24)
+                    .PaddingTop(5)
+                    .PaddingBottom(120) // نضع حداً كبيراً لمنع النص من النزول لمنطقة الباركود والتوقيع
                     .ContentFromRightToLeft()
                     .Layers(layers =>
                     {
@@ -65,73 +66,97 @@ public sealed class PdfGenerator
                         {
                             col.Spacing(10);
 
-                            // سطر الرقم والتاريخ
+                            // سطر يحتوي على مساحة فارغة يميناً، العبارة الاختيارية في المنتصف، والرقم/التاريخ يساراً
                             col.Item().Row(row =>
                             {
-                                row.RelativeItem().Text(t =>
+                                // اليمين: فارغ (أو يمكن وضع الشعار هنا لاحقاً)
+                                row.RelativeItem(1);
+
+                                // المنتصف: العبارة الاختيارية (تنزل للأسفل قليلاً)
+                                row.RelativeItem(2).AlignCenter().AlignTop().Column(c =>
                                 {
-                                    t.Span("العدد: ").SemiBold();
-                                    t.Span(book.Number);
+                                    if (!string.IsNullOrWhiteSpace(book.HeaderPhrase))
+                                    {
+                                        c.Item().PaddingTop(35).Text(book.HeaderPhrase).SemiBold().FontSize(15);
+                                    }
                                 });
-                                row.RelativeItem().AlignLeft().Text(t =>
+
+                                // اليسار: الرقم والتاريخ (LTR ليقرأ من اليسار لليمين)
+                                row.RelativeItem(1).ContentFromLeftToRight().Column(c =>
                                 {
-                                    t.Span("التاريخ: ").SemiBold();
-                                    t.Span(book.Date.ToString("yyyy-MM-dd"));
+                                    c.Item().Text($"No: {book.Number}").SemiBold();
+                                    c.Item().Text($"Date: {book.Date:yyyy-MM-dd}").SemiBold();
                                 });
                             });
 
-                            col.Item().Text(t =>
+                            // الجهة والموضوع (في المنتصف، أسفل السطر السابق)
+                            col.Item().PaddingTop(10).AlignCenter().Column(c =>
                             {
-                                t.Span("الجهة: ").SemiBold();
-                                t.Span(book.Entity);
+                                c.Spacing(5);
+                                c.Item().AlignCenter().Text(book.Entity).SemiBold().FontSize(15);
+                                c.Item().AlignCenter().Text($"الموضوع / {book.Subject}").SemiBold().FontSize(14);
                             });
 
-                            col.Item().Text(t =>
+                            // المتن الرئيسي للكتاب (نستخدم المترجم الجديد للـ HTML لدعم التنسيقات)
+                            col.Item().PaddingTop(15).Text(text =>
                             {
-                                t.Span("الموضوع / ").SemiBold();
-                                t.Span(book.Subject).SemiBold();
+                                text.DefaultTextStyle(x => x.LineHeight(1.6f));
+                                text.Justify();
+                                text.RenderHtml(book.Body);
                             });
 
-                            col.Item().PaddingTop(6).Text(book.Body)
-                                .Justify().LineHeight(1.6f);
+                            // (تم إخفاء التفاصيل المالية من الطباعة بناءً على طلب المستخدم، لكنها تظل محفوظة في قاعدة البيانات)
 
-                            if (book.HasFinancials)
-                                col.Item().PaddingTop(10).Element(c => FinancialBox(c, book));
-
-                            // QR + تعليمة التحقق
-                            col.Item().PaddingTop(20).AlignCenter().Column(qr =>
-                            {
-                                qr.Item().AlignCenter().Width(110).Image(assets.QrPng).FitWidth();
-                                qr.Item().AlignCenter().Text("امسح الرمز للتحقق من صحة الكتاب")
-                                    .FontSize(9).FontColor(Colors.Grey.Darken1);
-                            });
+                            // (تم نقل الباركود إلى الفوتر ليظهر على جميع الصفحات بمكان ثابت)
                         });
                     });
 
-                // الفوتر: ارتفاع مقيّد + FitArea
-                page.Footer().Height(80).AlignCenter().AlignMiddle()
-                    .Image(assets.Footer).FitArea();
+                // الفوتر: مساحته الأصلية للرسمة فقط
+                page.Footer().Height(100).AlignCenter().AlignMiddle().Image(assets.Footer).FitArea();
+
+                // طبقة أمامية لكل الصفحات: نثبت فيها الباركود يميناً والتوقيع يساراً ونرفعهما عن الفوتر مع أرقام الصفحات
+                page.Foreground().Layers(layers =>
+                {
+                    layers.PrimaryLayer()
+                        .PaddingBottom(120) // نرفعه عن الفوتر
+                        .PaddingHorizontal(40) // محاذاة مع هوامش الصفحة
+                        .AlignBottom()
+                        .ContentFromLeftToRight() // لضمان التحكم الفيزيائي الصارم (LTR)
+                        .Row(row =>
+                        {
+                            // اليسار الفيزيائي: التوقيع واسم المدير (نزحفه لليمين قليلاً بزيادة الـ PaddingLeft)
+                            row.RelativeItem().PaddingLeft(50).AlignLeft().AlignBottom().ContentFromRightToLeft().Column(sig =>
+                            {
+                                if (!string.IsNullOrWhiteSpace(book.SignatoryName))
+                                {
+                                    sig.Item().AlignCenter().Text(book.SignatoryName).SemiBold().FontSize(15);
+                                    if (!string.IsNullOrWhiteSpace(book.SignatoryTitle))
+                                        sig.Item().AlignCenter().Text(book.SignatoryTitle).FontSize(13).FontColor(Colors.Grey.Darken2);
+                                }
+                            });
+
+                            // اليمين الفيزيائي: الباركود
+                            row.AutoItem().AlignRight().AlignBottom().Width(70).Column(qr =>
+                            {
+                                qr.Item().AlignCenter().Image(assets.QrPng).FitWidth();
+                                qr.Item().AlignCenter().Text("امسح الرمز للتحقق").FontSize(8).FontColor(Colors.Grey.Darken3);
+                            });
+                        });
+
+                    // ترقيم الصفحات: لا يظهر في الصفحة الأولى، ويظهر من الصفحة الثانية فصاعداً
+                    layers.Layer()
+                        .SkipOnce() // يتخطى الصفحة الأولى
+                        .AlignBottom()
+                        .AlignCenter()
+                        .PaddingBottom(20)
+                        .Text(text =>
+                        {
+                            text.Span("- ").FontSize(12);
+                            text.CurrentPageNumber().FontSize(12);
+                            text.Span(" -").FontSize(12);
+                        });
+                });
             });
         });
     }
-
-    private static void FinancialBox(IContainer container, BookDocument book)
-    {
-        container
-            .Border(1).BorderColor(Colors.Grey.Lighten1)
-            .Background(Colors.Grey.Lighten4)
-            .Padding(10)
-            .Column(col =>
-            {
-                col.Spacing(4);
-                col.Item().Text("التفاصيل المالية").SemiBold();
-                col.Item().Text($"المبلغ: {book.Amount:#,0} {CurrencyLabel(book.Currency)}");
-                if (string.Equals(book.Currency, "USD", StringComparison.OrdinalIgnoreCase))
-                    col.Item().Text($"سعر الصرف: {book.ExchangeRate:#,0}");
-                col.Item().Text($"المعادل بالدينار العراقي: {book.AmountInIqd:#,0} د.ع").SemiBold();
-            });
-    }
-
-    private static string CurrencyLabel(string? currency) =>
-        string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase) ? "دولار" : "دينار";
 }

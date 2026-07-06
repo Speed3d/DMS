@@ -50,8 +50,11 @@ class ApiClient {
   Future<List<Company>> companies() async =>
       (await _get('/companies') as List).map((e) => Company.fromJson(e)).toList();
 
-  Future<Company> createCompany(String name, String prefix) async =>
-      Company.fromJson(await _post('/companies', {'name': name, 'prefix': prefix, 'isActive': true}));
+  Future<Company> createCompany(String name, String prefix, {String? defaultSignatoryName, String? defaultSignatoryTitle}) async =>
+      Company.fromJson(await _post('/companies', {'name': name, 'prefix': prefix, 'isActive': true, 'defaultSignatoryName': defaultSignatoryName, 'defaultSignatoryTitle': defaultSignatoryTitle}));
+
+  Future<Company> updateCompany(int id, String name, String prefix, bool isActive, {String? defaultSignatoryName, String? defaultSignatoryTitle}) async =>
+      Company.fromJson(await _put('/companies/$id', {'name': name, 'prefix': prefix, 'isActive': isActive, 'defaultSignatoryName': defaultSignatoryName, 'defaultSignatoryTitle': defaultSignatoryTitle}));
 
   Future<List<EntityModel>> entities() async =>
       (await _get('/entities') as List).map((e) => EntityModel.fromJson(e)).toList();

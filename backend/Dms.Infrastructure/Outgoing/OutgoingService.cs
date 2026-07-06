@@ -11,17 +11,17 @@ namespace Dms.Infrastructure.Outgoing;
 // ----- مدخلات العمليات -----
 public sealed record CreateOutgoingInput(
     int? CompanyId, int EntityId, int TemplateId, DateTime Date,
-    string Subject, string BodyHtml,
+    string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record UpdateOutgoingInput(
     int EntityId, int TemplateId, DateTime Date,
-    string Subject, string BodyHtml,
+    string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record EditApprovedInput(
     int EntityId, int TemplateId, DateTime Date,
-    string Subject, string BodyHtml,
+    string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
     byte[] RowVersion, string? ChangeNote);
 
@@ -76,6 +76,9 @@ public sealed class OutgoingService(
             EntityId = input.EntityId,
             TemplateId = input.TemplateId,
             Date = input.Date,
+            HeaderPhrase = input.HeaderPhrase?.Trim(),
+            SignatoryName = input.SignatoryName?.Trim(),
+            SignatoryTitle = input.SignatoryTitle?.Trim(),
             Subject = input.Subject.Trim(),
             BodyHtml = input.BodyHtml,
             Amount = input.Amount,
@@ -104,6 +107,9 @@ public sealed class OutgoingService(
         book.EntityId = input.EntityId;
         book.TemplateId = input.TemplateId;
         book.Date = input.Date;
+        book.HeaderPhrase = input.HeaderPhrase?.Trim();
+        book.SignatoryName = input.SignatoryName?.Trim();
+        book.SignatoryTitle = input.SignatoryTitle?.Trim();
         book.Subject = input.Subject.Trim();
         book.BodyHtml = input.BodyHtml;
         book.Amount = input.Amount;
@@ -189,6 +195,9 @@ public sealed class OutgoingService(
         book.EntityId = input.EntityId;
         book.TemplateId = input.TemplateId;
         book.Date = input.Date;
+        book.HeaderPhrase = input.HeaderPhrase?.Trim();
+        book.SignatoryName = input.SignatoryName?.Trim();
+        book.SignatoryTitle = input.SignatoryTitle?.Trim();
         book.Subject = input.Subject.Trim();
         book.BodyHtml = input.BodyHtml;
         book.Amount = input.Amount;

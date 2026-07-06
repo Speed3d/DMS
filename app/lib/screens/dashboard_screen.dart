@@ -49,20 +49,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final width = constraints.maxWidth;
-                    // تجاوب: إذا كانت الشاشة صغيرة نعرض عمودين، وإذا كانت كبيرة 4 أعمدة
-                    final crossAxisCount = width < 700 ? 2 : 4;
-                    return GridView.count(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      childAspectRatio: 2.2, // تناسب العرض للطول
+                    int crossAxisCount = 4;
+                    if (width < 500) {
+                      crossAxisCount = 1;
+                    } else if (width < 900) {
+                      crossAxisCount = 2;
+                    }
+                    
+                    final double spacing = 24.0;
+                    final double totalSpacing = spacing * (crossAxisCount - 1);
+                    final double cardWidth = (width - totalSpacing) / crossAxisCount;
+
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
                       children: [
-                        _buildStatCard('إجمالي الصادر', '${items.length}', Icons.outbox_rounded, const Color(0xFF3B82F6)),
-                        _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn),
-                        _buildStatCard('كتب معتمدة', '$finals', Icons.verified_rounded, AppColors.success),
-                        _buildStatCard('إجمالي المبالغ', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold),
+                        SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${items.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
+                        SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn)),
+                        SizedBox(width: cardWidth, child: _buildStatCard('كتب معتمدة', '$finals', Icons.verified_rounded, AppColors.success)),
+                        SizedBox(width: cardWidth, child: _buildStatCard('إجمالي المبالغ', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold)),
                       ],
                     );
                   }
@@ -70,59 +75,71 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 const SizedBox(height: 32),
 
                 // Hint: القسم الأوسط (الرسوم البيانية + نشاطات أخيرة)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // الرسم البياني (يأخذ 70% من العرض تقريباً)
-                    Expanded(
-                      flex: 7,
-                      child: CustomCard(
-                        padding: const EdgeInsets.all(28),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('نشاط الصادر (الأسبوع الحالي)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 6),
-                            Text('مقارنة بين المسودات والكتب المعتمدة يومياً', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
-                            const SizedBox(height: 32),
-                            SizedBox(
-                              height: 300,
-                              child: _buildChart(),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isSmall = constraints.maxWidth < 900;
                     
-                    // النشاطات الأخيرة (تأخذ 30%)
-                    Expanded(
-                      flex: 4,
-                      child: CustomCard(
-                        padding: const EdgeInsets.all(28),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('أحدث الكتب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                TextButton(onPressed: (){}, child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold))),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            // عرض آخر 5 كتب
-                            ...items.take(5).map((e) => _buildActivityItem(e)),
-                            if (items.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.all(24),
-                                child: Center(child: Text('لا توجد بيانات حالياً')),
-                              ),
-                          ],
-                        ),
+                    final chartCard = CustomCard(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('نشاط الصادر (الأسبوع الحالي)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          Text('مقارنة بين المسودات والكتب المعتمدة يومياً', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+                          const SizedBox(height: 32),
+                          SizedBox(
+                            height: 300,
+                            child: _buildChart(),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    );
+
+                    final activitiesCard = CustomCard(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Flexible(child: Text('أحدث الكتب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                              TextButton(onPressed: (){}, child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold))),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // عرض آخر 5 كتب
+                          ...items.take(5).map((e) => _buildActivityItem(e)),
+                          if (items.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Center(child: Text('لا توجد بيانات حالياً')),
+                            ),
+                        ],
+                      ),
+                    );
+
+                    if (isSmall) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          chartCard,
+                          const SizedBox(height: 24),
+                          activitiesCard,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 7, child: chartCard),
+                        const SizedBox(width: 24),
+                        Expanded(flex: 4, child: activitiesCard),
+                      ],
+                    );
+                  }
                 ),
               ],
             ),
@@ -196,30 +213,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(Icons.description_outlined, size: 18, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.subject, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 4),
-                Text(item.number ?? 'بلا رقم', style: TextStyle(fontSize: 11, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isVerySmall = constraints.maxWidth < 180;
+          return Row(
+            children: [
+              if (!isVerySmall) ...[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.description_outlined, size: 18, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
+                ),
+                const SizedBox(width: 14),
               ],
-            ),
-          ),
-          StatusPill(status: item.status),
-        ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.subject, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Text(item.number ?? 'بلا رقم', style: TextStyle(fontSize: 11, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+                  ],
+                ),
+              ),
+              if (!isVerySmall) ...[
+                const SizedBox(width: 8),
+                StatusPill(status: item.status),
+              ],
+            ],
+          );
+        }
       ),
     );
   }

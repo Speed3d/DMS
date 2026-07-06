@@ -17,6 +17,9 @@ public class OutgoingBook
     public DateTime Date { get; set; }      // تاريخ الكتاب
     public int EntityId { get; set; }       // الجهة المستلمة
     public string Subject { get; set; } = string.Empty;
+    public string? HeaderPhrase { get; set; } // حقل اختياري (إلى، أمر إداري، إلخ)
+    public string? SignatoryName { get; set; } // اسم الموقّع
+    public string? SignatoryTitle { get; set; } // عنوان الموقّع الوظيفي
     public string BodyHtml { get; set; } = string.Empty;
     public int TemplateId { get; set; }
     public BookStatus Status { get; set; } = BookStatus.Draft;

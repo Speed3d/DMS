@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
+import '../core/session.dart';
+
+final outgoingCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  final list = await api.outgoingList();
+  return list.length;
+});
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -62,7 +69,14 @@ class Sidebar extends ConsumerWidget {
           ),
           _buildItem(0, Icons.grid_view_rounded, 'الرئيسية'),
           _buildItem(1, Icons.cloud_off_rounded, 'أوفلاين'),
-          _buildItem(2, Icons.send_rounded, 'الصادر', badge: '5'),
+          
+          Consumer(
+            builder: (context, ref, child) {
+              final countAsync = ref.watch(outgoingCountProvider);
+              final badge = countAsync.whenOrNull(data: (count) => count > 0 ? count.toString() : null);
+              return _buildItem(2, Icons.send_rounded, 'الصادر', badge: badge);
+            },
+          ),
           _buildItem(3, Icons.archive_rounded, 'الأرشيف'),
           _buildItem(4, Icons.bar_chart_rounded, 'التقارير المالية'),
 

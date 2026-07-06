@@ -33,7 +33,7 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
         var doc = await svc.CreateAsync(new CreateArchiveInput(
             req.CompanyId, req.Title, req.BookNumber, req.BookDate,
             req.FromEntityId, req.ToEntityId, req.DocumentTypeId,
-            req.Amount, req.Currency, req.ExchangeRate, req.Keywords, req.Notes), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.Keywords, req.Notes, req.BodyHtml), ct);
         return Detail(doc);
     }
 
@@ -43,7 +43,7 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
         var doc = await svc.UpdateAsync(id, new UpdateArchiveInput(
             req.Title, req.BookNumber, req.BookDate,
             req.FromEntityId, req.ToEntityId, req.DocumentTypeId,
-            req.Amount, req.Currency, req.ExchangeRate, req.Keywords, req.Notes), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.Keywords, req.Notes, req.BodyHtml), ct);
         return Detail(doc);
     }
 
@@ -75,5 +75,5 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
     private static ArchiveDetail Detail(ArchiveDoc a) => new(
         a.ArchiveId, a.CompanyId, a.ArchiveNumber, a.Title, a.BookNumber, a.BookDate,
         a.FromEntityId, a.ToEntityId, a.DocumentTypeId,
-        a.Amount, a.Currency, a.ExchangeRate, a.AmountInIqd, a.Keywords, a.Notes, a.CreatedAt);
+        a.Amount, a.Currency, a.ExchangeRate, a.AmountInIqd, a.Keywords, a.Notes, a.BodyHtml, a.CreatedAt);
 }
