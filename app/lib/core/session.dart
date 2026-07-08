@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models.dart';
 import 'api_client.dart';
 
@@ -38,33 +39,40 @@ class SessionNotifier extends Notifier<SessionState> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kAuth);
+    const secureStorage = FlutterSecureStorage();
+    final raw = await secureStorage.read(key: _kAuth) ?? prefs.getString(_kAuth);
     AuthResult? auth;
     if (raw != null) {
       try {
         auth = AuthResult.fromJson(jsonDecode(raw));
       } catch (_) {}
     }
-    final cid = prefs.getInt(_kCompany);
+    final cidStr = await secureStorage.read(key: _kCompany);
+    final cid = cidStr != null ? int.tryParse(cidStr) : prefs.getInt(_kCompany);
     state = SessionState(auth: auth, activeCompanyId: cid, loaded: true);
   }
 
   Future<void> setAuth(AuthResult auth) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kAuth, jsonEncode(auth.toJson()));
+    const secureStorage = FlutterSecureStorage();
+    await secureStorage.write(key: _kAuth, value: jsonEncode(auth.toJson()));
     // المستخدم العادي: شركته من التوكن. السوبر أدمن: يختار لاحقاً.
     final cid = auth.companyId;
     if (cid != null) {
-      await prefs.setInt(_kCompany, cid);
+      await secureStorage.write(key: _kCompany, value: cid.toString());
     } else {
-      await prefs.remove(_kCompany);
+      await secureStorage.delete(key: _kCompany);
     }
     state = SessionState(auth: auth, activeCompanyId: cid, loaded: true);
+
+    // تنظيف التخزين القديم غير المشفر (إن وجد)
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kAuth);
+    await prefs.remove(_kCompany);
   }
 
   Future<void> setActiveCompany(int companyId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kCompany, companyId);
+    const secureStorage = FlutterSecureStorage();
+    await secureStorage.write(key: _kCompany, value: companyId.toString());
     state = state.copyWith(activeCompanyId: companyId);
   }
 
@@ -73,15 +81,20 @@ class SessionNotifier extends Notifier<SessionState> {
     if (a == null) return;
     final json = a.toJson()..['mustChangePassword'] = false;
     final updated = AuthResult.fromJson(json);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kAuth, jsonEncode(updated.toJson()));
+    const secureStorage = FlutterSecureStorage();
+    await secureStorage.write(key: _kAuth, value: jsonEncode(updated.toJson()));
     state = state.copyWith(auth: updated);
   }
 
   Future<void> logout() async {
+    const secureStorage = FlutterSecureStorage();
+    await secureStorage.delete(key: _kAuth);
+    await secureStorage.delete(key: _kCompany);
+    
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kAuth);
     await prefs.remove(_kCompany);
+    
     state = const SessionState(loaded: true);
   }
 }

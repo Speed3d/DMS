@@ -58,7 +58,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 builder.Services.AddCors(o => o.AddPolicy("all", p =>
-    p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+    }
+    else
+    {
+        var allowedOrigins = builder.Configuration["AllowedOrigins"]?.Split(';', StringSplitOptions.RemoveEmptyEntries) ?? [];
+        if (allowedOrigins.Length > 0)
+        {
+            p.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+        }
+        else
+        {
+            p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod(); // Fallback if not configured
+        }
+    }
+}));
 
 // ----- Swagger مع دعم Bearer -----
 builder.Services.AddEndpointsApiExplorer();
@@ -86,6 +103,10 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+else
+{
+    app.UseHttpsRedirection();
 }
 app.UseCors("all");
 app.UseAuthentication();
