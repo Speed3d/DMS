@@ -9,7 +9,8 @@ import '../widgets/status_pill.dart';
 
 /// Hint: شاشة لوحة التحكم (Dashboard) الرئيسية مع الرسوم البيانية والإحصائيات
 class DashboardScreen extends ConsumerStatefulWidget {
-  const DashboardScreen({super.key});
+  final ValueChanged<int>? onNavigate;
+  const DashboardScreen({super.key, this.onNavigate});
   @override
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
@@ -65,7 +66,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       runSpacing: spacing,
                       children: [
                         SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${items.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
-                        SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn)),
+                        SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
                         SizedBox(width: cardWidth, child: _buildStatCard('كتب معتمدة', '$finals', Icons.verified_rounded, AppColors.success)),
                         SizedBox(width: cardWidth, child: _buildStatCard('إجمالي المبالغ', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold)),
                       ],
@@ -90,7 +91,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           const SizedBox(height: 32),
                           SizedBox(
                             height: 300,
-                            child: _buildChart(),
+                            child: _buildChart(items),
                           ),
                         ],
                       ),
@@ -150,11 +151,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   // Hint: تصميم بطاقة الإحصائيات (زجاجية ومضيئة)
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, {VoidCallback? onTap}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -206,6 +207,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ],
       ),
     );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
+      );
+    }
+    return card;
   }
 
   // Hint: تصميم عنصر النشاطات (القائمة المصغرة)
@@ -252,15 +262,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   // Hint: رسم بياني باستخدام حزمة fl_chart
-  Widget _buildChart() {
+  Widget _buildChart(List<OutgoingListItem> items) {
     final theme = Theme.of(context);
+    
+    // حساب بداية الأسبوع (الأحد)
+    DateTime now = DateTime.now();
+    int daysSinceSunday = now.weekday == 7 ? 0 : now.weekday;
+    DateTime startOfWeek = DateTime(now.year, now.month, now.day).subtract(Duration(days: daysSinceSunday));
+    DateTime endOfWeek = startOfWeek.add(const Duration(days: 7));
+
+    final List<int> draftsPerDay = List.filled(7, 0);
+    final List<int> finalsPerDay = List.filled(7, 0);
+    int maxCount = 4;
+
+    for (final item in items) {
+      if (item.date.isAfter(startOfWeek.subtract(const Duration(milliseconds: 1))) && item.date.isBefore(endOfWeek)) {
+        int dayIndex = item.date.weekday == 7 ? 0 : item.date.weekday;
+        if (item.status.toLowerCase().contains('draft')) {
+          draftsPerDay[dayIndex]++;
+        } else {
+          finalsPerDay[dayIndex]++;
+        }
+      }
+    }
+
+    for (int i = 0; i < 7; i++) {
+      if (draftsPerDay[i] > maxCount) maxCount = draftsPerDay[i];
+      if (finalsPerDay[i] > maxCount) maxCount = finalsPerDay[i];
+    }
+    
+    final maxY = ((maxCount / 5).ceil() + 1) * 5.0;
     
     return LineChart(
       LineChartData(
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: 10,
+          horizontalInterval: (maxY / 5).clamp(1, double.infinity).toDouble(),
           getDrawingHorizontalLine: (value) => FlLine(
             color: theme.dividerColor,
             strokeWidth: 1,
@@ -291,7 +329,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              interval: 10,
+              interval: (maxY / 5).clamp(1, double.infinity).toDouble(),
               reservedSize: 42,
               getTitlesWidget: (value, meta) {
                 return Text(value.toInt().toString(), style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5)));
@@ -303,13 +341,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         minX: 0,
         maxX: 6,
         minY: 0,
-        maxY: 40,
+        maxY: maxY,
         lineBarsData: [
           // الخط الأول (المسودات)
           LineChartBarData(
-            spots: const [
-              FlSpot(0, 12), FlSpot(1, 15), FlSpot(2, 22), FlSpot(3, 18),
-              FlSpot(4, 28), FlSpot(5, 10), FlSpot(6, 14),
+            spots: [
+              for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), draftsPerDay[i].toDouble())
             ],
             isCurved: true,
             color: AppColors.warn,
@@ -323,9 +360,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           // الخط الثاني (المعتمدة)
           LineChartBarData(
-            spots: const [
-              FlSpot(0, 5), FlSpot(1, 10), FlSpot(2, 18), FlSpot(3, 25),
-              FlSpot(4, 20), FlSpot(5, 8), FlSpot(6, 11),
+            spots: [
+              for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), finalsPerDay[i].toDouble())
             ],
             isCurved: true,
             color: AppColors.success,

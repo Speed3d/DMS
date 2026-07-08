@@ -10,17 +10,17 @@ namespace Dms.Infrastructure.Outgoing;
 
 // ----- مدخلات العمليات -----
 public sealed record CreateOutgoingInput(
-    int? CompanyId, int EntityId, int TemplateId, DateTime Date,
+    int? CompanyId, int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record UpdateOutgoingInput(
-    int EntityId, int TemplateId, DateTime Date,
+    int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record EditApprovedInput(
-    int EntityId, int TemplateId, DateTime Date,
+    int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
     byte[] RowVersion, string? ChangeNote);
@@ -37,6 +37,7 @@ public interface IOutgoingService
     Task<byte[]> GetPdfAsync(int id, CancellationToken ct = default);
     Task<byte[]> GetWordAsync(int id, CancellationToken ct = default);
     Task<byte[]> PreviewPdfAsync(CreateOutgoingInput input, CancellationToken ct = default);
+    Task<byte[]> PreviewDraftPdfAsync(int id, CancellationToken ct = default);
 }
 
 public sealed class OutgoingService(
@@ -294,6 +295,14 @@ public sealed class OutgoingService(
         return result.Pdf;
     }
 
+    public async Task<byte[]> PreviewDraftPdfAsync(int id, CancellationToken ct = default)
+    {
+        var book = await GetAsync(id, ct);
+        var (company, template, entity) = await LoadRefsAsync(book, ct);
+        var result = await renderer.RenderPdfAsync(book, template, entity, company, isPreview: true, ct);
+        return result.Pdf;
+    }
+
     // --- الوظائف المساعدة ----------------
 
     private int ResolveCompanyId(int? requested)
@@ -303,11 +312,11 @@ public sealed class OutgoingService(
         throw new ValidationException("تعذّر تحديد الشركة. حدّد الشركة الفعّالة.");
     }
 
-    private async Task ValidateRefsAsync(int companyId, int entityId, int templateId, CancellationToken ct)
+    private async Task ValidateRefsAsync(int companyId, int entityId, int? templateId, CancellationToken ct)
     {
         if (!await db.Entities.AnyAsync(e => e.EntityId == entityId && e.CompanyId == companyId, ct))
             throw new ValidationException("الجهة غير موجودة في هذه الشركة.");
-        if (!await db.Templates.AnyAsync(t => t.TemplateId == templateId && t.CompanyId == companyId && t.IsActive, ct))
+        if (templateId.HasValue && !await db.Templates.AnyAsync(t => t.TemplateId == templateId.Value && t.CompanyId == companyId && t.IsActive, ct))
             throw new ValidationException("القالب غير موجود أو غير مُفعّل في هذه الشركة.");
     }
 

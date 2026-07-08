@@ -103,60 +103,172 @@ class _State extends ConsumerState<TemplateEditScreen> {
     }
   }
 
+  Future<void> _deleteTemplate() async {
+    final api = ref.read(apiClientProvider);
+    setState(() => _busy = true);
+    try {
+      final usageCount = await api.getTemplateUsage(widget.templateId);
+      if (!mounted) return;
+      
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('تأكيد الحذف', style: TextStyle(color: Colors.red)),
+          content: Text('يُستخدم هذا القالب في $usageCount كتاب/كتب.\nإذا قمت بحذفه، أي تعديل مستقبلي على هذه الكتب سيكون بدون قالب.\nهل أنت متأكد من الحذف؟'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(c, true), 
+              child: const Text('نعم، احذف القالب')
+            ),
+          ],
+        )
+      );
+
+      if (confirm == true) {
+        setState(() => _busy = true);
+        await api.deleteTemplate(widget.templateId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف بنجاح.')));
+          Navigator.pop(context, true);
+        }
+      }
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('تعديل القالب')),
+      appBar: AppBar(
+        title: const Text('تعديل القالب'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red),
+            tooltip: 'حذف القالب',
+            onPressed: _busy ? null : _deleteTemplate,
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    TextField(controller: _name, decoration: const InputDecoration(labelText: 'اسم القالب')),
-                    const SizedBox(height: 16),
-                    Text('شفافية العلامة المائية: $_opacity%'),
-                    Slider(
-                      value: _opacity.toDouble(),
-                      min: 0, max: 100, divisions: 100, label: '$_opacity%',
-                      onChanged: (v) => setState(() => _opacity = v.round()),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text('الهوامش (نقاط)'),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: TextField(controller: _mTop, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'أعلى'))),
-                      const SizedBox(width: 8),
-                      Expanded(child: TextField(controller: _mRight, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'يمين'))),
-                      const SizedBox(width: 8),
-                      Expanded(child: TextField(controller: _mBottom, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'أسفل'))),
-                      const SizedBox(width: 8),
-                      Expanded(child: TextField(controller: _mLeft, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'يسار'))),
-                    ]),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      value: _active,
-                      onChanged: (v) => setState(() => _active = v),
-                      title: const Text('مُفعّل'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    const Divider(height: 32),
-                    const Text('صور القالب', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    _imageRow('الهيدر', 'header'),
-                    _imageRow('الفوتر', 'footer'),
-                    _imageRow('العلامة المائية', 'watermark'),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: _busy ? null : _save,
-                      icon: const Icon(Icons.save),
-                      label: Text(_busy ? 'جارٍ...' : 'حفظ'),
-                    ),
-                  ],
+          : Row(
+              children: [
+                // لوحة التحكم وتعديل القيم
+                Expanded(
+                  flex: 1,
+                  child: ListView(
+                    padding: const EdgeInsets.all(24),
+                    children: [
+                      TextField(
+                        controller: _name,
+                        decoration: const InputDecoration(labelText: 'اسم القالب'),
+                        onChanged: (_) => setState((){}),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('شفافية العلامة المائية: $_opacity%'),
+                      Slider(
+                        value: _opacity.toDouble(),
+                        min: 0, max: 100, divisions: 100, label: '$_opacity%',
+                        onChanged: (v) => setState(() => _opacity = v.round()),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('الهوامش (نقاط)'),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: TextField(controller: _mTop, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'أعلى'), onChanged: (_) => setState((){}))),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextField(controller: _mRight, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'يمين'), onChanged: (_) => setState((){}))),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextField(controller: _mBottom, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'أسفل'), onChanged: (_) => setState((){}))),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextField(controller: _mLeft, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'يسار'), onChanged: (_) => setState((){}))),
+                      ]),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        value: _active,
+                        onChanged: (v) => setState(() => _active = v),
+                        title: const Text('مُفعّل'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      const Divider(height: 32),
+                      const Text('صور القالب', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      _imageRow('الهيدر', 'header'),
+                      _imageRow('الفوتر', 'footer'),
+                      _imageRow('العلامة المائية', 'watermark'),
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _save,
+                        icon: const Icon(Icons.save),
+                        label: Text(_busy ? 'جارٍ...' : 'حفظ'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const VerticalDivider(width: 1, color: Colors.black12),
+                // المعاينة الحية المباشرة (A4 Simulation)
+                Expanded(
+                  flex: 1,
+                  child: Container(
+                    color: Colors.grey.shade200,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(24),
+                    child: AspectRatio(
+                      aspectRatio: 1 / 1.414,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, spreadRadius: 2)],
+                        ),
+                        child: Stack(
+                          children: [
+                            if (_images['watermark'] != null)
+                              Center(
+                                child: Opacity(
+                                  opacity: _opacity / 100.0,
+                                  child: Image.memory(_images['watermark']!, fit: BoxFit.contain),
+                                ),
+                              ),
+                            if (_images['header'] != null)
+                              Positioned(
+                                top: 0, left: 0, right: 0,
+                                child: Image.memory(_images['header']!, fit: BoxFit.fitWidth),
+                              ),
+                            if (_images['footer'] != null)
+                              Positioned(
+                                bottom: 0, left: 0, right: 0,
+                                child: Image.memory(_images['footer']!, fit: BoxFit.fitWidth),
+                              ),
+                            Positioned(
+                              top: (double.tryParse(_mTop.text) ?? 24),
+                              right: (double.tryParse(_mRight.text) ?? 40),
+                              bottom: (double.tryParse(_mBottom.text) ?? 24),
+                              left: (double.tryParse(_mLeft.text) ?? 40),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.blue.withValues(alpha: 0.5), style: BorderStyle.solid),
+                                  color: Colors.blue.withValues(alpha: 0.05),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'هنا مساحة النص الفعلي\nتتأثر مباشرة بالهوامش التي تحددها.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.blue, fontSize: 16),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
     );
   }

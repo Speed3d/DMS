@@ -21,7 +21,7 @@ public class OutgoingBook
     public string? SignatoryName { get; set; } // اسم الموقّع
     public string? SignatoryTitle { get; set; } // عنوان الموقّع الوظيفي
     public string BodyHtml { get; set; } = string.Empty;
-    public int TemplateId { get; set; }
+    public int? TemplateId { get; set; }
     public BookStatus Status { get; set; } = BookStatus.Draft;
 
     // الحقول المالية

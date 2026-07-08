@@ -6,7 +6,7 @@ import '../core/session.dart';
 final outgoingCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final api = ref.watch(apiClientProvider);
   final list = await api.outgoingList();
-  return list.length;
+  return list.where((e) => e.status.toLowerCase().contains('draft')).length;
 });
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر

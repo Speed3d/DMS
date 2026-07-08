@@ -1,3 +1,4 @@
+// ignore_for_file: prefer_initializing_formals
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../models.dart';
@@ -56,6 +57,10 @@ class ApiClient {
   Future<Company> updateCompany(int id, String name, String prefix, bool isActive, {String? defaultSignatoryName, String? defaultSignatoryTitle}) async =>
       Company.fromJson(await _put('/companies/$id', {'name': name, 'prefix': prefix, 'isActive': isActive, 'defaultSignatoryName': defaultSignatoryName, 'defaultSignatoryTitle': defaultSignatoryTitle}));
 
+  Future<Company> getCompany(int id) async => Company.fromJson(await _get('/companies/$id'));
+
+  Future<void> resetDb() async => _post('/system/reset-db', {});
+
   Future<List<EntityModel>> entities() async =>
       (await _get('/entities') as List).map((e) => EntityModel.fromJson(e)).toList();
 
@@ -77,6 +82,27 @@ class ApiClient {
 
   Future<TemplateModel> updateTemplate(int id, Map<String, dynamic> body) async =>
       TemplateModel.fromJson(await _put('/templates/$id', body));
+
+  Future<int> getTemplateUsage(int id) async {
+    final res = await _get('/templates/$id/usage');
+    return res['count'] ?? 0;
+  }
+
+  Future<void> deleteTemplate(int id) => _delete('/templates/$id');
+
+  Future<void> uploadCompanyLogo(int id, Uint8List bytes, String filename) async {
+    final isPng = filename.toLowerCase().endsWith('.png');
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes,
+          filename: filename,
+          contentType: DioMediaType('image', isPng ? 'png' : 'jpeg')),
+    });
+    try {
+      await _dio.post('/companies/$id/logo', data: form);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
 
   /// رفع صورة قالب (kind: header/footer/watermark) كـ multipart.
   Future<void> uploadTemplateImage(int id, String kind, Uint8List bytes, String filename) async {
@@ -270,11 +296,21 @@ class ApiClient {
 
   Future<void> revokeDelegation(int id) => _delete('/delegations/$id');
 
-  Future<List<int>> outgoingPdf(int id) async {
+  Future<Uint8List> outgoingPdf(int id) async {
     try {
       final res = await _dio.get<List<int>>('/outgoing/$id/pdf',
           options: Options(responseType: ResponseType.bytes));
-      return res.data ?? <int>[];
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<Uint8List> previewDraftPdf(int id) async {
+    try {
+      final res = await _dio.get<List<int>>('/outgoing/$id/preview-draft',
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
     } on DioException catch (e) {
       throw _map(e);
     }
@@ -322,6 +358,8 @@ class ApiClient {
       message = data['error'].toString();
     } else if (status == 401) {
       message = 'الجلسة منتهية. سجّل الدخول مجدداً.';
+    } else if (status == 403) {
+      message = 'غير مصرح لك للقيام بهذه العملية.';
     } else if (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.unknown) {
       message = 'تعذّر الوصول إلى الخادم أو لا يوجد اتصال بالإنترنت.';
       isNet = true;

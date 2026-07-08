@@ -37,11 +37,26 @@ class _UsersTab extends ConsumerStatefulWidget {
   ConsumerState<_UsersTab> createState() => _UsersTabState();
 }
 
+class _UsersData {
+  final List<UserModel> users;
+  final Map<int, String> companies;
+  _UsersData(this.users, this.companies);
+}
+
 class _UsersTabState extends ConsumerState<_UsersTab> {
-  late Future<List<UserModel>> _f;
+  late Future<_UsersData> _f;
+
   @override
-  void initState() { super.initState(); _f = ref.read(apiClientProvider).users(); }
-  void _reload() => setState(() { _f = ref.read(apiClientProvider).users(); });
+  void initState() { super.initState(); _f = _loadData(); }
+  void _reload() => setState(() { _f = _loadData(); });
+
+  Future<_UsersData> _loadData() async {
+    final api = ref.read(apiClientProvider);
+    final users = await api.users();
+    final comps = await api.companies();
+    final compMap = {for (final c in comps) c.companyId: c.name};
+    return _UsersData(users, compMap);
+  }
 
   List<String> _manageableRoles() {
     final actor = ref.read(sessionProvider).auth!.role;
@@ -95,44 +110,238 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
     }
   }
 
+  Color _getRoleColor(String role) {
+    switch (role) {
+      case 'SuperAdmin': return Colors.red;
+      case 'President': return Colors.blue.shade700;
+      case 'Manager': return const Color(0xFFC79A3A); // Gold/Orange
+      case 'Employee': return Colors.grey.shade700;
+      case 'Reader': return Colors.purple.shade600;
+      default: return Colors.grey;
+    }
+  }
+
+  Color _getAvatarColor(String text) {
+    final colors = [
+      const Color(0xFF1E3A8A), const Color(0xFF1D4ED8), const Color(0xFF047857),
+      const Color(0xFFB45309), const Color(0xFF6D28D9), const Color(0xFFBE185D)
+    ];
+    return colors[text.hashCode % colors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Align(
             alignment: AlignmentDirectional.centerStart,
-            child: FilledButton.icon(onPressed: _create, icon: const Icon(Icons.person_add), label: const Text('مستخدم جديد')),
+            child: FilledButton.icon(
+              onPressed: _create, 
+              icon: const Icon(Icons.person_add_rounded), 
+              label: const Text('مستخدم جديد', style: TextStyle(fontWeight: FontWeight.bold)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3A8A),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
           Expanded(
-            child: Card(
-              child: FutureBuilder<List<UserModel>>(
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? theme.colorScheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: FutureBuilder<_UsersData>(
                 future: _f,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
                   if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
-                  final users = snap.data ?? [];
+                  final data = snap.data!;
+                  final users = data.users;
                   if (users.isEmpty) return const Center(child: Text('لا يوجد مستخدمون أدنى منك.'));
-                  return ListView(
+                  
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final u in users)
-                        ListTile(
-                          leading: Icon(u.isActive ? Icons.person : Icons.person_off,
-                              color: u.isActive ? null : Colors.grey),
-                          title: Text(u.fullName),
-                          subtitle: Text('${u.username} • ${_roleLabels[u.role] ?? u.role}'
-                              '${u.canApprove ? ' • يعتمد' : ''}'),
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (v) => v == 'edit' ? _edit(u) : _resetPassword(u),
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                              PopupMenuItem(value: 'reset', child: Text('إعادة تعيين كلمة المرور')),
-                            ],
-                          ),
+                      // Header Row
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : const Color(0xFFF8FAFC),
+                          border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.5))),
                         ),
+                        child: Row(
+                          children: [
+                            Expanded(flex: 2, child: Text('المستخدم', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textTheme.bodyLarge?.color, fontSize: 13), textAlign: TextAlign.right)),
+                            const Expanded(flex: 2, child: Text('الدور', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                            const Expanded(flex: 2, child: Text('الشركة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                            const Expanded(flex: 1, child: Text('الاعتماد', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                            const Expanded(flex: 1, child: Text('الحالة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                            const SizedBox(width: 56), // Action button space
+                          ],
+                        ),
+                      ),
+                      
+                      // Data Rows
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: users.length,
+                          separatorBuilder: (context, index) => Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.5)),
+                          itemBuilder: (context, index) {
+                            final u = users[index];
+                            final compName = u.companyId != null ? (data.companies[u.companyId] ?? 'غير معروف') : 'كافة الشركات';
+                            final logoUrl = u.companyId != null ? '$kApiBaseUrl/companies/${u.companyId}/logo' : null;
+                            final roleColor = _getRoleColor(u.role);
+                            
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                              child: Row(
+                                children: [
+                                  // User (Rightmost, Avatar + Name)
+                                  Expanded(
+                                    flex: 2,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: _getAvatarColor(u.fullName),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : '؟',
+                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                              const SizedBox(height: 2),
+                                              Text('@${u.username}', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                  // Role
+                                  Expanded(
+                                    flex: 2,
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: roleColor.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(99),
+                                        ),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            _roleLabels[u.role] ?? u.role,
+                                            style: TextStyle(color: roleColor, fontWeight: FontWeight.bold, fontSize: 12),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  
+                                  // Company
+                                  Expanded(
+                                    flex: 2,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        if (logoUrl != null) ...[
+                                          CircleAvatar(
+                                            radius: 12,
+                                            backgroundColor: Colors.transparent,
+                                            backgroundImage: NetworkImage(logoUrl),
+                                            onBackgroundImageError: (_, __) {},
+                                          ),
+                                          const SizedBox(width: 8),
+                                        ],
+                                        Flexible(
+                                          child: Text(compName, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                  // Approval
+                                  Expanded(
+                                    flex: 1,
+                                    child: Center(
+                                      child: u.canApprove
+                                          ? const Icon(Icons.check_rounded, color: Color(0xFF10B981), size: 20)
+                                          : const Text('—', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                  
+                                  // Status
+                                  Expanded(
+                                    flex: 1,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.circle, size: 8, color: u.isActive ? const Color(0xFF10B981) : const Color(0xFF94A3B8)),
+                                          const SizedBox(width: 6),
+                                          Text(u.isActive ? 'نشط' : 'موقوف', style: TextStyle(color: u.isActive ? const Color(0xFF10B981) : const Color(0xFF94A3B8), fontWeight: FontWeight.bold, fontSize: 13)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  
+                                  // Actions
+                                  SizedBox(
+                                    width: 56,
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: PopupMenuButton<String>(
+                                        icon: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(Icons.more_vert_rounded, size: 18),
+                                        ),
+                                        onSelected: (v) => v == 'edit' ? _edit(u) : _resetPassword(u),
+                                        itemBuilder: (_) => const [
+                                          PopupMenuItem(value: 'edit', child: Text('تعديل')),
+                                          PopupMenuItem(value: 'reset', child: Text('إعادة تعيين كلمة المرور')),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ],
                   );
                 },
@@ -250,6 +459,7 @@ class _UserFormPageState extends State<_UserFormPage> {
   String? _role;
   bool _canApprove = false;
   bool _isActive = true;
+  String? _error;
 
   bool get _isEdit => widget.existing != null;
 
@@ -272,8 +482,26 @@ class _UserFormPageState extends State<_UserFormPage> {
   void dispose() { _fullName.dispose(); _username.dispose(); _password.dispose(); super.dispose(); }
 
   void _save() {
-    if (_fullName.text.trim().isEmpty || _role == null) return;
-    if (!_isEdit && (_username.text.trim().isEmpty || _password.text.length < 8)) return;
+    if (_fullName.text.trim().isEmpty) {
+      setState(() => _error = 'يرجى إدخال الاسم الكامل.');
+      return;
+    }
+    if (_role == null) {
+      setState(() => _error = 'يرجى اختيار الدور.');
+      return;
+    }
+    if (!_isEdit) {
+      if (_username.text.trim().isEmpty) {
+        setState(() => _error = 'يرجى إدخال اسم المستخدم.');
+        return;
+      }
+      if (_password.text.length < 8) {
+        setState(() => _error = 'كلمة المرور يجب أن لا تقل عن 8 أحرف.');
+        return;
+      }
+    }
+    setState(() => _error = null);
+
     Navigator.pop<Map<String, dynamic>>(context, {
       'fullName': _fullName.text.trim(),
       'username': _username.text.trim(),
@@ -324,6 +552,11 @@ class _UserFormPageState extends State<_UserFormPage> {
                   onChanged: (v) => setState(() => _isActive = v),
                 ),
               const SizedBox(height: 16),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                ),
               FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save), label: const Text('حفظ')),
             ],
           ),

@@ -61,9 +61,27 @@ class Company {
   final bool isActive;
   final String? defaultSignatoryName;
   final String? defaultSignatoryTitle;
-  Company(this.companyId, this.name, this.prefix, this.isActive, this.defaultSignatoryName, this.defaultSignatoryTitle);
-  factory Company.fromJson(Map<String, dynamic> j) =>
-      Company(j['companyId'], j['name'] ?? '', j['prefix'] ?? '', j['isActive'] ?? true, j['defaultSignatoryName'], j['defaultSignatoryTitle']);
+  final String? logoImageKey;
+
+  const Company({
+    required this.companyId,
+    required this.name,
+    required this.prefix,
+    required this.isActive,
+    this.defaultSignatoryName,
+    this.defaultSignatoryTitle,
+    this.logoImageKey,
+  });
+
+  factory Company.fromJson(Map<String, dynamic> json) => Company(
+        companyId: json['companyId'],
+        name: json['name'] ?? '',
+        prefix: json['prefix'] ?? '',
+        isActive: json['isActive'] ?? true,
+        defaultSignatoryName: json['defaultSignatoryName'],
+        defaultSignatoryTitle: json['defaultSignatoryTitle'],
+        logoImageKey: json['logoImageKey'],
+      );
 }
 
 class EntityModel {

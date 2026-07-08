@@ -14,6 +14,20 @@ import 'settings_screen.dart';
 import 'users_screen.dart';
 import 'backup_screen.dart';
 
+import '../models.dart';
+
+final activeCompanyProvider = FutureProvider.autoDispose<Company?>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  final session = ref.watch(sessionProvider);
+  if (session.effectiveCompanyId == null) return null;
+  try {
+    final companies = await api.companies();
+    return companies.where((c) => c.companyId == session.effectiveCompanyId).firstOrNull;
+  } catch (_) {
+    return null;
+  }
+});
+
 /// Hint: الهيكل الرئيسي للتطبيق (Shell) الذي يجمع القائمة الجانبية والشريط العلوي مع محتوى الشاشات
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -44,7 +58,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final isSuper = auth.isSuperAdmin;
 
     final pages = <Widget>[
-      const DashboardScreen(),
+      DashboardScreen(onNavigate: (i) => setState(() => _index = i)),
       const OfflineDraftsScreen(),
       const OutgoingListScreen(),
       const ArchiveListScreen(),
@@ -83,15 +97,33 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           Expanded(
             child: Column(
               children: [
-                Topbar(
-                  title: _getPageTitle(_index, canManageUsers, isSuper),
-                  subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
-                  onProfileTap: _showProfileMenu,
-                  onMenuTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final company = ref.watch(activeCompanyProvider).value;
+                    final companyName = company?.name ?? 'جاري التحميل...';
+                    final logoUrl = company?.logoImageKey != null && company!.logoImageKey!.isNotEmpty
+                        ? '$kApiBaseUrl/companies/${company.companyId}/logo'
+                        : null;
+                    return Topbar(
+                      title: '${_getPageTitle(_index, canManageUsers, isSuper)} - $companyName',
+                      subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
+                      logoUrl: logoUrl,
+                      onProfileTap: _showProfileMenu,
+                      onMenuTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                    );
+                  },
                 ),
                 Expanded(
                   child: ClipRect( // لمنع المحتوى من التجاوز
-                    child: pages[_index],
+                    child: Consumer(
+                      builder: (context, ref, child) {
+                        final session = ref.watch(sessionProvider);
+                        return KeyedSubtree(
+                          key: ValueKey(session.effectiveCompanyId),
+                          child: pages[_index],
+                        );
+                      }
+                    ),
                   ),
                 ),
               ],

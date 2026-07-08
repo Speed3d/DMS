@@ -9,6 +9,7 @@ import '../models.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/status_pill.dart';
 import 'outgoing_edit_approved_screen.dart';
+import 'outgoing_edit_draft_screen.dart';
 
 /// Hint: شاشة تفاصيل الصادر بتصميم أنيق يعتمد على البطاقات
 class OutgoingDetailScreen extends ConsumerStatefulWidget {
@@ -58,11 +59,32 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     }
   }
 
+  Future<void> _previewDraft() async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await ref.read(apiClientProvider).previewDraftPdf(widget.id);
+      await downloadBytes(bytes, 'draft-preview-${widget.id}.pdf', 'application/pdf');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _editApproved(OutgoingDetail d) async {
     final changed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(builder: (_) => OutgoingEditApprovedScreen(book: d)));
     if (changed == true) {
       _snack('تم حفظ التعديل وإنشاء إصدار جديد.');
+      _reload();
+    }
+  }
+
+  Future<void> _editDraft(OutgoingDetail d) async {
+    final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => OutgoingEditDraftScreen(book: d)));
+    if (changed == true) {
+      _snack('تم حفظ التعديل.');
       _reload();
     }
   }
@@ -195,8 +217,11 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                       ),
                       const Spacer(),
                       // أزرار الإجراءات السريعة
-                      if (!d.isFinal)
+                      if (!d.isFinal) ...[
+                        _buildActionButton('تعديل المسودة', Icons.edit_document, AppColors.warn, () => _editDraft(d)),
+                        _buildActionButton('معاينة القالب', Icons.preview_rounded, AppColors.gold, _previewDraft),
                         _buildActionButton('اعتماد وإصدار', Icons.verified_rounded, AppColors.success, _approve, isFilled: true),
+                      ],
                       if (d.hasPdf)
                         _buildActionButton('تحميل PDF', Icons.picture_as_pdf_rounded, AppColors.gold, _downloadPdf),
                       if (d.isFinal) ...[

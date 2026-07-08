@@ -130,7 +130,7 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Entity).WithMany()
                 .HasForeignKey(x => x.EntityId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Template).WithMany()
-                .HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+                .HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
         });

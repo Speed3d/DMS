@@ -3,10 +3,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+
+import 'company_edit_screen.dart';
 import 'template_edit_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  void _confirmReset(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تحذير خطير!', style: TextStyle(color: Colors.red)),
+        content: const Text('هل أنت متأكد من تصفير قاعدة البيانات بالكامل؟\nسيتم حذف جميع المستخدمين والكتب والشركات وكل شيء!'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final msg = ScaffoldMessenger.of(context);
+              try {
+                await ref.read(apiClientProvider).resetDb();
+                msg.showSnackBar(const SnackBar(content: Text('تم تصفير قاعدة البيانات بنجاح. يرجى تسجيل الدخول مجدداً.')));
+                await ref.read(sessionProvider.notifier).logout();
+                if (!context.mounted) return;
+                Navigator.of(context).pushNamedAndRemoveUntil('/login', (r) => false);
+              } catch (e) {
+                msg.showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('نعم، قم بالتصفير'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -15,12 +47,27 @@ class SettingsScreen extends ConsumerWidget {
       length: 4,
       child: Column(
         children: [
-          const TabBar(tabs: [
-            Tab(text: 'الشركات'),
-            Tab(text: 'الجهات'),
-            Tab(text: 'القوالب'),
-            Tab(text: 'أسعار الصرف'),
-          ]),
+          Row(
+            children: [
+              const Expanded(
+                child: TabBar(tabs: [
+                  Tab(text: 'الشركات'),
+                  Tab(text: 'الجهات'),
+                  Tab(text: 'القوالب'),
+                  Tab(text: 'أسعار الصرف'),
+                ]),
+              ),
+              if (isSuper)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: IconButton(
+                    icon: const Icon(Icons.delete_forever, color: Colors.red),
+                    tooltip: 'تصفير قاعدة البيانات',
+                    onPressed: () => _confirmReset(context, ref),
+                  ),
+                ),
+            ],
+          ),
           Expanded(
             child: TabBarView(children: [
               _CompaniesTab(canCreate: isSuper),
@@ -147,6 +194,7 @@ class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
   void _reload() => setState(() { _f = ref.read(apiClientProvider).companies(); });
 
   Future<void> _add() async {
+    final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final r = await _prompt(context, 'شركة جديدة', [
       _Field('name', 'الاسم'),
@@ -156,7 +204,8 @@ class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
     ]);
     if (r == null) return;
     try {
-      await ref.read(apiClientProvider).createCompany(r['name']!, r['prefix']!, defaultSignatoryName: r['sigName'], defaultSignatoryTitle: r['sigTitle']);
+      final created = await ref.read(apiClientProvider).createCompany(r['name']!, r['prefix']!, defaultSignatoryName: r['sigName'], defaultSignatoryTitle: r['sigTitle']);
+      await navigator.push(MaterialPageRoute(builder: (_) => CompanyEditScreen(companyId: created.companyId)));
       if (mounted) _reload();
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
@@ -178,29 +227,13 @@ class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
                 ListTile(
                   leading: const Icon(Icons.business),
                   title: Text(c.name),
-                  subtitle: Text('الرمز: ${c.prefix}${c.defaultSignatoryName != null && c.defaultSignatoryName.isNotEmpty ? ' | الموقّع: ${c.defaultSignatoryName}' : ''}'),
+                  subtitle: Text('الرمز: ${c.prefix}${c.defaultSignatoryName != null && c.defaultSignatoryName!.isNotEmpty ? ' | الموقّع: ${c.defaultSignatoryName}' : ''}'),
                   trailing: widget.canCreate
                       ? IconButton(
                           icon: const Icon(Icons.edit),
                           onPressed: () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            final r = await _prompt(context, 'تعديل شركة', [
-                              _Field('name', 'الاسم')..val = c.name,
-                              _Field('prefix', 'الرمز (DEN)')..val = c.prefix,
-                              _Field('sigName', 'الاسم الافتراضي للموقّع')..val = c.defaultSignatoryName ?? '',
-                              _Field('sigTitle', 'المنصب الافتراضي للموقّع')..val = c.defaultSignatoryTitle ?? '',
-                            ]);
-                            if (r == null) return;
-                            try {
-                              await ref.read(apiClientProvider).updateCompany(
-                                c.companyId, r['name']!, r['prefix']!, c.isActive,
-                                defaultSignatoryName: r['sigName'],
-                                defaultSignatoryTitle: r['sigTitle'],
-                              );
-                              if (mounted) _reload();
-                            } on ApiException catch (e) {
-                              messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
-                            }
+                            await Navigator.push(context, MaterialPageRoute(builder: (_) => CompanyEditScreen(companyId: c.companyId)));
+                            if (mounted) _reload();
                           },
                         )
                       : null,

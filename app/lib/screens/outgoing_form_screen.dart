@@ -30,6 +30,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
   
   DateTime _date = DateTime.now();
   int? _entityId;
+  String _entitySearchText = '';
   int? _templateId;
   String? _currency;
   bool _busy = false;
@@ -104,8 +105,12 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
   }
 
   Map<String, dynamic>? _buildPayload() {
-    if (_entityId == null || _templateId == null) {
-      setState(() => _error = 'يرجى اختيار الجهة المقصودة والقالب.');
+    if (_entityId == null) {
+      setState(() => _error = 'يرجى تحديد الجهة المقصودة أولاً.');
+      return null;
+    }
+    if (_templateId == null) {
+      setState(() => _error = 'يرجى اختيار القالب.');
       return null;
     }
     if (_subject.text.trim().isEmpty) {
@@ -145,12 +150,25 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
   }
 
   Future<void> _preview() async {
-    final payload = _buildPayload();
-    if (payload == null) return;
-
+    if (_entitySearchText.trim().isEmpty) {
+      setState(() => _error = 'يرجى إدخال الجهة المستلمة.');
+      return;
+    }
+    
     setState(() { _busy = true; _error = null; });
     
     try {
+      if (_entityId == null) {
+        final newE = await ref.read(apiClientProvider).createEntity(_entitySearchText.trim(), 'Both');
+        _entityId = newE.entityId;
+      }
+      
+      final payload = _buildPayload();
+      if (payload == null) {
+        setState(() => _busy = false);
+        return;
+      }
+
       final bytes = await ref.read(apiClientProvider).previewOutgoing(payload);
       if (!mounted) return;
       showDialog(
@@ -179,16 +197,29 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
   }
 
   Future<void> _save() async {
-    final payload = _buildPayload();
-    if (payload == null) return;
-    
+    if (_entitySearchText.trim().isEmpty) {
+      setState(() => _error = 'يرجى إدخال الجهة المستلمة.');
+      return;
+    }
+
     setState(() { _busy = true; _error = null; });
     
+    Map<String, dynamic>? payload;
     try {
+      if (_entityId == null) {
+        final newE = await ref.read(apiClientProvider).createEntity(_entitySearchText.trim(), 'Both');
+        _entityId = newE.entityId;
+      }
+
+      payload = _buildPayload();
+      if (payload == null) {
+        setState(() => _busy = false);
+        return;
+      }
       await ref.read(apiClientProvider).createOutgoing(payload);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      if (e.isNetworkError) {
+      if (e.isNetworkError && payload != null) {
         await ref.read(localStorageProvider).saveDraft(payload);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا يوجد اتصال بالإنترنت. تم حفظ الكتاب كمسودة محلية بنجاح.')));
@@ -254,12 +285,65 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                           const Divider(height: 32),
                           
                           // الجهة
-                          DropdownButtonFormField<int>(
-                            isExpanded: true,
-                            initialValue: _entityId,
-                            decoration: _inputDecoration('الجهة المستلمة', Icons.business_rounded),
-                            items: refs.entities.map((e) => DropdownMenuItem(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))).toList(),
-                            onChanged: (v) => setState(() => _entityId = v),
+                          LayoutBuilder(
+                            builder: (context, constraints) => Autocomplete<EntityModel>(
+                              displayStringForOption: (e) => e.name,
+                              optionsBuilder: (textEditingValue) {
+                                if (textEditingValue.text.isEmpty) return refs.entities;
+                                return refs.entities.where((e) => e.name.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                              },
+                              onSelected: (e) {
+                                _entityId = e.entityId;
+                                _entitySearchText = e.name;
+                              },
+                              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                                textEditingController.addListener(() {
+                                  _entitySearchText = textEditingController.text;
+                                  final matching = refs.entities.where((e) => e.name == textEditingController.text.trim());
+                                  if (matching.isNotEmpty) {
+                                    _entityId = matching.first.entityId;
+                                  } else {
+                                    _entityId = null;
+                                  }
+                                });
+                                // Set initial value if an entity is already selected
+                                if (_entityId != null && textEditingController.text.isEmpty) {
+                                  final selectedE = refs.entities.cast<EntityModel?>().firstWhere((e) => e?.entityId == _entityId, orElse: () => null);
+                                  if (selectedE != null) {
+                                    textEditingController.text = selectedE.name;
+                                  }
+                                }
+                                return TextField(
+                                  controller: textEditingController,
+                                  focusNode: focusNode,
+                                  decoration: _inputDecoration('الجهة المستلمة (اختر أو اكتب جهة جديدة)', Icons.business_rounded),
+                                );
+                              },
+                              optionsViewBuilder: (context, onSelected, options) {
+                                return Align(
+                                  alignment: Alignment.topLeft,
+                                  child: Material(
+                                    elevation: 4,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(maxWidth: constraints.maxWidth, maxHeight: 200),
+                                      child: ListView.builder(
+                                        padding: EdgeInsets.zero,
+                                        shrinkWrap: true,
+                                        itemCount: options.length,
+                                        itemBuilder: (BuildContext context, int index) {
+                                          final option = options.elementAt(index);
+                                          return ListTile(
+                                            title: Text(option.name),
+                                            onTap: () => onSelected(option),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                           const SizedBox(height: 16),
                           

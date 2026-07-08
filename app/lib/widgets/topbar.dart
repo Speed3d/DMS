@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/session.dart';
+import '../models.dart';
+import '../screens/outgoing_detail_screen.dart';
+
+final pendingDraftsProvider = FutureProvider.autoDispose<List<OutgoingListItem>>((ref) async {
+  final api = ref.read(apiClientProvider);
+  final items = await api.outgoingList();
+  return items.where((e) => e.status.toLowerCase().contains('draft')).toList();
+});
 
 /// Hint: الشريط العلوي (Topbar) المحدث
 class Topbar extends ConsumerWidget implements PreferredSizeWidget {
@@ -9,6 +17,7 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
   final String subtitle;
   final VoidCallback onProfileTap;
   final VoidCallback onMenuTap;
+  final String? logoUrl;
 
   const Topbar({
     super.key,
@@ -16,6 +25,7 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
     required this.subtitle,
     required this.onProfileTap,
     required this.onMenuTap,
+    this.logoUrl,
   });
 
   @override
@@ -47,6 +57,15 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
               ),
               const SizedBox(width: 16),
               
+              if (logoUrl != null && !isVerySmall) ...[
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                  backgroundImage: NetworkImage(logoUrl!),
+                ),
+                const SizedBox(width: 12),
+              ],
+
               // Title & Subtitle
               Expanded(
                 child: Column(
@@ -117,23 +136,73 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                 const SizedBox(width: 8),
 
                 // Notifications
-                Stack(
-                  children: [
-                    _buildIconButton(context, icon: Icons.notifications_none, onTap: () {}),
-                    Positioned(
-                      top: 9,
-                      right: 10,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppColors.danger,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: theme.colorScheme.surface, width: 2),
-                        ),
-                      ),
-                    ),
-                  ],
+                Consumer(
+                  builder: (ctx, ref, child) {
+                    final pendingList = ref.watch(pendingDraftsProvider).value ?? <OutgoingListItem>[];
+                    final pendingCount = pendingList.length;
+                    
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _buildIconButton(ctx, icon: Icons.notifications_none, onTap: () {
+                          if (pendingList.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد مسودات بانتظار الاعتماد')));
+                            return;
+                          }
+                          final box = ctx.findRenderObject() as RenderBox;
+                          final overlay = Navigator.of(ctx).overlay!.context.findRenderObject() as RenderBox;
+                          showMenu<int>(
+                            context: ctx,
+                            position: RelativeRect.fromRect(
+                              Rect.fromPoints(box.localToGlobal(box.size.bottomLeft(Offset.zero), ancestor: overlay), 
+                                              box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay)),
+                              Offset.zero & overlay.size,
+                            ),
+                            items: pendingList.map((d) => PopupMenuItem<int>(
+                              value: d.outgoingId,
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.pending_actions, color: AppColors.warn, size: 20),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(d.subject, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        Text(d.entityName, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )).toList(),
+                          ).then((id) {
+                            if (id != null && ctx.mounted) {
+                              Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => OutgoingDetailScreen(id: id))).then((_) => ref.invalidate(pendingDraftsProvider));
+                            }
+                          });
+                        }),
+                        if (pendingCount > 0)
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: AppColors.danger,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: theme.colorScheme.surface, width: 2),
+                              ),
+                              child: Text(
+                                pendingCount > 9 ? '+9' : '$pendingCount',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, height: 1),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 
                 if (!isSmall)

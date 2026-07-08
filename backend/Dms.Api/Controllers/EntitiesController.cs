@@ -19,7 +19,7 @@ public sealed class EntitiesController(AppDbContext db, ICurrentUser current, IA
             .Select(e => new EntityResponse(e.EntityId, e.CompanyId, e.Name, e.Kind, e.Notes)).ToListAsync(ct);
 
     [HttpPost]
-    [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [Authorize(Roles = "SuperAdmin,President,Manager,Employee")]
     public async Task<ActionResult<EntityResponse>> Create(EntityRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Name)) throw new ValidationException("اسم الجهة مطلوب.");

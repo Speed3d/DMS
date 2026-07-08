@@ -12,6 +12,7 @@ public class Company
     public bool IsActive { get; set; } = true;
     public string? DefaultSignatoryName { get; set; }
     public string? DefaultSignatoryTitle { get; set; }
+    public string? LogoImageKey { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public ICollection<Template> Templates { get; set; } = new List<Template>();

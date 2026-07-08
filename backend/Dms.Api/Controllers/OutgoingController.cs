@@ -107,6 +107,13 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
         return File(bytes, "application/pdf");
     }
 
+    [HttpGet("{id:int}/preview-draft")]
+    public async Task<IActionResult> PreviewDraft(int id, CancellationToken ct)
+    {
+        var bytes = await svc.PreviewDraftPdfAsync(id, ct);
+        return File(bytes, "application/pdf");
+    }
+
     [HttpGet("{id:int}/word")]
     public async Task<IActionResult> Word(int id, CancellationToken ct)
     {

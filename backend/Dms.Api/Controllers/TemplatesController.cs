@@ -79,6 +79,26 @@ public sealed class TemplatesController(
         return await Get(id, ct);
     }
 
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "SuperAdmin,President,Manager")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var t = await db.Templates.FirstOrDefaultAsync(x => x.TemplateId == id, ct)
+                ?? throw new NotFoundException("القالب غير موجود.");
+        
+        db.Templates.Remove(t);
+        audit.Add("Delete", nameof(Template), id.ToString(), null, t.CompanyId);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    [HttpGet("{id:int}/usage")]
+    public async Task<ActionResult<object>> GetUsage(int id, CancellationToken ct)
+    {
+        var count = await db.OutgoingBooks.CountAsync(x => x.TemplateId == id, ct);
+        return new { Count = count };
+    }
+
     [HttpPost("{id:int}/images/{kind}")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
     public async Task<IActionResult> UploadImage(int id, string kind, IFormFile file, CancellationToken ct)
