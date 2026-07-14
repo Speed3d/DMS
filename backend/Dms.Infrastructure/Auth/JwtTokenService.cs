@@ -12,7 +12,7 @@ namespace Dms.Infrastructure.Auth;
 public static class DmsClaims
 {
     public const string UserId = "uid";
-    public const string CompanyId = "cid";
+    public const string CompanyIds = "cids";
     public const string CanApprove = "approve";
     public const string Role = "role";
 }
@@ -43,8 +43,11 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
             new(ClaimTypes.Role, user.Role.ToString()),
             new(DmsClaims.CanApprove, user.CanApprove ? "1" : "0"),
         };
-        if (user.CompanyId is not null)
-            claims.Add(new Claim(DmsClaims.CompanyId, user.CompanyId.Value.ToString()));
+        if (user.AssignedCompanies.Any())
+        {
+            var ids = string.Join(",", user.AssignedCompanies.Select(c => c.CompanyId));
+            claims.Add(new Claim(DmsClaims.CompanyIds, ids));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_s.SigningKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

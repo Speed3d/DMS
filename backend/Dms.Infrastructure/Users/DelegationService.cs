@@ -26,8 +26,10 @@ public sealed class DelegationService(AppDbContext db, ICurrentUser current, IAu
         if (!current.IsSuperAdmin && !RoleHierarchy.IsManagerOrAbove(role))
             throw new ForbiddenException("التفويض يتطلب صلاحية مدير فأعلى.");
 
+        // العزل يفرضه الفلتر العام: مستخدم خارج نطاق الشركة الحالية يعود null ⇒ NotFound (fail-closed).
         var target = await db.Users.FirstOrDefaultAsync(u => u.UserId == input.ToUserId, ct)
                      ?? throw new NotFoundException("المستخدم المفوَّض غير موجود.");
+
         if (!current.IsSuperAdmin && !RoleHierarchy.CanManage(role, target.Role))
             throw new ForbiddenException("لا يمكنك التفويض إلا لمن هم أدنى منك.");
         if (input.EndDate is not null && input.EndDate <= input.StartDate)

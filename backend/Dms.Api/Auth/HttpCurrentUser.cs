@@ -35,15 +35,29 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool CanApprove => _user?.FindFirstValue(DmsClaims.CanApprove) == "1";
 
+    public List<int> AllowedCompanyIds
+    {
+        get
+        {
+            var claim = _user?.FindFirstValue(DmsClaims.CompanyIds);
+            if (string.IsNullOrWhiteSpace(claim)) return new List<int>();
+            return claim.Split(',').Select(s => int.TryParse(s, out var i) ? i : 0).Where(i => i != 0).ToList();
+        }
+    }
+
     public int? ActiveCompanyId
     {
         get
         {
-            // المستخدم العادي مقيّد بشركته (claim) — لا يتجاوزها بترويسة.
-            if (int.TryParse(_user?.FindFirstValue(DmsClaims.CompanyId), out var cid))
-                return cid;
-            // السوبر أدمن: شركة فعّالة اختيارية من الترويسة (null = يرى الكل).
-            return IsSuperAdmin ? _headerCompanyId : null;
+            if (IsSuperAdmin) return _headerCompanyId; // السوبر أدمن: شركة فعّالة اختيارية (null = يرى الكل).
+            
+            // المستخدم العادي: يجب أن يختار شركة من الشركات المسموحة له.
+            var allowed = AllowedCompanyIds;
+            if (_headerCompanyId.HasValue && allowed.Contains(_headerCompanyId.Value))
+                return _headerCompanyId.Value;
+            
+            // إذا لم يحدد شركة في الهيدر، أو اختار شركة لا يملكها، نعطيه أول شركة مسموحة افتراضياً.
+            return allowed.Any() ? allowed.First() : null;
         }
     }
 }

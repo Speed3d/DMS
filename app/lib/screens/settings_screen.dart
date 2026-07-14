@@ -28,7 +28,7 @@ class SettingsScreen extends ConsumerWidget {
                 msg.showSnackBar(const SnackBar(content: Text('تم تصفير قاعدة البيانات بنجاح. يرجى تسجيل الدخول مجدداً.')));
                 await ref.read(sessionProvider.notifier).logout();
                 if (!context.mounted) return;
-                Navigator.of(context).pushNamedAndRemoveUntil('/login', (r) => false);
+                Navigator.of(context).popUntil((route) => route.isFirst);
               } catch (e) {
                 msg.showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
               }

@@ -142,7 +142,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       position: RelativeRect.fromLTRB(26, 70, 26, 0),
       items: [
         const PopupMenuItem(value: 'password', child: Text('تغيير كلمة المرور')),
-        if (auth.isSuperAdmin) const PopupMenuItem(value: 'switch', child: Text('تبديل الشركة')),
+        if (auth.isSuperAdmin || auth.companyIds.length > 1) const PopupMenuItem(value: 'switch', child: Text('تبديل الشركة')),
         const PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج', style: TextStyle(color: Colors.red))),
       ],
     ).then((v) {

@@ -37,6 +37,25 @@ builder.Services.AddSingleton(new AppPaths(storageRoot, backupDir));
 
 // ----- المصادقة JWT -----
 var jwt = builder.Configuration.GetSection(JwtSettings.Section).Get<JwtSettings>() ?? new JwtSettings();
+
+// فشل سريع: في الإنتاج يجب أن تكون الأسرار مُهيّأة صحيحةً (بيئة/Key Vault) قبل التشغيل.
+if (!builder.Environment.IsDevelopment())
+{
+    var missing = new List<string>();
+    if (string.IsNullOrWhiteSpace(jwt.SigningKey) || Encoding.UTF8.GetByteCount(jwt.SigningKey) < 32)
+        missing.Add("Jwt:SigningKey (≥ 32 بايت لـ HMAC-SHA256)");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["QrSigning:PrivateKeyBase64"]))
+        missing.Add("QrSigning:PrivateKeyBase64");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["QrSigning:PublicKeyBase64"]))
+        missing.Add("QrSigning:PublicKeyBase64");
+    if (string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Default")))
+        missing.Add("ConnectionStrings:Default");
+    if (missing.Count > 0)
+        throw new InvalidOperationException(
+            "أسرار الإنتاج ناقصة أو غير صالحة: " + string.Join("، ", missing) +
+            ". هيّئها عبر متغيّرات البيئة أو Azure Key Vault قبل التشغيل.");
+}
+
 JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -65,15 +84,10 @@ builder.Services.AddCors(o => o.AddPolicy("all", p =>
     }
     else
     {
+        // الإنتاج: يُسمح فقط بالأصول المُهيّأة صراحةً في `AllowedOrigins` (مفصولة بـ ;).
+        // بلا تهيئة ⇒ لا أصل مسموح (fail-closed) — لا نعود لـ AllowAnyOrigin.
         var allowedOrigins = builder.Configuration["AllowedOrigins"]?.Split(';', StringSplitOptions.RemoveEmptyEntries) ?? [];
-        if (allowedOrigins.Length > 0)
-        {
-            p.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
-        }
-        else
-        {
-            p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod(); // Fallback if not configured
-        }
+        p.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
     }
 }));
 

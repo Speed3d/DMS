@@ -19,6 +19,9 @@ public interface ICurrentUser
 
     /// <summary>هل يملك المستخدم علم صلاحية الاعتماد (من الـ JWT)؟</summary>
     bool CanApprove { get; }
+
+    /// <summary>قائمة الشركات المسموح للمستخدم بالوصول إليها.</summary>
+    List<int> AllowedCompanyIds { get; }
 }
 
 /// <summary>تطبيق فارغ — لزمن التصميم (Migrations) وللعمليات الخلفية بلا مستخدم.</summary>
@@ -30,4 +33,5 @@ public sealed class SystemUser : ICurrentUser
     public int? ActiveCompanyId => null;
     public bool IsSuperAdmin => true; // النظام يرى الكل (لا فلترة)
     public bool CanApprove => true;
+    public List<int> AllowedCompanyIds => new();
 }

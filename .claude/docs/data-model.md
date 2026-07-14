@@ -10,9 +10,9 @@
 ### Template
 `TemplateId, CompanyId→Company, Name, HeaderImageKey?, FooterImageKey?, WatermarkImageKey?, WatermarkOpacity(0-100), Margin{Top,Right,Bottom,Left}, PageSize, FontFamily, IsActive, CreatedAt, UpdatedAt` — قالب بالصور (مفاتيح Blob).
 
-### User / UserCompany
-- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId?, CanApprove, IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt`.
-- `UserCompany`: `UserCompanyId, UserId, CompanyId` — شركات إضافية لرئيس الشركة (فريد على UserId+CompanyId).
+### User / UserCompany (تعدد الشركات — ADR-011)
+- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية**), CanApprove, IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
+- `UserCompany`: `UserCompanyId, UserId, CompanyId` — إسناد المستخدم لشركة (فريد على UserId+CompanyId). المستخدم قد يُربط بشركة أو عدّة شركات؛ الربط صلاحية للسوبر أدمن/رئيس الشركة، ولكل مستخدم غير سوبر أدمن شركة واحدة على الأقل.
 
 ### RefreshToken
 `RefreshTokenId, UserId, TokenHash (مجزّأ), ExpiresAt, CreatedAt, RevokedAt?`.
@@ -47,7 +47,7 @@
 - `AuditLog`: `LogId, UserId?, CompanyId?, Action, EntityType, EntityId?, Details?, Timestamp`.
 
 ## قواعد عرضية
-- **عزل الشركة:** فلتر عام على كل كيان له `CompanyId`.
+- **عزل الشركة:** Global Query Filter على كل كيان له `CompanyId`. لكيان `User` الفلتر يشمل الشركات المُسندة أيضاً: `CompanyId == cid || AssignedCompanies.Any(c => c.CompanyId == cid)` (fail-closed: بلا شركة قابلة للتحديد ⇒ لا يرى شيئاً).
 - **الحذف الناعم:** `OutgoingBook` و `ArchiveDoc` (مع DeletedBy/At) — مُدمج في الفلتر العام.
 - **المعادل بالدينار:** `AmountInIqd = USD ? Amount×Rate : Amount` (يُجمَّد لحظة الإنشاء/الاعتماد).
 - **enums** تُخزَّن كـ int؛ تُسلسَل كنصوص في الـ API (JsonStringEnumConverter).
@@ -57,4 +57,5 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-المطبّق حالياً: `InitialCreate`.
+السلسلة الحالية: `InitialCreate` → `AddBackup` → `AddArchiveBodyHtml` → `AddHeaderPhraseToOutgoingBook` → `AddSignatoryFields` → `MakeTemplateNullable` → `AddCompanyLogoImageKey`.
+> ملاحظة: تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).

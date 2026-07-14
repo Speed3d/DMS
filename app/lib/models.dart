@@ -8,7 +8,7 @@ class AuthResult {
   final String fullName;
   final String username;
   final String role;
-  final int? companyId;
+  final List<int> companyIds;
   final bool canApprove;
   final bool mustChangePassword;
 
@@ -20,7 +20,7 @@ class AuthResult {
     required this.fullName,
     required this.username,
     required this.role,
-    required this.companyId,
+    required this.companyIds,
     required this.canApprove,
     required this.mustChangePassword,
   });
@@ -35,7 +35,7 @@ class AuthResult {
         fullName: j['fullName'] ?? '',
         username: j['username'] ?? '',
         role: j['role'] ?? 'Reader',
-        companyId: j['companyId'],
+        companyIds: j['companyIds'] != null ? List<int>.from(j['companyIds']) : [],
         canApprove: j['canApprove'] ?? false,
         mustChangePassword: j['mustChangePassword'] ?? false,
       );
@@ -48,7 +48,7 @@ class AuthResult {
         'fullName': fullName,
         'username': username,
         'role': role,
-        'companyId': companyId,
+        'companyIds': companyIds,
         'canApprove': canApprove,
         'mustChangePassword': mustChangePassword,
       };
@@ -178,16 +178,31 @@ class UserModel {
   final String fullName;
   final String username;
   final String role;
-  final int? companyId;
+  final List<int> companyIds;
   final bool canApprove;
   final bool isActive;
   final bool mustChangePassword;
-  UserModel(this.userId, this.fullName, this.username, this.role, this.companyId,
-      this.canApprove, this.isActive, this.mustChangePassword);
+
+  UserModel({
+    required this.userId,
+    required this.fullName,
+    required this.username,
+    required this.role,
+    required this.companyIds,
+    required this.canApprove,
+    required this.isActive,
+    required this.mustChangePassword,
+  });
+
   factory UserModel.fromJson(Map<String, dynamic> j) => UserModel(
-        j['userId'], j['fullName'] ?? '', j['username'] ?? '', j['role'] ?? 'Reader',
-        j['companyId'], j['canApprove'] ?? false, j['isActive'] ?? true,
-        j['mustChangePassword'] ?? false,
+        userId: j['userId'],
+        fullName: j['fullName'] ?? '',
+        username: j['username'] ?? '',
+        role: j['role'] ?? 'Reader',
+        companyIds: j['companyIds'] != null ? List<int>.from(j['companyIds']) : [],
+        canApprove: j['canApprove'] ?? false,
+        isActive: j['isActive'] ?? true,
+        mustChangePassword: j['mustChangePassword'] ?? false,
       );
 }
 

@@ -12,30 +12,92 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// عميل الـ API: يرفق الـ JWT وترويسة الشركة الفعّالة، ويحوّل الأخطاء لرسائل عربية.
+/// عميل الـ API: يرفق الـ JWT وترويسة الشركة الفعّالة، يجدّد التوكن تلقائياً عند 401،
+/// ويحوّل الأخطاء لرسائل عربية.
 class ApiClient {
   final Dio _dio;
   final String? Function() _token;
   final int? Function() _companyId;
+  final String? Function()? _refreshToken;
+  final Future<void> Function(AuthResult)? _onRefreshed;
+  final Future<void> Function()? _onRefreshFailed;
+
+  /// طلب تجديد واحد مشترك يمنع تكرار التجديد عند تزامن عدة طلبات فاشلة (401).
+  Future<String?>? _refreshing;
 
   ApiClient({
     required String baseUrl,
     required String? Function() token,
     required int? Function() companyId,
+    String? Function()? refreshToken,
+    Future<void> Function(AuthResult)? onRefreshed,
+    Future<void> Function()? onRefreshFailed,
   })  : _token = token,
         _companyId = companyId,
+        _refreshToken = refreshToken,
+        _onRefreshed = onRefreshed,
+        _onRefreshFailed = onRefreshFailed,
         _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 30),
         )) {
-    _dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
-      final t = _token();
-      if (t != null) options.headers['Authorization'] = 'Bearer $t';
-      final c = _companyId();
-      if (c != null) options.headers['X-Company-Id'] = '$c';
-      handler.next(options);
-    }));
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        final t = _token();
+        if (t != null) options.headers['Authorization'] = 'Bearer $t';
+        final c = _companyId();
+        if (c != null) options.headers['X-Company-Id'] = '$c';
+        handler.next(options);
+      },
+      onError: (e, handler) async {
+        final path = e.requestOptions.path;
+        final isAuthCall = path.contains('/auth/login') || path.contains('/auth/refresh');
+        final alreadyRetried = e.requestOptions.extra['__retried'] == true;
+
+        // 401 على طلب مصادَق (غير login/refresh) ⇒ حاول تجديد التوكن مرة واحدة ثم أعد الطلب.
+        if (e.response?.statusCode == 401 && !isAuthCall && !alreadyRetried && _refreshToken != null) {
+          final newToken = await _refreshAccessToken();
+          if (newToken != null) {
+            try {
+              final opts = e.requestOptions;
+              opts.extra['__retried'] = true;
+              opts.headers['Authorization'] = 'Bearer $newToken';
+              final res = await _dio.fetch(opts);
+              return handler.resolve(res);
+            } on DioException catch (retryErr) {
+              return handler.next(retryErr);
+            }
+          } else {
+            // فشل التجديد ⇒ الجلسة منتهية فعلاً.
+            final onFail = _onRefreshFailed;
+            if (onFail != null) await onFail();
+          }
+        }
+        handler.next(e);
+      },
+    ));
+  }
+
+  /// يجدّد التوكن عبر refresh token المخزّن (طلب واحد مشترك عند التزامن). يعيد الـ access الجديد أو null.
+  Future<String?> _refreshAccessToken() {
+    return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
+  }
+
+  Future<String?> _doRefresh() async {
+    final rt = _refreshToken?.call();
+    if (rt == null || rt.isEmpty) return null;
+    try {
+      // Dio منفصل بلا interceptors لتفادي حلقة التجديد.
+      final bare = Dio(BaseOptions(baseUrl: _dio.options.baseUrl));
+      final res = await bare.post('/auth/refresh', data: {'refreshToken': rt});
+      final auth = AuthResult.fromJson(res.data);
+      final onOk = _onRefreshed;
+      if (onOk != null) await onOk(auth);
+      return auth.accessToken;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ---------- المصادقة ----------
@@ -58,6 +120,8 @@ class ApiClient {
       Company.fromJson(await _put('/companies/$id', {'name': name, 'prefix': prefix, 'isActive': isActive, 'defaultSignatoryName': defaultSignatoryName, 'defaultSignatoryTitle': defaultSignatoryTitle}));
 
   Future<Company> getCompany(int id) async => Company.fromJson(await _get('/companies/$id'));
+  
+  Future<void> deleteCompany(int id) => _delete('/companies/$id');
 
   Future<void> resetDb() async => _post('/system/reset-db', {});
 

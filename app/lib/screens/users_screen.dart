@@ -202,8 +202,11 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                           separatorBuilder: (context, index) => Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.5)),
                           itemBuilder: (context, index) {
                             final u = users[index];
-                            final compName = u.companyId != null ? (data.companies[u.companyId] ?? 'غير معروف') : 'كافة الشركات';
-                            final logoUrl = u.companyId != null ? '$kApiBaseUrl/companies/${u.companyId}/logo' : null;
+                            final primaryCid = u.companyIds.isNotEmpty ? u.companyIds.first : null;
+                            final compName = u.companyIds.isEmpty
+                                ? (u.role == 'SuperAdmin' ? 'كافة الشركات' : 'لا يوجد')
+                                : u.companyIds.map((cid) => data.companies[cid] ?? 'غير معروف').join('، ');
+                            final logoUrl = primaryCid != null ? '$kApiBaseUrl/companies/$primaryCid/logo' : null;
                             final roleColor = _getRoleColor(u.role);
                             
                             return Padding(
@@ -444,15 +447,15 @@ class _DelegationsTabState extends ConsumerState<_DelegationsTab> {
 }
 
 // ----------------- نماذج الإدخال (شاشات كاملة) -----------------
-class _UserFormPage extends StatefulWidget {
+class _UserFormPage extends ConsumerStatefulWidget {
   final List<String> roles;
   final UserModel? existing;
   const _UserFormPage({required this.roles, this.existing});
   @override
-  State<_UserFormPage> createState() => _UserFormPageState();
+  ConsumerState<_UserFormPage> createState() => _UserFormPageState();
 }
 
-class _UserFormPageState extends State<_UserFormPage> {
+class _UserFormPageState extends ConsumerState<_UserFormPage> {
   final _fullName = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
@@ -460,12 +463,15 @@ class _UserFormPageState extends State<_UserFormPage> {
   bool _canApprove = false;
   bool _isActive = true;
   String? _error;
+  List<int> _selectedCompanyIds = [];
+  late Future<List<Company>> _companiesFuture;
 
   bool get _isEdit => widget.existing != null;
 
   @override
   void initState() {
     super.initState();
+    _companiesFuture = ref.read(apiClientProvider).companies();
     final e = widget.existing;
     if (e != null) {
       _fullName.text = e.fullName;
@@ -473,6 +479,7 @@ class _UserFormPageState extends State<_UserFormPage> {
       _role = widget.roles.contains(e.role) ? e.role : null;
       _canApprove = e.canApprove;
       _isActive = e.isActive;
+      _selectedCompanyIds = List.from(e.companyIds);
     } else if (widget.roles.isNotEmpty) {
       _role = widget.roles.last; // الأدنى افتراضاً
     }
@@ -507,6 +514,7 @@ class _UserFormPageState extends State<_UserFormPage> {
       'username': _username.text.trim(),
       'password': _password.text,
       'role': _role,
+      'companyIds': _selectedCompanyIds,
       'canApprove': _canApprove,
       'isActive': _isActive,
     });
@@ -540,6 +548,44 @@ class _UserFormPageState extends State<_UserFormPage> {
                 items: widget.roles.map((r) => DropdownMenuItem(value: r, child: Text(_roleLabels[r] ?? r))).toList(),
                 onChanged: (v) => setState(() => _role = v),
               ),
+              
+              const SizedBox(height: 24),
+              const Text('صلاحيات الوصول للشركات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).dividerColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: FutureBuilder<List<Company>>(
+                  future: _companiesFuture,
+                  builder: (context, snap) {
+                    if (snap.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+                    final companies = snap.data ?? [];
+                    if (companies.isEmpty) return const Padding(padding: EdgeInsets.all(16), child: Text('لا توجد شركات مسموحة'));
+                    return Column(
+                      children: companies.map((c) {
+                        return CheckboxListTile(
+                          title: Text(c.name),
+                          subtitle: Text('الرمز: ${c.prefix}'),
+                          value: _selectedCompanyIds.contains(c.companyId),
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                _selectedCompanyIds.add(c.companyId);
+                              } else {
+                                _selectedCompanyIds.remove(c.companyId);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+
               SwitchListTile(
                 value: _canApprove, contentPadding: EdgeInsets.zero,
                 title: const Text('صلاحية الاعتماد'),

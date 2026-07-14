@@ -9,8 +9,8 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 public sealed record AuthResponse(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
     int UserId, string FullName, string Username, UserRole Role,
-    int? CompanyId, bool CanApprove, bool MustChangePassword);
-public sealed record MeResponse(int UserId, string FullName, string Username, UserRole Role, int? CompanyId, bool CanApprove);
+    List<int> CompanyIds, bool CanApprove, bool MustChangePassword);
+public sealed record MeResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -38,10 +38,10 @@ public sealed record ExchangeRateRequest(Currency Currency, decimal Rate, DateTi
 public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency, decimal Rate, DateTime EffectiveDate);
 
 // ----------------- Users / Delegations -----------------
-public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, int? CompanyId, bool CanApprove);
-public sealed record UpdateUserRequest(string FullName, UserRole Role, bool IsActive, bool CanApprove);
+public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove);
+public sealed record UpdateUserRequest(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove);
 public sealed record ResetPasswordRequest(string NewPassword);
-public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, int? CompanyId, bool CanApprove, bool IsActive, bool MustChangePassword);
+public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, bool IsActive, bool MustChangePassword);
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);

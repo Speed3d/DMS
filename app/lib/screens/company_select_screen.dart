@@ -67,6 +67,20 @@ class _State extends ConsumerState<CompanySelectScreen> {
             
             final companies = snap.data ?? [];
             
+            if (companies.isEmpty) {
+              // نظام فارغ: ادخل بلا شركة (بلا معرّف زائف) ليُنشئ السوبر أدمن أول شركة من الإعدادات.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(sessionProvider.notifier).enterWithoutCompany();
+              });
+              return const Center(
+                child: Text(
+                  'لا توجد شركات بعد — يمكنك إنشاء أول شركة من الإعدادات.',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                  textAlign: TextAlign.center,
+                ),
+              );
+            }
+            
             return Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
@@ -88,20 +102,7 @@ class _State extends ConsumerState<CompanySelectScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 48),
-                      
-                      if (companies.isEmpty)
-                        const CustomCard(
-                          padding: EdgeInsets.all(32),
-                          child: Center(
-                            child: Text(
-                              'لا توجد شركات مسجلة.\nيُرجى إنشاء شركة من الإعدادات أولاً.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.navyDeep),
-                            ),
-                          ),
-                        )
-                      else
-                        ListView.separated(
+                      ListView.separated(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: companies.length,

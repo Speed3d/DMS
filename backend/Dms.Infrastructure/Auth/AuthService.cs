@@ -8,7 +8,7 @@ namespace Dms.Infrastructure.Auth;
 public sealed record AuthResult(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
     int UserId, string FullName, string Username, UserRole Role,
-    int? CompanyId, bool CanApprove, bool MustChangePassword);
+    List<int> CompanyIds, bool CanApprove, bool MustChangePassword);
 
 public interface IAuthService
 {
@@ -29,7 +29,7 @@ public sealed class AuthService(
 
     public async Task<AuthResult> LoginAsync(string username, string password, CancellationToken ct = default)
     {
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
+        var user = await db.Users.Include(u => u.AssignedCompanies).FirstOrDefaultAsync(u => u.Username == username, ct);
         if (user is null || !user.IsActive)
             throw new ValidationException("اسم المستخدم أو كلمة المرور غير صحيحة.");
 
@@ -65,7 +65,7 @@ public sealed class AuthService(
         if (stored is null || !stored.IsActive)
             throw new ForbiddenException("جلسة منتهية. سجّل الدخول مجدداً.");
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == stored.UserId, ct);
+        var user = await db.Users.Include(u => u.AssignedCompanies).FirstOrDefaultAsync(u => u.UserId == stored.UserId, ct);
         if (user is null || !user.IsActive)
             throw new ForbiddenException("الحساب غير متاح.");
 
@@ -114,8 +114,9 @@ public sealed class AuthService(
         });
         // SaveChanges يتم في المستدعي
         await Task.CompletedTask;
+        var companyIds = user.AssignedCompanies.Select(c => c.CompanyId).ToList();
         return new AuthResult(pair.AccessToken, pair.AccessExpires, pair.RefreshToken,
-            user.UserId, user.FullName, user.Username, user.Role, user.CompanyId,
+            user.UserId, user.FullName, user.Username, user.Role, companyIds,
             user.CanApprove, user.MustChangePassword);
     }
 }

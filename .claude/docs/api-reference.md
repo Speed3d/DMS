@@ -1,21 +1,24 @@
 # مرجع الـ API
 
 كل المسارات تحت `/api`. الاستجابات JSON (enums كنصوص). المصادقة: `Authorization: Bearer <JWT>`.
-السوبر أدمن يحدّد الشركة الفعّالة بترويسة `X-Company-Id: <id>`.
+الشركة الفعّالة تُحدَّد بترويسة `X-Company-Id: <id>`: السوبر أدمن (اختياري؛ بلا ترويسة = يرى الكل)، والمستخدم متعدد الشركات (ضمن شركاته المسموحة `companyIds`؛ بلا ترويسة = أول شركة).
 
 ## المصادقة — `/api/auth`
 | الطريقة | المسار | الوصول | الوصف |
 |---|---|---|---|
-| POST | `/login` | عام | `{username,password}` → توكنات + بيانات المستخدم |
-| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) |
+| POST | `/login` | عام | `{username,password}` → توكنات + بيانات المستخدم (تتضمّن `companyIds` قائمة) |
+| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) + `companyIds` محدّثة |
 | POST | `/logout` | مصادَق | إبطال refresh token |
-| GET | `/me` | مصادَق | بيانات المستخدم الحالي |
+| GET | `/me` | مصادَق | بيانات المستخدم الحالي (`companyIds` = الشركات المسموحة) |
 | POST | `/change-password` | مصادَق | `{currentPassword,newPassword}` |
 
 ## الشركات — `/api/companies`
-| GET `/` · GET `/{id}` | مصادَق | قائمة/عنصر (مفلتر بالشركة) |
+| GET `/` · GET `/{id}` | مصادَق | قائمة/عنصر (يقتصر على شركات المستخدم المسموحة `companyIds`؛ السوبر أدمن يرى الكل) |
 | POST `/` | **SuperAdmin** | إنشاء شركة |
-| PUT `/{id}` | SuperAdmin/President | تعديل |
+| PUT `/{id}` | SuperAdmin/President | تعديل (التعطيل عبر `isActive=false`) |
+| POST `/{id}/logo` | SuperAdmin/President/Manager | رفع الشعار (PNG/JPG ≤ 2MB) |
+| GET `/{id}/logo` | عام | جلب الشعار |
+| DELETE `/{id}` | **SuperAdmin** | حذف جذري **محروس**: يُمنع (409) مع وجود كتب معتمدة أو أرشيف — عطّل الشركة بدل حذفها |
 
 ## القوالب — `/api/templates`
 | GET `/` · GET `/{id}` | مصادَق |
@@ -29,7 +32,8 @@
 - `/api/exchange-rates` — GET `/` · GET `/latest?currency=USD` · POST (Manager+).
 
 ## المستخدمون والتفويض
-- `/api/users` (SuperAdmin/President/Manager): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية مفروضة في الخدمة.
+- `/api/users` (SuperAdmin/President/Manager): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية والعزل مفروضان في الخدمة.
+  - المدخلات تحمل `companyIds` (قائمة). **ربط/تعديل الشركات حصراً للسوبر أدمن ورئيس الشركة** (رئيس الشركة ضمن شركاته)؛ المدير/الموظف لا يغيّران الإسناد. غير السوبر أدمن يلزمه شركة واحدة على الأقل. الاستجابة تُعيد `companyIds`.
 - `/api/delegations` (Manager+): GET، POST، DELETE `/{id}`.
 
 ## الصادر — `/api/outgoing`

@@ -135,7 +135,9 @@ class _State extends ConsumerState<TemplateEditScreen> {
         }
       }
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحذف: ${e.message}'), backgroundColor: Colors.red));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحذف غير متوقع: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -12,18 +12,24 @@ class SessionState {
   final AuthResult? auth;
   final int? activeCompanyId;
   final bool loaded;
-  const SessionState({this.auth, this.activeCompanyId, this.loaded = false});
+
+  /// دخل النظام بلا شركة فعّالة (نظام فارغ — للسوبر أدمن لإنشاء أول شركة).
+  /// يتيح تجاوز شاشة اختيار الشركة دون إرسال معرّف شركة زائف.
+  final bool bypassCompanySelection;
+
+  const SessionState({this.auth, this.activeCompanyId, this.loaded = false, this.bypassCompanySelection = false});
 
   bool get isLoggedIn => auth != null;
-  int? get effectiveCompanyId => activeCompanyId ?? auth?.companyId;
+  int? get effectiveCompanyId => activeCompanyId ?? (auth?.companyIds.isNotEmpty == true ? auth!.companyIds.first : null);
   bool get needsCompanySelection =>
-      auth != null && auth!.isSuperAdmin && activeCompanyId == null;
+      auth != null && (auth!.companyIds.length > 1 || auth!.isSuperAdmin) && activeCompanyId == null && !bypassCompanySelection;
 
-  SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool clearAuth = false, bool clearCompany = false}) =>
+  SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool? bypassCompanySelection, bool clearAuth = false, bool clearCompany = false}) =>
       SessionState(
         auth: clearAuth ? null : (auth ?? this.auth),
         activeCompanyId: clearCompany ? null : (activeCompanyId ?? this.activeCompanyId),
         loaded: loaded ?? this.loaded,
+        bypassCompanySelection: bypassCompanySelection ?? this.bypassCompanySelection,
       );
 }
 
@@ -55,8 +61,8 @@ class SessionNotifier extends Notifier<SessionState> {
   Future<void> setAuth(AuthResult auth) async {
     const secureStorage = FlutterSecureStorage();
     await secureStorage.write(key: _kAuth, value: jsonEncode(auth.toJson()));
-    // المستخدم العادي: شركته من التوكن. السوبر أدمن: يختار لاحقاً.
-    final cid = auth.companyId;
+    // إذا لم يكن لديه شركات، cid = null
+    final cid = auth.companyIds.isNotEmpty ? auth.companyIds.first : null;
     if (cid != null) {
       await secureStorage.write(key: _kCompany, value: cid.toString());
     } else {
@@ -70,10 +76,23 @@ class SessionNotifier extends Notifier<SessionState> {
     await prefs.remove(_kCompany);
   }
 
+  /// تحديث الجلسة بعد تجديد التوكن تلقائياً — يحفظ التوكن الجديد (وقائمة الشركات المحدّثة)
+  /// مع **الإبقاء على الشركة الفعّالة المختارة** (لا يُعاد ضبطها كما في setAuth).
+  Future<void> refreshAuth(AuthResult auth) async {
+    const secureStorage = FlutterSecureStorage();
+    await secureStorage.write(key: _kAuth, value: jsonEncode(auth.toJson()));
+    state = state.copyWith(auth: auth);
+  }
+
   Future<void> setActiveCompany(int companyId) async {
     const secureStorage = FlutterSecureStorage();
     await secureStorage.write(key: _kCompany, value: companyId.toString());
-    state = state.copyWith(activeCompanyId: companyId);
+    state = state.copyWith(activeCompanyId: companyId, bypassCompanySelection: false);
+  }
+
+  /// دخول بلا شركة (نظام فارغ) — يتجاوز شاشة الاختيار ليتمكّن السوبر أدمن من إنشاء أول شركة.
+  void enterWithoutCompany() {
+    state = state.copyWith(bypassCompanySelection: true);
   }
 
   Future<void> clearMustChange() async {
@@ -107,4 +126,7 @@ final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(
       baseUrl: kApiBaseUrl,
       token: () => ref.read(sessionProvider).auth?.accessToken,
       companyId: () => ref.read(sessionProvider).effectiveCompanyId,
+      refreshToken: () => ref.read(sessionProvider).auth?.refreshToken,
+      onRefreshed: (auth) => ref.read(sessionProvider.notifier).refreshAuth(auth),
+      onRefreshFailed: () => ref.read(sessionProvider.notifier).logout(),
     ));

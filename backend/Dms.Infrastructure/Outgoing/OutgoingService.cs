@@ -138,31 +138,53 @@ public sealed class OutgoingService(
         var (company, template, entity) = await LoadRefsAsync(book, ct);
 
         // وحدة قابلة لإعادة المحاولة (متوافقة مع EnableRetryOnFailure) تضمّ المعاملة كاملة.
+        // كتابة التخزين (PDF) ليست جزءاً من المعاملة؛ عند إعادة المحاولة نحذف PDF المحاولة السابقة
+        // لتفادي ملفات يتيمة (شائع مع Azure SQL / بدء LocalDB البارد).
         var strategy = db.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+        string? pendingPdfKey = null;
+        try
         {
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await strategy.ExecuteAsync(async () =>
+            {
+                if (pendingPdfKey is not null)
+                {
+                    try { await storage.DeleteAsync(pendingPdfKey, ct); } catch { /* تجاهل */ }
+                    pendingPdfKey = null;
+                }
 
-            var year = DateTime.UtcNow.Year;
-            var serial = await numbering.NextSerialAsync(book.CompanyId, year, CounterType, ct);
+                await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-            book.Year = year;
-            book.SerialNo = serial;
-            book.Number = $"{company.Prefix}-{year}-{serial:D5}";
-            book.Status = BookStatus.Final;
-            book.ApprovedByUserId = current.UserId;
-            book.ApprovedAt = DateTime.UtcNow;
-            book.AmountInIqd = FinancialCalculator.ComputeIqd(book.Amount, book.Currency, book.ExchangeRate);
+                var year = DateTime.UtcNow.Year;
+                var serial = await numbering.NextSerialAsync(book.CompanyId, year, CounterType, ct);
 
-            var render = await renderer.RenderPdfAsync(book, template, entity, company, false, ct);
-            book.QrContent = render.QrContent;
-            book.QrSignature = render.QrSignature;
-            book.GeneratedPdfBlobKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
+                book.Year = year;
+                book.SerialNo = serial;
+                book.Number = $"{company.Prefix}-{year}-{serial:D5}";
+                book.Status = BookStatus.Final;
+                book.ApprovedByUserId = current.UserId;
+                book.ApprovedAt = DateTime.UtcNow;
+                book.AmountInIqd = FinancialCalculator.ComputeIqd(book.Amount, book.Currency, book.ExchangeRate);
 
-            audit.Add("Approve", nameof(OutgoingBook), id.ToString(), $"اعتماد ورقم {book.Number}", book.CompanyId);
-            await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-        });
+                var render = await renderer.RenderPdfAsync(book, template, entity, company, false, ct);
+                book.QrContent = render.QrContent;
+                book.QrSignature = render.QrSignature;
+                pendingPdfKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
+                book.GeneratedPdfBlobKey = pendingPdfKey;
+
+                audit.Add("Approve", nameof(OutgoingBook), id.ToString(), $"اعتماد ورقم {book.Number}", book.CompanyId);
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            });
+        }
+        catch
+        {
+            // فشل نهائي (بعد استنفاد المحاولات): الـ DB لم يُثبَّت ⇒ احذف الـ PDF اليتيم.
+            if (pendingPdfKey is not null)
+            {
+                try { await storage.DeleteAsync(pendingPdfKey, ct); } catch { /* تجاهل */ }
+            }
+            throw;
+        }
     }
 
     public async Task EditAfterApprovalAsync(int id, EditApprovedInput input, CancellationToken ct = default)
@@ -208,12 +230,15 @@ public sealed class OutgoingService(
         book.AmountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
         book.UpdatedAt = DateTime.UtcNow;
 
-        // إعادة توليد PDF/QR
+        // إعادة توليد PDF/QR — يُحفظ بمفتاح جديد (فريد) دون المساس بالـ PDF القديم،
+        // ثم يُنظَّف القديم بعد نجاح الحفظ (أو الجديد عند فشل التزامن) لتفادي الملفات اليتيمة.
         var (company, template, entity) = await LoadRefsAsync(book, ct);
         var render = await renderer.RenderPdfAsync(book, template, entity, company, false, ct);
         book.QrContent = render.QrContent;
         book.QrSignature = render.QrSignature;
-        book.GeneratedPdfBlobKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
+        var oldPdfKey = book.GeneratedPdfBlobKey;
+        var newPdfKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
+        book.GeneratedPdfBlobKey = newPdfKey;
 
         audit.Add("EditApproved", nameof(OutgoingBook), id.ToString(),
             $"تعديل بعد الاعتماد (إصدار {lastVersion + 1})", book.CompanyId);
@@ -224,7 +249,15 @@ public sealed class OutgoingService(
         }
         catch (DbUpdateConcurrencyException)
         {
+            // الـ DB لم يُحفظ ⇒ الـ PDF الجديد يتيم؛ احذفه وأبقِ القديم مرجعاً صحيحاً.
+            try { await storage.DeleteAsync(newPdfKey, ct); } catch { /* تجاهل فشل حذف */ }
             throw new ConflictException("تم تعديل الكتاب من مستخدم آخر — أعد التحميل وحاول مجدداً.");
+        }
+
+        // نجاح: احذف الـ PDF القديم (لم يعُد مرجعاً في الـ DB).
+        if (!string.IsNullOrEmpty(oldPdfKey))
+        {
+            try { await storage.DeleteAsync(oldPdfKey, ct); } catch { /* تجاهل فشل حذف */ }
         }
     }
 

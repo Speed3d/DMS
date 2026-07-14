@@ -6,6 +6,9 @@ namespace Dms.Infrastructure.Persistence;
 
 public class AppDbContext : DbContext
 {
+    /// <summary>حارس عزل: مستخدم مصادَق بلا شركة قابلة للتحديد ⇒ لا يرى أي صفّ (fail-closed).</summary>
+    private const int NoCompanyId = -1;
+
     private readonly bool _filterByCompany;
     private readonly int _companyId;
 
@@ -21,7 +24,7 @@ public class AppDbContext : DbContext
         else
         {
             _filterByCompany = true;
-            _companyId = currentUser.ActiveCompanyId ?? -1; // -1: لا يرى شيئاً إن لم تُحدَّد شركته
+            _companyId = currentUser.ActiveCompanyId ?? NoCompanyId; // لا يرى شيئاً إن لم تُحدَّد شركته
         }
     }
 
@@ -72,7 +75,11 @@ public class AppDbContext : DbContext
             e.Property(x => x.Username).IsRequired().HasMaxLength(100);
             e.Property(x => x.PasswordHash).IsRequired().HasMaxLength(200);
             e.HasIndex(x => x.Username).IsUnique();
-            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+            // العزل الصفّي: المستخدم يُرى ضمن شركته الرئيسية أو أي شركة مُسندة له.
+            // (يُتجاوَز عمداً في تسجيل الدخول/فحص التفرّد عبر IgnoreQueryFilters.)
+            e.HasQueryFilter(x => !_filterByCompany
+                || x.CompanyId == _companyId
+                || x.AssignedCompanies.Any(c => c.CompanyId == _companyId));
         });
 
         b.Entity<UserCompany>(e =>

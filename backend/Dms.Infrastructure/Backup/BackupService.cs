@@ -50,7 +50,7 @@ public sealed class BackupService(
             cmd.CommandTimeout = 180;
             await cmd.ExecuteNonQueryAsync(ct);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // بعض إصدارات LocalDB لا تدعم COMPRESSION — أعد المحاولة بدونها.
             try

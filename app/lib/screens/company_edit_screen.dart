@@ -62,6 +62,7 @@ class _State extends ConsumerState<CompanyEditScreen> {
       await ref.read(apiClientProvider).uploadCompanyLogo(widget.companyId, f.bytes!, f.name);
       await _load();
       messenger.showSnackBar(const SnackBar(content: Text('تم رفع الشعار بنجاح')));
+      if (mounted) setState(() => _busy = false);
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
       setState(() => _busy = false);
@@ -82,7 +83,44 @@ class _State extends ConsumerState<CompanyEditScreen> {
         defaultSignatoryTitle: _sigTitle.text.trim(),
       );
       messenger.showSnackBar(const SnackBar(content: Text('تم الحفظ بنجاح')));
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        setState(() => _busy = false);
+        Navigator.pop(context);
+      }
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+      setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد حذف الشركة', style: TextStyle(color: Colors.red)),
+        content: const Text(
+            'سيُحذف كيان الشركة وإعداداتها (القوالب والجهات والأنواع وأسعار الصرف والمسودات).\n\n'
+            'ملاحظة: لا يمكن حذف شركة لها كتب صادرة معتمدة أو أرشيف — في هذه الحالة استخدم «تعطيل الشركة» بدل الحذف.\n\n'
+            'هذا الإجراء لا يمكن التراجع عنه. هل أنت متأكد؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('نعم، احذف نهائياً'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      await ref.read(apiClientProvider).deleteCompany(widget.companyId);
+      messenger.showSnackBar(const SnackBar(content: Text('تم حذف الشركة بالكامل بنجاح')));
+      navigator.pop(); // إغلاق شاشة التعديل
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
       setState(() => _busy = false);
@@ -169,8 +207,14 @@ class _State extends ConsumerState<CompanyEditScreen> {
                     ),
                     const SizedBox(height: 32),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
+                        if (widget.companyId > 0)
+                          TextButton.icon(
+                            onPressed: _busy ? null : _delete,
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            label: const Text('حذف الشركة', style: TextStyle(color: Colors.red)),
+                          ),
+                        const Spacer(),
                         TextButton(
                           onPressed: _busy ? null : () => Navigator.pop(context),
                           child: const Text('إلغاء'),

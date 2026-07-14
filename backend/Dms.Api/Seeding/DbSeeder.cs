@@ -36,17 +36,7 @@ public static class DbSeeder
             logger.LogWarning("تم إنشاء حساب SuperAdmin الأول: '{User}' بكلمة مرور مؤقتة — غيّرها فوراً.", username);
         }
 
-        if (!await db.Companies.IgnoreQueryFilters().AnyAsync())
-        {
-            db.Companies.Add(new Company
-            {
-                Name = "أرض العرين للتجارة والمقاولات",
-                Prefix = "DEN",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-            logger.LogInformation("تم إنشاء الشركة الافتراضية 'أرض العرين للتجارة والمقاولات'.");
-        }
+        // تم إزالة بذر الشركة الافتراضية بناءً على طلب المستخدم ليكون النظام فارغاً تماماً
 
         await db.SaveChangesAsync();
     }
