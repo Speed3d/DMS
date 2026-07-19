@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
+import 'package:printing/printing.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -49,11 +51,8 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     _note = TextEditingController();
     _showFinancials = b.amount != null;
     
-    // إعداد محرر النصوص بمحتوى الكتاب القديم
-    _quillController = quill.QuillController(
-      document: quill.Document()..insert(0, '${b.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), '')}\n'),
-      selection: const TextSelection.collapsed(offset: 0),
-    );
+    // إعداد المحرر: من Quill Delta (تنسيق كامل) إن وُجد، وإلا نص خام من HTML (مسودات قديمة).
+    _quillController = _buildController(b);
 
     _date = b.date;
     _entityId = b.entityId;
@@ -75,6 +74,22 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     super.dispose();
   }
 
+  /// يبني محرّر Quill من Delta المخزّن (تنسيق كامل)، أو من نص خام (مسودات قديمة بلا Delta).
+  quill.QuillController _buildController(OutgoingDetail b) {
+    if (b.bodyJson != null && b.bodyJson!.isNotEmpty) {
+      try {
+        final doc = quill.Document.fromJson(jsonDecode(b.bodyJson!) as List);
+        return quill.QuillController(document: doc, selection: const TextSelection.collapsed(offset: 0));
+      } catch (_) {
+        // Delta تالف ⇒ نعود للنص الخام أدناه
+      }
+    }
+    return quill.QuillController(
+      document: quill.Document()..insert(0, '${b.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), '')}\n'),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+
   Future<_Refs> _loadRefs() async {
     final api = ref.read(apiClientProvider);
     final entities = await api.entities();
@@ -94,43 +109,78 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     return converter.convert();
   }
 
-  Future<void> _save() async {
-    if (_subject.text.trim().isEmpty) {
-      setState(() => _error = 'الموضوع مطلوب.');
-      return;
-    }
-    if (_quillController.document.isEmpty()) {
-      setState(() => _error = 'نص الكتاب مطلوب.');
-      return;
-    }
-    
+  /// يبني حمولة الكتاب مع التحقق (يعرض الخطأ ويعيد null عند الفشل).
+  Map<String, dynamic>? _buildPayload() {
+    if (_subject.text.trim().isEmpty) { setState(() => _error = 'الموضوع مطلوب.'); return null; }
+    if (_quillController.document.isEmpty()) { setState(() => _error = 'نص الكتاب مطلوب.'); return null; }
+
     num? amount;
     num? rate;
     if (_amount.text.trim().isNotEmpty) {
       amount = num.tryParse(_amount.text.trim());
-      if (amount == null) { setState(() => _error = 'المبلغ غير صالح.'); return; }
-      if (_currency == null) { setState(() => _error = 'اختر العملة.'); return; }
+      if (amount == null) { setState(() => _error = 'المبلغ غير صالح.'); return null; }
+      if (_currency == null) { setState(() => _error = 'اختر العملة.'); return null; }
       if (_currency == 'USD') {
         rate = num.tryParse(_rate.text.trim());
-        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي للدولار.'); return; }
+        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي للدولار.'); return null; }
       }
     }
-    
+
+    return {
+      'entityId': _entityId,
+      'templateId': _templateId,
+      'date': _date.toIso8601String(),
+      'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
+      'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
+      'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
+      'subject': _subject.text.trim(),
+      'bodyHtml': _getHtmlFromBody(),
+      'bodyJson': jsonEncode(_quillController.document.toDelta().toJson()),
+      'amount': amount,
+      'currency': amount == null ? null : _currency,
+      'exchangeRate': rate,
+    };
+  }
+
+  /// معاينة داخل البرنامج قبل الحفظ (تُرسِل الحمولة الحالية غير المحفوظة).
+  Future<void> _preview() async {
+    final payload = _buildPayload();
+    if (payload == null) return;
     setState(() { _busy = true; _error = null; });
     try {
-      await ref.read(apiClientProvider).updateOutgoing(widget.book.outgoingId, {
-        'entityId': _entityId,
-        'templateId': _templateId,
-        'date': _date.toIso8601String(),
-        'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
-        'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
-        'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
-        'subject': _subject.text.trim(),
-        'bodyHtml': _getHtmlFromBody(),
-        'amount': amount,
-        'currency': amount == null ? null : _currency,
-        'exchangeRate': rate,
-      });
+      final bytes = await ref.read(apiClientProvider).previewOutgoing(payload);
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: PdfPreview(
+              build: (format) => bytes,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+              pdfFileName: 'preview-${widget.book.outgoingId}.pdf',
+            ),
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final payload = _buildPayload();
+    if (payload == null) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      await ref.read(apiClientProvider).updateOutgoing(widget.book.outgoingId, payload);
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -348,6 +398,18 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                                         showSubscript: false,
                                         showSuperscript: false,
                                         showListCheck: false,
+                                        buttonOptions: quill.QuillSimpleToolbarButtonOptions(
+                                          fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
+                                            renderFontFamilies: false,
+                                            items: {
+                                              'Amiri': 'Amiri',
+                                              'Cairo': 'Cairo',
+                                              'Arial': 'Arial',
+                                              'Times New Roman': 'Times New Roman',
+                                              'مسح': 'Clear',
+                                            },
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -374,26 +436,48 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                           ),
                           const SizedBox(height: 24),
                           
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: FilledButton.icon(
-                              onPressed: _busy ? null : _save,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.warn,
-                                foregroundColor: Colors.black,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                elevation: 8,
-                                shadowColor: AppColors.warn.withValues(alpha: 0.5),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SizedBox(
+                                  height: 56,
+                                  child: FilledButton.icon(
+                                    onPressed: _busy ? null : _preview,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.gold,
+                                      foregroundColor: AppColors.navyDeep,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    icon: const Icon(Icons.preview_rounded),
+                                    label: const Text('معاينة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  ),
+                                ),
                               ),
-                              icon: _busy 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                                : const Icon(Icons.save_rounded),
-                              label: Text(
-                                _busy ? 'جارٍ الحفظ...' : 'حفظ التعديلات',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                flex: 2,
+                                child: SizedBox(
+                                  height: 56,
+                                  child: FilledButton.icon(
+                                    onPressed: _busy ? null : _save,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.warn,
+                                      foregroundColor: Colors.black,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 8,
+                                      shadowColor: AppColors.warn.withValues(alpha: 0.5),
+                                    ),
+                                    icon: _busy
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                                      : const Icon(Icons.save_rounded),
+                                    label: Text(
+                                      _busy ? 'جارٍ الحفظ...' : 'حفظ التعديلات',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ],
                       ),

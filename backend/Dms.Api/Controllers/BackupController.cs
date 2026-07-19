@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Backup;
@@ -8,6 +9,7 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Authorize(Roles = "SuperAdmin")] // النسخ الاحتياطي للسوبر أدمن فقط
+[RequireModule(AppModule.Backup)]
 [Route("api/[controller]")]
 public sealed class BackupController(IBackupService backup) : ControllerBase
 {

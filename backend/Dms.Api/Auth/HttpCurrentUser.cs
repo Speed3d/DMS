@@ -35,6 +35,16 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool CanApprove => _user?.FindFirstValue(DmsClaims.CanApprove) == "1";
 
+    public AppModule AllowedModules
+    {
+        get
+        {
+            // السوبر أدمن ورئيس الشركة معفيان — وصول كامل لكل الأقسام.
+            if (Role is UserRole.SuperAdmin or UserRole.President) return AppModule.All;
+            return int.TryParse(_user?.FindFirstValue(DmsClaims.Modules), out var m) ? (AppModule)m : AppModule.None;
+        }
+    }
+
     public List<int> AllowedCompanyIds
     {
         get

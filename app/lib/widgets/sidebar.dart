@@ -1,13 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
-import '../core/session.dart';
-
-final outgoingCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  final list = await api.outgoingList();
-  return list.where((e) => e.status.toLowerCase().contains('draft')).length;
-});
+import '../core/outgoing_providers.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -15,6 +9,7 @@ class Sidebar extends ConsumerWidget {
   final ValueChanged<int> onSelected;
   final bool canManageUsers;
   final bool isSuperAdmin;
+  final List<String> modules;
 
   const Sidebar({
     super.key,
@@ -22,7 +17,13 @@ class Sidebar extends ConsumerWidget {
     required this.onSelected,
     required this.canManageUsers,
     required this.isSuperAdmin,
+    required this.modules,
   });
+
+  bool get _showSettings => canManageUsers && modules.contains('Settings');
+  bool get _showUsers => canManageUsers && modules.contains('Users');
+  bool get _showBackup => isSuperAdmin && modules.contains('Backup');
+  bool get _showAdminSection => _showSettings || _showUsers || _showBackup;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -69,28 +70,29 @@ class Sidebar extends ConsumerWidget {
           ),
           _buildItem(0, Icons.grid_view_rounded, 'الرئيسية'),
           _buildItem(1, Icons.cloud_off_rounded, 'أوفلاين'),
-          
-          Consumer(
-            builder: (context, ref, child) {
-              final countAsync = ref.watch(outgoingCountProvider);
-              final badge = countAsync.whenOrNull(data: (count) => count > 0 ? count.toString() : null);
-              return _buildItem(2, Icons.send_rounded, 'الصادر', badge: badge);
-            },
-          ),
-          _buildItem(3, Icons.archive_rounded, 'الأرشيف'),
-          _buildItem(4, Icons.bar_chart_rounded, 'التقارير المالية'),
+
+          if (modules.contains('Outgoing'))
+            Consumer(
+              builder: (context, ref, child) {
+                final countAsync = ref.watch(outgoingCountProvider);
+                final badge = countAsync.whenOrNull(data: (count) => count > 0 ? count.toString() : null);
+                return _buildItem(2, Icons.send_rounded, 'الصادر', badge: badge);
+              },
+            ),
+          if (modules.contains('Archive')) _buildItem(3, Icons.archive_rounded, 'الأرشيف'),
+          if (modules.contains('Reports')) _buildItem(4, Icons.bar_chart_rounded, 'التقارير المالية'),
 
           const SizedBox(height: 18),
 
           // Admin Menu
-          if (canManageUsers || isSuperAdmin) ...[
+          if (_showAdminSection) ...[
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Text('الإدارة', style: TextStyle(color: Color(0xFF5E739B), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
             ),
-            _buildItem(5, Icons.settings_rounded, 'الإعدادات والقوالب'),
-            if (canManageUsers) _buildItem(6, Icons.people_alt_rounded, 'المستخدمون'),
-            if (isSuperAdmin) _buildItem(7, Icons.security_rounded, 'النسخ الاحتياطي'),
+            if (_showSettings) _buildItem(5, Icons.settings_rounded, 'الإعدادات والقوالب'),
+            if (_showUsers) _buildItem(6, Icons.people_alt_rounded, 'المستخدمون'),
+            if (_showBackup) _buildItem(7, Icons.security_rounded, 'النسخ الاحتياطي'),
           ],
 
           const Spacer(),

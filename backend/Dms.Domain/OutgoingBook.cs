@@ -21,6 +21,10 @@ public class OutgoingBook
     public string? SignatoryName { get; set; } // اسم الموقّع
     public string? SignatoryTitle { get; set; } // عنوان الموقّع الوظيفي
     public string BodyHtml { get; set; } = string.Empty;
+
+    /// <summary>محتوى المحرر كـ Quill Delta (JSON) — مصدر التحرير لاستعادة التنسيق بدقة تامة. (HTML للطباعة.)</summary>
+    public string? BodyJson { get; set; }
+
     public int? TemplateId { get; set; }
     public BookStatus Status { get; set; } = BookStatus.Draft;
 

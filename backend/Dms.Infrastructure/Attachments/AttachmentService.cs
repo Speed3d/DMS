@@ -82,6 +82,11 @@ public sealed class AttachmentService(
     /// <summary>يتحقق أن المالك (صادر/أرشيف) ضمن شركة المستخدم ورؤيته (الموظف/القارئ: عمله فقط).</summary>
     private async Task EnsureOwnerAccessibleAsync(OwnerType type, int ownerId, CancellationToken ct)
     {
+        // فحص صلاحية القسم (يمنع تجاوز تقييد الأقسام عبر مسار المرفقات المباشر).
+        var requiredModule = type == OwnerType.Outgoing ? AppModule.Outgoing : AppModule.Archive;
+        if (!current.HasModule(requiredModule))
+            throw new ForbiddenException("لا تملك صلاحية الوصول لهذا القسم.");
+
         int? creator = type switch
         {
             OwnerType.Outgoing => await db.OutgoingBooks.Where(b => b.OutgoingId == ownerId)

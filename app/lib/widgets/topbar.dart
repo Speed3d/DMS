@@ -2,14 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/session.dart';
+import '../core/outgoing_providers.dart';
 import '../models.dart';
 import '../screens/outgoing_detail_screen.dart';
-
-final pendingDraftsProvider = FutureProvider.autoDispose<List<OutgoingListItem>>((ref) async {
-  final api = ref.read(apiClientProvider);
-  final items = await api.outgoingList();
-  return items.where((e) => e.status.toLowerCase().contains('draft')).toList();
-});
 
 /// Hint: الشريط العلوي (Topbar) المحدث
 class Topbar extends ConsumerWidget implements PreferredSizeWidget {

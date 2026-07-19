@@ -22,6 +22,12 @@ public interface ICurrentUser
 
     /// <summary>قائمة الشركات المسموح للمستخدم بالوصول إليها.</summary>
     List<int> AllowedCompanyIds { get; }
+
+    /// <summary>الأقسام المسموح للمستخدم بالوصول إليها (السوبر أدمن ورئيس الشركة = الكل).</summary>
+    AppModule AllowedModules { get; }
+
+    /// <summary>هل يملك المستخدم صلاحية الوصول للقسم المحدّد؟</summary>
+    bool HasModule(AppModule module) => (AllowedModules & module) == module;
 }
 
 /// <summary>تطبيق فارغ — لزمن التصميم (Migrations) وللعمليات الخلفية بلا مستخدم.</summary>
@@ -34,4 +40,5 @@ public sealed class SystemUser : ICurrentUser
     public bool IsSuperAdmin => true; // النظام يرى الكل (لا فلترة)
     public bool CanApprove => true;
     public List<int> AllowedCompanyIds => new();
+    public AppModule AllowedModules => AppModule.All;
 }

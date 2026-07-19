@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Users;
@@ -8,6 +9,7 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Authorize(Roles = "SuperAdmin,President,Manager")]
+[RequireModule(AppModule.Users)]
 [Route("api/[controller]")]
 public sealed class UsersController(IUserService users) : ControllerBase
 {
@@ -19,7 +21,7 @@ public sealed class UsersController(IUserService users) : ControllerBase
     public async Task<ActionResult<UserResponse>> Create(CreateUserRequest req, CancellationToken ct)
     {
         var u = await users.CreateAsync(
-            new CreateUserInput(req.FullName, req.Username, req.Password, req.Role, req.CompanyIds, req.CanApprove), ct);
+            new CreateUserInput(req.FullName, req.Username, req.Password, req.Role, req.CompanyIds, req.CanApprove, req.Modules), ct);
         return Map(u);
     }
 
@@ -27,7 +29,7 @@ public sealed class UsersController(IUserService users) : ControllerBase
     public async Task<ActionResult<UserResponse>> Update(int id, UpdateUserRequest req, CancellationToken ct)
     {
         var u = await users.UpdateAsync(id,
-            new UpdateUserInput(req.FullName, req.Role, req.CompanyIds, req.IsActive, req.CanApprove), ct);
+            new UpdateUserInput(req.FullName, req.Role, req.CompanyIds, req.IsActive, req.CanApprove, req.Modules), ct);
         return Map(u);
     }
 
@@ -39,7 +41,7 @@ public sealed class UsersController(IUserService users) : ControllerBase
     }
 
     private static UserResponse Map(User u) =>
-        new(u.UserId, u.FullName, u.Username, u.Role, 
-            u.AssignedCompanies.Select(c => c.CompanyId).ToList(), 
-            u.CanApprove, u.IsActive, u.MustChangePassword);
+        new(u.UserId, u.FullName, u.Username, u.Role,
+            u.AssignedCompanies.Select(c => c.CompanyId).ToList(),
+            u.CanApprove, u.IsActive, u.MustChangePassword, u.Modules.ToNames());
 }

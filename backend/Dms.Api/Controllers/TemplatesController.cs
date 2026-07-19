@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Documents.Storage;
 using Dms.Domain;
@@ -31,6 +32,7 @@ public sealed class TemplatesController(
 
     [HttpPost]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequireModule(AppModule.Settings)]
     public async Task<ActionResult<TemplateResponse>> Create(TemplateRequest req, CancellationToken ct)
     {
         var companyId = ResolveCompany(req.CompanyId);
@@ -60,6 +62,7 @@ public sealed class TemplatesController(
 
     [HttpPut("{id:int}")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequireModule(AppModule.Settings)]
     public async Task<ActionResult<TemplateResponse>> Update(int id, TemplateRequest req, CancellationToken ct)
     {
         var t = await db.Templates.FirstOrDefaultAsync(x => x.TemplateId == id, ct)
@@ -81,6 +84,7 @@ public sealed class TemplatesController(
 
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequireModule(AppModule.Settings)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var t = await db.Templates.FirstOrDefaultAsync(x => x.TemplateId == id, ct)
@@ -101,6 +105,7 @@ public sealed class TemplatesController(
 
     [HttpPost("{id:int}/images/{kind}")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequireModule(AppModule.Settings)]
     public async Task<IActionResult> UploadImage(int id, string kind, IFormFile file, CancellationToken ct)
     {
         var t = await db.Templates.FirstOrDefaultAsync(x => x.TemplateId == id, ct)
@@ -124,6 +129,35 @@ public sealed class TemplatesController(
         audit.Add("UploadImage", nameof(Template), id.ToString(), kind, t.CompanyId);
         await db.SaveChangesAsync(ct);
         return Ok(new { key });
+    }
+
+    [HttpDelete("{id:int}/images/{kind}")]
+    [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequireModule(AppModule.Settings)]
+    public async Task<IActionResult> DeleteImage(int id, string kind, CancellationToken ct)
+    {
+        var t = await db.Templates.FirstOrDefaultAsync(x => x.TemplateId == id, ct)
+                ?? throw new NotFoundException("القالب غير موجود.");
+        var normalized = kind.ToLowerInvariant();
+        string? key = normalized switch
+        {
+            "header" => t.HeaderImageKey,
+            "footer" => t.FooterImageKey,
+            "watermark" => t.WatermarkImageKey,
+            _ => throw new ValidationException("نوع الصورة غير معروف (header/footer/watermark)."),
+        };
+        if (!string.IsNullOrEmpty(key))
+            await storage.DeleteAsync(key, ct);
+        switch (normalized)
+        {
+            case "header": t.HeaderImageKey = null; break;
+            case "footer": t.FooterImageKey = null; break;
+            case "watermark": t.WatermarkImageKey = null; break;
+        }
+        t.UpdatedAt = DateTime.UtcNow;
+        audit.Add("DeleteImage", nameof(Template), id.ToString(), kind, t.CompanyId);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpGet("{id:int}/images/{kind}")]

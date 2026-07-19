@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
@@ -6,6 +8,47 @@ namespace Dms.Documents.Pdf;
 
 public static class HtmlToQuestPdf
 {
+    /// <summary>الحجم الأساسي للمتن — مطابق لـ PdfGenerator DefaultTextStyle.FontSize.</summary>
+    private const float BaseFontSize = 13f;
+
+    /// <summary>عائلات الخطوط المسجّلة فعلياً في QuestPDF (انظر ArabicFonts.EnsureRegistered).</summary>
+    private static readonly HashSet<string> RegisteredFonts =
+        new(StringComparer.OrdinalIgnoreCase) { "Amiri", "Cairo", "Arial", "Times New Roman" };
+
+    /// <summary>خرائط أسماء/قيم شائعة → عائلة مسجّلة (تحمّل اختلاف الحالة أو القيمة المختصرة).</summary>
+    private static readonly Dictionary<string, string> FontAlias = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["cairo"] = "Cairo",
+        ["arial"] = "Arial",
+        ["times"] = "Times New Roman",
+        ["times new roman"] = "Times New Roman",
+        ["amiri"] = "Amiri",
+    };
+
+    /// <summary>يحوّل قيمة font-size (px/pt/em) إلى نقاط PDF.</summary>
+    private static float? ParseFontSize(string style)
+    {
+        var m = Regex.Match(style, @"font-size:\s*([\d.]+)\s*(px|pt|em|rem)?", RegexOptions.IgnoreCase);
+        if (!m.Success || !float.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var val))
+            return null;
+        return m.Groups[2].Value.ToLowerInvariant() switch
+        {
+            "px" => val * 0.75f,               // px → pt
+            "em" or "rem" => BaseFontSize * val, // نسبي للأساس
+            _ => val,                           // pt أو بلا وحدة
+        };
+    }
+
+    /// <summary>يستخرج عائلة الخط من font-family ويردّها فقط إن كانت مسجّلة (وإلا الافتراضي).</summary>
+    private static string? ResolveFontFamily(string style)
+    {
+        var m = Regex.Match(style, @"font-family:\s*([^;]+)", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        var first = m.Groups[1].Value.Split(',')[0].Trim().Trim('\'', '"');
+        if (FontAlias.TryGetValue(first, out var mapped) && RegisteredFonts.Contains(mapped)) return mapped;
+        return RegisteredFonts.Contains(first) ? first : null;
+    }
+
     public static void RenderHtml(this ColumnDescriptor column, string html)
     {
         if (string.IsNullOrWhiteSpace(html))
@@ -25,7 +68,7 @@ public static class HtmlToQuestPdf
                     {
                         text.DefaultTextStyle(x => x.LineHeight(1.6f));
                         ApplyAlignment(text, align);
-                        ProcessNode(node, text, isBold: false, isItalic: false, isUnderline: false, color: null);
+                        ProcessNode(node, text, isBold: false, isItalic: false, isUnderline: false, color: null, fontSize: null, fontFamily: null);
                     });
                 }
             }
@@ -63,18 +106,18 @@ public static class HtmlToQuestPdf
         }
     }
 
-    private static void ProcessNode(HtmlNode node, TextDescriptor textDescriptor, bool isBold, bool isItalic, bool isUnderline, string? color)
+    private static void ProcessNode(HtmlNode node, TextDescriptor textDescriptor, bool isBold, bool isItalic, bool isUnderline, string? color, float? fontSize, string? fontFamily)
     {
         if (node.NodeType == HtmlNodeType.Text)
         {
             var text = HtmlEntity.DeEntitize(node.InnerText);
             // إزالة الفراغات والأسطر الناتجة عن تنسيق كود الـ HTML نفسه
             text = text.Replace("\n", "").Replace("\r", "");
-            
+
             if (!string.IsNullOrEmpty(text))
             {
                 var span = textDescriptor.Span(text);
-                
+
                 if (isBold) span.SemiBold(); // نستخدم SemiBold لأنه أوضح وأجمل للغة العربية
                 if (isItalic) span.Italic();
                 if (isUnderline) span.Underline();
@@ -82,6 +125,8 @@ public static class HtmlToQuestPdf
                 {
                     span.FontColor(color);
                 }
+                if (fontSize.HasValue) span.FontSize(fontSize.Value);
+                if (!string.IsNullOrEmpty(fontFamily)) span.FontFamily(fontFamily);
             }
             return;
         }
@@ -93,16 +138,23 @@ public static class HtmlToQuestPdf
             bool bold = isBold || tag == "b" || tag == "strong";
             bool italic = isItalic || tag == "i" || tag == "em";
             bool underline = isUnderline || tag == "u";
-            
+
             string? nodeColor = color;
+            float? nodeFontSize = fontSize;
+            string? nodeFontFamily = fontFamily;
             var style = node.GetAttributeValue("style", "");
             if (!string.IsNullOrEmpty(style))
             {
-                var colorMatch = System.Text.RegularExpressions.Regex.Match(style, @"color:\s*([^;]+)");
+                var parsedSize = ParseFontSize(style);
+                if (parsedSize.HasValue) nodeFontSize = parsedSize;
+                var parsedFamily = ResolveFontFamily(style);
+                if (parsedFamily != null) nodeFontFamily = parsedFamily;
+
+                var colorMatch = Regex.Match(style, @"color:\s*([^;]+)");
                 if (colorMatch.Success)
                 {
                     nodeColor = colorMatch.Groups[1].Value.Trim().Trim('\'', '"');
-                    
+
                     // تحويل #RRGGBBAA إلى #RRGGBB لتجنب أي مشاكل مع QuestPDF
                     if (nodeColor.StartsWith("#") && nodeColor.Length == 9)
                     {
@@ -113,7 +165,7 @@ public static class HtmlToQuestPdf
                     // If it's rgb(...), we might need to parse it, but QuestPDF supports hex out of the box.
                     if (nodeColor.StartsWith("rgb", StringComparison.OrdinalIgnoreCase))
                     {
-                        var rgbMatch = System.Text.RegularExpressions.Regex.Match(nodeColor, @"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)");
+                        var rgbMatch = Regex.Match(nodeColor, @"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)");
                         if (rgbMatch.Success)
                         {
                             int r = int.Parse(rgbMatch.Groups[1].Value);
@@ -132,7 +184,7 @@ public static class HtmlToQuestPdf
 
             foreach (var child in node.ChildNodes)
             {
-                ProcessNode(child, textDescriptor, bold, italic, underline, nodeColor);
+                ProcessNode(child, textDescriptor, bold, italic, underline, nodeColor, nodeFontSize, nodeFontFamily);
             }
 
             // لم نعد بحاجة لإضافة سطر جديد بين الفقرات الجذرية لأننا فصلناها إلى Items،
@@ -149,7 +201,7 @@ public static class HtmlToQuestPdf
         {
             foreach (var child in node.ChildNodes)
             {
-                ProcessNode(child, textDescriptor, isBold, isItalic, isUnderline, color);
+                ProcessNode(child, textDescriptor, isBold, isItalic, isUnderline, color, fontSize, fontFamily);
             }
         }
     }

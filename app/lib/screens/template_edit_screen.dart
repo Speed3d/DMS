@@ -77,6 +77,20 @@ class _State extends ConsumerState<TemplateEditScreen> {
     }
   }
 
+  Future<void> _clearImage(String kind) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).deleteTemplateImage(widget.templateId, kind);
+      if (mounted) setState(() => _images[kind] = null);
+      messenger.showSnackBar(const SnackBar(content: Text('تم مسح الصورة.')));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _save() async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
@@ -296,6 +310,14 @@ class _State extends ConsumerState<TemplateEditScreen> {
             icon: const Icon(Icons.upload),
             label: const Text('اختيار صورة'),
           ),
+          if (img != null) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: _busy ? null : () => _clearImage(kind),
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: 'مسح الصورة',
+            ),
+          ],
         ],
       ),
     );

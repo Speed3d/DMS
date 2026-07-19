@@ -11,7 +11,7 @@
 `TemplateId, CompanyId→Company, Name, HeaderImageKey?, FooterImageKey?, WatermarkImageKey?, WatermarkOpacity(0-100), Margin{Top,Right,Bottom,Left}, PageSize, FontFamily, IsActive, CreatedAt, UpdatedAt` — قالب بالصور (مفاتيح Blob).
 
 ### User / UserCompany (تعدد الشركات — ADR-011)
-- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية**), CanApprove, IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
+- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية**), CanApprove, Modules (`AppModule` bitmask، افتراضي All — صلاحيات الأقسام، ADR-012), IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
 - `UserCompany`: `UserCompanyId, UserId, CompanyId` — إسناد المستخدم لشركة (فريد على UserId+CompanyId). المستخدم قد يُربط بشركة أو عدّة شركات؛ الربط صلاحية للسوبر أدمن/رئيس الشركة، ولكل مستخدم غير سوبر أدمن شركة واحدة على الأقل.
 
 ### RefreshToken
@@ -57,5 +57,5 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-السلسلة الحالية: `InitialCreate` → `AddBackup` → `AddArchiveBodyHtml` → `AddHeaderPhraseToOutgoingBook` → `AddSignatoryFields` → `MakeTemplateNullable` → `AddCompanyLogoImageKey`.
+السلسلة الحالية: `InitialCreate` → `AddBackup` → `AddArchiveBodyHtml` → `AddHeaderPhraseToOutgoingBook` → `AddSignatoryFields` → `MakeTemplateNullable` → `AddCompanyLogoImageKey` → `AddUserModules` (عمود `Modules`، افتراضي 63=All).
 > ملاحظة: تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).

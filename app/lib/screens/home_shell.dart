@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/session.dart';
+import '../core/outgoing_providers.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/topbar.dart';
 
@@ -57,6 +58,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final canManageUsers = const ['SuperAdmin', 'President', 'Manager'].contains(auth.role);
     final isSuper = auth.isSuperAdmin;
 
+    // قائمة ثابتة المؤشرات (0..7) — الإظهار/الإخفاء يُدار في الـ Sidebar حسب صلاحيات الأقسام.
     final pages = <Widget>[
       DashboardScreen(onNavigate: (i) => setState(() => _index = i)),
       const OfflineDraftsScreen(),
@@ -64,11 +66,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const ArchiveListScreen(),
       const ReportsScreen(),
       const SettingsScreen(),
-      if (canManageUsers) const UsersScreen(),
-      if (isSuper) const BackupScreen(),
+      const UsersScreen(),
+      const BackupScreen(),
     ];
 
     if (_index >= pages.length) _index = 0;
+    // إن كان القسم الحالي غير مسموح، عُد للرئيسية.
+    if (!_isIndexAllowed(_index, auth, canManageUsers, isSuper)) _index = 0;
 
     return Scaffold(
       body: Row(
@@ -88,6 +92,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   onSelected: (i) => setState(() => _index = i),
                   canManageUsers: canManageUsers,
                   isSuperAdmin: isSuper,
+                  modules: auth.modules,
                 ),
               ),
             ),
@@ -172,6 +177,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             .map((c) => SimpleDialogOption(
                   onPressed: () {
                     ref.read(sessionProvider.notifier).setActiveCompany(c.companyId);
+                    // إبطال مزوّدات الشركة ليُعاد جلبها فوراً بالشركة الجديدة
+                    // (يمنع ظهور إشعارات/بيانات الشركة السابقة).
+                    invalidateOutgoing(ref);
+                    ref.invalidate(activeCompanyProvider);
                     Navigator.pop(ctx);
                     setState(() {});
                   },
@@ -182,27 +191,39 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  String _getPageTitle(int index, bool canManageUsers, bool isSuper) {
-    if (index == 0) return 'الرئيسية';
-    if (index == 1) return 'المسودات (أوفلاين)';
-    if (index == 2) return 'الصادر';
-    if (index == 3) return 'الأرشيف';
-    if (index == 4) return 'التقارير المالية';
-    if (index == 5) return 'الإعدادات والقوالب';
-    if (canManageUsers && index == 6) return 'المستخدمون';
-    if (isSuper && index == (canManageUsers ? 7 : 6)) return 'النسخ الاحتياطي';
-    return '';
-  }
+  /// هل يُسمح للمستخدم بالقسم في المؤشر المعطى (حسب الدور وصلاحيات الأقسام)؟
+  bool _isIndexAllowed(int index, AuthResult auth, bool canManageUsers, bool isSuper) => switch (index) {
+        0 || 1 => true,
+        2 => auth.hasModule('Outgoing'),
+        3 => auth.hasModule('Archive'),
+        4 => auth.hasModule('Reports'),
+        5 => canManageUsers && auth.hasModule('Settings'),
+        6 => canManageUsers && auth.hasModule('Users'),
+        7 => isSuper && auth.hasModule('Backup'),
+        _ => false,
+      };
 
-  String _getPageSubtitle(int index, bool canManageUsers, bool isSuper) {
-    if (index == 0) return 'نظرة عامة على نشاط الشركة';
-    if (index == 1) return 'الكتب المحفوظة محلياً بانتظار الاتصال';
-    if (index == 2) return 'إدارة الكتب الصادرة والاعتمادات';
-    if (index == 3) return 'أرشفة الوثائق السابقة والبحث فيها';
-    if (index == 4) return 'إحصائيات مالية للصادر والوارد';
-    if (index == 5) return 'إدارة إعدادات النظام وقوالب الطباعة';
-    if (canManageUsers && index == 6) return 'إدارة صلاحيات وحسابات الموظفين';
-    if (isSuper && index == (canManageUsers ? 7 : 6)) return 'أخذ نسخ احتياطية واستعادتها';
-    return '';
-  }
+  String _getPageTitle(int index, bool canManageUsers, bool isSuper) => switch (index) {
+        0 => 'الرئيسية',
+        1 => 'المسودات (أوفلاين)',
+        2 => 'الصادر',
+        3 => 'الأرشيف',
+        4 => 'التقارير المالية',
+        5 => 'الإعدادات والقوالب',
+        6 => 'المستخدمون',
+        7 => 'النسخ الاحتياطي',
+        _ => '',
+      };
+
+  String _getPageSubtitle(int index, bool canManageUsers, bool isSuper) => switch (index) {
+        0 => 'نظرة عامة على نشاط الشركة',
+        1 => 'الكتب المحفوظة محلياً بانتظار الاتصال',
+        2 => 'إدارة الكتب الصادرة والاعتمادات',
+        3 => 'أرشفة الوثائق السابقة والبحث فيها',
+        4 => 'إحصائيات مالية للصادر والوارد',
+        5 => 'إدارة إعدادات النظام وقوالب الطباعة',
+        6 => 'إدارة صلاحيات وحسابات الموظفين',
+        7 => 'أخذ نسخ احتياطية واستعادتها',
+        _ => '',
+      };
 }

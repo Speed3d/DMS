@@ -195,6 +195,9 @@ class ApiClient {
     }
   }
 
+  /// مسح صورة قالب (تفريغ الحقل وحذف الملف).
+  Future<void> deleteTemplateImage(int id, String kind) => _delete('/templates/$id/images/$kind');
+
   Future<List<ExchangeRateModel>> exchangeRates() async =>
       (await _get('/exchange-rates') as List).map((e) => ExchangeRateModel.fromJson(e)).toList();
 

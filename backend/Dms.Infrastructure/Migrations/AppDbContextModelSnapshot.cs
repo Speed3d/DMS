@@ -501,6 +501,9 @@ namespace Dms.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("BodyJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("CompanyId")
                         .HasColumnType("int");
 
@@ -727,6 +730,9 @@ namespace Dms.Infrastructure.Migrations
 
                     b.Property<DateTime?>("LockedUntil")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("Modules")
+                        .HasColumnType("int");
 
                     b.Property<bool>("MustChangePassword")
                         .HasColumnType("bit");

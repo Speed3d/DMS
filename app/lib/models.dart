@@ -12,6 +12,9 @@ class AuthResult {
   final bool canApprove;
   final bool mustChangePassword;
 
+  /// أقسام النظام المسموح للمستخدم بالوصول إليها (السوبر أدمن/الرئيس = الكل).
+  final List<String> modules;
+
   AuthResult({
     required this.accessToken,
     required this.accessExpires,
@@ -23,9 +26,13 @@ class AuthResult {
     required this.companyIds,
     required this.canApprove,
     required this.mustChangePassword,
+    required this.modules,
   });
 
   bool get isSuperAdmin => role == 'SuperAdmin';
+
+  /// هل يملك المستخدم صلاحية الوصول للقسم؟
+  bool hasModule(String module) => modules.contains(module);
 
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(
         accessToken: j['accessToken'],
@@ -38,6 +45,7 @@ class AuthResult {
         companyIds: j['companyIds'] != null ? List<int>.from(j['companyIds']) : [],
         canApprove: j['canApprove'] ?? false,
         mustChangePassword: j['mustChangePassword'] ?? false,
+        modules: j['modules'] != null ? List<String>.from(j['modules']) : const [],
       );
 
   Map<String, dynamic> toJson() => {
@@ -51,6 +59,7 @@ class AuthResult {
         'companyIds': companyIds,
         'canApprove': canApprove,
         'mustChangePassword': mustChangePassword,
+        'modules': modules,
       };
 }
 
@@ -182,6 +191,7 @@ class UserModel {
   final bool canApprove;
   final bool isActive;
   final bool mustChangePassword;
+  final List<String> modules;
 
   UserModel({
     required this.userId,
@@ -192,6 +202,7 @@ class UserModel {
     required this.canApprove,
     required this.isActive,
     required this.mustChangePassword,
+    required this.modules,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> j) => UserModel(
@@ -203,6 +214,7 @@ class UserModel {
         canApprove: j['canApprove'] ?? false,
         isActive: j['isActive'] ?? true,
         mustChangePassword: j['mustChangePassword'] ?? false,
+        modules: j['modules'] != null ? List<String>.from(j['modules']) : const [],
       );
 }
 
@@ -396,6 +408,8 @@ class OutgoingDetail {
   final String? qrContent;
   final bool hasPdf;
   final String rowVersion;
+  final bool canApprove;
+  final String? bodyJson;
   OutgoingDetail({
     required this.outgoingId,
     required this.companyId,
@@ -417,6 +431,8 @@ class OutgoingDetail {
     required this.qrContent,
     required this.hasPdf,
     required this.rowVersion,
+    this.canApprove = false,
+    this.bodyJson,
   });
   bool get isFinal => status == 'Final';
   factory OutgoingDetail.fromJson(Map<String, dynamic> j) => OutgoingDetail(
@@ -440,5 +456,7 @@ class OutgoingDetail {
         qrContent: j['qrContent'],
         hasPdf: j['hasPdf'] ?? false,
         rowVersion: j['rowVersion'] ?? '',
+        canApprove: j['canApprove'] ?? false,
+        bodyJson: j['bodyJson'],
       );
 }

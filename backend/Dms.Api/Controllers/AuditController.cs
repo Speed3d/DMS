@@ -7,7 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Dms.Api.Controllers;
 
 [ApiController]
-[Authorize(Roles = "SuperAdmin,President,Manager")]
+// سجل التدقيق يكشف بيانات كل الأقسام (مواضيع/أرقام الصادر، الأرشيف، المستخدمون...).
+// يُقصر على الأدوار المعفاة من تقييد الأقسام (رئيس الشركة فأعلى) لتفادي تسرّب عبر الأقسام لمدير مقيّد.
+[Authorize(Roles = "SuperAdmin,President")]
 [Route("api/[controller]")]
 public sealed class AuditController(AppDbContext db) : ControllerBase
 {

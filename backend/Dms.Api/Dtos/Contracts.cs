@@ -9,8 +9,8 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 public sealed record AuthResponse(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
     int UserId, string FullName, string Username, UserRole Role,
-    List<int> CompanyIds, bool CanApprove, bool MustChangePassword);
-public sealed record MeResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove);
+    List<int> CompanyIds, bool CanApprove, bool MustChangePassword, List<string> Modules);
+public sealed record MeResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, List<string> Modules);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -38,10 +38,10 @@ public sealed record ExchangeRateRequest(Currency Currency, decimal Rate, DateTi
 public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency, decimal Rate, DateTime EffectiveDate);
 
 // ----------------- Users / Delegations -----------------
-public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove);
-public sealed record UpdateUserRequest(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove);
+public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules = null);
+public sealed record UpdateUserRequest(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules = null);
 public sealed record ResetPasswordRequest(string NewPassword);
-public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, bool IsActive, bool MustChangePassword);
+public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, bool IsActive, bool MustChangePassword, List<string> Modules);
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);
@@ -50,18 +50,18 @@ public sealed record DelegationResponse(int DelegationId, int FromUserId, int To
 public sealed record CreateOutgoingRequest(
     int? CompanyId, int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
 
 public sealed record UpdateOutgoingRequest(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
 
 public sealed record EditApprovedRequest(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string RowVersion, string? ChangeNote);
+    string RowVersion, string? ChangeNote, string? BodyJson = null);
 
 public sealed record OutgoingListItem(
     int OutgoingId, string? Number, DateTime Date, string Subject,
@@ -72,7 +72,7 @@ public sealed record OutgoingDetail(
     int EntityId, string EntityName, int? TemplateId, string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     BookStatus Status, decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
     string? QrContent, bool HasPdf, int? ApprovedByUserId, DateTime? ApprovedAt,
-    DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion);
+    DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion, bool CanApprove, string? BodyJson);
 
 public sealed record VersionResponse(int VersionNo, DateTime ChangedAt, int ChangedByUserId, string? ChangeNote);
 

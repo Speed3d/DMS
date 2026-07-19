@@ -15,6 +15,9 @@ public class User
     /// <summary>صلاحية اعتماد الكتب (المدير فأعلى افتراضياً، أو بتفويض).</summary>
     public bool CanApprove { get; set; }
 
+    /// <summary>الأقسام المسموح للمستخدم بالوصول إليها (افتراضي: الكل). يُعفى منها السوبر أدمن ورئيس الشركة.</summary>
+    public AppModule Modules { get; set; } = AppModule.All;
+
     public bool IsActive { get; set; } = true;
 
     /// <summary>إجبار تغيير كلمة المرور عند أول دخول (لحساب الـ Seed).</summary>

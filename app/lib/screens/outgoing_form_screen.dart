@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/outgoing_providers.dart';
 import '../core/local_storage.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -143,6 +145,8 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
       'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
       'subject': _subject.text.trim(),
       'bodyHtml': _getHtmlFromBody(),
+      // Delta JSON — مصدر التحرير لاستعادة التنسيق بدقة عند التعديل لاحقاً.
+      'bodyJson': jsonEncode(_quillController.document.toDelta().toJson()),
       'amount': amount,
       'currency': amount == null ? null : _currency,
       'exchangeRate': rate,
@@ -217,6 +221,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
         return;
       }
       await ref.read(apiClientProvider).createOutgoing(payload);
+      invalidateOutgoing(ref);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (e.isNetworkError && payload != null) {
@@ -530,6 +535,18 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                               showSubscript: false,
                               showSuperscript: false,
                               showListCheck: false,
+                              buttonOptions: quill.QuillSimpleToolbarButtonOptions(
+                                fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
+                                  renderFontFamilies: false,
+                                  items: {
+                                    'Amiri': 'Amiri',
+                                    'Cairo': 'Cairo',
+                                    'Arial': 'Arial',
+                                    'Times New Roman': 'Times New Roman',
+                                    'مسح': 'Clear',
+                                  },
+                                ),
+                              ),
                             ),
                           ),
                         ),

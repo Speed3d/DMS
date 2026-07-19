@@ -12,22 +12,24 @@ namespace Dms.Infrastructure.Outgoing;
 public sealed record CreateOutgoingInput(
     int? CompanyId, int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
 
 public sealed record UpdateOutgoingInput(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
 
 public sealed record EditApprovedInput(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    byte[] RowVersion, string? ChangeNote);
+    byte[] RowVersion, string? ChangeNote, string? BodyJson = null);
 
 public interface IOutgoingService
 {
     IQueryable<OutgoingBook> Query();
+    /// <summary>هل يملك المستخدم الحالي صلاحية اعتماد فعّالة (دور/علَم/تفويض نشط)؟</summary>
+    bool CanCurrentUserApprove();
     Task<OutgoingBook> GetAsync(int id, CancellationToken ct = default);
     Task<OutgoingBook> CreateDraftAsync(CreateOutgoingInput input, CancellationToken ct = default);
     Task<OutgoingBook> UpdateDraftAsync(int id, UpdateOutgoingInput input, CancellationToken ct = default);
@@ -83,6 +85,7 @@ public sealed class OutgoingService(
             SignatoryTitle = input.SignatoryTitle?.Trim(),
             Subject = input.Subject.Trim(),
             BodyHtml = input.BodyHtml,
+            BodyJson = input.BodyJson,
             Amount = input.Amount,
             Currency = input.Currency,
             ExchangeRate = input.ExchangeRate,
@@ -114,6 +117,7 @@ public sealed class OutgoingService(
         book.SignatoryTitle = input.SignatoryTitle?.Trim();
         book.Subject = input.Subject.Trim();
         book.BodyHtml = input.BodyHtml;
+        book.BodyJson = input.BodyJson;
         book.Amount = input.Amount;
         book.Currency = input.Currency;
         book.ExchangeRate = input.ExchangeRate;
@@ -224,6 +228,7 @@ public sealed class OutgoingService(
         book.SignatoryTitle = input.SignatoryTitle?.Trim();
         book.Subject = input.Subject.Trim();
         book.BodyHtml = input.BodyHtml;
+        book.BodyJson = input.BodyJson;
         book.Amount = input.Amount;
         book.Currency = input.Currency;
         book.ExchangeRate = input.ExchangeRate;
@@ -377,6 +382,8 @@ public sealed class OutgoingService(
         if (book.CreatedByUserId == current.UserId) return;       // الموظف: مسودّته فقط
         throw new ForbiddenException("لا تملك صلاحية تعديل هذه المسودّة.");
     }
+
+    public bool CanCurrentUserApprove() => EffectiveCanApprove();
 
     private bool EffectiveCanApprove()
     {

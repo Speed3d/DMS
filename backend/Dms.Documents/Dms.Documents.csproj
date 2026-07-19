@@ -14,10 +14,17 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.11.72" />
   </ItemGroup>
 
-  <!-- الخطوط العربية (OFL) تُضمَّن داخل المكتبة وتُحمَّل كـ Embedded Resource -->
+  <!-- الخطوط تُضمَّن داخل المكتبة وتُحمَّل كـ Embedded Resource. Amiri/Cairo مفتوحة (OFL)؛
+       Arial/Times New Roman مملوكة (Monotype) وُفِّرت من المالك للاستخدام الداخلي. -->
   <ItemGroup>
     <EmbeddedResource Include="Assets\Fonts\Amiri-Regular.ttf" />
     <EmbeddedResource Include="Assets\Fonts\Amiri-Bold.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\Cairo-Regular.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\Cairo-Bold.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\arial.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\arialbd.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\times.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\timesbd.ttf" />
   </ItemGroup>
 
 </Project>

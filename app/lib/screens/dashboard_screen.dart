@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../core/session.dart';
+import '../core/outgoing_providers.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
@@ -16,30 +16,20 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  late Future<List<OutgoingListItem>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = ref.read(apiClientProvider).outgoingList();
-  }
-
   @override
   Widget build(BuildContext context) {
+    final async = ref.watch(outgoingListProvider);
     return Scaffold(
-      body: FutureBuilder<List<OutgoingListItem>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.gold));
-          }
-          if (snap.hasError) {
-            return Center(child: Text('حدث خطأ: ${snap.error}', style: const TextStyle(color: AppColors.danger)));
-          }
-          final items = snap.data ?? [];
+      body: async.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+        error: (e, _) => Center(child: Text('حدث خطأ: $e', style: const TextStyle(color: AppColors.danger))),
+        data: (items) {
           final drafts = items.where((e) => e.status.toLowerCase().contains('draft')).length;
           final finals = items.where((e) => e.status.toLowerCase().contains('final')).length;
-          final totalIqd = items.fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
+          // إجمالي المبالغ = الكتب المعتمدة فقط (Final).
+          final totalIqd = items
+              .where((e) => e.status.toLowerCase().contains('final'))
+              .fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(32),
@@ -68,7 +58,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${items.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
                         SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
                         SizedBox(width: cardWidth, child: _buildStatCard('كتب معتمدة', '$finals', Icons.verified_rounded, AppColors.success)),
-                        SizedBox(width: cardWidth, child: _buildStatCard('إجمالي المبالغ', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold)),
+                        SizedBox(width: cardWidth, child: _buildStatCard('إجمالي المعتمد', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold)),
                       ],
                     );
                   }

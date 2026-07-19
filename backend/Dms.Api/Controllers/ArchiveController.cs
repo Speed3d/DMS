@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Archive;
@@ -9,6 +10,7 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Authorize]
+[RequireModule(AppModule.Archive)]
 [Route("api/[controller]")]
 public sealed class ArchiveController(IArchiveService svc, IAttachmentService attachments) : ControllerBase
 {

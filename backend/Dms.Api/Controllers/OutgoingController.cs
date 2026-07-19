@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Outgoing;
@@ -10,6 +11,7 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Authorize]
+[RequireModule(AppModule.Outgoing)]
 [Route("api/[controller]")]
 public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : ControllerBase
 {
@@ -35,7 +37,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
         var book = await svc.GetAsync(id, ct);
         var entityName = await db.Entities.Where(e => e.EntityId == book.EntityId)
             .Select(e => e.Name).FirstOrDefaultAsync(ct) ?? "";
-        return Detail(book, entityName);
+        return Detail(book, entityName, svc.CanCurrentUserApprove());
     }
 
     [HttpPost]
@@ -43,7 +45,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     {
         var book = await svc.CreateDraftAsync(new CreateOutgoingInput(
             req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-            req.Amount, req.Currency, req.ExchangeRate), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct);
         return await Get(book.OutgoingId, ct);
     }
 
@@ -52,7 +54,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     {
         await svc.UpdateDraftAsync(id, new UpdateOutgoingInput(
             req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-            req.Amount, req.Currency, req.ExchangeRate), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct);
         return await Get(id, ct);
     }
 
@@ -69,7 +71,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
         await svc.EditAfterApprovalAsync(id, new EditApprovedInput(
             req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
             req.Amount, req.Currency, req.ExchangeRate,
-            Convert.FromBase64String(req.RowVersion), req.ChangeNote), ct);
+            Convert.FromBase64String(req.RowVersion), req.ChangeNote, req.BodyJson), ct);
         return await Get(id, ct);
     }
 
@@ -103,7 +105,7 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     {
         var bytes = await svc.PreviewPdfAsync(new CreateOutgoingInput(
             req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-            req.Amount, req.Currency, req.ExchangeRate), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct);
         return File(bytes, "application/pdf");
     }
 
@@ -122,10 +124,10 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
             $"outgoing-{id}.docx");
     }
 
-    private static OutgoingDetail Detail(OutgoingBook b, string entityName) => new(
+    private static OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
         b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
         b.QrContent, b.GeneratedPdfBlobKey != null, b.ApprovedByUserId, b.ApprovedAt,
-        b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion));
+        b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson);
 }

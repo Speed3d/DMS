@@ -89,6 +89,10 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
       await ref.read(apiClientProvider).updateUser(u.userId, {
         'fullName': res['fullName'], 'role': res['role'],
         'isActive': res['isActive'], 'canApprove': res['canApprove'],
+        // إسناد الشركات (كان مفقوداً ← لهذا كانت التعديلات لا تُحفظ). السوبر أدمن/الرئيس فقط يعدّلانه بالباك-إند.
+        'companyIds': res['companyIds'],
+        // الأقسام تُرسَل فقط إن كان المُعدِّل مانحاً (المدير لا يرسلها ← لا تتغيّر).
+        if (res.containsKey('modules')) 'modules': res['modules'],
       });
       if (mounted) _reload();
     } on ApiException catch (e) {
@@ -464,9 +468,29 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   bool _isActive = true;
   String? _error;
   List<int> _selectedCompanyIds = [];
+  List<String> _selectedModules = [];
   late Future<List<Company>> _companiesFuture;
 
+  static const List<String> _allModules = ['Outgoing', 'Archive', 'Reports', 'Users', 'Settings', 'Backup'];
+  static const Map<String, String> _moduleLabels = {
+    'Outgoing': 'الصادر',
+    'Archive': 'الأرشيف',
+    'Reports': 'التقارير',
+    'Users': 'المستخدمون',
+    'Settings': 'الإعدادات',
+    'Backup': 'النسخ الاحتياطي',
+  };
+
   bool get _isEdit => widget.existing != null;
+
+  /// المانح (سوبر أدمن/رئيس شركة) وحده يتحكّم بأقسام المستخدم.
+  bool get _isGranter {
+    final role = ref.read(sessionProvider).auth?.role;
+    return role == 'SuperAdmin' || role == 'President';
+  }
+
+  /// أدوار معفاة من التقييد (وصول كامل دائماً).
+  bool get _roleExemptFromModules => _role == 'SuperAdmin' || _role == 'President';
 
   @override
   void initState() {
@@ -480,8 +504,10 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
       _canApprove = e.canApprove;
       _isActive = e.isActive;
       _selectedCompanyIds = List.from(e.companyIds);
-    } else if (widget.roles.isNotEmpty) {
-      _role = widget.roles.last; // الأدنى افتراضاً
+      _selectedModules = List.from(e.modules);
+    } else {
+      _selectedModules = List.from(_allModules); // مستخدم جديد: كل الأقسام افتراضاً
+      if (widget.roles.isNotEmpty) _role = widget.roles.last; // الأدنى افتراضاً
     }
   }
 
@@ -517,6 +543,8 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
       'companyIds': _selectedCompanyIds,
       'canApprove': _canApprove,
       'isActive': _isActive,
+      // الأقسام يحدّدها المانح فقط؛ الأدوار المعفاة تُرسَل بكل الأقسام.
+      if (_isGranter) 'modules': _roleExemptFromModules ? _allModules : _selectedModules,
     });
   }
 
@@ -585,6 +613,39 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                 ),
               ),
               const SizedBox(height: 12),
+
+              // صلاحيات الأقسام — يحدّدها المانح (سوبر أدمن/رئيس شركة) فقط.
+              if (_isGranter) ...[
+                const Text('صلاحيات الوصول للأقسام', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: _roleExemptFromModules
+                      ? const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text('هذا الدور يملك وصولاً كاملاً لكل الأقسام.', style: TextStyle(color: Colors.grey)),
+                        )
+                      : Column(
+                          children: _allModules.map((m) {
+                            return CheckboxListTile(
+                              title: Text(_moduleLabels[m] ?? m),
+                              value: _selectedModules.contains(m),
+                              onChanged: (val) => setState(() {
+                                if (val == true) {
+                                  if (!_selectedModules.contains(m)) _selectedModules.add(m);
+                                } else {
+                                  _selectedModules.remove(m);
+                                }
+                              }),
+                            );
+                          }).toList(),
+                        ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               SwitchListTile(
                 value: _canApprove, contentPadding: EdgeInsets.zero,

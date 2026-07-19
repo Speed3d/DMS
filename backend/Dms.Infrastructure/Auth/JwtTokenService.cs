@@ -15,6 +15,7 @@ public static class DmsClaims
     public const string CompanyIds = "cids";
     public const string CanApprove = "approve";
     public const string Role = "role";
+    public const string Modules = "mods";
 }
 
 public sealed record TokenPair(string AccessToken, DateTime AccessExpires, string RefreshToken, DateTime RefreshExpires);
@@ -42,6 +43,7 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
             new(DmsClaims.Role, user.Role.ToString()),
             new(ClaimTypes.Role, user.Role.ToString()),
             new(DmsClaims.CanApprove, user.CanApprove ? "1" : "0"),
+            new(DmsClaims.Modules, ((int)user.Modules).ToString()),
         };
         if (user.AssignedCompanies.Any())
         {

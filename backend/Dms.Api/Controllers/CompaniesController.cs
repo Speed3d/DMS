@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Documents.Storage;
 using Dms.Domain;
@@ -47,6 +48,7 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
 
     [HttpPost]
     [Authorize(Roles = "SuperAdmin")]
+    [RequireModule(AppModule.Settings)]
     public async Task<ActionResult<CompanyResponse>> Create(CompanyRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Prefix))
@@ -71,6 +73,7 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
 
     [HttpPut("{id:int}")]
     [Authorize(Roles = "SuperAdmin,President")]
+    [RequireModule(AppModule.Settings)]
     public async Task<ActionResult<CompanyResponse>> Update(int id, CompanyRequest req, CancellationToken ct)
     {
         var q = db.Companies.IgnoreQueryFilters().AsQueryable();
@@ -97,6 +100,7 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
 
     [HttpPost("{id:int}/logo")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequireModule(AppModule.Settings)]
     public async Task<IActionResult> UploadLogo(int id, IFormFile file, CancellationToken ct)
     {
         var q = db.Companies.IgnoreQueryFilters().AsQueryable();
@@ -135,6 +139,7 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
     /// </summary>
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "SuperAdmin")]
+    [RequireModule(AppModule.Settings)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var c = await db.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.CompanyId == id, ct)

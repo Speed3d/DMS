@@ -8,7 +8,7 @@ namespace Dms.Infrastructure.Auth;
 public sealed record AuthResult(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
     int UserId, string FullName, string Username, UserRole Role,
-    List<int> CompanyIds, bool CanApprove, bool MustChangePassword);
+    List<int> CompanyIds, bool CanApprove, bool MustChangePassword, List<string> Modules);
 
 public interface IAuthService
 {
@@ -115,8 +115,10 @@ public sealed class AuthService(
         // SaveChanges يتم في المستدعي
         await Task.CompletedTask;
         var companyIds = user.AssignedCompanies.Select(c => c.CompanyId).ToList();
+        // القيمة الفعّالة: السوبر أدمن ورئيس الشركة يريان كل الأقسام.
+        var effectiveModules = user.Role is UserRole.SuperAdmin or UserRole.President ? AppModule.All : user.Modules;
         return new AuthResult(pair.AccessToken, pair.AccessExpires, pair.RefreshToken,
             user.UserId, user.FullName, user.Username, user.Role, companyIds,
-            user.CanApprove, user.MustChangePassword);
+            user.CanApprove, user.MustChangePassword, effectiveModules.ToNames());
     }
 }

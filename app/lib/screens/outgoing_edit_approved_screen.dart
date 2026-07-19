@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -49,11 +50,8 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
     _note = TextEditingController();
     _showFinancials = b.amount != null;
     
-    // إعداد محرر النصوص بمحتوى الكتاب القديم
-    _quillController = quill.QuillController(
-      document: quill.Document()..insert(0, '${b.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), '')}\n'),
-      selection: const TextSelection.collapsed(offset: 0),
-    );
+    // إعداد المحرر: من Quill Delta (تنسيق كامل) إن وُجد، وإلا نص خام من HTML.
+    _quillController = _buildController(b);
 
     _date = b.date;
     _entityId = b.entityId;
@@ -73,6 +71,22 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
     _note.dispose();
     _quillController.dispose();
     super.dispose();
+  }
+
+  /// يبني محرّر Quill من Delta المخزّن، أو من نص خام (إصدارات قديمة بلا Delta).
+  quill.QuillController _buildController(OutgoingDetail b) {
+    if (b.bodyJson != null && b.bodyJson!.isNotEmpty) {
+      try {
+        final doc = quill.Document.fromJson(jsonDecode(b.bodyJson!) as List);
+        return quill.QuillController(document: doc, selection: const TextSelection.collapsed(offset: 0));
+      } catch (_) {
+        // Delta تالف ⇒ نعود للنص الخام
+      }
+    }
+    return quill.QuillController(
+      document: quill.Document()..insert(0, '${b.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), '')}\n'),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
   }
 
   Future<_Refs> _loadRefs() async {
@@ -127,6 +141,7 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
         'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
         'subject': _subject.text.trim(),
         'bodyHtml': _getHtmlFromBody(),
+        'bodyJson': jsonEncode(_quillController.document.toDelta().toJson()),
         'amount': amount,
         'currency': amount == null ? null : _currency,
         'exchangeRate': rate,
@@ -377,6 +392,18 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
                                         showSubscript: false,
                                         showSuperscript: false,
                                         showListCheck: false,
+                                        buttonOptions: quill.QuillSimpleToolbarButtonOptions(
+                                          fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
+                                            renderFontFamilies: false,
+                                            items: {
+                                              'Amiri': 'Amiri',
+                                              'Cairo': 'Cairo',
+                                              'Arial': 'Arial',
+                                              'Times New Roman': 'Times New Roman',
+                                              'مسح': 'Clear',
+                                            },
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),

@@ -3,13 +3,15 @@
 كل المسارات تحت `/api`. الاستجابات JSON (enums كنصوص). المصادقة: `Authorization: Bearer <JWT>`.
 الشركة الفعّالة تُحدَّد بترويسة `X-Company-Id: <id>`: السوبر أدمن (اختياري؛ بلا ترويسة = يرى الكل)، والمستخدم متعدد الشركات (ضمن شركاته المسموحة `companyIds`؛ بلا ترويسة = أول شركة).
 
+**صلاحيات الأقسام (ADR-012):** كل مستخدم له مجموعة أقسام مسموحة `modules` (من الأقسام الستة: `Outgoing`, `Archive`, `Reports`, `Users`, `Settings`, `Backup`). الوصول لمسارات القسم المحجوب يُرجِع **403**. السوبر أدمن ورئيس الشركة معفيان (كل الأقسام). «الإعدادات» يحكم كتابات الشركات/القوالب فقط.
+
 ## المصادقة — `/api/auth`
 | الطريقة | المسار | الوصول | الوصف |
 |---|---|---|---|
-| POST | `/login` | عام | `{username,password}` → توكنات + بيانات المستخدم (تتضمّن `companyIds` قائمة) |
-| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) + `companyIds` محدّثة |
+| POST | `/login` | عام | `{username,password}` → توكنات + بيانات المستخدم (تتضمّن `companyIds` و`modules`) |
+| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) + `companyIds`/`modules` محدّثة |
 | POST | `/logout` | مصادَق | إبطال refresh token |
-| GET | `/me` | مصادَق | بيانات المستخدم الحالي (`companyIds` = الشركات المسموحة) |
+| GET | `/me` | مصادَق | بيانات المستخدم الحالي (`companyIds` + `modules` = الأقسام المسموحة) |
 | POST | `/change-password` | مصادَق | `{currentPassword,newPassword}` |
 
 ## الشركات — `/api/companies`
@@ -32,8 +34,8 @@
 - `/api/exchange-rates` — GET `/` · GET `/latest?currency=USD` · POST (Manager+).
 
 ## المستخدمون والتفويض
-- `/api/users` (SuperAdmin/President/Manager): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية والعزل مفروضان في الخدمة.
-  - المدخلات تحمل `companyIds` (قائمة). **ربط/تعديل الشركات حصراً للسوبر أدمن ورئيس الشركة** (رئيس الشركة ضمن شركاته)؛ المدير/الموظف لا يغيّران الإسناد. غير السوبر أدمن يلزمه شركة واحدة على الأقل. الاستجابة تُعيد `companyIds`.
+- `/api/users` (SuperAdmin/President/Manager + قسم `Users`): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية والعزل مفروضان في الخدمة.
+  - المدخلات تحمل `companyIds` و`modules` (قائمة أسماء الأقسام). **ربط الشركات وتحديد الأقسام حصراً للسوبر أدمن ورئيس الشركة**؛ المدير/الموظف لا يغيّرانها (تُتجاهل ← افتراضي). أدوار السوبر أدمن/الرئيس تُخزَّن بكل الأقسام. غير السوبر أدمن يلزمه شركة واحدة على الأقل. الاستجابة تُعيد `companyIds` و`modules`.
 - `/api/delegations` (Manager+): GET، POST، DELETE `/{id}`.
 
 ## الصادر — `/api/outgoing`

@@ -1,4 +1,6 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
+using Dms.Domain;
 using Dms.Infrastructure.Reports;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +9,7 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Authorize]
+[RequireModule(AppModule.Reports)]
 [Route("api/[controller]")]
 public sealed class ReportsController(IReportService reports) : ControllerBase
 {

@@ -1,4 +1,5 @@
 using Dms.Api.Dtos;
+using Dms.Domain;
 using Dms.Infrastructure.Auth;
 using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -38,7 +39,8 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
     [HttpGet("me")]
     public ActionResult<MeResponse> Me()
         => new MeResponse(current.UserId!.Value, User.Identity!.Name ?? "",
-            User.Identity!.Name ?? "", current.Role!.Value, current.AllowedCompanyIds, current.CanApprove);
+            User.Identity!.Name ?? "", current.Role!.Value, current.AllowedCompanyIds, current.CanApprove,
+            current.AllowedModules.ToNames());
 
     [Authorize]
     [HttpPost("change-password")]
@@ -50,5 +52,5 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
 
     private static AuthResponse Map(AuthResult r) => new(
         r.AccessToken, r.AccessExpires, r.RefreshToken, r.UserId, r.FullName,
-        r.Username, r.Role, r.CompanyIds, r.CanApprove, r.MustChangePassword);
+        r.Username, r.Role, r.CompanyIds, r.CanApprove, r.MustChangePassword, r.Modules);
 }

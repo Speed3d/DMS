@@ -1,8 +1,11 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
+import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -39,6 +42,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     try {
       await ref.read(apiClientProvider).approve(widget.id);
       _snack('تم الاعتماد وتوليد الرقم والـ PDF بنجاح.');
+      invalidateOutgoing(ref); // تحديث اللوحة/الإشعارات فوراً (يظهر المبلغ المعتمد)
       _reload();
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -63,7 +67,8 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     setState(() => _busy = true);
     try {
       final bytes = await ref.read(apiClientProvider).previewDraftPdf(widget.id);
-      await downloadBytes(bytes, 'draft-preview-${widget.id}.pdf', 'application/pdf');
+      if (!mounted) return;
+      _showPdfPreview(bytes, 'معاينة المسودة');
     } on ApiException catch (e) {
       _snack(e.message, error: true);
     } finally {
@@ -71,11 +76,34 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     }
   }
 
+  /// معاينة PDF داخل البرنامج (لا تنزيل).
+  void _showPdfPreview(Uint8List bytes, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1000),
+          child: PdfPreview(
+            build: (format) => bytes,
+            canChangeOrientation: false,
+            canChangePageFormat: false,
+            canDebug: false,
+            pdfFileName: 'preview-${widget.id}.pdf',
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _editApproved(OutgoingDetail d) async {
     final changed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(builder: (_) => OutgoingEditApprovedScreen(book: d)));
     if (changed == true) {
       _snack('تم حفظ التعديل وإنشاء إصدار جديد.');
+      invalidateOutgoing(ref);
       _reload();
     }
   }
@@ -85,6 +113,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
         MaterialPageRoute(builder: (_) => OutgoingEditDraftScreen(book: d)));
     if (changed == true) {
       _snack('تم حفظ التعديل.');
+      invalidateOutgoing(ref);
       _reload();
     }
   }
@@ -153,6 +182,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     if (ok != true) return;
     try {
       await ref.read(apiClientProvider).deleteOutgoing(widget.id);
+      invalidateOutgoing(ref);
       if (mounted) Navigator.pop(context);
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -220,7 +250,9 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                       if (!d.isFinal) ...[
                         _buildActionButton('تعديل المسودة', Icons.edit_document, AppColors.warn, () => _editDraft(d)),
                         _buildActionButton('معاينة القالب', Icons.preview_rounded, AppColors.gold, _previewDraft),
-                        _buildActionButton('اعتماد وإصدار', Icons.verified_rounded, AppColors.success, _approve, isFilled: true),
+                        // زر الاعتماد يظهر فقط لمن يملك صلاحية اعتماد فعّالة (دور/علَم/تفويض).
+                        if (d.canApprove)
+                          _buildActionButton('اعتماد وإصدار', Icons.verified_rounded, AppColors.success, _approve, isFilled: true),
                       ],
                       if (d.hasPdf)
                         _buildActionButton('تحميل PDF', Icons.picture_as_pdf_rounded, AppColors.gold, _downloadPdf),

@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Dms.Infrastructure.Users;
 
 public sealed record CreateUserInput(
-    string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove);
+    string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules);
 
-public sealed record UpdateUserInput(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove);
+public sealed record UpdateUserInput(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules);
 
 public interface IUserService
 {
@@ -59,6 +59,7 @@ public sealed class UserService(
             Role = input.Role,
             CompanyId = primaryCompanyId,
             CanApprove = input.CanApprove || RoleHierarchy.IsManagerOrAbove(input.Role),
+            Modules = ResolveModules(input.Modules, input.Role),
             IsActive = true,
             MustChangePassword = true,
             CreatedByUserId = current.UserId,
@@ -85,6 +86,12 @@ public sealed class UserService(
         user.Role = input.Role;
         user.IsActive = input.IsActive;
         user.CanApprove = input.CanApprove || RoleHierarchy.IsManagerOrAbove(input.Role);
+
+        // الأقسام: السوبر أدمن/الرئيس معفيان (All)؛ غيرهما يحدّدها السوبر أدمن/الرئيس فقط عند إرسالها.
+        if (input.Role is UserRole.SuperAdmin or UserRole.President)
+            user.Modules = AppModule.All;
+        else if (CanManageCompanies && input.Modules is not null)
+            user.Modules = AppModuleExtensions.FromNames(input.Modules);
 
         // إسناد الشركات: السوبر أدمن ورئيس الشركة فقط، وفقط عند إرسال قائمة صريحة
         // (null = «لا تغيير» — يمنع مسح الإسنادات بالخطأ عند تعديل حقول أخرى).
@@ -151,5 +158,13 @@ public sealed class UserService(
         // المدير/الموظف: لا يتحكمان بالإسناد — شركتهما النشطة فقط.
         var currentCid = current.ActiveCompanyId ?? throw new ValidationException("تعذّر تحديد الشركة.");
         return new List<int> { currentCid };
+    }
+
+    /// <summary>يحدّد أقسام المستخدم عند الإنشاء: معفيان (All) للسوبر أدمن/الرئيس؛ غيرهما يحدّدها المانح المخوّل وإلا All.</summary>
+    private AppModule ResolveModules(List<string>? requested, UserRole targetRole)
+    {
+        if (targetRole is UserRole.SuperAdmin or UserRole.President) return AppModule.All;
+        if (CanManageCompanies && requested is not null) return AppModuleExtensions.FromNames(requested);
+        return AppModule.All; // توافق خلفي: المدير لا يقيّد الأقسام
     }
 }

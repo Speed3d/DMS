@@ -41,3 +41,40 @@ public enum OwnerType
     Outgoing = 0,
     Archive = 1,
 }
+
+/// <summary>
+/// أقسام النظام لصلاحيات الوصول (مستوى «وصول/لا‑وصول»). تُخزَّن كـ bitmask على المستخدم.
+/// طبقة تقييد فوق الأدوار: السوبر أدمن ورئيس الشركة معفيان دائماً (All).
+/// </summary>
+[Flags]
+public enum AppModule
+{
+    None = 0,
+    Outgoing = 1,
+    Archive = 2,
+    Reports = 4,
+    Users = 8,
+    Settings = 16,
+    Backup = 32,
+    All = Outgoing | Archive | Reports | Users | Settings | Backup, // 63
+}
+
+/// <summary>تحويل bitmask الأقسام إلى/من قائمة أسماء (لعقود الـ API).</summary>
+public static class AppModuleExtensions
+{
+    private static readonly AppModule[] Individual =
+        { AppModule.Outgoing, AppModule.Archive, AppModule.Reports, AppModule.Users, AppModule.Settings, AppModule.Backup };
+
+    public static List<string> ToNames(this AppModule m) =>
+        Individual.Where(x => (m & x) == x).Select(x => x.ToString()).ToList();
+
+    /// <summary>أسماء → bitmask. الأسماء غير المعروفة تُتجاهل.</summary>
+    public static AppModule FromNames(IEnumerable<string> names)
+    {
+        var result = AppModule.None;
+        foreach (var n in names)
+            if (Enum.TryParse<AppModule>(n, ignoreCase: true, out var v) && Individual.Contains(v))
+                result |= v;
+        return result;
+    }
+}

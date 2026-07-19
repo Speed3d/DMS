@@ -1,3 +1,4 @@
+using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Users;
@@ -8,6 +9,7 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Authorize(Roles = "SuperAdmin,President,Manager")]
+[RequireModule(AppModule.Users)]
 [Route("api/[controller]")]
 public sealed class DelegationsController(IDelegationService delegations) : ControllerBase
 {

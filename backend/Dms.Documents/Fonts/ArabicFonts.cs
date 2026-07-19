@@ -4,12 +4,12 @@ using QuestPDF.Drawing;
 namespace Dms.Documents.Fonts;
 
 /// <summary>
-/// تسجيل الخطوط العربية المضمّنة (Amiri — OFL) داخل QuestPDF.
-/// خط مفتوح الترخيص قابل للتضمين في PDF على السيرفر بلا قيود.
+/// تسجيل الخطوط المضمّنة داخل QuestPDF: Amiri/Cairo (OFL) + Arial/Times New Roman (وفّرها المالك).
+/// أسماء العائلات (Family) تُستخدم في FontFamily(...) وفي خريطة HtmlToQuestPdf.
 /// </summary>
 public static class ArabicFonts
 {
-    /// <summary>اسم عائلة الخط كما هو في ملف TTF — يُستخدم في FontFamily(...).</summary>
+    /// <summary>الخط الافتراضي للمتن.</summary>
     public const string Family = "Amiri";
 
     private static bool _registered;
@@ -24,6 +24,12 @@ public static class ArabicFonts
 
             RegisterEmbedded("Dms.Documents.Assets.Fonts.Amiri-Regular.ttf");
             RegisterEmbedded("Dms.Documents.Assets.Fonts.Amiri-Bold.ttf");
+            RegisterEmbedded("Dms.Documents.Assets.Fonts.Cairo-Regular.ttf");
+            RegisterEmbedded("Dms.Documents.Assets.Fonts.Cairo-Bold.ttf");
+            RegisterEmbedded("Dms.Documents.Assets.Fonts.arial.ttf");
+            RegisterEmbedded("Dms.Documents.Assets.Fonts.arialbd.ttf");
+            RegisterEmbedded("Dms.Documents.Assets.Fonts.times.ttf");
+            RegisterEmbedded("Dms.Documents.Assets.Fonts.timesbd.ttf");
 
             _registered = true;
         }
