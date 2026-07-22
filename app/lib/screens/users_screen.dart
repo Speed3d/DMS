@@ -471,9 +471,10 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   List<String> _selectedModules = [];
   late Future<List<Company>> _companiesFuture;
 
-  static const List<String> _allModules = ['Outgoing', 'Archive', 'Reports', 'Users', 'Settings', 'Backup'];
+  static const List<String> _allModules = ['Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup'];
   static const Map<String, String> _moduleLabels = {
     'Outgoing': 'الصادر',
+    'Incoming': 'الوارد',
     'Archive': 'الأرشيف',
     'Reports': 'التقارير',
     'Users': 'المستخدمون',

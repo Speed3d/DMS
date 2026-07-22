@@ -17,8 +17,8 @@ public interface IAttachmentService
 public sealed class AttachmentService(
     AppDbContext db, ICurrentUser current, IAuditService audit, IFileStorage storage) : IAttachmentService
 {
-    private const long MaxBytes = 25 * 1024 * 1024; // 25MB
-    private static readonly string[] Allowed = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx"];
+    private const long MaxBytes = 50 * 1024 * 1024; // 50MB
+    private static readonly string[] Allowed = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".zip", ".dwg"];
 
     public async Task<Attachment> AddAsync(OwnerType ownerType, int ownerId, string fileName, byte[] content, CancellationToken ct = default)
     {
@@ -26,10 +26,10 @@ public sealed class AttachmentService(
         await EnsureOwnerAccessibleAsync(ownerType, ownerId, ct);
 
         if (content.Length == 0) throw new ValidationException("الملف فارغ.");
-        if (content.Length > MaxBytes) throw new ValidationException("حجم الملف يتجاوز الحد المسموح (25 ميغابايت).");
+        if (content.Length > MaxBytes) throw new ValidationException("حجم الملف يتجاوز الحد المسموح (50 ميغابايت).");
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         if (!Allowed.Contains(ext))
-            throw new ValidationException("صيغة الملف غير مسموحة (PDF/JPG/PNG/DOCX/XLSX).");
+            throw new ValidationException("صيغة الملف غير مسموحة (PDF/JPG/PNG/DOCX/XLSX/ZIP/DWG).");
 
         var key = await storage.SaveAsync($"att-{ownerType}-{ownerId}-{Path.GetFileName(fileName)}", content, ct);
         var att = new Attachment
@@ -83,7 +83,13 @@ public sealed class AttachmentService(
     private async Task EnsureOwnerAccessibleAsync(OwnerType type, int ownerId, CancellationToken ct)
     {
         // فحص صلاحية القسم (يمنع تجاوز تقييد الأقسام عبر مسار المرفقات المباشر).
-        var requiredModule = type == OwnerType.Outgoing ? AppModule.Outgoing : AppModule.Archive;
+        var requiredModule = type switch
+        {
+            OwnerType.Outgoing => AppModule.Outgoing,
+            OwnerType.Archive => AppModule.Archive,
+            OwnerType.Incoming => AppModule.Incoming,
+            _ => throw new ValidationException("نوع غير معروف")
+        };
         if (!current.HasModule(requiredModule))
             throw new ForbiddenException("لا تملك صلاحية الوصول لهذا القسم.");
 
@@ -93,6 +99,8 @@ public sealed class AttachmentService(
                 .Select(b => (int?)b.CreatedByUserId).FirstOrDefaultAsync(ct),
             OwnerType.Archive => await db.ArchiveDocs.Where(a => a.ArchiveId == ownerId)
                 .Select(a => (int?)a.CreatedByUserId).FirstOrDefaultAsync(ct),
+            OwnerType.Incoming => await db.IncomingBooks.Where(b => b.IncomingId == ownerId)
+                .Select(b => (int?)b.CreatedByUserId).FirstOrDefaultAsync(ct),
             _ => null,
         };
         if (creator is null)

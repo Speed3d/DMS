@@ -111,6 +111,7 @@ class _State extends ConsumerState<ReportsScreen> {
                 items: const [
                   DropdownMenuItem(value: 'All', child: Text('الكل')),
                   DropdownMenuItem(value: 'Outgoing', child: Text('الصادر')),
+                  DropdownMenuItem(value: 'Incoming', child: Text('الوارد')),
                   DropdownMenuItem(value: 'Archive', child: Text('الأرشيف')),
                 ],
                 onChanged: (v) => setState(() => _source = v ?? 'All'),

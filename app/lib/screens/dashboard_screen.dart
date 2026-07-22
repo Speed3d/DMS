@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/outgoing_providers.dart';
+import '../core/incoming_providers.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
@@ -18,52 +19,67 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(outgoingListProvider);
+    final outgoingAsync = ref.watch(outgoingListProvider);
+    final incomingAsync = ref.watch(incomingListProvider);
+
     return Scaffold(
-      body: async.when(
+      body: outgoingAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
-        error: (e, _) => Center(child: Text('حدث خطأ: $e', style: const TextStyle(color: AppColors.danger))),
-        data: (items) {
-          final drafts = items.where((e) => e.status.toLowerCase().contains('draft')).length;
-          final finals = items.where((e) => e.status.toLowerCase().contains('final')).length;
-          // إجمالي المبالغ = الكتب المعتمدة فقط (Final).
-          final totalIqd = items
-              .where((e) => e.status.toLowerCase().contains('final'))
-              .fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
+        error: (e, _) => Center(child: Text('حدث خطأ في الصادر: $e', style: const TextStyle(color: AppColors.danger))),
+        data: (outItems) {
+          return incomingAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+            error: (e, _) => Center(child: Text('حدث خطأ في الوارد: $e', style: const TextStyle(color: AppColors.danger))),
+            data: (incItems) {
+              final outDrafts = outItems.where((e) => e.status.toLowerCase().contains('draft')).length;
+              final outFinals = outItems.where((e) => e.status.toLowerCase().contains('final')).length;
+              final outTotalIqd = outItems
+                  .where((e) => e.status.toLowerCase().contains('final'))
+                  .fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Hint: البطاقات الإحصائية العلوية
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = constraints.maxWidth;
-                    int crossAxisCount = 4;
-                    if (width < 500) {
-                      crossAxisCount = 1;
-                    } else if (width < 900) {
-                      crossAxisCount = 2;
-                    }
-                    
-                    final double spacing = 24.0;
-                    final double totalSpacing = spacing * (crossAxisCount - 1);
-                    final double cardWidth = (width - totalSpacing) / crossAxisCount;
+              final incNew = incItems.where((e) => e.status.toLowerCase().contains('new')).length;
+              final incFinals = incItems.where((e) => e.status.toLowerCase().contains('archived')).length;
+              final incTotalIqd = incItems
+                  .fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
 
-                    return Wrap(
-                      spacing: spacing,
-                      runSpacing: spacing,
-                      children: [
-                        SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${items.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
-                        SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$drafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
-                        SizedBox(width: cardWidth, child: _buildStatCard('كتب معتمدة', '$finals', Icons.verified_rounded, AppColors.success)),
-                        SizedBox(width: cardWidth, child: _buildStatCard('إجمالي المعتمد', '${_fmt(totalIqd)} د.ع', Icons.payments_rounded, AppColors.gold)),
-                      ],
-                    );
-                  }
-                ),
-                const SizedBox(height: 32),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Hint: البطاقات الإحصائية العلوية (الصادر والوارد)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        int crossAxisCount = 4;
+                        if (width < 500) {
+                          crossAxisCount = 1;
+                        } else if (width < 900) {
+                          crossAxisCount = 2;
+                        }
+                        
+                        final double spacing = 24.0;
+                        final double totalSpacing = spacing * (crossAxisCount - 1);
+                        final double cardWidth = (width - totalSpacing) / crossAxisCount;
+
+                        return Wrap(
+                          spacing: spacing,
+                          runSpacing: spacing,
+                          children: [
+                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${outItems.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
+                            SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$outDrafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
+                            SizedBox(width: cardWidth, child: _buildStatCard('صادر معتمد', '$outFinals', Icons.verified_rounded, AppColors.success)),
+                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الصادر', '${_fmt(outTotalIqd)} د.ع', Icons.payments_rounded, const Color(0xFF3B82F6))),
+                            
+                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الوارد', '${incItems.length}', Icons.inbox_rounded, const Color(0xFF10B981))),
+                            SizedBox(width: cardWidth, child: _buildStatCard('وارد جديد', '$incNew', Icons.mark_email_unread_rounded, AppColors.gold, onTap: () => widget.onNavigate?.call(3))),
+                            SizedBox(width: cardWidth, child: _buildStatCard('وارد مؤرشف', '$incFinals', Icons.archive_rounded, const Color(0xFF64748B))),
+                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الوارد', '${_fmt(incTotalIqd)} د.ع', Icons.account_balance_wallet_rounded, const Color(0xFF10B981))),
+                          ],
+                        );
+                      }
+                    ),
+                    const SizedBox(height: 32),
 
                 // Hint: القسم الأوسط (الرسوم البيانية + نشاطات أخيرة)
                 LayoutBuilder(
@@ -81,7 +97,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           const SizedBox(height: 32),
                           SizedBox(
                             height: 300,
-                            child: _buildChart(items),
+                            child: _buildChart(outItems),
                           ),
                         ],
                       ),
@@ -101,8 +117,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ),
                           const SizedBox(height: 16),
                           // عرض آخر 5 كتب
-                          ...items.take(5).map((e) => _buildActivityItem(e)),
-                          if (items.isEmpty)
+                          ...outItems.take(5).map((e) => _buildActivityItem(e)),
+                          if (outItems.isEmpty)
                             const Padding(
                               padding: EdgeInsets.all(24),
                               child: Center(child: Text('لا توجد بيانات حالياً')),
@@ -134,6 +150,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ],
             ),
+          );
+            }
           );
         },
       ),

@@ -4,6 +4,7 @@ using Dms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Dms.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719152646_AddIncomingModule")]
+    partial class AddIncomingModule
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -626,6 +629,9 @@ namespace Dms.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("IncomingBookIncomingId")
+                        .HasColumnType("int");
+
                     b.Property<int>("IncomingId")
                         .HasColumnType("int");
 
@@ -640,6 +646,8 @@ namespace Dms.Infrastructure.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("MovementId");
+
+                    b.HasIndex("IncomingBookIncomingId");
 
                     b.HasIndex("IncomingId");
 
@@ -980,9 +988,7 @@ namespace Dms.Infrastructure.Migrations
                 {
                     b.HasOne("Dms.Domain.IncomingBook", "IncomingBook")
                         .WithMany()
-                        .HasForeignKey("IncomingId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("IncomingBookIncomingId");
 
                     b.Navigation("IncomingBook");
                 });

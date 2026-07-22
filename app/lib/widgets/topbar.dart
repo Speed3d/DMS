@@ -5,6 +5,8 @@ import '../core/session.dart';
 import '../core/outgoing_providers.dart';
 import '../models.dart';
 import '../screens/outgoing_detail_screen.dart';
+import '../core/incoming_providers.dart';
+import '../screens/incoming_detail_screen.dart';
 
 /// Hint: الشريط العلوي (Topbar) المحدث
 class Topbar extends ConsumerWidget implements PreferredSizeWidget {
@@ -130,7 +132,78 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                 ),
                 const SizedBox(width: 8),
 
-                // Notifications
+                // Incoming Notifications
+                Consumer(
+                  builder: (ctx, ref, child) {
+                    final pendingIncList = ref.watch(pendingIncomingProvider).value ?? <IncomingListItem>[];
+                    final pendingIncCount = pendingIncList.length;
+                    
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _buildIconButton(ctx, icon: Icons.move_to_inbox_rounded, onTap: () {
+                          if (pendingIncList.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد كتب واردة جديدة')));
+                            return;
+                          }
+                          final box = ctx.findRenderObject() as RenderBox;
+                          final overlay = Navigator.of(ctx).overlay!.context.findRenderObject() as RenderBox;
+                          showMenu<int>(
+                            context: ctx,
+                            position: RelativeRect.fromRect(
+                              Rect.fromPoints(box.localToGlobal(box.size.bottomLeft(Offset.zero), ancestor: overlay), 
+                                              box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay)),
+                              Offset.zero & overlay.size,
+                            ),
+                            items: pendingIncList.map((d) => PopupMenuItem<int>(
+                              value: d.incomingId,
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.inbox_rounded, color: AppColors.gold, size: 20),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(d.subject, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        Text(d.entityName, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )).toList(),
+                          ).then((id) {
+                            if (id != null && ctx.mounted) {
+                              Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => IncomingDetailScreen(id: id))).then((_) => invalidateIncoming(ref));
+                            }
+                          });
+                        }),
+                        if (pendingIncCount > 0)
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: AppColors.gold,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: theme.colorScheme.surface, width: 2),
+                              ),
+                              child: Text(
+                                pendingIncCount > 9 ? '+9' : '$pendingIncCount',
+                                style: const TextStyle(color: AppColors.navyDeep, fontSize: 10, fontWeight: FontWeight.bold, height: 1),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+
+                // Outgoing Notifications
                 Consumer(
                   builder: (ctx, ref, child) {
                     final pendingList = ref.watch(pendingDraftsProvider).value ?? <OutgoingListItem>[];

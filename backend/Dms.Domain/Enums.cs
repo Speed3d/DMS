@@ -35,11 +35,30 @@ public enum EntityKind
     Both = 2,       // كلاهما
 }
 
+/// <summary>حالة الكتاب الوارد.</summary>
+public enum IncomingStatus
+{
+    New        = 0,   // جديد — تم الاستلام لكن لم يُراجع بعد
+    InReview   = 1,   // قيد المراجعة — قيد الدراسة من القسم المختص
+    Replied    = 2,   // تم الرد — تم إصدار كتاب صادر كرد
+    Closed     = 3,   // مغلق — لا يحتاج إجراء إضافي
+    Archived   = 4,   // مؤرشف — أرشفة نهائية
+}
+
+/// <summary>طريقة استلام الكتاب الوارد.</summary>
+public enum ReceiveMethod
+{
+    Manual = 0,   // يدوي — تسليم باليد
+    Mail   = 1,   // بريد — بريد عادي
+    Email  = 2,   // بريد إلكتروني
+}
+
 /// <summary>نوع مالك المرفق/الإصدار.</summary>
 public enum OwnerType
 {
     Outgoing = 0,
     Archive = 1,
+    Incoming = 2,
 }
 
 /// <summary>
@@ -56,14 +75,15 @@ public enum AppModule
     Users = 8,
     Settings = 16,
     Backup = 32,
-    All = Outgoing | Archive | Reports | Users | Settings | Backup, // 63
+    Incoming = 64,
+    All = Outgoing | Archive | Reports | Users | Settings | Backup | Incoming, // 127
 }
 
 /// <summary>تحويل bitmask الأقسام إلى/من قائمة أسماء (لعقود الـ API).</summary>
 public static class AppModuleExtensions
 {
     private static readonly AppModule[] Individual =
-        { AppModule.Outgoing, AppModule.Archive, AppModule.Reports, AppModule.Users, AppModule.Settings, AppModule.Backup };
+        { AppModule.Outgoing, AppModule.Archive, AppModule.Reports, AppModule.Users, AppModule.Settings, AppModule.Backup, AppModule.Incoming };
 
     public static List<string> ToNames(this AppModule m) =>
         Individual.Where(x => (m & x) == x).Select(x => x.ToString()).ToList();

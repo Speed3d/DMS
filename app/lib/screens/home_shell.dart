@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
+import '../core/incoming_providers.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/topbar.dart';
 
@@ -10,6 +11,7 @@ import 'archive_list_screen.dart';
 import 'dashboard_screen.dart';
 import 'offline_drafts_screen.dart';
 import 'outgoing_list_screen.dart';
+import 'incoming_list_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
 import 'users_screen.dart';
@@ -63,6 +65,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       DashboardScreen(onNavigate: (i) => setState(() => _index = i)),
       const OfflineDraftsScreen(),
       const OutgoingListScreen(),
+      const IncomingListScreen(),
       const ArchiveListScreen(),
       const ReportsScreen(),
       const SettingsScreen(),
@@ -180,6 +183,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                     // إبطال مزوّدات الشركة ليُعاد جلبها فوراً بالشركة الجديدة
                     // (يمنع ظهور إشعارات/بيانات الشركة السابقة).
                     invalidateOutgoing(ref);
+                    invalidateIncoming(ref);
                     ref.invalidate(activeCompanyProvider);
                     Navigator.pop(ctx);
                     setState(() {});
@@ -191,15 +195,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  /// هل يُسمح للمستخدم بالقسم في المؤشر المعطى (حسب الدور وصلاحيات الأقسام)؟
   bool _isIndexAllowed(int index, AuthResult auth, bool canManageUsers, bool isSuper) => switch (index) {
         0 || 1 => true,
         2 => auth.hasModule('Outgoing'),
-        3 => auth.hasModule('Archive'),
-        4 => auth.hasModule('Reports'),
-        5 => canManageUsers && auth.hasModule('Settings'),
-        6 => canManageUsers && auth.hasModule('Users'),
-        7 => isSuper && auth.hasModule('Backup'),
+        3 => auth.hasModule('Incoming'),
+        4 => auth.hasModule('Archive'),
+        5 => auth.hasModule('Reports'),
+        6 => canManageUsers && auth.hasModule('Settings'),
+        7 => canManageUsers && auth.hasModule('Users'),
+        8 => isSuper && auth.hasModule('Backup'),
         _ => false,
       };
 
@@ -207,11 +211,12 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         0 => 'الرئيسية',
         1 => 'المسودات (أوفلاين)',
         2 => 'الصادر',
-        3 => 'الأرشيف',
-        4 => 'التقارير المالية',
-        5 => 'الإعدادات والقوالب',
-        6 => 'المستخدمون',
-        7 => 'النسخ الاحتياطي',
+        3 => 'الوارد',
+        4 => 'الأرشيف',
+        5 => 'التقارير المالية',
+        6 => 'الإعدادات والقوالب',
+        7 => 'المستخدمون',
+        8 => 'النسخ الاحتياطي',
         _ => '',
       };
 
@@ -219,11 +224,12 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         0 => 'نظرة عامة على نشاط الشركة',
         1 => 'الكتب المحفوظة محلياً بانتظار الاتصال',
         2 => 'إدارة الكتب الصادرة والاعتمادات',
-        3 => 'أرشفة الوثائق السابقة والبحث فيها',
-        4 => 'إحصائيات مالية للصادر والوارد',
-        5 => 'إدارة إعدادات النظام وقوالب الطباعة',
-        6 => 'إدارة صلاحيات وحسابات الموظفين',
-        7 => 'أخذ نسخ احتياطية واستعادتها',
+        3 => 'إدارة الكتب الواردة الواردة إلى الشركة',
+        4 => 'أرشفة الوثائق السابقة والبحث فيها',
+        5 => 'إحصائيات مالية للصادر والوارد',
+        6 => 'إدارة إعدادات النظام وقوالب الطباعة',
+        7 => 'إدارة صلاحيات وحسابات الموظفين',
+        8 => 'أخذ نسخ احتياطية واستعادتها',
         _ => '',
       };
 }

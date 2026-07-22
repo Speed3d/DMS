@@ -460,3 +460,179 @@ class OutgoingDetail {
         bodyJson: j['bodyJson'],
       );
 }
+
+// ──────────────────── ثوابت الوارد (مرآة لـ enums الباك-إند) ────────────────────
+
+/// طرق استلام الكتاب الوارد.
+/// Hint: المفاتيح تطابق حرفياً enum `ReceiveMethod` في الباك-إند — أي اختلاف يجعل الحفظ يفشل بـ 400.
+const Map<String, String> kReceiveMethods = {
+  'Manual': 'تسليم باليد',
+  'Mail': 'بريد عادي',
+  'Email': 'بريد إلكتروني',
+};
+
+/// طريقة الاستلام الافتراضية عند تسجيل كتاب جديد.
+const String kDefaultReceiveMethod = 'Manual';
+
+/// حالات الكتاب الوارد.
+/// Hint: المفاتيح تطابق حرفياً enum `IncomingStatus` في الباك-إند.
+const Map<String, String> kIncomingStatuses = {
+  'New': 'جديد',
+  'InReview': 'قيد المراجعة',
+  'Replied': 'تم الرد',
+  'Closed': 'مغلق',
+  'Archived': 'مؤرشف',
+};
+
+/// الانتقالات المسموحة بين الحالات.
+/// Hint: نسخة مطابقة لمصفوفة `AllowedTransitions` في `IncomingService` بالباك-إند —
+/// تُستخدم لعرض الخيارات المتاحة فقط بدل ترك المستخدم يصطدم برسالة رفض من الخادم.
+const Map<String, List<String>> kIncomingTransitions = {
+  'New': ['InReview', 'Closed'],
+  'InReview': ['Replied', 'Closed'],
+  'Replied': ['Closed'],
+  'Closed': ['Archived'],
+  'Archived': <String>[],
+};
+
+/// الاسم العربي للحالة (Hint: يعيد المفتاح نفسه إن كانت الحالة غير معروفة بدل إظهار فراغ).
+String incomingStatusLabel(String status) => kIncomingStatuses[status] ?? status;
+
+/// الاسم العربي لطريقة الاستلام.
+String receiveMethodLabel(String method) => kReceiveMethods[method] ?? method;
+
+class IncomingListItem {
+  final int incomingId;
+  final String? incomingNumber;
+  final String? externalNumber;
+  final DateTime receivedDate;
+  final String subject;
+  final String entityName;
+  final String status;
+  final String? folderName;
+  final num? amountInIqd;
+
+  IncomingListItem({
+    required this.incomingId,
+    required this.incomingNumber,
+    required this.externalNumber,
+    required this.receivedDate,
+    required this.subject,
+    required this.entityName,
+    required this.status,
+    required this.folderName,
+    required this.amountInIqd,
+  });
+
+  factory IncomingListItem.fromJson(Map<String, dynamic> j) => IncomingListItem(
+        incomingId: j['incomingId'],
+        incomingNumber: j['incomingNumber'],
+        externalNumber: j['externalNumber'],
+        receivedDate: DateTime.tryParse(j['receivedDate'] ?? '') ?? DateTime.now(),
+        subject: j['subject'] ?? '',
+        entityName: j['entityName'] ?? '',
+        status: j['status'] ?? 'New',
+        folderName: j['folderName'],
+        amountInIqd: j['amountInIqd'],
+      );
+}
+
+class IncomingDetail {
+  final int incomingId;
+  final int companyId;
+  final String? incomingNumber;
+  final int? year;
+  final int? serialNo;
+  final String? externalNumber;
+  final DateTime? externalDate;
+  final DateTime receivedDate;
+  final String? receivedTime;
+  final int entityId;
+  final String entityName;
+  final String subject;
+  final int? documentTypeId;
+  final String? documentTypeName;
+  final String receiveMethod;
+  final int receivedByUserId;
+  final String receivedByUserName;
+  final String status;
+  final String? folderName;
+  final String? lastAction;
+  final String? keywords;
+  final String? notes;
+  final num? amount;
+  final String? currency;
+  final num? exchangeRate;
+  final num? amountInIqd;
+  final int? replyOutgoingId;
+  final String? replyOutgoingNumber;
+  final DateTime createdAt;
+
+  IncomingDetail({
+    required this.incomingId, required this.companyId, this.incomingNumber, this.year, this.serialNo,
+    this.externalNumber, this.externalDate, required this.receivedDate, this.receivedTime,
+    required this.entityId, required this.entityName, required this.subject, this.documentTypeId, this.documentTypeName,
+    required this.receiveMethod, required this.receivedByUserId, required this.receivedByUserName,
+    required this.status, this.folderName, this.lastAction, this.keywords, this.notes,
+    this.amount, this.currency, this.exchangeRate, this.amountInIqd,
+    this.replyOutgoingId, this.replyOutgoingNumber, required this.createdAt,
+  });
+
+  factory IncomingDetail.fromJson(Map<String, dynamic> j) => IncomingDetail(
+        incomingId: j['incomingId'],
+        companyId: j['companyId'],
+        incomingNumber: j['incomingNumber'],
+        year: j['year'],
+        serialNo: j['serialNo'],
+        externalNumber: j['externalNumber'],
+        externalDate: j['externalDate'] != null ? DateTime.tryParse(j['externalDate']) : null,
+        receivedDate: DateTime.tryParse(j['receivedDate'] ?? '') ?? DateTime.now(),
+        receivedTime: j['receivedTime'],
+        entityId: j['entityId'],
+        entityName: j['entityName'] ?? '',
+        subject: j['subject'] ?? '',
+        documentTypeId: j['documentTypeId'],
+        documentTypeName: j['documentTypeName'],
+        receiveMethod: j['receiveMethod'] ?? kDefaultReceiveMethod,
+        receivedByUserId: j['receivedByUserId'] ?? 0,
+        receivedByUserName: j['receivedByUserName'] ?? '',
+        status: j['status'] ?? 'New',
+        folderName: j['folderName'],
+        lastAction: j['lastAction'],
+        keywords: j['keywords'],
+        notes: j['notes'],
+        amount: j['amount'],
+        currency: j['currency'],
+        exchangeRate: j['exchangeRate'],
+        amountInIqd: j['amountInIqd'],
+        replyOutgoingId: j['replyOutgoingId'],
+        replyOutgoingNumber: j['replyOutgoingNumber'],
+        createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
+      );
+}
+
+class MovementLogItem {
+  final int movementId;
+  final String action;
+  final String description;
+  final String? fromDepartment;
+  final String? toDepartment;
+  final String performedByUserName;
+  final DateTime performedAt;
+
+  MovementLogItem({
+    required this.movementId, required this.action, required this.description,
+    this.fromDepartment, this.toDepartment,
+    required this.performedByUserName, required this.performedAt,
+  });
+
+  factory MovementLogItem.fromJson(Map<String, dynamic> j) => MovementLogItem(
+        movementId: j['movementId'],
+        action: j['action'] ?? '',
+        description: j['description'] ?? '',
+        fromDepartment: j['fromDepartment'],
+        toDepartment: j['toDepartment'],
+        performedByUserName: j['performedByUserName'] ?? '',
+        performedAt: DateTime.tryParse(j['performedAt'] ?? '') ?? DateTime.now(),
+      );
+}

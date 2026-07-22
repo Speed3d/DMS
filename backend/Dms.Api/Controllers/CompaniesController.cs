@@ -145,13 +145,15 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
         var c = await db.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.CompanyId == id, ct)
                 ?? throw new NotFoundException("الشركة غير موجودة.");
 
-        // تحقّق مسبق: لا يجوز محو سجلات رسمية (كتب معتمدة أو أرشيف). المسودات تُحذف مع الشركة.
+        // تحقّق مسبق: لا يجوز محو سجلات رسمية (كتب معتمدة أو أرشيف أو وارد). المسودات تُحذف مع الشركة.
         var hasApproved = await db.OutgoingBooks.IgnoreQueryFilters()
             .AnyAsync(b => b.CompanyId == id && b.Status == BookStatus.Final, ct);
         var hasArchive = await db.ArchiveDocs.IgnoreQueryFilters()
             .AnyAsync(a => a.CompanyId == id, ct);
-        if (hasApproved || hasArchive)
-            throw new ConflictException("لا يمكن حذف شركة لها كتب صادرة معتمدة أو أرشيف. عطّل الشركة بدل حذفها.");
+        var hasIncoming = await db.IncomingBooks.IgnoreQueryFilters()
+            .AnyAsync(b => b.CompanyId == id, ct);
+        if (hasApproved || hasArchive || hasIncoming)
+            throw new ConflictException("لا يمكن حذف شركة لها كتب صادرة معتمدة، أرشيف، أو كتب واردة. عطّل الشركة بدل حذفها.");
 
         // اجمع كل مفاتيح التخزين قبل الحذف لتنظيفها بعد نجاح المعاملة (شعار/صور قوالب/مسودات PDF/مرفقات).
         var blobKeys = new List<string>();
@@ -184,6 +186,9 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
             db.Attachments.RemoveRange(db.Attachments.Where(a => a.OwnerType == OwnerType.Outgoing && bookIds.Contains(a.OwnerId)));
             db.DocumentVersions.RemoveRange(db.DocumentVersions.Where(v => v.DocType == OwnerType.Outgoing && bookIds.Contains(v.DocId)));
             db.OutgoingBooks.RemoveRange(db.OutgoingBooks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+            // مسح الكتب الواردة وحركاتها المتبقية (إذا لم يتم منع الحذف بسببها - أي لن نصل هنا إذا كان هناك وارد، لكن للأمان ننظف الجداول)
+            db.MovementLogs.RemoveRange(db.MovementLogs.Where(x => x.CompanyId == id));
+            db.IncomingBooks.RemoveRange(db.IncomingBooks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.UserCompanies.RemoveRange(db.UserCompanies.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.ApprovalDelegations.RemoveRange(db.ApprovalDelegations.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.Templates.RemoveRange(db.Templates.IgnoreQueryFilters().Where(x => x.CompanyId == id));

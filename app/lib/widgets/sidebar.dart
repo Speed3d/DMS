@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/outgoing_providers.dart';
+import '../core/incoming_providers.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -79,8 +80,16 @@ class Sidebar extends ConsumerWidget {
                 return _buildItem(2, Icons.send_rounded, 'الصادر', badge: badge);
               },
             ),
-          if (modules.contains('Archive')) _buildItem(3, Icons.archive_rounded, 'الأرشيف'),
-          if (modules.contains('Reports')) _buildItem(4, Icons.bar_chart_rounded, 'التقارير المالية'),
+          if (modules.contains('Incoming'))
+            Consumer(
+              builder: (context, ref, child) {
+                final countAsync = ref.watch(incomingCountProvider);
+                final badge = countAsync.whenOrNull(data: (count) => count > 0 ? count.toString() : null);
+                return _buildItem(3, Icons.inbox_rounded, 'الوارد', badge: badge);
+              },
+            ),
+          if (modules.contains('Archive')) _buildItem(4, Icons.archive_rounded, 'الأرشيف'),
+          if (modules.contains('Reports')) _buildItem(5, Icons.bar_chart_rounded, 'التقارير المالية'),
 
           const SizedBox(height: 18),
 
@@ -90,9 +99,9 @@ class Sidebar extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Text('الإدارة', style: TextStyle(color: Color(0xFF5E739B), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
             ),
-            if (_showSettings) _buildItem(5, Icons.settings_rounded, 'الإعدادات والقوالب'),
-            if (_showUsers) _buildItem(6, Icons.people_alt_rounded, 'المستخدمون'),
-            if (_showBackup) _buildItem(7, Icons.security_rounded, 'النسخ الاحتياطي'),
+            if (_showSettings) _buildItem(6, Icons.settings_rounded, 'الإعدادات والقوالب'),
+            if (_showUsers) _buildItem(7, Icons.people_alt_rounded, 'المستخدمون'),
+            if (_showBackup) _buildItem(8, Icons.security_rounded, 'النسخ الاحتياطي'),
           ],
 
           const Spacer(),

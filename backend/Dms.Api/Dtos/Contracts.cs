@@ -76,6 +76,44 @@ public sealed record OutgoingDetail(
 
 public sealed record VersionResponse(int VersionNo, DateTime ChangedAt, int ChangedByUserId, string? ChangeNote);
 
+// ----------------- Incoming -----------------
+public sealed record CreateIncomingRequest(
+    int? CompanyId, string? ExternalNumber, DateTime? ExternalDate,
+    DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId,
+    string Subject, int? DocumentTypeId, ReceiveMethod ReceiveMethod,
+    string? FolderName, string? Keywords, string? Notes,
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate);
+
+public sealed record UpdateIncomingRequest(
+    string? ExternalNumber, DateTime? ExternalDate,
+    DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId,
+    string Subject, int? DocumentTypeId, ReceiveMethod ReceiveMethod,
+    string? FolderName, string? Keywords, string? Notes,
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate);
+
+public sealed record ChangeStatusRequest(IncomingStatus Status, string? Note);
+public sealed record ForwardRequest(string ToDepartment, string? Note);
+
+public sealed record IncomingListItem(
+    int IncomingId, string? IncomingNumber, string? ExternalNumber,
+    DateTime ReceivedDate, string Subject, string EntityName,
+    IncomingStatus Status, string? FolderName, decimal? AmountInIqd);
+
+public sealed record IncomingDetail(
+    int IncomingId, int CompanyId, string? IncomingNumber, int? Year, int? SerialNo,
+    string? ExternalNumber, DateTime? ExternalDate,
+    DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId, string EntityName,
+    string Subject, int? DocumentTypeId, string? DocumentTypeName,
+    ReceiveMethod ReceiveMethod, int ReceivedByUserId, string ReceivedByUserName,
+    IncomingStatus Status, string? FolderName, string? LastAction, string? Keywords, string? Notes,
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
+    int? ReplyOutgoingId, string? ReplyOutgoingNumber, DateTime CreatedAt);
+
+public sealed record MovementLogItem(
+    int MovementId, string Action, string Description,
+    string? FromDepartment, string? ToDepartment,
+    string PerformedByUserName, DateTime PerformedAt);
+
 // ----------------- Archive -----------------
 public sealed record ArchiveRequest(
     int? CompanyId, string Title, string? BookNumber, DateTime? BookDate,

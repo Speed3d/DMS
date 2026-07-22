@@ -245,6 +245,74 @@ class ApiClient {
   Future<List<DocumentTypeModel>> documentTypes() async =>
       (await _get('/document-types') as List).map((e) => DocumentTypeModel.fromJson(e)).toList();
 
+  // ---------- الوارد ----------
+  Future<List<IncomingListItem>> incomingList({
+    String? search, String? status, int? entityId,
+    DateTime? from, DateTime? to, int? documentTypeId,
+    String? folderName, int? receiveMethod,
+  }) async {
+    final q = <String, dynamic>{};
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    if (status != null && status.isNotEmpty) q['status'] = status;
+    if (entityId != null) q['entityId'] = entityId;
+    if (from != null) q['from'] = from.toIso8601String();
+    if (to != null) q['to'] = to.toIso8601String();
+    if (documentTypeId != null) q['documentTypeId'] = documentTypeId;
+    if (folderName != null && folderName.isNotEmpty) q['folderName'] = folderName;
+    if (receiveMethod != null) q['receiveMethod'] = receiveMethod;
+    return (await _get('/incoming', query: q) as List).map((e) => IncomingListItem.fromJson(e)).toList();
+  }
+
+  Future<IncomingDetail> incomingGet(int id) async =>
+      IncomingDetail.fromJson(await _get('/incoming/$id'));
+
+  Future<IncomingDetail> createIncoming(Map<String, dynamic> body) async =>
+      IncomingDetail.fromJson(await _post('/incoming', body));
+
+  Future<IncomingDetail> updateIncoming(int id, Map<String, dynamic> body) async =>
+      IncomingDetail.fromJson(await _put('/incoming/$id', body));
+
+  Future<IncomingDetail> changeIncomingStatus(int id, String status, String? note) async =>
+      IncomingDetail.fromJson(await _post('/incoming/$id/status', {'status': status, 'note': note}));
+
+  Future<IncomingDetail> forwardIncoming(int id, String toDepartment, String? note) async =>
+      IncomingDetail.fromJson(await _post('/incoming/$id/forward', {'toDepartment': toDepartment, 'note': note}));
+
+  Future<IncomingDetail> linkIncoming(int id, int outgoingId) async =>
+      IncomingDetail.fromJson(await _post('/incoming/$id/link/$outgoingId', null));
+
+  Future<IncomingDetail> unlinkIncoming(int id) async =>
+      IncomingDetail.fromJson(await _deleteReturnData('/incoming/$id/link'));
+
+  Future<void> deleteIncoming(int id) => _delete('/incoming/$id');
+
+  Future<List<MovementLogItem>> incomingMovements(int id) async =>
+      (await _get('/incoming/$id/movements') as List).map((e) => MovementLogItem.fromJson(e)).toList();
+
+  Future<List<AttachmentModel>> incomingAttachments(int id) async =>
+      (await _get('/incoming/$id/attachments') as List).map((e) => AttachmentModel.fromJson(e)).toList();
+
+  Future<AttachmentModel> uploadIncomingAttachment(int id, Uint8List bytes, String filename) async {
+    final form = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: filename)});
+    try {
+      final res = await _dio.post('/incoming/$id/attachments', data: form);
+      return AttachmentModel.fromJson(res.data);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<Uint8List> downloadIncomingAttachment(int id, int attachmentId) async {
+    try {
+      final res = await _dio.get<List<int>>('/incoming/$id/attachments/$attachmentId/download', options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<void> deleteIncomingAttachment(int id, int attachmentId) => _delete('/incoming/$id/attachments/$attachmentId');
+
   // ---------- الأرشيف ----------
   Future<List<ArchiveListItem>> archiveList({String? search, DateTime? from, DateTime? to, int? documentTypeId, int? entityId}) async {
     final q = <String, dynamic>{};
@@ -411,6 +479,14 @@ class ApiClient {
   Future<void> _delete(String path) async {
     try {
       await _dio.delete(path);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<dynamic> _deleteReturnData(String path) async {
+    try {
+      return (await _dio.delete(path)).data;
     } on DioException catch (e) {
       throw _map(e);
     }

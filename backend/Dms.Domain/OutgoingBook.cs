@@ -50,9 +50,13 @@ public class OutgoingBook
     public int? DeletedByUserId { get; set; }
     public DateTime? DeletedAt { get; set; }
 
+    /// <summary>إذا كان هذا الصادر ردّاً على كتاب وارد (Hint: يستخدم للربط العكسي).</summary>
+    public int? ReplyToIncomingId { get; set; }
+
     /// <summary>للتزامن المتفائل عند التعديل بعد الاعتماد.</summary>
     public byte[]? RowVersion { get; set; }
 
     public Entity? Entity { get; set; }
     public Template? Template { get; set; }
+    public IncomingBook? ReplyToIncoming { get; set; }
 }

@@ -38,6 +38,8 @@ public class AppDbContext : DbContext
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<OutgoingBook> OutgoingBooks => Set<OutgoingBook>();
     public DbSet<ArchiveDoc> ArchiveDocs => Set<ArchiveDoc>();
+    public DbSet<IncomingBook> IncomingBooks => Set<IncomingBook>();
+    public DbSet<MovementLog> MovementLogs => Set<MovementLog>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
     public DbSet<Counter> Counters => Set<Counter>();
@@ -139,7 +141,63 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Template).WithMany()
                 .HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
 
+            e.HasOne(x => x.ReplyToIncoming).WithMany()
+                .HasForeignKey(x => x.ReplyToIncomingId).OnDelete(DeleteBehavior.SetNull);
+
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- IncomingBook ----
+        b.Entity<IncomingBook>(e =>
+        {
+            e.HasKey(x => x.IncomingId);
+            
+            e.Property(x => x.IncomingNumber).HasMaxLength(40);
+            e.Property(x => x.Subject).IsRequired().HasMaxLength(500);
+            e.Property(x => x.ExternalNumber).HasMaxLength(100);
+            e.Property(x => x.Keywords).HasMaxLength(1000);
+            e.Property(x => x.FolderName).HasMaxLength(200);
+            e.Property(x => x.LastAction).HasMaxLength(500);
+
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.ExchangeRate).HasPrecision(18, 4);
+            e.Property(x => x.AmountInIqd).HasPrecision(18, 2);
+
+            e.HasIndex(x => new { x.CompanyId, x.Year, x.SerialNo })
+                .IsUnique().HasFilter("[Year] IS NOT NULL AND [SerialNo] IS NOT NULL");
+            e.HasIndex(x => x.IncomingNumber).IsUnique().HasFilter("[IncomingNumber] IS NOT NULL");
+
+            e.HasOne(x => x.Entity).WithMany()
+                .HasForeignKey(x => x.EntityId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.ReplyOutgoing).WithMany()
+                .HasForeignKey(x => x.ReplyOutgoingId).OnDelete(DeleteBehavior.SetNull);
+
+            e.HasIndex(x => x.EntityId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.ReceivedDate);
+
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- MovementLog ----
+        b.Entity<MovementLog>(e =>
+        {
+            e.HasKey(x => x.MovementId);
+            e.Property(x => x.Action).IsRequired().HasMaxLength(50);
+            e.Property(x => x.Description).IsRequired().HasMaxLength(500);
+            e.Property(x => x.FromDepartment).HasMaxLength(200);
+            e.Property(x => x.ToDepartment).HasMaxLength(200);
+
+            // العلاقة صريحة على IncomingId — بدونها يولّد EF عموداً شبحاً (IncomingBookIncomingId)
+            // ويترك IncomingId = 0 عند الربط عبر خاصية التنقّل، فتُفقد الحركة من السجل.
+            e.HasOne(x => x.IncomingBook).WithMany()
+                .HasForeignKey(x => x.IncomingId).OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(x => x.IncomingId);
+            e.HasIndex(x => x.PerformedAt);
+
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 
         // ---- ArchiveDoc ----
