@@ -410,6 +410,9 @@ class OutgoingDetail {
   final String rowVersion;
   final bool canApprove;
   final String? bodyJson;
+  /// الكتاب الوارد الذي يردّ عليه هذا الصادر (Hint: الربط العكسي — يُعرض في شاشة التفاصيل).
+  final int? replyToIncomingId;
+  final String? replyToIncomingNumber;
   OutgoingDetail({
     required this.outgoingId,
     required this.companyId,
@@ -433,6 +436,8 @@ class OutgoingDetail {
     required this.rowVersion,
     this.canApprove = false,
     this.bodyJson,
+    this.replyToIncomingId,
+    this.replyToIncomingNumber,
   });
   bool get isFinal => status == 'Final';
   factory OutgoingDetail.fromJson(Map<String, dynamic> j) => OutgoingDetail(
@@ -458,6 +463,8 @@ class OutgoingDetail {
         rowVersion: j['rowVersion'] ?? '',
         canApprove: j['canApprove'] ?? false,
         bodyJson: j['bodyJson'],
+        replyToIncomingId: j['replyToIncomingId'],
+        replyToIncomingNumber: j['replyToIncomingNumber'],
       );
 }
 

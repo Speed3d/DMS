@@ -76,20 +76,20 @@ public sealed class IncomingController(
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<IncomingDetail>> Get(int id, CancellationToken ct)
+        => Map(await incomingService.GetDetailAsync(id, ct));
+
+    /// <summary>تحويل بيانات العرض إلى عقد الـ API (Hint: الأسماء تُجهَّز في الخدمة).</summary>
+    private static IncomingDetail Map(IncomingDetailData d)
     {
-        var b = await incomingService.GetAsync(id, ct);
-        
-        // جلب اسم نوع الكتاب إذا وجد (لا نحتاج Include كامل لتجنب استدعاء DbContext إذا لم يُطلب)
-        string? docTypeName = null; // سيتم جلبه من الـ UI عادة أو يمكن تضمينه إذا أضفنا الخاصية
-        
+        var b = d.Book;
         return new IncomingDetail(
             b.IncomingId, b.CompanyId, b.IncomingNumber, b.Year, b.SerialNo,
             b.ExternalNumber, b.ExternalDate, b.ReceivedDate, b.ReceivedTime,
-            b.EntityId, b.Entity!.Name, b.Subject, b.DocumentTypeId, docTypeName,
-            b.ReceiveMethod, b.ReceivedByUserId, "", // ReceivedByUserName can be filled by UI mapping if needed
+            b.EntityId, d.EntityName, b.Subject, b.DocumentTypeId, d.DocumentTypeName,
+            b.ReceiveMethod, b.ReceivedByUserId, d.ReceivedByUserName,
             b.Status, b.FolderName, b.LastAction, b.Keywords, b.Notes,
             b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
-            b.ReplyOutgoingId, b.ReplyOutgoing?.Number, b.CreatedAt);
+            b.ReplyOutgoingId, d.ReplyOutgoingNumber, b.CreatedAt);
     }
 
     [HttpPost]
@@ -157,9 +157,9 @@ public sealed class IncomingController(
     {
         var movements = await incomingService.GetMovementsAsync(id, ct);
         return movements.Select(m => new MovementLogItem(
-            m.MovementId, m.Action, m.Description, m.FromDepartment, m.ToDepartment,
-            "", m.PerformedAt // PerformedByUserName can be joined if required, omitted for simplicity
-        )).ToList();
+            m.Log.MovementId, m.Log.Action, m.Log.Description,
+            m.Log.FromDepartment, m.Log.ToDepartment,
+            m.PerformedByUserName, m.Log.PerformedAt)).ToList();
     }
 
     // ----------------- المرفقات -----------------

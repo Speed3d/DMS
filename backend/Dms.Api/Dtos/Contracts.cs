@@ -72,7 +72,9 @@ public sealed record OutgoingDetail(
     int EntityId, string EntityName, int? TemplateId, string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     BookStatus Status, decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
     string? QrContent, bool HasPdf, int? ApprovedByUserId, DateTime? ApprovedAt,
-    DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion, bool CanApprove, string? BodyJson);
+    DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion, bool CanApprove, string? BodyJson,
+    // الربط العكسي: الكتاب الوارد الذي يردّ عليه هذا الصادر (إن وُجد)
+    int? ReplyToIncomingId = null, string? ReplyToIncomingNumber = null);
 
 public sealed record VersionResponse(int VersionNo, DateTime ChangedAt, int ChangedByUserId, string? ChangeNote);
 

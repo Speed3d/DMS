@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -178,6 +179,55 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     }
   }
 
+  /// ربط الكتاب بكتاب صادر معتمد (Hint: الاختيار عبر شاشة كاملة لا حوار — حقول البحث داخل
+  /// الحوارات تسبب خلل `disposed EngineFlutterView` على الويب).
+  Future<void> _linkToOutgoing() async {
+    final outgoingId = await Navigator.of(context).push<int>(
+        MaterialPageRoute(builder: (_) => const _OutgoingPickerScreen()));
+    if (outgoingId == null) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).linkIncoming(widget.id, outgoingId);
+      _snack('تم ربط الكتاب بالصادر بنجاح.');
+      invalidateIncoming(ref);
+      _reload();
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _unlinkFromOutgoing(IncomingDetail d) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('فك الارتباط'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text('سيُفك ارتباط هذا الكتاب بالصادر رقم '
+            '${d.replyOutgoingNumber ?? d.replyOutgoingId}، وتعود حالته إلى (قيد المراجعة). هل تريد المتابعة؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('فك الارتباط')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).unlinkIncoming(widget.id);
+      _snack('تم فك الارتباط.');
+      invalidateIncoming(ref);
+      _reload();
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _delete() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -244,9 +294,14 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
           }
           final d = snap.data!;
           final currentUser = ref.watch(sessionProvider).auth;
+          final role = currentUser?.role ?? '';
           // سجل الحركة يظهر فقط للسوبر أدمن والرئيس
           final canViewMovements =
-              currentUser != null && (currentUser.isSuperAdmin || currentUser.role == 'President');
+              currentUser != null && (currentUser.isSuperAdmin || role == 'President');
+          // الربط/فك الربط للمدير فأعلى (Hint: مرآة لـ RequireRole(Manager) في الباك-إند)
+          final canManageLink = role == 'SuperAdmin' || role == 'President' || role == 'Manager';
+          // القارئ لا يعدّل المرفقات (Hint: مرآة لـ RequireNotReader في AttachmentService)
+          final canEditAttachments = role.isNotEmpty && role != 'Reader';
 
           return Center(
             child: ConstrainedBox(
@@ -336,12 +391,52 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                                 _buildInfoRow('المعادل بالدينار', '${_fmt(d.amountInIqd ?? 0)} د.ع', Icons.payments_rounded),
                               ],
 
+                              // ━━━ الارتباط بالصادر ━━━
+                              const Divider(height: 32),
+                              const Text('الارتباط بالصادر',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              const SizedBox(height: 16),
                               if (d.replyOutgoingId != null) ...[
-                                const Divider(height: 32),
-                                const Text('الارتباط بالصادر',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                const SizedBox(height: 16),
-                                _buildInfoRow('تم الرد بكتاب صادر رقم', d.replyOutgoingNumber ?? '#${d.replyOutgoingId}', Icons.link_rounded),
+                                _buildInfoRow('تم الرد بكتاب صادر رقم',
+                                    d.replyOutgoingNumber ?? '#${d.replyOutgoingId}', Icons.link_rounded),
+                                if (canManageLink) ...[
+                                  const SizedBox(height: 12),
+                                  Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    child: TextButton.icon(
+                                      onPressed: _busy ? null : () => _unlinkFromOutgoing(d),
+                                      icon: const Icon(Icons.link_off_rounded, size: 18),
+                                      style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+                                      label: const Text('فك الارتباط'),
+                                    ),
+                                  ),
+                                ],
+                              ] else ...[
+                                Text('لم يُربط هذا الكتاب بكتاب صادر بعد.',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color
+                                            ?.withValues(alpha: 0.6))),
+                                if (canManageLink) ...[
+                                  const SizedBox(height: 12),
+                                  Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    // Hint: الربط متاح للكتب (جديد/قيد المراجعة) فقط — مرآة لقاعدة الباك-إند.
+                                    child: Tooltip(
+                                      message: _isOperable(d.status)
+                                          ? 'اختيار كتاب صادر معتمد للرد على هذا الوارد'
+                                          : 'الربط متاح للكتب (جديد) أو (قيد المراجعة) فقط',
+                                      child: OutlinedButton.icon(
+                                        onPressed: (_busy || !_isOperable(d.status)) ? null : _linkToOutgoing,
+                                        icon: const Icon(Icons.add_link_rounded, size: 18),
+                                        label: const Text('ربط بكتاب صادر'),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ],
                           ),
@@ -356,7 +451,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             // المرفقات
-                            _AttachmentsWidget(incomingId: widget.id),
+                            _AttachmentsWidget(incomingId: widget.id, canEdit: canEditAttachments),
                             
                             const SizedBox(height: 24),
                             
@@ -435,14 +530,112 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
 }
 
 // ----------------- ويدجت المرفقات -----------------
-class _AttachmentsWidget extends ConsumerWidget {
+/// Hint: [canEdit] = false للقارئ — يرى المرفقات وينزّلها بلا رفع أو حذف.
+class _AttachmentsWidget extends ConsumerStatefulWidget {
   final int incomingId;
-  const _AttachmentsWidget({required this.incomingId});
+  final bool canEdit;
+  const _AttachmentsWidget({required this.incomingId, required this.canEdit});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final asyncAtt = ref.watch(incomingAttachmentsProvider(incomingId));
-    
+  ConsumerState<_AttachmentsWidget> createState() => _AttachmentsWidgetState();
+}
+
+class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
+  bool _busy = false;
+
+  void _snack(String m, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(m),
+      backgroundColor: error ? AppColors.danger : AppColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
+  }
+
+  /// Hint: قائمة الامتدادات مطابقة لـ AttachmentService في الباك-إند.
+  Future<void> _upload() async {
+    final res = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'xlsx', 'zip', 'dwg'],
+      withData: true,
+    );
+    if (res == null || res.files.single.bytes == null) return;
+    final f = res.files.single;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).uploadIncomingAttachment(widget.incomingId, f.bytes!, f.name);
+      _snack('تم رفع المرفق بنجاح.');
+      ref.invalidate(incomingAttachmentsProvider(widget.incomingId));
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _delete(AttachmentModel a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف المرفق'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text('سيُحذف الملف «${a.fileName}» نهائياً. هل تريد المتابعة؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).deleteIncomingAttachment(widget.incomingId, a.attachmentId);
+      _snack('تم حذف المرفق.');
+      ref.invalidate(incomingAttachmentsProvider(widget.incomingId));
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _download(AttachmentModel a) async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await ref.read(apiClientProvider).downloadIncomingAttachment(widget.incomingId, a.attachmentId);
+      await downloadBytes(bytes, a.fileName, 'application/octet-stream');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// أيقونة حسب نوع الملف (Hint: تسهّل التمييز البصري بين المسح الضوئي والمخططات والجداول).
+  IconData _iconFor(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    return switch (ext) {
+      'pdf' => Icons.picture_as_pdf_rounded,
+      'jpg' || 'jpeg' || 'png' => Icons.image_rounded,
+      'xlsx' => Icons.table_chart_rounded,
+      'docx' => Icons.description_rounded,
+      'zip' => Icons.folder_zip_rounded,
+      'dwg' => Icons.architecture_rounded,
+      _ => Icons.insert_drive_file_rounded,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final asyncAtt = ref.watch(incomingAttachmentsProvider(widget.incomingId));
+
     return CustomCard(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -450,9 +643,19 @@ class _AttachmentsWidget extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.attachment_rounded, color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.5)),
+              Icon(Icons.attachment_rounded,
+                  color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.5)),
               const SizedBox(width: 8),
               const Text('المرفقات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Spacer(),
+              if (_busy)
+                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              else if (widget.canEdit)
+                TextButton.icon(
+                  onPressed: _upload,
+                  icon: const Icon(Icons.upload_file_rounded, size: 18),
+                  label: const Text('رفع مرفق'),
+                ),
             ],
           ),
           const Divider(height: 32),
@@ -464,27 +667,30 @@ class _AttachmentsWidget extends ConsumerWidget {
                 return const Text('لا توجد مرفقات مع هذا الكتاب الوارد.');
               }
               return Column(
-                children: list.map((a) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.insert_drive_file_rounded, color: AppColors.gold),
-                  title: Text(a.fileName),
-                  subtitle: Text('${(a.fileSize / 1024 / 1024).toStringAsFixed(2)} MB'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.download_rounded),
-                    onPressed: () async {
-                      try {
-                        final bytes = await ref.read(apiClientProvider).downloadIncomingAttachment(incomingId, a.attachmentId);
-                        if (context.mounted) {
-                          await downloadBytes(bytes, a.fileName, '');
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل التحميل: $e')));
-                        }
-                      }
-                    },
-                  ),
-                )).toList(),
+                children: list
+                    .map((a) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(_iconFor(a.fileName), color: AppColors.gold),
+                          title: Text(a.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text('${(a.fileSize / 1024 / 1024).toStringAsFixed(2)} م.ب'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'تنزيل',
+                                icon: const Icon(Icons.download_rounded),
+                                onPressed: _busy ? null : () => _download(a),
+                              ),
+                              if (widget.canEdit)
+                                IconButton(
+                                  tooltip: 'حذف',
+                                  icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                                  onPressed: _busy ? null : () => _delete(a),
+                                ),
+                            ],
+                          ),
+                        ))
+                    .toList(),
               );
             },
           ),
@@ -558,6 +764,113 @@ class _MovementsWidget extends ConsumerWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ----------------- شاشة اختيار الكتاب الصادر للربط -----------------
+/// شاشة كاملة لاختيار كتاب صادر معتمد للرد على الوارد.
+/// Hint: شاشة كاملة لا حوار — حقول البحث داخل الحوارات تسبب خلل
+/// `disposed EngineFlutterView` في Flutter Web. تُرجع `outgoingId` عبر Navigator.pop.
+class _OutgoingPickerScreen extends ConsumerStatefulWidget {
+  const _OutgoingPickerScreen();
+
+  @override
+  ConsumerState<_OutgoingPickerScreen> createState() => _OutgoingPickerScreenState();
+}
+
+class _OutgoingPickerScreenState extends ConsumerState<_OutgoingPickerScreen> {
+  late Future<List<OutgoingListItem>> _future;
+  String _search = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// Hint: الباك-إند يقبل الربط بالمعتمد فقط (Final) — نطلبه مفلتراً من المصدر.
+  void _load() {
+    _future = ref.read(apiClientProvider).outgoingList(status: 'Final', search: _search);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('اختيار كتاب صادر للربط'), centerTitle: true),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'ابحث برقم الكتاب أو الموضوع...',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onSubmitted: (v) {
+                    _search = v.trim();
+                    _load();
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text('تُعرض الكتب الصادرة المعتمدة فقط.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: FutureBuilder<List<OutgoingListItem>>(
+                    future: _future,
+                    builder: (context, snap) {
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+                      }
+                      if (snap.hasError) {
+                        return Center(
+                            child: Text('حدث خطأ: ${snap.error}',
+                                style: const TextStyle(color: AppColors.danger)));
+                      }
+                      final items = snap.data ?? const <OutgoingListItem>[];
+                      if (items.isEmpty) {
+                        return const Center(
+                            child: Text('لا توجد كتب صادرة معتمدة مطابقة.',
+                                style: TextStyle(fontWeight: FontWeight.bold)));
+                      }
+                      return ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => Divider(height: 1, color: theme.dividerColor),
+                        itemBuilder: (_, i) {
+                          final o = items[i];
+                          return ListTile(
+                            leading: const Icon(Icons.send_rounded, color: AppColors.gold),
+                            title: Text(o.number ?? 'بلا رقم',
+                                style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text(
+                                '${o.subject}\n${DateFormat('yyyy/MM/dd').format(o.date)} • ${o.entityName}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis),
+                            isThreeLine: true,
+                            trailing: FilledButton(
+                              onPressed: () => Navigator.pop(context, o.outgoingId),
+                              child: const Text('اختيار'),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

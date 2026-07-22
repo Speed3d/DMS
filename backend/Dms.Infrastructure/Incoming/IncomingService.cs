@@ -39,10 +39,25 @@ public sealed record UpdateIncomingInput(
     Currency? Currency,
     decimal? ExchangeRate);
 
+/// <summary>
+/// بيانات عرض الكتاب الوارد مع الأسماء المرتبطة.
+/// Hint: تُجهَّز في الخدمة (لا في الـ Controller) ليبقى الأخير مجرّد محوّل إلى DTO.
+/// </summary>
+public sealed record IncomingDetailData(
+    IncomingBook Book,
+    string EntityName,
+    string? DocumentTypeName,
+    string ReceivedByUserName,
+    string? ReplyOutgoingNumber);
+
+/// <summary>حركة مع اسم منفّذها (Hint: الاسم لا يُخزَّن في السجل بل يُجلب عند العرض).</summary>
+public sealed record MovementLogData(MovementLog Log, string PerformedByUserName);
+
 public interface IIncomingService
 {
     IQueryable<IncomingBook> Query();
     Task<IncomingBook> GetAsync(int id, CancellationToken ct = default);
+    Task<IncomingDetailData> GetDetailAsync(int id, CancellationToken ct = default);
     Task<IncomingBook> CreateAsync(CreateIncomingInput input, CancellationToken ct = default);
     Task<IncomingBook> UpdateAsync(int id, UpdateIncomingInput input, CancellationToken ct = default);
     Task ChangeStatusAsync(int id, IncomingStatus newStatus, string? note, CancellationToken ct = default);
@@ -50,7 +65,7 @@ public interface IIncomingService
     Task LinkToOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default);
     Task UnlinkFromOutgoingAsync(int incomingId, CancellationToken ct = default);
     Task SoftDeleteAsync(int id, CancellationToken ct = default);
-    Task<List<MovementLog>> GetMovementsAsync(int incomingId, CancellationToken ct = default);
+    Task<List<MovementLogData>> GetMovementsAsync(int incomingId, CancellationToken ct = default);
 }
 
 public sealed class IncomingService(
@@ -75,6 +90,28 @@ public sealed class IncomingService(
             .Include(b => b.Entity)
             .FirstOrDefaultAsync(b => b.IncomingId == id, ct)
            ?? throw new NotFoundException("الكتاب الوارد غير موجود أو لا تملك صلاحية رؤيته.");
+
+    public async Task<IncomingDetailData> GetDetailAsync(int id, CancellationToken ct = default)
+    {
+        // Hint: ReplyOutgoing مُضمَّن هنا فقط (شاشة التفاصيل) — بقية العمليات لا تحتاجه فتبقى GetAsync خفيفة.
+        var book = await Query()
+            .Include(b => b.Entity)
+            .Include(b => b.ReplyOutgoing)
+            .FirstOrDefaultAsync(b => b.IncomingId == id, ct)
+            ?? throw new NotFoundException("الكتاب الوارد غير موجود أو لا تملك صلاحية رؤيته.");
+
+        var docTypeName = book.DocumentTypeId is null
+            ? null
+            : await db.DocumentTypes.Where(d => d.DocumentTypeId == book.DocumentTypeId)
+                .Select(d => d.Name).FirstOrDefaultAsync(ct);
+
+        return new IncomingDetailData(
+            book,
+            book.Entity?.Name ?? "—",
+            docTypeName,
+            await UserNameAsync(book.ReceivedByUserId, ct),
+            book.ReplyOutgoing?.Number);
+    }
 
     public async Task<IncomingBook> CreateAsync(CreateIncomingInput input, CancellationToken ct = default)
     {
@@ -385,24 +422,47 @@ public sealed class IncomingService(
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<List<MovementLog>> GetMovementsAsync(int incomingId, CancellationToken ct = default)
+    public async Task<List<MovementLogData>> GetMovementsAsync(int incomingId, CancellationToken ct = default)
     {
         // حسب الخطة: يظهر فقط للسوبر أدمن ورئيس الشركة (المرحلة 1)
         if (current.Role is not (UserRole.SuperAdmin or UserRole.President))
             throw new ForbiddenException("لا تملك صلاحية رؤية سجل الحركة.");
 
-        var book = await GetAsync(incomingId, ct); // للتحقق من الأمان
+        _ = await GetAsync(incomingId, ct); // تحقّق أمني: الكتاب ضمن شركة المستخدم ورؤيته
 
-        return await db.MovementLogs
+        var logs = await db.MovementLogs
             .Where(m => m.IncomingId == incomingId)
             .OrderBy(m => m.PerformedAt)
             .ToListAsync(ct);
+
+        // Hint: جلب الأسماء دفعة واحدة بدل استعلام لكل حركة (تفادي N+1).
+        // التجاوز المقصود للفلتر مشروح في UserNameAsync.
+        var userIds = logs.Select(l => l.PerformedByUserId).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => userIds.Contains(u.UserId))
+            .ToDictionaryAsync(u => u.UserId, u => u.FullName, ct);
+
+        return logs
+            .Select(l => new MovementLogData(l, names.TryGetValue(l.PerformedByUserId, out var n) ? n : "—"))
+            .ToList();
     }
 
     // --- الوظائف المساعدة ----------------
 
     /// <summary>الاسم العربي للحالة (Hint: اختصار لـ IncomingWorkflow.ArabicName داخل هذا الملف).</summary>
     private static string ArabicName(IncomingStatus status) => IncomingWorkflow.ArabicName(status);
+
+    /// <summary>
+    /// اسم المستخدم للعرض.
+    /// Hint: تجاوز مقصود لفلتر الشركة على المستخدمين — السوبر أدمن بلا CompanyId فيختفي اسمه
+    /// وقت وجود شركة فعّالة. لا يُكشف سوى الاسم لمستخدم نفّذ إجراءً على كتاب يراه الطالب أصلاً.
+    /// شرطة عند تعذّر الجلب: لا نُفشل عرض الكتاب بسبب اسم.
+    /// </summary>
+    private async Task<string> UserNameAsync(int userId, CancellationToken ct) =>
+        await db.Users.IgnoreQueryFilters()
+            .Where(u => u.UserId == userId)
+            .Select(u => u.FullName)
+            .FirstOrDefaultAsync(ct) ?? "—";
 
     /// <summary>
     /// صلاحية الدور في تغيير الحالة.

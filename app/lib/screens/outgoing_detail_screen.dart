@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/status_pill.dart';
+import 'incoming_detail_screen.dart';
 import 'outgoing_edit_approved_screen.dart';
 import 'outgoing_edit_draft_screen.dart';
 
@@ -299,6 +300,25 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                 ],
                                 const SizedBox(height: 16),
                                 _buildInfoRow('المعادل بالدينار', '${_fmt(d.amountInIqd ?? 0)} د.ع', Icons.payments_rounded),
+                              ],
+
+                              // ━━━ الربط بالوارد (Hint: يظهر فقط إذا كان هذا الصادر ردّاً على كتاب وارد) ━━━
+                              if (d.replyToIncomingId != null) ...[
+                                const Divider(height: 32),
+                                const Text('الارتباط بالوارد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                const SizedBox(height: 16),
+                                _buildInfoRow('هذا الكتاب ردّ على الوارد رقم',
+                                    d.replyToIncomingNumber ?? '#${d.replyToIncomingId}', Icons.link_rounded),
+                                const SizedBox(height: 12),
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: TextButton.icon(
+                                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                                        builder: (_) => IncomingDetailScreen(id: d.replyToIncomingId!))),
+                                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                                    label: const Text('فتح الكتاب الوارد'),
+                                  ),
+                                ),
                               ],
 
                               if (d.qrContent != null) ...[

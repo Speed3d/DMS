@@ -37,7 +37,12 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
         var book = await svc.GetAsync(id, ct);
         var entityName = await db.Entities.Where(e => e.EntityId == book.EntityId)
             .Select(e => e.Name).FirstOrDefaultAsync(ct) ?? "";
-        return Detail(book, entityName, svc.CanCurrentUserApprove());
+        // الربط العكسي: رقم الكتاب الوارد الذي يردّ عليه هذا الصادر (Hint: يُعرض في شاشة التفاصيل).
+        var replyToIncomingNumber = book.ReplyToIncomingId is null
+            ? null
+            : await db.IncomingBooks.Where(i => i.IncomingId == book.ReplyToIncomingId)
+                .Select(i => i.IncomingNumber).FirstOrDefaultAsync(ct);
+        return Detail(book, entityName, svc.CanCurrentUserApprove(), replyToIncomingNumber);
     }
 
     [HttpPost]
@@ -124,10 +129,12 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
             $"outgoing-{id}.docx");
     }
 
-    private static OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove) => new(
+    private static OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,
+        string? replyToIncomingNumber = null) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
         b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
         b.QrContent, b.GeneratedPdfBlobKey != null, b.ApprovedByUserId, b.ApprovedAt,
-        b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson);
+        b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson,
+        b.ReplyToIncomingId, replyToIncomingNumber);
 }
