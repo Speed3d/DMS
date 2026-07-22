@@ -142,6 +142,14 @@ $upd = @{ externalNumber="x"; externalDate=$null; receivedDate="2026-07-21T00:00
           folderName=$null; keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null }
 Expect "رفض تعديل كتاب مؤرشف" (Api PUT "/incoming/$bid" $upd $adminTok $cid).Status 400
 
+# سياسة التعديل: المدير فأعلى يصحّح في أي حالة عدا المؤرشف
+$editable = (NewBook "كتاب لاختبار سياسة التعديل" $adminTok).Body
+$null = ChangeStatus $editable.incomingId "InReview" "تحويل للمراجعة"
+$upd2 = $upd.Clone(); $upd2.subject = "تصحيح بعد الإحالة"
+$r = Api PUT "/incoming/$($editable.incomingId)" $upd2 $adminTok $cid
+Expect "قبول: المدير فأعلى يعدّل كتاباً (قيد المراجعة)" $r.Status 200
+if ($r.Body.subject -eq "تصحيح بعد الإحالة") { Ok "التعديل حُفظ فعلياً" } else { Bad "الموضوع لم يتغيّر: $($r.Body.subject)" }
+
 # ─────────────────────────── 6) الربط بالصادر ───────────────────────────
 Section "6) الربط بكتاب صادر معتمد"
 # Hint: نبحث عن صادر معتمد **غير مرتبط** بوارد آخر — الربط علاقة واحد‑لواحد،
@@ -244,6 +252,12 @@ if ($EmployeeUser -and $EmployeePwd) {
                 Expect "رفض: الموظف يربط بصادر (منع الالتفاف)" (Api POST "/incoming/$sid/link/$($approved.outgoingId)" $null $sTok $cid).Status 403
                 Expect "رفض: الموظف يفك ارتباطاً"              (Api DELETE "/incoming/$sid/link" $null $sTok $cid).Status 403
             }
+            # سياسة التعديل للموظف: كتابه وهو (جديد) فقط — وقد صار الآن (قيد المراجعة)
+            $sUpd = $upd.Clone(); $sUpd.subject = "محاولة تعديل بعد المراجعة"
+            Expect "رفض: الموظف يعدّل كتابه بعد مغادرة حالة (جديد)" (Api PUT "/incoming/$sid" $sUpd $sTok $cid).Status 403
+            $sNew = (NewBook "كتاب جديد للموظف" $sTok).Body
+            $sUpd2 = $upd.Clone(); $sUpd2.subject = "تعديل كتاب جديد"
+            Expect "قبول: الموظف يعدّل كتابه وهو (جديد)" (Api PUT "/incoming/$($sNew.incomingId)" $sUpd2 $sTok $cid).Status 200
             Expect "رفض: سجل الحركة محجوب عن الموظف" (Api GET "/incoming/$sid/movements" $null $sTok $cid).Status 403
             Expect "رفض: الموظف لا يرى كتاب غيره"     (Api GET "/incoming/$bid" $null $sTok $cid).Status 404
         } else { Bad "تعذّر الدخول بـ $EmployeeUser : $($sLogin.Status)" }

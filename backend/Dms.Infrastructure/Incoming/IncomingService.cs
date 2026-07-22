@@ -185,8 +185,7 @@ public sealed class IncomingService(
     public async Task<IncomingBook> UpdateAsync(int id, UpdateIncomingInput input, CancellationToken ct = default)
     {
         var book = await GetAsync(id, ct);
-        if (book.Status != IncomingStatus.New)
-            throw new ValidationException("لا يمكن تعديل الكتاب بشكل كامل إلا وهو في حالة (جديد).");
+        EnsureEditable(book);
 
         await ValidateRefsAsync(book.CompanyId, input.EntityId, input.DocumentTypeId, ct);
         ValidateRequired(input.Subject);
@@ -463,6 +462,27 @@ public sealed class IncomingService(
             .Where(u => u.UserId == userId)
             .Select(u => u.FullName)
             .FirstOrDefaultAsync(ct) ?? "—";
+
+    /// <summary>
+    /// صلاحية تعديل بيانات الكتاب.
+    /// Hint: المؤرشف سجل نهائي لا يُعدَّل مطلقاً · المدير فأعلى يصحّح البيانات في بقية الحالات
+    /// (الأخطاء تُكتشف غالباً بعد الإحالة) · الموظف يعدّل كتابه ما دام في حالة (جديد).
+    /// </summary>
+    private void EnsureEditable(IncomingBook book)
+    {
+        if (book.Status == IncomingStatus.Archived)
+            throw new ValidationException("لا يمكن تعديل كتاب مؤرشف — الأرشفة نهائية.");
+
+        var role = RequireAnyRole();
+        if ((int)role <= (int)UserRole.Manager) return;   // المدير فأعلى
+
+        if (book.Status != IncomingStatus.New)
+            throw new ForbiddenException(
+                $"صلاحيتك تسمح بالتعديل في حالة (جديد) فقط — الكتاب حالياً ({ArabicName(book.Status)}).");
+
+        if (book.CreatedByUserId != current.UserId)
+            throw new ForbiddenException("لا تملك صلاحية تعديل كتاب أنشأه غيرك.");
+    }
 
     /// <summary>
     /// صلاحية الدور في تغيير الحالة.

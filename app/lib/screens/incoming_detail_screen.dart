@@ -298,8 +298,11 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
           // سجل الحركة يظهر فقط للسوبر أدمن والرئيس
           final canViewMovements =
               currentUser != null && (currentUser.isSuperAdmin || role == 'President');
-          // الربط/فك الربط للمدير فأعلى (Hint: مرآة لـ RequireRole(Manager) في الباك-إند)
-          final canManageLink = role == 'SuperAdmin' || role == 'President' || role == 'Manager';
+          // المدير فأعلى (Hint: مرآة لـ RequireRole(Manager) في الباك-إند)
+          final isManagerOrAbove = role == 'SuperAdmin' || role == 'President' || role == 'Manager';
+          final canManageLink = isManagerOrAbove;
+          // التعديل: ممنوع على المؤرشف · المدير فأعلى في بقية الحالات · الموظف وهو (جديد) فقط
+          final canEdit = d.status != 'Archived' && (isManagerOrAbove || d.status == 'New');
           // القارئ لا يعدّل المرفقات (Hint: مرآة لـ RequireNotReader في AttachmentService)
           final canEditAttachments = role.isNotEmpty && role != 'Reader';
 
@@ -328,8 +331,10 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                       // Hint: تعطيل الأزرار حسب الحالة — انعكاس لقواعد الباك-إند
                       // (التعديل للكتاب الجديد فقط، والإحالة للجديد/قيد المراجعة، والحالة النهائية بلا انتقالات).
                       _buildActionButton('تعديل', Icons.edit_document, AppColors.warn,
-                          d.status == 'New' ? () => _edit(d) : null,
-                          disabledHint: 'التعديل متاح للكتاب في حالة (جديد) فقط'),
+                          canEdit ? () => _edit(d) : null,
+                          disabledHint: d.status == 'Archived'
+                              ? 'لا يمكن تعديل كتاب مؤرشف — الأرشفة نهائية'
+                              : 'التعديل في هذه الحالة يتطلب صلاحية المدير فأعلى'),
                       _buildActionButton('تغيير الحالة', Icons.swap_horiz_rounded, Colors.blue,
                           (kIncomingTransitions[d.status] ?? const []).isEmpty ? null : () => _changeStatus(d),
                           disabledHint: 'لا توجد حالة لاحقة متاحة'),
