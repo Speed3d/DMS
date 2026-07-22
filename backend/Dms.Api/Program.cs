@@ -10,10 +10,18 @@ using Dms.Infrastructure;
 using Dms.Infrastructure.Auth;
 using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// حدود حجم الطلب: المرفق الأقصى 50 ميغابايت (AttachmentService) + هامش لترويسات multipart.
+// Hint: بدون هذا يقطع Kestrel الطلب عند ~28 ميغابايت بـ 413 غامض قبل وصوله للخدمة،
+// فيتعذّر تحقيق حد الـ 50 ميغابايت. الهامش يجعل الرفض يأتي من الخدمة برسالة عربية واضحة.
+const long MaxUploadBytes = 55 * 1024 * 1024;
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = MaxUploadBytes);
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = MaxUploadBytes);
 
 // ----- الخدمات -----
 builder.Services.AddControllers().AddJsonOptions(o =>

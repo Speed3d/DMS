@@ -186,13 +186,14 @@ public sealed class IncomingController(
         return NoContent();
     }
 
+    /// <summary>
+    /// تنزيل مرفق.
+    /// Hint: يتطلب مصادقة كبقية النقاط — التحقق من ملكية المرفق وصلاحية القسم يتم داخل
+    /// AttachmentService.GetAsync. (أُزيلت سِمة AllowAnonymous ومعامل token الذي كان يُستقبل ويُهمَل.)
+    /// </summary>
     [HttpGet("{id:int}/attachments/{attachmentId:int}/download")]
-    [AllowAnonymous]
-    public async Task<IActionResult> DownloadAttachment(int id, int attachmentId, [FromQuery] string? token, CancellationToken ct)
+    public async Task<IActionResult> DownloadAttachment(int id, int attachmentId, CancellationToken ct)
     {
-        // Hint: This method typically validates the download token, 
-        // but for brevity we rely on standard auth if required or custom token.
-        // We will just return the file.
         var (meta, content) = await attachmentService.GetAsync(attachmentId, ct);
         return File(content, "application/octet-stream", meta.FileName);
     }
