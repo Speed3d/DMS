@@ -13,3 +13,6 @@
 @.claude/rules/workflow.md
 
 التوثيق الكامل (معماري/بيانات/API/قرارات/خارطة طريق/سجل تقدّم) في `.claude/docs/`.
+
+النسخة المرئية من التقرير تبقى متاحة أيضاً:
+https://claude.ai/code/artifact/270612e0-1c26-4c00-bfd2-290f8a98bbb5
