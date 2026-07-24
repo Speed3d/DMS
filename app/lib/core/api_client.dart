@@ -128,6 +128,9 @@ class ApiClient {
   Future<List<EntityModel>> entities() async =>
       (await _get('/entities') as List).map((e) => EntityModel.fromJson(e)).toList();
 
+  /// حذف جهة — يرفضه الخادم بـ 409 إن كانت مستخدَمة في صادر/وارد/أرشيف.
+  Future<void> deleteEntity(int id) => _delete('/entities/$id');
+
   Future<EntityModel> createEntity(String name, String kind) async =>
       EntityModel.fromJson(await _post('/entities', {'name': name, 'kind': kind}));
 
@@ -312,6 +315,9 @@ class ApiClient {
   }
 
   Future<void> deleteIncomingAttachment(int id, int attachmentId) => _delete('/incoming/$id/attachments/$attachmentId');
+
+  /// حذف نسخة احتياطية — يرفضه الخادم بـ 409 إن كانت النسخة الناجحة الوحيدة.
+  Future<void> backupDelete(int id) => _delete('/backup/$id');
 
   // ---------- الأرشيف ----------
   Future<List<ArchiveListItem>> archiveList({String? search, DateTime? from, DateTime? to, int? documentTypeId, int? entityId}) async {

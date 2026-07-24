@@ -256,25 +256,30 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                         ),
                         const Divider(height: 32),
                         
+                        // Hint: القائمتان مفلترتان بنوع الجهة — الجهة التي أرسلت إلينا نوعها (مستلمة/كلاهما)،
+                        //       والتي أرسلنا إليها نوعها (صادرة/كلاهما). بلا فلترة كانتا تعرضان نفس القائمة
+                        //       فيلتبس على المستخدم أيّهما المرسِل وأيّهما المستقبِل.
                         DropdownButtonFormField<int?>(
                           isExpanded: true,
                           initialValue: _fromEntityId,
-                          decoration: _inputDecoration('الجهة الصادرة', Icons.outbox_rounded),
+                          decoration: _inputDecoration('الجهة الصادرة (من)', Icons.outbox_rounded),
                           items: [
                             const DropdownMenuItem<int?>(value: null, child: Text('— لا شيء —')),
-                            ...refs.entities.map((e) => DropdownMenuItem<int?>(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))),
+                            ..._entitiesOfKind(refs.entities, const ['Incoming', 'Both'])
+                                .map((e) => DropdownMenuItem<int?>(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))),
                           ],
                           onChanged: (v) => setState(() => _fromEntityId = v),
                         ),
                         const SizedBox(height: 16),
-                        
+
                         DropdownButtonFormField<int?>(
                           isExpanded: true,
                           initialValue: _toEntityId,
-                          decoration: _inputDecoration('الجهة المستلمة', Icons.move_to_inbox_rounded),
+                          decoration: _inputDecoration('الجهة المستلمة (إلى)', Icons.move_to_inbox_rounded),
                           items: [
                             const DropdownMenuItem<int?>(value: null, child: Text('— لا شيء —')),
-                            ...refs.entities.map((e) => DropdownMenuItem<int?>(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))),
+                            ..._entitiesOfKind(refs.entities, const ['Outgoing', 'Both'])
+                                .map((e) => DropdownMenuItem<int?>(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))),
                           ],
                           onChanged: (v) => setState(() => _toEntityId = v),
                         ),
@@ -492,6 +497,11 @@ class _State extends ConsumerState<ArchiveFormScreen> {
       ),
     );
   }
+
+  /// يرشّح الجهات حسب نوعها، مع الإبقاء على الجهة المختارة حالياً حتى لو خالف نوعها
+  /// (Hint: وإلا اختفت القيمة المحفوظة من القائمة وتحطّم الـ Dropdown عند فتح سجلّ قديم).
+  List<EntityModel> _entitiesOfKind(List<EntityModel> all, List<String> kinds) =>
+      all.where((e) => kinds.contains(e.kind) || e.entityId == _fromEntityId || e.entityId == _toEntityId).toList();
 
   InputDecoration _inputDecoration(String label, IconData icon) {
     final theme = Theme.of(context);

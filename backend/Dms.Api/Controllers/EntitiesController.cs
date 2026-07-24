@@ -44,4 +44,38 @@ public sealed class EntitiesController(AppDbContext db, ICurrentUser current, IA
         await db.SaveChangesAsync(ct);
         return new EntityResponse(e.EntityId, e.CompanyId, e.Name, e.Kind, e.Notes);
     }
+
+    /// <summary>
+    /// حذف جهة — مسموح فقط إن لم تكن مستخدَمة في أي سجلّ.
+    /// Hint: الجهة مرتبطة بكتب رسمية (صادر/وارد/أرشيف)؛ حذفها مع وجودها يُفقِد اسم الجهة من سجلات
+    ///       لا يجوز المساس بها. نرفض بـ 409 ورسالة تُبيّن أين تُستخدم بدل خطأ قاعدة بيانات غامض.
+    /// </summary>
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "SuperAdmin,President,Manager")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var e = await db.Entities.FirstOrDefaultAsync(x => x.EntityId == id, ct)
+                ?? throw new NotFoundException("الجهة غير موجودة.");
+
+        // الفحص يشمل المحذوف ناعماً أيضاً (IgnoreQueryFilters) — السجل يبقى ويجب أن يبقى اسم جهته.
+        var inOutgoing = await db.OutgoingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id, ct);
+        var inIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id, ct);
+        var inArchive = await db.ArchiveDocs.IgnoreQueryFilters()
+            .CountAsync(a => a.FromEntityId == id || a.ToEntityId == id, ct);
+
+        if (inOutgoing + inIncoming + inArchive > 0)
+        {
+            var used = new List<string>();
+            if (inOutgoing > 0) used.Add($"{inOutgoing} صادر");
+            if (inIncoming > 0) used.Add($"{inIncoming} وارد");
+            if (inArchive > 0) used.Add($"{inArchive} أرشيف");
+            throw new ConflictException(
+                $"لا يمكن حذف الجهة «{e.Name}» لأنها مستخدَمة في: {string.Join(" · ", used)}.");
+        }
+
+        db.Entities.Remove(e);
+        audit.Add("Delete", nameof(Entity), id.ToString(), e.Name, e.CompanyId);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
 }

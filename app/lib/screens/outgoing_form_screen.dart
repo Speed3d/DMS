@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import '../core/api_client.dart';
+import '../core/quill_html.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
 import '../core/local_storage.dart';
@@ -85,26 +85,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
     }
   }
 
-  String _getHtmlFromBody() {
-    final delta = _quillController.document.toDelta();
-    final deltaJson = delta.toJson();
-    debugPrint('=== DELTA JSON START ===');
-    debugPrint(deltaJson.toString());
-    debugPrint('=== DELTA JSON END ===');
-
-    final converter = QuillDeltaToHtmlConverter(
-      deltaJson.cast<Map<String, dynamic>>(),
-      ConverterOptions(
-        converterOptions: OpConverterOptions(inlineStylesFlag: true),
-        sanitizerOptions: OpAttributeSanitizerOptions(allow8DigitHexColors: true),
-      ),
-    );
-    final html = converter.convert();
-    debugPrint('=== HTML OUTPUT START ===');
-    debugPrint(html);
-    debugPrint('=== HTML OUTPUT END ===');
-    return html;
-  }
+  String _getHtmlFromBody() => quillDeltaToHtml(_quillController.document.toDelta().toJson());
 
   Map<String, dynamic>? _buildPayload() {
     if (_entityId == null) {

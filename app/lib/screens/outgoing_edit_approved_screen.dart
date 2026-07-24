@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
+import 'package:printing/printing.dart';
 import '../core/api_client.dart';
+import '../core/quill_html.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -96,55 +97,84 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
     return _Refs(entities, templates.where((t) => t.isActive).toList());
   }
 
-  String _getHtmlFromBody() {
-    final delta = _quillController.document.toDelta();
-    final converter = QuillDeltaToHtmlConverter(
-      delta.toJson().cast<Map<String, dynamic>>(),
-      ConverterOptions(
-        converterOptions: OpConverterOptions(inlineStylesFlag: true),
-        sanitizerOptions: OpAttributeSanitizerOptions(allow8DigitHexColors: true),
-      ),
-    );
-    return converter.convert();
-  }
+  String _getHtmlFromBody() => quillDeltaToHtml(_quillController.document.toDelta().toJson());
 
-  Future<void> _save() async {
-    if (_subject.text.trim().isEmpty) {
-      setState(() => _error = 'الموضوع مطلوب.');
-      return;
-    }
-    if (_quillController.document.isEmpty()) {
-      setState(() => _error = 'نص الكتاب مطلوب.');
-      return;
-    }
-    
+  /// يبني حقول الكتاب مع التحقق (يعرض الخطأ ويعيد null عند الفشل).
+  /// Hint: مشترك بين المعاينة والحفظ حتى تعاين **ما ستحفظه بالضبط** لا نسخة مختلفة.
+  Map<String, dynamic>? _buildPayload() {
+    if (_subject.text.trim().isEmpty) { setState(() => _error = 'الموضوع مطلوب.'); return null; }
+    if (_quillController.document.isEmpty()) { setState(() => _error = 'نص الكتاب مطلوب.'); return null; }
+
     num? amount;
     num? rate;
     if (_amount.text.trim().isNotEmpty) {
       amount = num.tryParse(_amount.text.trim());
-      if (amount == null) { setState(() => _error = 'المبلغ غير صالح.'); return; }
-      if (_currency == null) { setState(() => _error = 'اختر العملة.'); return; }
+      if (amount == null) { setState(() => _error = 'المبلغ غير صالح.'); return null; }
+      if (_currency == null) { setState(() => _error = 'اختر العملة.'); return null; }
       if (_currency == 'USD') {
         rate = num.tryParse(_rate.text.trim());
-        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي للدولار.'); return; }
+        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي للدولار.'); return null; }
       }
     }
-    
+
+    return {
+      'entityId': _entityId,
+      'templateId': _templateId,
+      'date': _date.toIso8601String(),
+      'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
+      'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
+      'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
+      'subject': _subject.text.trim(),
+      'bodyHtml': _getHtmlFromBody(),
+      'bodyJson': jsonEncode(_quillController.document.toDelta().toJson()),
+      'amount': amount,
+      'currency': amount == null ? null : _currency,
+      'exchangeRate': rate,
+    };
+  }
+
+  /// معاينة التعديل داخل البرنامج قبل إصداره.
+  /// Hint: تُرسَل الحمولة الحالية غير المحفوظة لنقطة المعاينة — لا تُنشئ إصداراً ولا تمسّ الكتاب.
+  Future<void> _preview() async {
+    final payload = _buildPayload();
+    if (payload == null) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final bytes = await ref.read(apiClientProvider).previewOutgoing(payload);
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: PdfPreview(
+              build: (format) => bytes,
+              canChangeOrientation: false,
+              canChangePageFormat: false,
+              canDebug: false,
+              pdfFileName: 'preview-${widget.book.outgoingId}.pdf',
+            ),
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final payload = _buildPayload();
+    if (payload == null) return;
+
     setState(() { _busy = true; _error = null; });
     try {
       await ref.read(apiClientProvider).editApproved(widget.book.outgoingId, {
-        'entityId': _entityId,
-        'templateId': _templateId,
-        'date': _date.toIso8601String(),
-        'headerPhrase': _headerPhrase.text.trim().isEmpty ? null : _headerPhrase.text.trim(),
-        'signatoryName': _signatoryName.text.trim().isEmpty ? null : _signatoryName.text.trim(),
-        'signatoryTitle': _signatoryTitle.text.trim().isEmpty ? null : _signatoryTitle.text.trim(),
-        'subject': _subject.text.trim(),
-        'bodyHtml': _getHtmlFromBody(),
-        'bodyJson': jsonEncode(_quillController.document.toDelta().toJson()),
-        'amount': amount,
-        'currency': amount == null ? null : _currency,
-        'exchangeRate': rate,
+        ...payload,
         'rowVersion': widget.book.rowVersion,
         'changeNote': _note.text.trim().isEmpty ? null : _note.text.trim(),
       });
@@ -430,26 +460,50 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
                           ),
                           const SizedBox(height: 24),
                           
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: FilledButton.icon(
-                              onPressed: _busy ? null : _save,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.warn,
-                                foregroundColor: Colors.black,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                elevation: 8,
-                                shadowColor: AppColors.warn.withValues(alpha: 0.5),
+                          // المعاينة بجانب الحفظ — تُظهر شكل الكتاب بعد التعديل قبل إصداره.
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SizedBox(
+                                  height: 56,
+                                  child: FilledButton.icon(
+                                    onPressed: _busy ? null : _preview,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.gold,
+                                      foregroundColor: AppColors.navyDeep,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    icon: const Icon(Icons.preview_rounded),
+                                    label: const Text('معاينة',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  ),
+                                ),
                               ),
-                              icon: _busy 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                                : const Icon(Icons.save_rounded),
-                              label: Text(
-                                _busy ? 'جارٍ الحفظ...' : 'حفظ كإصدار جديد',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                flex: 2,
+                                child: SizedBox(
+                                  height: 56,
+                                  child: FilledButton.icon(
+                                    onPressed: _busy ? null : _save,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.warn,
+                                      foregroundColor: Colors.black,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 8,
+                                      shadowColor: AppColors.warn.withValues(alpha: 0.5),
+                                    ),
+                                    icon: _busy
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                                      : const Icon(Icons.save_rounded),
+                                    label: Text(
+                                      _busy ? 'جارٍ الحفظ...' : 'حفظ كإصدار جديد',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ],
                       ),

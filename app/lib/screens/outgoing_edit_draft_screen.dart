@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 import 'package:printing/printing.dart';
 import '../core/api_client.dart';
+import '../core/quill_html.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -97,17 +97,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     return _Refs(entities, templates.where((t) => t.isActive).toList());
   }
 
-  String _getHtmlFromBody() {
-    final delta = _quillController.document.toDelta();
-    final converter = QuillDeltaToHtmlConverter(
-      delta.toJson().cast<Map<String, dynamic>>(),
-      ConverterOptions(
-        converterOptions: OpConverterOptions(inlineStylesFlag: true),
-        sanitizerOptions: OpAttributeSanitizerOptions(allow8DigitHexColors: true),
-      ),
-    );
-    return converter.convert();
-  }
+  String _getHtmlFromBody() => quillDeltaToHtml(_quillController.document.toDelta().toJson());
 
   /// يبني حمولة الكتاب مع التحقق (يعرض الخطأ ويعيد null عند الفشل).
   Map<String, dynamic>? _buildPayload() {

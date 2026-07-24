@@ -38,6 +38,14 @@ public sealed class BackupController(IBackupService backup) : ControllerBase
     public async Task<ActionResult<BackupScheduleDto>> UpdateSchedule(UpdateBackupScheduleRequest req, CancellationToken ct)
         => MapSchedule(await backup.UpdateScheduleAsync(new UpdateScheduleInput(req.Frequency, req.Enabled, req.Hour), ct));
 
+    /// <summary>حذف نسخة احتياطية (السجلّ + الملف). يُمنع حذف آخر نسخة ناجحة.</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        await backup.DeleteAsync(id, ct);
+        return NoContent();
+    }
+
     [HttpGet("{id:int}/download")]
     public async Task<IActionResult> Download(int id, CancellationToken ct)
     {

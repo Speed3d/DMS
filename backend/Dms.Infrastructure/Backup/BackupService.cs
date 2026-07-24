@@ -21,6 +21,9 @@ public interface IBackupService
     Task<BackupSchedule> UpdateScheduleAsync(UpdateScheduleInput input, CancellationToken ct = default);
     Task<(byte[] bytes, string fileName)> DownloadAsync(int id, CancellationToken ct = default);
 
+    /// <summary>يحذف نسخة احتياطية (السجلّ + الملف). Hint: يُمنع حذف آخر نسخة ناجحة.</summary>
+    Task DeleteAsync(int id, CancellationToken ct = default);
+
     /// <summary>
     /// يستعيد قاعدة البيانات والملفات من نسخة احتياطية. عملية تدميرية — تتطلب تأكيداً صريحاً.
     /// Hint: تأخذ نسخة أمان أولاً، ثم تدخل وضع الصيانة، فتستبدل القاعدة والملفات بالكامل.
@@ -434,6 +437,37 @@ public sealed class BackupService(
         var path = Path.Combine(paths.BackupDir, rec.FileName);
         if (!File.Exists(path)) throw new NotFoundException("ملف النسخة غير موجود على الخادم.");
         return (await File.ReadAllBytesAsync(path, ct), rec.FileName);
+    }
+
+    public async Task DeleteAsync(int id, CancellationToken ct = default)
+    {
+        var rec = await db.BackupRecords.FirstOrDefaultAsync(r => r.BackupRecordId == id, ct)
+                  ?? throw new NotFoundException("سجلّ النسخة غير موجود.");
+
+        // Hint: حارس أساسي — لا نترك النظام بلا أي نسخة صالحة للاستعادة.
+        //       (النسخ الفاشلة لا تُحسب لأنها غير قابلة للاستعادة أصلاً.)
+        if (rec.Status == BackupStatus.Success)
+        {
+            var successCount = await db.BackupRecords.CountAsync(r => r.Status == BackupStatus.Success, ct);
+            if (successCount <= 1)
+                throw new ConflictException("لا يمكن حذف النسخة الناجحة الوحيدة — خذ نسخة جديدة أولاً.");
+        }
+
+        try
+        {
+            var path = Path.Combine(paths.BackupDir, rec.FileName);
+            // حارس أمان: لا نحذف إلا ملفات النسخ بنمطها المعروف داخل مجلد النسخ.
+            if (File.Exists(path) && Path.GetFileName(rec.FileName).StartsWith("backup-", StringComparison.Ordinal))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            throw new ConflictException("تعذّر حذف ملف النسخة: " + ex.Message);
+        }
+
+        db.BackupRecords.Remove(rec);
+        audit.Add("DeleteBackup", nameof(BackupRecord), id.ToString(), rec.FileName, null);
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>يحسب موعد التشغيل التالي حسب التكرار وساعة التشغيل.</summary>

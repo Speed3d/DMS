@@ -269,6 +269,36 @@ class _EntitiesTabState extends ConsumerState<_EntitiesTab> {
     }
   }
 
+  /// حذف جهة — الخادم يرفض إن كانت مستخدَمة ويوضّح أين، فنعرض رسالته كما هي.
+  Future<void> _deleteEntity(dynamic e) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف جهة'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text('هل تريد حذف الجهة «${e.name}»؟\n'
+            'لن يتم الحذف إن كانت مستخدَمة في أي كتاب صادر أو وارد أو أرشيف.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(apiClientProvider).deleteEntity(e.entityId);
+      if (mounted) _reload();
+      messenger.showSnackBar(SnackBar(content: Text('تم حذف الجهة «${e.name}».'), backgroundColor: Colors.green));
+    } on ApiException catch (ex) {
+      messenger.showSnackBar(SnackBar(content: Text(ex.message), backgroundColor: Colors.red));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder(
         future: _f,
@@ -279,7 +309,18 @@ class _EntitiesTabState extends ConsumerState<_EntitiesTab> {
           return _Section(
             addLabel: 'جهة جديدة',
             onAdd: _add,
-            children: [for (final e in list) ListTile(leading: const Icon(Icons.account_balance), title: Text(e.name))],
+            children: [
+              for (final e in list)
+                ListTile(
+                  leading: const Icon(Icons.account_balance),
+                  title: Text(e.name),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    tooltip: 'حذف الجهة',
+                    onPressed: () => _deleteEntity(e),
+                  ),
+                ),
+            ],
           );
         },
       );

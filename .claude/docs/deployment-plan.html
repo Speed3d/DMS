@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>خطة النشر والتسليم</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-page: #f8fafc;
+            --bg-card: #ffffff;
+            --border: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --code-block-bg: #0f172a;
+            --quote-bg: #eff6ff;
+            --quote-border: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            line-height: 1.8;
+            margin: 0;
+            padding: 0;
+            font-size: 16px;
+            background-image: radial-gradient(circle at 10% 20%, rgb(239, 246, 255) 0%, rgb(248, 250, 252) 90%);
+            background-attachment: fixed;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 50px auto;
+            background: var(--bg-card);
+            padding: 60px 80px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.05), 0 0 10px rgba(0,0,0,0.01);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Headings */
+        h1, h2, h3, h4, h5, h6 {
+            color: #0f172a;
+            margin-top: 2.5em;
+            margin-bottom: 1em;
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            margin-top: 0;
+            text-align: center;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            padding-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 12px;
+            position: relative;
+        }
+
+        h2::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            right: 0;
+            width: 80px;
+            height: 3px;
+            background: var(--primary);
+            border-radius: 3px;
+        }
+
+        h3 { 
+            font-size: 1.4rem; 
+            color: #334155; 
+            border-right: 4px solid #8b5cf6;
+            padding-right: 12px;
+        }
+
+        /* Links */
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        a:hover {
+            color: var(--primary-hover);
+        }
+        
+        a::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            transform: scaleX(0);
+            height: 2px;
+            bottom: -2px;
+            left: 0;
+            background-color: var(--primary);
+            transform-origin: bottom right;
+            transition: transform 0.25s ease-out;
+        }
+        
+        a:hover::after {
+            transform: scaleX(1);
+            transform-origin: bottom left;
+        }
+
+        /* Blockquotes */
+        blockquote {
+            background: var(--quote-bg);
+            border-right: 5px solid var(--quote-border);
+            margin: 2em 0;
+            padding: 1.5em 2em;
+            border-radius: 12px 0 0 12px;
+            color: #1e3a8a;
+            font-size: 1.1rem;
+            font-weight: 600;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+            position: relative;
+        }
+        
+        blockquote::before {
+            content: '\201D';
+            position: absolute;
+            right: 15px;
+            top: 5px;
+            font-size: 4rem;
+            color: rgba(59, 130, 246, 0.15);
+            font-family: serif;
+            line-height: 1;
+        }
+        
+        blockquote p { margin: 0; position: relative; z-index: 1; }
+        
+        blockquote strong { color: #1e40af; }
+
+        /* Tables */
+        .table-responsive {
+            overflow-x: auto;
+            margin: 2.5em 0;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+            border: 1px solid var(--border);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        
+        th, td {
+            padding: 16px 24px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background-color: #f8fafc;
+            font-weight: 700;
+            color: #475569;
+            font-size: 0.95rem;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        
+        tr:last-child td { border-bottom: none; }
+        
+        tr { transition: background-color 0.2s ease; }
+        
+        tr:hover { background-color: #f1f5f9; }
+
+        /* Code blocks */
+        pre {
+            background: var(--code-block-bg);
+            color: #e2e8f0;
+            padding: 24px;
+            border-radius: 16px;
+            overflow-x: auto;
+            direction: ltr;
+            text-align: left;
+            margin: 2em 0;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            position: relative;
+        }
+        
+        pre::-webkit-scrollbar {
+            height: 8px;
+        }
+        pre::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        pre::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        
+        pre code {
+            font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Inline code */
+        code {
+            background: var(--code-bg);
+            color: #be123c;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            direction: ltr;
+            display: inline-block;
+            border: 1px solid var(--border);
+        }
+
+        /* Lists */
+        ul, ol {
+            padding-right: 30px;
+            margin-bottom: 1.5em;
+        }
+        
+        li { margin-bottom: 0.8em; }
+        
+        ul li::marker { color: var(--primary); font-size: 1.2em; }
+        ol li::marker { color: var(--primary); font-weight: 700; }
+
+        /* Horizontal rule */
+        hr {
+            border: none;
+            height: 1px;
+            background: linear-gradient(to right, transparent, var(--border), transparent);
+            margin: 4em 0;
+        }
+
+        /* Emoji adjustments */
+        p, li, td, th {
+            /* Make emojis a bit larger and align them better */
+            font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'Cairo', sans-serif;
+        }
+
+        /* Responsiveness */
+        @media (max-width: 768px) {
+            .container {
+                margin: 20px;
+                padding: 40px 20px;
+                border-radius: 16px;
+            }
+            h1 { font-size: 2.2rem; }
+            h2 { font-size: 1.5rem; }
+            h3 { font-size: 1.25rem; }
+            th, td { padding: 12px 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>خطة النشر والتسليم — سيرفر داخلي + Cloudflare Tunnel</h1>
+<blockquote>
+<p><strong>الحالة:</strong> 🟡 مسوّدة بانتظار موافقة المالك — لم يبدأ التنفيذ.
+<strong>التاريخ:</strong> 2026-07-22
+<strong>تحلّ محلّ:</strong> قرار النشر على Azure (خطة العمل §6) و DigitalOcean (خارطة الطريق).
+<strong>بعد الموافقة:</strong> تُوثَّق كـ ADR-014 ويُحدَّث <a href="status-report.md"><code>status-report.md</code></a>.</p>
+</blockquote>
+<hr>
+<h2>جدول المحتويات</h2>
+<ol>
+<li><a href="#1-%D8%A7%D9%84%D9%85%D9%84%D8%AE%D8%B5-%D8%A7%D9%84%D8%AA%D9%86%D9%81%D9%8A%D8%B0%D9%8A">الملخص التنفيذي</a></li>
+<li><a href="#2-%D9%84%D9%85%D8%A7%D8%B0%D8%A7-%D9%87%D8%B0%D8%A7-%D8%A7%D9%84%D8%AE%D9%8A%D8%A7%D8%B1--%D8%A7%D9%84%D8%AA%D8%AD%D9%84%D9%8A%D9%84-%D8%A7%D9%84%D9%83%D8%A7%D9%85%D9%84">لماذا هذا الخيار — التحليل الكامل</a></li>
+<li><a href="#3-%D8%A7%D9%84%D9%85%D8%B9%D9%85%D8%A7%D8%B1%D9%8A%D8%A9-%D8%A7%D9%84%D9%86%D9%87%D8%A7%D8%A6%D9%8A%D8%A9">المعمارية النهائية</a></li>
+<li><a href="#4-%D8%A7%D9%84%D9%85%D9%83%D9%88%D9%91%D9%86%D8%A7%D8%AA-%D9%88%D8%A7%D9%84%D8%AA%D9%83%D8%A7%D9%84%D9%8A%D9%81">المكوّنات والتكاليف</a></li>
+<li><a href="#5-%D8%A7%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9-%D8%A3--%D8%A7%D9%84%D8%A3%D8%B9%D9%85%D8%A7%D9%84-%D8%A7%D9%84%D8%A8%D8%B1%D9%85%D8%AC%D9%8A%D8%A9-%D9%82%D8%A8%D9%84-%D8%A7%D9%84%D8%B4%D8%B1%D8%A7%D8%A1">المرحلة أ — الأعمال البرمجية</a></li>
+<li><a href="#6-%D8%A7%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9-%D8%A8--%D8%AA%D8%AC%D9%87%D9%8A%D8%B2-%D8%A7%D9%84%D8%AC%D9%87%D8%A7%D8%B2">المرحلة ب — تجهيز الجهاز</a></li>
+<li><a href="#7-%D8%A7%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9-%D8%AC--%D8%A7%D9%84%D8%AF%D9%88%D9%85%D9%8A%D9%86-%D9%88-cloudflare-%D9%85%D9%86-%D8%A7%D9%84%D8%B5%D9%81%D8%B1">المرحلة ج — الدومين و Cloudflare من الصفر</a></li>
+<li><a href="#8-%D8%A7%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9-%D8%AF--%D8%A7%D9%84%D9%86%D8%B3%D8%AE-%D8%A7%D9%84%D8%A7%D8%AD%D8%AA%D9%8A%D8%A7%D8%B7%D9%8A-%D9%A3-%D9%A2-%D9%A1">المرحلة د — النسخ الاحتياطي ٣-٢-١</a></li>
+<li><a href="#9-%D8%A7%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9-%D9%87%D9%80--%D8%A7%D9%84%D8%AA%D8%B4%D8%BA%D9%8A%D9%84-%D9%88%D8%A7%D9%84%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1-%D8%A7%D9%84%D9%86%D9%87%D8%A7%D8%A6%D9%8A">المرحلة هـ — التشغيل والاختبار</a></li>
+<li><a href="#10-%D8%A5%D8%AC%D8%B1%D8%A7%D8%A1%D8%A7%D8%AA-%D8%A7%D9%84%D8%AA%D8%B4%D8%BA%D9%8A%D9%84-runbook">إجراءات التشغيل (Runbook)</a></li>
+<li><a href="#11-%D8%A7%D9%84%D9%85%D8%AE%D8%A7%D8%B7%D8%B1-%D9%88%D8%A7%D9%84%D9%85%D8%B9%D8%A7%D9%84%D8%AC%D8%A7%D8%AA">المخاطر والمعالجات</a></li>
+<li><a href="#12-%D9%85%D8%A7-%D9%8A%D8%AD%D8%AA%D8%A7%D8%AC-%D9%82%D8%B1%D8%A7%D8%B1%D9%83">ما يحتاج قرارك</a></li>
+</ol>
+<hr>
+<h2>1) الملخص التنفيذي</h2>
+<h3>القرار</h3>
+<p>نشر النظام على <strong>جهاز واحد داخل مكتب الشركة (Mini PC)</strong>، والوصول إليه من الخارج عبر
+<strong>Cloudflare Tunnel</strong> بلا فتح أي منفذ في جدار الحماية، مع نسخ احتياطي ثلاثي الطبقات
+(محلي + قرص خارجي + OneDrive).</p>
+<h3>لماذا</h3>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>المطلب</th>
+<th>كيف يتحقق</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>البيانات لا تغادر الشركة</td>
+<td>لا سحابة — الأصل داخل المكتب</td>
+</tr>
+<tr>
+<td>بلا تكلفة شهرية</td>
+<td>شراء لمرة واحدة + دومين سنوي زهيد</td>
+</tr>
+<tr>
+<td>الوصول من خارج العراق (٢–٣ موظفين)</td>
+<td>Cloudflare Tunnel</td>
+</tr>
+<tr>
+<td>أمان الشبكة</td>
+<td><strong>صفر منافذ مفتوحة</strong> — أأمن من فتح المنافذ</td>
+</tr>
+<tr>
+<td>نجاة من حريق/سرقة</td>
+<td>نسخة خارج المبنى على OneDrive</td>
+</tr>
+</tbody></table></div>
+<h3>الأثر على الكود</h3>
+<blockquote>
+<p><strong>صفر تعديل على منطق العمل.</strong> الكود الحالي يعمل كما هو.
+الأعمال البرمجية المطلوبة (المرحلة أ) كلها <strong>إضافات تشغيلية</strong>: استعادة النسخة الاحتياطية،
+سياسة الاحتفاظ، تشغيل الـ API كخدمة ويندوز، وتأمين الأسرار.</p>
+</blockquote>
+<h3>الحقائق التي حسمت القرار</h3>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>الحقيقة</th>
+<th>لماذا تحسم</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>الترقيم يستخدم قفلاً صفّياً (<code>UPDLOCK</code>) في <a href="../../backend/Dms.Infrastructure/Services/NumberingService.cs"><code>NumberingService.cs</code></a></td>
+<td>يتطلب <strong>قاعدة بيانات واحدة</strong>؛ توزيعها ⇒ أرقام مكرّرة لكتب رسمية</td>
+</tr>
+<tr>
+<td>2</td>
+<td>كل الصلاحيات مفروضة في الباك-إند</td>
+<td>قاعدة على جهاز المستخدم ⇒ يفتحها ويرقّي نفسه لسوبر أدمن</td>
+</tr>
+<tr>
+<td>3</td>
+<td>مفتاح توقيع QR يعيش في إعدادات الخادم</td>
+<td>توزيعه ⇒ أي موظف يُزوّر كتاباً بتوقيع صحيح</td>
+</tr>
+<tr>
+<td>4</td>
+<td>التقرير المالي والبحث يجمعان من كل الوحدات</td>
+<td>بيانات موزّعة ⇒ لا تقرير ولا بحث شامل</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>2) لماذا هذا الخيار — التحليل الكامل</h2>
+<h3>البدائل المدروسة ولماذا استُبعدت</h3>
+<h4>❌ بلا سيرفر (كل شيء على جهاز الموظف)</h4>
+<p><strong>غير ممكن تقنياً</strong> للأسباب الأربعة في الجدول أعلاه. تفصيلها:</p>
+<ul>
+<li><strong>الترقيم:</strong> موظفان ينشئان كتاباً في نفس اللحظة على قاعدتين منفصلتين ⇒ كلاهما يحصل على
+<code>DEN-2026-00042</code>. كتابان رسميان بنفس الرقم يذهبان لجهتين مختلفتين، ولا يُكتشف إلا متأخراً.
+لا حل بدون نقطة مركزية تمنح الأرقام.</li>
+<li><strong>الصلاحيات:</strong> من يملك ملف قاعدة البيانات يملك القرار — يفتحه بأي أداة SQL مجانية
+ويغيّر دوره، أو يعدّل كتاباً معتمداً، أو يمسح سجل التدقيق الذي يوثّق فعلته.</li>
+<li><strong>التوقيع:</strong> مفتاح ECDSA الخاص هو ما يجعل الكتب غير قابلة للتزوير (وهو سبب وجود Phase 0).
+توزيعه على الأجهزة = استخراجه = تزوير بتوقيع يجتاز التحقق.</li>
+<li><strong>العمليات:</strong> كيف يصل الكتاب من الموظف لمديره للاعتماد؟ يتطلب بناء نظام مزامنة وحلّ
+تعارضات — أصعب بكثير من سيرفر. والتقرير المالي لن يكتمل إلا إذا كانت كل الأجهزة تعمل.
+ودخول الرئيس على كل جهاز يتطلب فتح منفذ على <strong>كل جهاز</strong> — أي ٨ أهداف للاختراق بدل واحد.</li>
+</ul>
+<h4>❌ Firebase</h4>
+<p>قاعدة <strong>NoSQL</strong>. النظام مبني على علاقات ومعاملات وأقفال صفّية وفلاتر عامة.
+الانتقال = <strong>إعادة كتابة الباك-إند من الصفر</strong> (~6,400 سطر) + فقدان الأقفال الصفّية
+التي يعتمد عليها الترقيم. خسارة شهور مقابل نظام أضعف.</p>
+<h4>⚠️ Supabase</h4>
+<p>قاعدته PostgreSQL (علائقية حقيقية) فهو أقرب من Firebase، <strong>لكن</strong>:</p>
+<ul>
+<li><strong>لا يشغّل .NET</strong> ⇒ تحتاج Supabase للقاعدة <strong>+ مزوّداً آخر للـ API</strong> = حسابان وفاتورتان.</li>
+<li>ثلاثة مواضع في الكود مرتبطة بـ SQL Server تحديداً وتحتاج إعادة كتابة:</li>
+</ul>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الموضع</th>
+<th>التغيير المطلوب</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="../../backend/Dms.Infrastructure/Services/NumberingService.cs"><code>NumberingService.cs:22</code></a></td>
+<td><code>WITH (UPDLOCK, HOLDLOCK)</code> ⇐ صيغة SQL Server ⇒ <code>SELECT … FOR UPDATE</code></td>
+</tr>
+<tr>
+<td><a href="../../backend/Dms.Infrastructure/Backup/BackupService.cs"><code>BackupService.cs:48</code></a></td>
+<td><code>BACKUP DATABASE</code> غير موجود في Postgres ⇒ إعادة كتابة بـ <code>pg_dump</code></td>
+</tr>
+<tr>
+<td>Migrations (23 ملفاً)</td>
+<td>إعادة توليدها بالكامل</td>
+</tr>
+</tbody></table></div>
+<p><strong>المحصلة:</strong> أيام عمل للانتقال من قاعدة تعمل إلى قاعدة تعمل — خارج الشركة وبتكلفة شهرية.
+لا مبرّر.</p>
+<h4>⚠️ DigitalOcean / Azure</h4>
+<p>يعملان بلا مشاكل تقنية، لكن: تكلفة شهرية متكرّرة + البيانات خارج الشركة.
+مناسبان لو كانت الشركة بلا مقر ثابت أو بلا من يصون جهازاً — وليست حالتنا.</p>
+<h4>ℹ️ توضيح عن Cloudflare</h4>
+<p><strong>Cloudflare لا يستضيف تطبيقات .NET.</strong> دوره هنا:
+الدومين · DNS · شهادة HTTPS مجانية · حماية من هجمات الحرمان · <strong>و Cloudflare Tunnel</strong>
+وهو الجزء الأثمن (انظر المرحلة ج).</p>
+<hr>
+<h2>3) المعمارية النهائية</h2>
+<pre><code>                     ┌──────────────────────────────────┐
+                     │      Cloudflare (مجاني)          │
+   الموظفون خارج     │  dms.&lt;domain&gt;  ·  HTTPS  ·  DDoS  │
+   العراق (٢–٣)  ───▶│                                  │
+                     └───────────────┬──────────────────┘
+                                     │  نفق صادر مشفّر
+                                     │  (بلا منافذ مفتوحة)
+   ┌─────────────────────────────────▼──────────────────────────────┐
+   │                  مكتب الشركة                                    │
+   │                                                                 │
+   │   موظفو المكتب ──(واي-فاي)──▶ الراوتر ──(كيبل)──▶ Mini PC       │
+   │   (٥–٦ أجهزة)                                    ┌────────────┐ │
+   │                                                  │ Dms.Api    │ │
+   │                                                  │ (خدمة)     │ │
+   │                                                  │ SQL Express│ │
+   │                                                  │ الملفات     │ │
+   │                                                  │ cloudflared│ │
+   │                                                  └─────┬──────┘ │
+   │                                                        │        │
+   │                              قرص خارجي ◀───────────────┤        │
+   │                              (يدوي دوري)               │        │
+   └────────────────────────────────────────────────────────┼────────┘
+                                                            │
+                                              OneDrive ◀────┘
+                                          (رفع تلقائي — خارج المبنى)
+</code></pre>
+<h3>طبقات التخزين — أيّها الأصل؟</h3>
+<blockquote>
+<p><strong>النسخ ليست متساوية.</strong> هناك أصل واحد وبقيتها مشتقّة.</p>
+</blockquote>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الطبقة</th>
+<th>المحتوى</th>
+<th>من يملكها</th>
+<th>لو ضاعت</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>🏛️ <strong>Mini PC</strong></td>
+<td><strong>الأصل الرسمي</strong> — قاعدة البيانات + كل الملفات</td>
+<td>النظام</td>
+<td>كارثة — مصدر الحقيقة</td>
+</tr>
+<tr>
+<td>💻 <strong>جهاز المستخدم</strong></td>
+<td>نسخة PDF للاطلاع</td>
+<td>المستخدم</td>
+<td><strong>لا شيء</strong> — مجرد راحة</td>
+</tr>
+<tr>
+<td>💾 <strong>قرص خارجي</strong></td>
+<td>نسخة احتياطية</td>
+<td>المالك</td>
+<td>تبقى OneDrive</td>
+</tr>
+<tr>
+<td>☁️ <strong>OneDrive</strong></td>
+<td>نسخة خارج المبنى</td>
+<td>المالك</td>
+<td>يبقى القرص</td>
+</tr>
+</tbody></table></div>
+<p><strong>الملف على جهاز الموظف نسخة اطلاع لا سجل رسمي.</strong> لو حُذف أو عُدّل لا يتأثر النظام —
+الأصل في السيرفر بختمه ورقمه وتوقيعه. هذا يمنع سؤال «أي نسخة هي الصحيحة؟» مستقبلاً:
+<strong>الجواب دائماً التي في السيرفر.</strong></p>
+<h3>الحسابات — فصل تام</h3>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>النظام</th>
+<th>الحسابات</th>
+<th>من يملك</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>DMS</strong></td>
+<td><strong>لكل موظف حساب خاص</strong> (مبني بالفعل)</td>
+<td>كل موظف</td>
+</tr>
+<tr>
+<td><strong>OneDrive</strong></td>
+<td><strong>حساب واحد</strong> على السيرفر فقط</td>
+<td>المالك وحده</td>
+</tr>
+<tr>
+<td><strong>Windows على السيرفر</strong></td>
+<td>حساب المالك فقط</td>
+<td>المالك</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>🔒 <strong>لا موظف يدخل على OneDrive إطلاقاً — ولا يعرف بوجوده.</strong>
+لو كان لهم وصول لاستطاع أي منهم حذف النسخ الاحتياطية أو العبث بها،
+أي أن نبني حماية ثم نعطي مفتاحها للجميع.</p>
+</blockquote>
+<blockquote>
+<p>🔒 <strong>النسخ الاحتياطي محصور بالسوبر أدمن داخل البرنامج</strong> — مفروض بالفعل في
+<a href="../../backend/Dms.Api/Controllers/BackupController.cs"><code>BackupController.cs:11</code></a>.
+لا الموظف ولا المدير ولا رئيس الشركة يأخذ نسخة أو ينزّلها.</p>
+</blockquote>
+<blockquote>
+<p>⚠️ <strong>فصل مهم:</strong> OneDrive للنسخ الاحتياطي = اشتراك <strong>واحد</strong> على السيرفر.
+Office للموظفين = ترخيص لكل موظف، <strong>قرار إداري منفصل تماماً</strong> لا علاقة له بـ DMS.</p>
+</blockquote>
+<h3>الوصول من داخل المكتب</h3>
+<p><strong>الجميع يستخدم نفس الرابط</strong> (<code>dms.&lt;domain&gt;</code>) داخل المكتب وخارجه.</p>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th></th>
+<th>الطريق الخارجي (المعتمد)</th>
+<th>الطريق المحلي (بديل مؤجَّل)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>المسار</td>
+<td>الجهاز ← الراوتر ← الإنترنت ← Cloudflare ← السيرفر</td>
+<td>الجهاز ← الراوتر ← السيرفر</td>
+</tr>
+<tr>
+<td>HTTPS</td>
+<td>✅ تلقائي</td>
+<td>❌ يحتاج شهادة محلية</td>
+</tr>
+<tr>
+<td>الإعداد</td>
+<td><strong>صفر</strong></td>
+<td>ضبط DNS في الراوتر</td>
+</tr>
+<tr>
+<td>لو انقطع النت</td>
+<td>يتوقف الجميع</td>
+<td>يعمل الداخليون</td>
+</tr>
+</tbody></table></div>
+<p><strong>المعتمد: الطريق الخارجي للجميع</strong> — عنوان واحد، تعليمات واحدة، دعم تافه، وتجربة متطابقة
+للجميع (وبما أن ٢–٣ خارج العراق سيمرّون عبر النفق حتماً، فالتوحيد أبسط).
+التأخير أجزاء من الثانية وغير محسوس في نظام وثائق.</p>
+<p><strong>العيب المقبول:</strong> لو انقطع نت المكتب يتوقف الجميع حتى الجالس بجانب السيرفر.
+مخفَّف بـ: النت مستقر · <strong>وضع دون اتصال مبني أصلاً</strong> ويغطي إنشاء المسودّات.
+إن أزعج لاحقاً، يُضاف الطريق المحلي (DNS محلي في الراوتر + شهادة).</p>
+<ul>
+<li><strong>الواي-فاي يكفي للموظفين</strong> — لا حاجة لتسليك كيبلات.</li>
+<li><strong>⚠️ الـ Mini PC بكيبل إلزاماً</strong> (لا واي-فاي): السيرفر يحتاج اتصالاً ثابتاً، والنفق يجب أن
+يبقى حياً، ورفع النسخ أسرع وأثبت. كيبل واحد من الراوتر المجاور.</li>
+<li><strong>⚠️ عنوان IP محلي ثابت</strong> للـ Mini PC (أو حجز DHCP في الراوتر) وإلا انكسرت الإعدادات
+عند إعادة تشغيل الراوتر.</li>
+</ul>
+<hr>
+<h2>4) المكوّنات والتكاليف</h2>
+<h3>الجهاز — مواصفات مقترحة لـ ٨ مستخدمين</h3>
+<blockquote>
+<p>🎁 <strong>النظام لا يخزّن الملفات في قاعدة البيانات</strong> — القاعدة تحفظ البيانات والمفاتيح فقط
+(الملفات على القرص عبر <code>IFileStorage</code>). لذلك <strong>SQL Server Express المجاني يكفي</strong>:
+حدّه ١٠ جيجا للقاعدة، وقاعدتك نصوص وأرقام ⇒ تكفي لمئات آلاف الكتب.
+<strong>صفر تكلفة ترخيص قاعدة بيانات.</strong></p>
+</blockquote>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>المكوّن</th>
+<th>التوصية</th>
+<th>لماذا</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>المعالج</td>
+<td>Intel N100/N150 أو Ryzen 5</td>
+<td>٨ مستخدمين حِمل خفيف؛ N100 ~6 واط مناسب للعمل ٢٤/٧</td>
+</tr>
+<tr>
+<td>الذاكرة</td>
+<td><strong>16 جيجا</strong></td>
+<td>SQL Server يحب الذاكرة؛ ٨ تعمل و١٦ ترتاح</td>
+</tr>
+<tr>
+<td>التخزين</td>
+<td>NVMe 512 ج.ب (نظام + قاعدة) <strong>+</strong> قرص ثانٍ 1 ت.ب (ملفات + نسخ)</td>
+<td>فصل القرصين: تلف أحدهما لا يأخذ الآخر</td>
+</tr>
+<tr>
+<td>النظام</td>
+<td><strong>Windows 11 Pro</strong></td>
+<td>يلزم لسطح المكتب البعيد و BitLocker</td>
+</tr>
+<tr>
+<td>⚡ <strong>UPS</strong></td>
+<td><strong>إلزامي</strong></td>
+<td>انقطاع كهرباء أثناء كتابة في القاعدة <strong>قد يُتلفها</strong>. جهاز يحمل وثائق رسمية لا يُترك بلا UPS</td>
+</tr>
+<tr>
+<td>قرص خارجي</td>
+<td>1 ت.ب أو أكثر</td>
+<td>نسخة الطبقة الثانية</td>
+</tr>
+</tbody></table></div>
+<h3>التكاليف</h3>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>البند</th>
+<th>النوع</th>
+<th>ملاحظة</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mini PC + UPS + قرص خارجي</td>
+<td><strong>شراء لمرة واحدة</strong></td>
+<td>التكلفة الأساسية</td>
+</tr>
+<tr>
+<td>Windows 11 Pro</td>
+<td>لمرة واحدة</td>
+<td>غالباً مضمّن مع الجهاز</td>
+</tr>
+<tr>
+<td>SQL Server Express</td>
+<td><strong>مجاني</strong></td>
+<td>كافٍ تماماً</td>
+</tr>
+<tr>
+<td>Cloudflare (Tunnel + DNS + HTTPS)</td>
+<td><strong>مجاني</strong></td>
+<td>الخطة المجانية تكفي</td>
+</tr>
+<tr>
+<td>الدومين</td>
+<td><strong>سنوي زهيد</strong></td>
+<td>انظر المرحلة ج</td>
+</tr>
+<tr>
+<td>Microsoft 365 (OneDrive)</td>
+<td><strong>سنوي</strong></td>
+<td>انظر المرحلة د</td>
+</tr>
+<tr>
+<td><strong>الاستضافة الشهرية</strong></td>
+<td><strong>صفر</strong></td>
+<td>✅ الهدف المحقّق</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>⚠️ <strong>الأسعار تتغيّر</strong> — تحقّق من الأسعار الحالية عند الشراء. هذا الملف لا يذكر أرقاماً
+لأنها تتقادم أسرع من بقية المحتوى.</p>
+</blockquote>
+<hr>
+<h2>5) المرحلة أ — الأعمال البرمجية (قبل الشراء)</h2>
+<blockquote>
+<p>هذه المهام <strong>لا تحتاج الجهاز</strong> — أنفّذها بينما تشتري.</p>
+</blockquote>
+<blockquote>
+<h2>✅ المرحلة أ مكتملة (2026-07-24)</h2>
+</blockquote>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>المهمة</th>
+<th>الحالة</th>
+<th>المخرَج</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>أ-1 سياسة الاحتفاظ + النطاق</td>
+<td>✅</td>
+<td><code>BackupRetention</code> + <code>BackupScope</code> (ADR-014)</td>
+</tr>
+<tr>
+<td>أ-2 استعادة النسخة الاحتياطية</td>
+<td>✅</td>
+<td><code>POST /backup/{id}/restore</code> + شاشة تأكيد بكتابة الكلمة — <strong>E2E 13/13</strong></td>
+</tr>
+<tr>
+<td>أ-3 خدمة ويندوز</td>
+<td>✅</td>
+<td><code>UseWindowsService</code> في <code>Program.cs</code></td>
+</tr>
+<tr>
+<td>أ-4 تأمين الأسرار</td>
+<td>✅</td>
+<td><code>Dms.Api.exe generate-secrets</code> (مفاتيح إنتاج جديدة)</td>
+</tr>
+<tr>
+<td>أ-5 نسخة PDF محلية</td>
+<td>✅</td>
+<td><code>core/local_archive.dart</code> — تُحفظ تلقائياً بعد الاعتماد</td>
+</tr>
+<tr>
+<td>أ-6 سكربت التحديث</td>
+<td>✅</td>
+<td><a href="../../backend/ops/update-dms.ps1"><code>backend/ops/update-dms.ps1</code></a></td>
+</tr>
+</tbody></table></div>
+<p><strong>التحقق الإجمالي:</strong> البناء 0/0 · 65 اختبار وحدة · <code>flutter analyze</code> نظيف + <code>build web</code> ناجح · <strong>E2E 78/78</strong> (65 وارد + 13 نسخ/استعادة).</p>
+<h3>أ-1 — سياسة الاحتفاظ بالنسخ 🔴 حرجة — ✅ مُنجَز</h3>
+<p><strong>المشكلة المكتشفة:</strong> فحص <a href="../../backend/Dms.Infrastructure/Backup/BackupService.cs"><code>BackupService.cs</code></a> كشف أمرين:</p>
+<ol>
+<li><strong>كل نسخة كاملة</strong> — تضغط القاعدة <strong>+ كل ملفات التخزين</strong> من جديد في كل مرة.</li>
+<li><strong>لا سياسة حذف</strong> — النسخ القديمة تتراكم للأبد.</li>
+</ol>
+<p>يعمل الآن (٢٥ ميجا) لأن البيانات قليلة. مع الاستخدام الحقيقي:</p>
+<p><strong>الحساب</strong> (بافتراض ٤٠ وارداً ممسوحاً + ٣٠ صادراً شهرياً):</p>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th></th>
+<th>الحجم</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>نمو الملفات</td>
+<td>~1 ج.ب سنوياً</td>
+</tr>
+<tr>
+<td>بعد ٣ سنوات</td>
+<td>~3 ج.ب</td>
+</tr>
+<tr>
+<td>النسخة الواحدة</td>
+<td>~2.5 ج.ب</td>
+</tr>
+<tr>
+<td><strong>يومية بلا حذف — سنة</strong></td>
+<td><strong>~365 ج.ب</strong> ❌</td>
+</tr>
+</tbody></table></div>
+<p><strong>أي حزمة تخزين ستمتلئ خلال أشهر</strong> — ليس لأن البيانات كبيرة بل لأننا نكرّر نفس الملفات ٣٦٥ مرة.</p>
+<p><strong>الحل — تعديلان:</strong></p>
+<p><strong>1. سياسة احتفاظ (جد/أب/ابن):</strong> ٧ يومية + ٤ أسبوعية + ١٢ شهرية = <strong>٢٣ نسخة بدل ٣٦٥</strong></p>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th></th>
+<th>بلا سياسة</th>
+<th>مع السياسة</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>الاستهلاك بعد سنة</td>
+<td>~365 ج.ب</td>
+<td><strong>~58 ج.ب</strong> ✅</td>
+</tr>
+</tbody></table></div>
+<p><strong>2. فصل القاعدة عن الملفات:</strong> الوثائق <strong>لا تتغيّر بعد إنشائها</strong> ⇒ لا معنى لنسخها يومياً.</p>
+<ul>
+<li><strong>يومياً:</strong> قاعدة البيانات فقط (عشرات الميجا)</li>
+<li><strong>أسبوعياً/شهرياً:</strong> نسخة كاملة بالملفات</li>
+</ul>
+<p>⇒ الرفع اليومي سريع وخفيف.</p>
+<h3>أ-2 — استعادة النسخة الاحتياطية 🔴 حرجة (الفجوة G1) — ✅ مُنجَز (باك-إند)</h3>
+<p>معيار قبول v1 ينصّ «تُنشأ <strong>وتُستعاد</strong>».</p>
+<p><strong>المُنفَّذ:</strong> <code>POST /api/backup/{id}/restore</code> (سوبر أدمن + كلمة تأكيد «استعادة») → نسخة أمان
+تلقائية → وضع صيانة (<code>503</code> لكل الطلبات) → <code>RESTORE … WITH REPLACE, MOVE</code> → ترقية المخطّط →
+سجل تدقيق. تفاصيل ودروس التنفيذ في <strong>ADR-014</strong>.</p>
+<p><strong>متبقٍّ:</strong> زر «استعادة» في شاشة النسخ الاحتياطي بواجهة Flutter (يستدعي النقطة الجاهزة).</p>
+<p><strong>الاختبار:</strong> <a href="../../backend/e2e/backup-restore-e2e.ps1"><code>backend/e2e/backup-restore-e2e.ps1</code></a> — 13/13.</p>
+<h3>أ-3 — تشغيل الـ API كخدمة ويندوز 🟠 — ✅ مُنجَز</h3>
+<p><code>builder.Host.UseWindowsService()</code> في <code>Program.cs</code> — عديم الأثر عند <code>dotnet run</code> العادي،
+ويُفعَّل حين يستضيف مدير خدمات ويندوز العملية.</p>
+<p><strong>التسجيل على السيرفر</strong> (نافذة أوامر كمسؤول):</p>
+<pre><code class="language-powershell">sc.exe create DmsApi binPath= &quot;C:\DMS\api\Dms.Api.exe&quot; start= auto DisplayName= &quot;DMS API&quot;
+sc.exe description DmsApi &quot;نظام إدارة الوثائق — واجهة برمجية&quot;
+# التعافي التلقائي: إعادة التشغيل بعد 30 ثانية عند أي تعطّل (ثلاث مرات)
+sc.exe failure DmsApi reset= 86400 actions= restart/30000/restart/30000/restart/60000
+sc.exe start DmsApi
+</code></pre>
+<blockquote>
+<p>⚠️ <strong>الفراغ بعد <code>=</code> مقصود</strong> في صيغة <code>sc.exe</code> — حذفه يجعل الأمر يفشل.
+<strong>حساب الخدمة:</strong> الافتراضي <code>LocalSystem</code> يكفي للوصول لـ SQL محلياً وللملفات. إن أردت تشديداً
+أكبر أنشئ حساباً مخصّصاً وامنحه صلاحيات على مجلدات البيانات وقاعدة <code>DmsDb</code> فقط.</p>
+</blockquote>
+<h3>أ-4 — تأمين الأسرار بلا Key Vault 🟠 — ✅ مُنجَز</h3>
+<p>الخطة قالت Azure Key Vault. بلا Azure، البديل المعتمد:
+<strong>BitLocker على القرص + صلاحيات NTFS مشدّدة على ملف الإعدادات</strong> (حساب الخدمة فقط).</p>
+<p><strong>توليد أسرار الإنتاج</strong> (مرة واحدة، على السيرفر، قبل أول كتاب رسمي):</p>
+<pre><code class="language-powershell">C:\DMS\api\Dms.Api.exe generate-secrets --out C:\DMS\api\appsettings.Production.json --origins https://dms.&lt;domain&gt;
+</code></pre>
+<p>يولّد مفتاح JWT (64 بايت) وزوج مفاتيح QR (ECDSA P-256) عبر <strong>نفس المولّد</strong> الذي يستخدمه
+التوقيع والتحقق، فلا احتمال لعدم التطابق.</p>
+<blockquote>
+<p><strong>لماذا داخل التطبيق لا في سكربت PowerShell؟</strong> توليد ECDSA P-256 يتطلب واجهات .NET Core
+(<code>ExportPkcs8PrivateKey</code>) <strong>غير متوفّرة في PowerShell 5.1</strong> المرافق لويندوز. والـ exe موجود
+على السيرفر أصلاً فلا يحتاج المالك تثبيت أدوات إضافية.</p>
+<p>⚠️ <strong>مفتاح QR يُولَّد مرة واحدة فقط.</strong> تغييره لاحقاً <strong>يُبطل التحقق من كل الكتب الموقّعة سابقاً</strong>.
+احتفظ بنسخة منه <strong>خارج السيرفر</strong> — لو تعطّل الجهاز وفُقد المفتاح، لا يمكن التحقق من الكتب القديمة.</p>
+</blockquote>
+<h3>أ-5 — نسخة محلية على جهاز المستخدم 🟡 — ✅ مُنجَز</h3>
+<p>بعد اعتماد الكتاب تُحفظ نسخة PDF تلقائياً على جهاز المستخدم:</p>
+<ul>
+<li><strong>سطح المكتب:</strong> <code>المستندات\DMS\الصادر\&lt;السنة&gt;\&lt;رقم الكتاب&gt;.pdf</code> — يُعرض المسار في رسالة النجاح.</li>
+<li><strong>الويب:</strong> المتصفح ينزّلها لمجلد التنزيلات (لا يمكن للتطبيق اختيار مجلد).</li>
+</ul>
+<p><code>core/local_archive.dart</code> باستيراد شرطي. <strong>فشل الحفظ لا يُبطل الاعتماد</strong> — نسخة اطلاع لا سجل رسمي.</p>
+<h3>أ-6 — سكربت التحديث 🟡 — ✅ مُنجَز</h3>
+<p><a href="../../backend/ops/update-dms.ps1"><code>backend/ops/update-dms.ps1</code></a> — ثماني خطوات مرتّبة:
+تحقّق ← <strong>نسخة احتياطية</strong> ← إيقاف الخدمة ← <strong>أرشفة نقطة رجوع</strong> ← نسخ الملفات ← migrations ← تشغيل ← فحص صحّة.</p>
+<pre><code class="language-powershell">powershell -File backend\ops\update-dms.ps1 -SourceDir &lt;مجلد dotnet publish&gt;
+</code></pre>
+<ul>
+<li>يستثني <code>appsettings.Production.json</code> و<code>App_Data</code> من الاستبدال (<strong>الأسرار والبيانات محفوظة</strong>).</li>
+<li>عند فشل فحص الصحّة يطبع <strong>أوامر الرجوع</strong> للإصدار السابق.</li>
+</ul>
+<hr>
+<h2>6) المرحلة ب — تجهيز الجهاز</h2>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>الخطوة</th>
+<th>ملاحظات</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>تثبيت Windows 11 Pro + كل التحديثات</td>
+<td></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>ضبط المنطقة الزمنية: بغداد</strong></td>
+<td>وإلا كانت أوقات الكتب وسجل التدقيق خاطئة</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>ضبط Windows Update: ساعات نشاط + منع إعادة التشغيل التلقائي</strong></td>
+<td>سيرفر يُعيد تشغيل نفسه ٣ فجراً أثناء نسخة احتياطية = مشكلة</td>
+</tr>
+<tr>
+<td>4</td>
+<td>تفعيل <strong>BitLocker</strong> على القرصين</td>
+<td>يحمي الأسرار والوثائق لو سُرق الجهاز</td>
+</tr>
+<tr>
+<td>5</td>
+<td>توصيل <strong>كيبل شبكة</strong> + <strong>حجز IP ثابت</strong> في الراوتر</td>
+<td>لا واي-فاي للسيرفر</td>
+</tr>
+<tr>
+<td>6</td>
+<td>تثبيت <strong>SQL Server Express</strong> + إنشاء <code>DmsDb</code></td>
+<td>مجاني</td>
+</tr>
+<tr>
+<td>7</td>
+<td>تثبيت <strong>.NET 9 Runtime</strong> (ASP.NET Core Hosting Bundle)</td>
+<td>لا يلزم SDK كامل</td>
+</tr>
+<tr>
+<td>8</td>
+<td>نشر التطبيق + <code>dotnet ef database update</code></td>
+<td></td>
+</tr>
+<tr>
+<td>9</td>
+<td>توليد <strong>أسرار إنتاج جديدة</strong> (مفتاح JWT + زوج مفاتيح QR)</td>
+<td>⚠️ <strong>لا تستخدم أسرار التطوير أبداً</strong></td>
+</tr>
+<tr>
+<td>10</td>
+<td>تسجيل الـ API كخدمة ويندوز (أ-3) + تشغيل تلقائي</td>
+<td></td>
+</tr>
+<tr>
+<td>11</td>
+<td>ضبط <code>AllowedOrigins</code> على الدومين</td>
+<td>الإنتاج fail-closed: بلا تهيئة ⇒ لا أصل مسموح</td>
+</tr>
+<tr>
+<td>12</td>
+<td>تفعيل <strong>سطح المكتب البعيد</strong> لإدارتك</td>
+<td></td>
+</tr>
+<tr>
+<td>13</td>
+<td>توصيل <strong>UPS</strong> واختبار الإطفاء الآمن</td>
+<td></td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>⚠️ <strong>الخطوة ٩ حرجة:</strong> مفاتيح التطوير موجودة في ملف على جهازك وربما في سجلات.
+مفاتيح الإنتاج تُولَّد على السيرفر وتبقى فيه. <strong>تغيير مفتاح QR لاحقاً يُبطل التحقق من
+الكتب الموقّعة سابقاً</strong> — فوَلّده مرة واحدة قبل أول كتاب رسمي واحتفظ بنسخة آمنة منه.</p>
+</blockquote>
+<hr>
+<h2>7) المرحلة ج — الدومين و Cloudflare من الصفر</h2>
+<h3>ج-1 — اختيار اسم الدومين</h3>
+<p><strong>معايير الاختيار:</strong></p>
+<ul>
+<li>قصير وسهل الإملاء (سيُكتب يدوياً أحياناً)</li>
+<li>يعكس اسم الشركة (DEN LAND / أرض العرين)</li>
+<li><strong>مفضّل <code>.com</code></strong> — الأسهل شراءً والأرخص والأوسع دعماً</li>
+</ul>
+<p><strong>⚠️ فرق مهم بين الامتدادات:</strong></p>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>.com</code> (مُوصى به)</th>
+<th><code>.iq</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>الشراء</td>
+<td>من Cloudflare مباشرة</td>
+<td><strong>مسجّل عراقي محلي فقط</strong></td>
+</tr>
+<tr>
+<td>المتطلبات</td>
+<td>لا شيء</td>
+<td>غالباً وثائق تثبت كيان عراقي</td>
+</tr>
+<tr>
+<td>السعر</td>
+<td>زهيد وقياسي</td>
+<td>أعلى ومتغيّر</td>
+</tr>
+<tr>
+<td>الربط بـ Cloudflare</td>
+<td><strong>تلقائي</strong></td>
+<td>يدوي — تغيير خوادم الأسماء</td>
+</tr>
+<tr>
+<td>التجديد</td>
+<td>تلقائي</td>
+<td>متابعة يدوية</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p><strong>التوصية: <code>.com</code> عبر Cloudflare</strong> — لأنك ستستخدم Cloudflare أصلاً، فالشراء منهم يجعل
+الدومين مربوطاً <strong>تلقائياً</strong> بلا خطوات إضافية. Cloudflare يبيع بسعر التكلفة بلا هوامش.</p>
+</blockquote>
+<p><strong>العنوان النهائي سيكون:</strong> <code>dms.&lt;اسمك&gt;.com</code>
+(نستخدم نطاقاً فرعياً <code>dms</code> لتبقى <code>&lt;اسمك&gt;.com</code> متاحة لموقع الشركة مستقبلاً.)</p>
+<h3>ج-2 — شراء الدومين (خطوة بخطوة)</h3>
+<ol>
+<li>افتح <code>dash.cloudflare.com</code> وأنشئ حساباً (بريد + كلمة مرور).</li>
+<li><strong>فعّل المصادقة الثنائية فوراً</strong> — هذا الحساب يتحكم بعنوان نظامك كله.</li>
+<li>من القائمة: <strong>Domain Registration</strong> ← <strong>Register Domain</strong>.</li>
+<li>ابحث عن الاسم؛ إن كان متاحاً أضفه للسلة.</li>
+<li>أكمل الدفع (بطاقة دولية). ⚠️ <strong>فعّل التجديد التلقائي</strong> — دومين منتهٍ = نظام متوقف.</li>
+<li>بعد الشراء يظهر الدومين في حسابك <strong>مربوطاً تلقائياً</strong> بـ DNS الخاص بهم.</li>
+</ol>
+<blockquote>
+<p><strong>لو اشتريت من مسجّل آخر:</strong> بعد الشراء، غيّر <strong>خوادم الأسماء (Nameservers)</strong> لتلك التي
+يعطيك إياها Cloudflare، وانتظر حتى ٢٤ ساعة للانتشار.</p>
+</blockquote>
+<h3>ج-3 — ما هو Cloudflare Tunnel ولماذا؟</h3>
+<p><strong>المشكلة التقليدية:</strong> للوصول لسيرفر داخلي من الخارج، تفتح منفذاً في راوتر الشركة
+(Port Forwarding). النتيجة: سيرفرك <strong>مكشوف للإنترنت كله</strong>، وأي ثغرة تصبح باباً مفتوحاً،
+وستُهاجَم آلياً خلال ساعات.</p>
+<p><strong>الحل:</strong> برنامج صغير (<code>cloudflared</code>) على السيرفر <strong>يفتح هو اتصالاً للخارج</strong> نحو Cloudflare
+(كما يفعل أي متصفح)، ويبقى الاتصال مفتوحاً. الزوّار يصلون Cloudflare، وهو يمرّر الطلبات
+عبر النفق القائم.</p>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th></th>
+<th>فتح المنافذ</th>
+<th>Cloudflare Tunnel</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>منافذ مفتوحة</td>
+<td>✅ نعم — خطر</td>
+<td>❌ <strong>صفر</strong></td>
+</tr>
+<tr>
+<td>IP السيرفر ظاهر</td>
+<td>نعم</td>
+<td>لا — مخفي</td>
+</tr>
+<tr>
+<td>شهادة HTTPS</td>
+<td>تشتريها وتجدّدها</td>
+<td><strong>مجانية وتلقائية</strong></td>
+</tr>
+<tr>
+<td>حماية DDoS</td>
+<td>لا</td>
+<td>✅ مضمّنة</td>
+</tr>
+<tr>
+<td>يعمل مع IP متغيّر</td>
+<td>لا</td>
+<td>✅ نعم</td>
+</tr>
+</tbody></table></div>
+<h3>ج-4 — إعداد النفق</h3>
+<ol>
+<li>على الـ Mini PC: نزّل <code>cloudflared</code> لويندوز من الموقع الرسمي.</li>
+<li><code>cloudflared tunnel login</code> ← يفتح المتصفح لتسجّل الدخول وتأذن.</li>
+<li><code>cloudflared tunnel create dms</code> ← يُنشئ النفق ويحفظ ملف اعتماد. <strong>احتفظ بنسخة منه.</strong></li>
+<li>أنشئ ملف إعدادات يربط <code>dms.&lt;domain&gt;</code> بـ <code>http://localhost:5080</code>.</li>
+<li><code>cloudflared tunnel route dns dms dms.&lt;domain&gt;</code> ← يُنشئ سجل DNS تلقائياً.</li>
+<li><strong>ثبّته كخدمة ويندوز</strong> ليعمل تلقائياً مع الإقلاع (<code>cloudflared service install</code>).</li>
+<li>اختبر من هاتف على <strong>بيانات الجوال</strong> (لا واي-فاي المكتب) — أهم اختبار.</li>
+</ol>
+<blockquote>
+<p>⚠️ الأوامر الدقيقة قد تتغيّر مع إصدارات <code>cloudflared</code>. <strong>الوثائق الرسمية هي المرجع.</strong></p>
+</blockquote>
+<h3>ج-5 — تشديد الأمان بعد التشغيل</h3>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الإعداد</th>
+<th>الغرض</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Always Use HTTPS</strong></td>
+<td>تحويل أي طلب HTTP تلقائياً</td>
+</tr>
+<tr>
+<td><strong>Minimum TLS 1.2</strong></td>
+<td>رفض البروتوكولات القديمة</td>
+</tr>
+<tr>
+<td>قواعد جدار حماية (اختياري)</td>
+<td>حصر الوصول بدول محددة — أنت تعرف من أين يعمل موظفوك</td>
+</tr>
+<tr>
+<td>Cloudflare Access (اختياري)</td>
+<td>طبقة مصادقة <strong>قبل</strong> الوصول للتطبيق أصلاً</td>
+</tr>
+<tr>
+<td>⚠️ <strong>مصادقة ثنائية على حساب Cloudflare</strong></td>
+<td><strong>إلزامي</strong> — يتحكم بعنوانك كله</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>8) المرحلة د — النسخ الاحتياطي ٣-٢-١</h2>
+<blockquote>
+<p><strong>٣</strong> نسخ · على <strong>٢</strong> وسيطين · و<strong>١</strong> خارج المبنى.
+السيرفر الداخلي بلا نسخة خارج المبنى = حريق واحد يمحو تاريخ الشركة.</p>
+</blockquote>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الطبقة</th>
+<th>الوسيط</th>
+<th>التكرار</th>
+<th>يحمي من</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>قرص السيرفر</td>
+<td>يومي (مجدول)</td>
+<td>حذف بالخطأ، خطأ بشري</td>
+</tr>
+<tr>
+<td>2</td>
+<td>قرص خارجي</td>
+<td>دوري يدوي (أنت)</td>
+<td>تلف السيرفر أو أقراصه</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>OneDrive</strong></td>
+<td>تلقائي مع كل نسخة</td>
+<td><strong>حريق · سرقة · عبث</strong></td>
+</tr>
+</tbody></table></div>
+<h3>د-1 — اختيار خدمة السحابة</h3>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th></th>
+<th><strong>OneDrive (Microsoft 365)</strong> ⭐</th>
+<th>Google Drive</th>
+<th>Cloudflare R2 / Backblaze</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>العمل المطلوب</td>
+<td><strong>صفر</strong> (برنامج مزامنة)</td>
+<td>صفر</td>
+<td>يحتاج برمجة</td>
+</tr>
+<tr>
+<td>استرجاع بعد فدية/عبث</td>
+<td>✅ <strong>استرجاع كامل حتى ٣٠ يوماً</strong></td>
+<td>سلة محذوفات ٣٠ يوماً</td>
+<td>✅ قفل كائنات (الأقوى)</td>
+</tr>
+<tr>
+<td>يشمل Office</td>
+<td>✅</td>
+<td>❌</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>مناسب الآن</td>
+<td>⭐ <strong>الأنسب</strong></td>
+<td>جيد</td>
+<td>لاحقاً</td>
+</tr>
+</tbody></table></div>
+<p><strong>التوصية: Microsoft 365 (OneDrive)</strong> لسببين:</p>
+<ol>
+<li><strong>الاسترجاع الزمني</strong> — لو أصاب الجهاز فيروس فدية أو عبث أحدهم، تُرجع OneDrive كله
+لنقطة زمنية سابقة. هذه بالضبط الحماية المطلوبة.</li>
+<li>سعة أكبر بسعر قريب + تطبيقات Office.</li>
+</ol>
+<blockquote>
+<p>⚠️ <strong>المزامنة ليست نسخاً احتياطياً:</strong> لو حُذف ملف على الجهاز، <strong>المزامنة تحذفه من
+السحابة أيضاً</strong>. لهذا ميزة الاسترجاع الزمني ليست رفاهية — هي <strong>ما يحوّل المزامنة
+إلى نسخ احتياطي حقيقي</strong>. تأكّد من تفعيلها وفهم كيفية استخدامها <strong>قبل</strong> أن تحتاجها.</p>
+</blockquote>
+<h3>د-2 — الإعداد</h3>
+<ol>
+<li>اشتراك Microsoft 365 + تثبيت OneDrive على الـ Mini PC بحساب <strong>يخصّك وحدك</strong>.</li>
+<li>توجيه مجلد النسخ الاحتياطي ليكون داخل مجلد OneDrive ⇒ رفع تلقائي.</li>
+<li><strong>إيقاف &quot;Files On-Demand&quot;</strong> لمجلد النسخ — نريد نسخة حقيقية محلياً وسحابياً معاً.</li>
+<li>التحقق من تفعيل سجل الإصدارات والاسترجاع الزمني.</li>
+<li><strong>تنبيه امتلاء السعة</strong> — نسخة لا تُرفع بصمت لأن السعة امتلأت = نسخة غير موجودة.</li>
+</ol>
+<h3>د-3 — السعة المطلوبة</h3>
+<p>مع سياسة الاحتفاظ (أ-1): <strong>~58 ج.ب بعد سنة</strong>، ينمو تدريجياً.
+<strong>٢٠٠ ج.ب تكفي سنوات</strong> — لكن <strong>فقط مع سياسة الاحتفاظ</strong>؛ بدونها لا تكفي أي حزمة.</p>
+<hr>
+<h2>9) المرحلة هـ — التشغيل والاختبار النهائي</h2>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>الاختبار</th>
+<th>معيار النجاح</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>الوصول من داخل المكتب</td>
+<td>الرابط يفتح من كل جهاز</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>الوصول من خارج العراق</strong></td>
+<td>موظف بالخارج يسجّل دخولاً ويعمل</td>
+</tr>
+<tr>
+<td>3</td>
+<td>دورة كاملة: وارد ← صادر ← اعتماد ← PDF + QR</td>
+<td>الرقم والختم صحيحان</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>التحقق من QR</strong> بعد تغيير المفاتيح</td>
+<td>يجتاز التحقق</td>
+</tr>
+<tr>
+<td>5</td>
+<td>E2E الآلي على السيرفر</td>
+<td><code>فشل: 0</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>إعادة تشغيل الجهاز</strong></td>
+<td>النظام والنفق يعودان <strong>تلقائياً</strong></td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>قطع الكهرباء</strong> (اختبار UPS)</td>
+<td>إطفاء آمن بلا تلف القاعدة</td>
+</tr>
+<tr>
+<td>8</td>
+<td>🔴 <strong>استعادة كاملة على جهاز نظيف</strong></td>
+<td><strong>البيانات تعود سليمة</strong></td>
+</tr>
+<tr>
+<td>9</td>
+<td>أداء ٨ مستخدمين متزامنين</td>
+<td>استجابة مقبولة</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>🔴 <strong>الاختبار ٨ غير قابل للتفاوض.</strong>
+<strong>نسخة احتياطية لم تُجرَّب استعادتها ليست نسخة — هي أمنية.</strong>
+نجرّبها فعلياً على جهاز آخر ونقيس <strong>كم استغرقت</strong>، فنعرف زمن التعافي الحقيقي قبل الحاجة إليه.</p>
+</blockquote>
+<hr>
+<h2>10) إجراءات التشغيل (Runbook)</h2>
+<blockquote>
+<p>تُكتب بالتفصيل عند التنفيذ. هذه رؤوسها:</p>
+</blockquote>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الإجراء</th>
+<th>متى</th>
+<th>الملخص</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>تحديث النظام</strong></td>
+<td>ميزة أو إصلاح</td>
+<td>إيقاف الخدمة ← <strong>نسخة احتياطية</strong> ← استبدال ← migrations ← تشغيل ← تحقق (سكربت أ-6)</td>
+</tr>
+<tr>
+<td><strong>نسخة يدوية</strong></td>
+<td>قبل أي عملية خطرة</td>
+<td>من شاشة النسخ الاحتياطي (سوبر أدمن)</td>
+</tr>
+<tr>
+<td><strong>تبديل القرص الخارجي</strong></td>
+<td>دوري</td>
+<td>نسخ آخر أرشيف + <strong>تخزينه خارج المكتب</strong></td>
+</tr>
+<tr>
+<td><strong>الاستعادة</strong></td>
+<td>بعد كارثة</td>
+<td>إيقاف ← تحقق من سلامة النسخة ← استعادة ← تحقق</td>
+</tr>
+<tr>
+<td><strong>مستخدم جديد</strong></td>
+<td>توظيف</td>
+<td>إنشاء حساب + تحديد الدور والأقسام</td>
+</tr>
+<tr>
+<td><strong>موظف يغادر</strong></td>
+<td>استقالة</td>
+<td><strong>تعطيل الحساب لا حذفه</strong> — سجل التدقيق يجب أن يبقى مرتبطاً</td>
+</tr>
+<tr>
+<td><strong>السيرفر لا يستجيب</strong></td>
+<td>طارئ</td>
+<td>فحص الخدمة ← النفق ← القاعدة ← السجلات</td>
+</tr>
+<tr>
+<td><strong>تجديد الدومين</strong></td>
+<td>سنوي</td>
+<td>تلقائي — لكن <strong>تحقق من صلاحية البطاقة</strong></td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>11) المخاطر والمعالجات</h2>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الخطر</th>
+<th>الاحتمال</th>
+<th>الأثر</th>
+<th>المعالجة</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>حريق/سرقة</strong></td>
+<td>منخفض</td>
+<td>كارثي</td>
+<td>✅ OneDrive + قرص خارجي <strong>خارج المبنى</strong></td>
+</tr>
+<tr>
+<td><strong>تلف قرص السيرفر</strong></td>
+<td>متوسط</td>
+<td>عالٍ</td>
+<td>✅ قرصان منفصلان + نسخ + إجراء استعادة مُجرَّب</td>
+</tr>
+<tr>
+<td><strong>انقطاع كهرباء</strong></td>
+<td><strong>عالٍ (العراق)</strong></td>
+<td>متوسط</td>
+<td>✅ UPS + إطفاء آمن</td>
+</tr>
+<tr>
+<td><strong>انقطاع نت المكتب</strong></td>
+<td>متوسط</td>
+<td>متوسط</td>
+<td>⚠️ الخارجيون يتوقفون؛ وضع دون اتصال يغطي المسودّات</td>
+</tr>
+<tr>
+<td><strong>فيروس فدية</strong></td>
+<td>منخفض</td>
+<td>كارثي</td>
+<td>✅ الاسترجاع الزمني في OneDrive + نسخة غير متصلة</td>
+</tr>
+<tr>
+<td><strong>تسريب مفتاح QR</strong></td>
+<td>منخفض</td>
+<td><strong>كارثي</strong> (تزوير)</td>
+<td>✅ BitLocker + صلاحيات NTFS + مفاتيح إنتاج منفصلة</td>
+</tr>
+<tr>
+<td><strong>اختراق حساب Cloudflare</strong></td>
+<td>منخفض</td>
+<td>عالٍ</td>
+<td>✅ <strong>مصادقة ثنائية إلزامية</strong></td>
+</tr>
+<tr>
+<td><strong>نسيان تجديد الدومين</strong></td>
+<td>منخفض</td>
+<td>عالٍ</td>
+<td>✅ تجديد تلقائي + تحقق سنوي من البطاقة</td>
+</tr>
+<tr>
+<td><strong>امتلاء سعة OneDrive</strong></td>
+<td><strong>متوسط</strong></td>
+<td>عالٍ (نسخ تتوقف بصمت)</td>
+<td>✅ سياسة الاحتفاظ + تنبيه سعة</td>
+</tr>
+<tr>
+<td><strong>تعطّل الجهاز كلياً</strong></td>
+<td>منخفض</td>
+<td>عالٍ</td>
+<td>⚠️ التعافي = شراء جهاز + استعادة. <strong>الزمن يُقاس في الاختبار ٨</strong></td>
+</tr>
+<tr>
+<td><strong>غياب المسؤول التقني</strong></td>
+<td>متوسط</td>
+<td>متوسط</td>
+<td>⚠️ الـ Runbook مكتوب ليتمكّن غيرك من التصرف</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>12) ما يحتاج قرارك</h2>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>القرار</th>
+<th>الحالة</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><strong>اسم الدومين</strong></td>
+<td>⏳ لم يُختَر — المعايير في ج-1، والتوصية <code>.com</code> عبر Cloudflare</td>
+</tr>
+<tr>
+<td>2</td>
+<td>بريد بالدومين</td>
+<td>✅ <strong>غير مطلوب حالياً</strong> — يُضاف لاحقاً بلا تعقيد</td>
+</tr>
+<tr>
+<td>3</td>
+<td>موديل الـ Mini PC</td>
+<td>⏳ حسب المتاح والمواصفات في §4</td>
+</tr>
+<tr>
+<td>4</td>
+<td>حزمة Microsoft 365</td>
+<td>⏳ حسب حاجة Office للموظفين (قرار منفصل)</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>الموافقة على المرحلة أ</strong></td>
+<td>⏳ <strong>الأهم</strong> — تبدأ فوراً بلا انتظار الجهاز</td>
+</tr>
+</tbody></table></div>
+<h3>التسلسل المقترح</h3>
+<pre><code>الآن ──▶ موافقتك على الخطة
+   │
+   ├──▶ [أنت]  شراء الجهاز + UPS + قرص + دومين + اشتراك
+   │
+   └──▶ [أنا]  المرحلة أ (الاحتفاظ · الاستعادة · الخدمة · الأسرار · النسخة المحلية · السكربت)
+                        │
+        وصول الجهاز ────┴──▶ المرحلتان ب و ج (تجهيز + دومين ونفق) — معاً
+                                     │
+                                     ▼
+                              المرحلة د (النسخ) ──▶ المرحلة هـ (الاختبار النهائي)
+                                                              │
+                                                              ▼
+                                                    🎉 النظام قيد التشغيل
+</code></pre>
+<p><strong>المرحلة أ لا تنتظر شيئاً</strong> — فور موافقتك أبدأ بها بينما تشتري.</p>
+<hr>
+<h2>ملحق: الفروق عن الخطة الأصلية</h2>
+<div class="table-responsive"><table>
+<thead>
+<tr>
+<th>الموضوع</th>
+<th>خطة العمل v2.2</th>
+<th>هذه الخطة</th>
+<th>السبب</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>الاستضافة</td>
+<td>Azure App Service</td>
+<td><strong>سيرفر داخلي</strong></td>
+<td>تكلفة صفرية + البيانات داخل الشركة</td>
+</tr>
+<tr>
+<td>التخزين</td>
+<td>Azure Blob</td>
+<td><strong>قرص محلي</strong> (<code>IFileStorage</code> يدعم الاثنين)</td>
+<td>لا سحابة</td>
+</tr>
+<tr>
+<td>الأسرار</td>
+<td>Azure Key Vault</td>
+<td><strong>BitLocker + NTFS</strong></td>
+<td>لا Azure؛ الجهاز تحت سيطرة مادية</td>
+</tr>
+<tr>
+<td>قاعدة البيانات</td>
+<td>Azure SQL</td>
+<td><strong>SQL Express</strong> (مجاني)</td>
+<td>القاعدة صغيرة (لا تحوي ملفات)</td>
+</tr>
+<tr>
+<td>الوصول الخارجي</td>
+<td>عنوان عام</td>
+<td><strong>Cloudflare Tunnel</strong></td>
+<td>أأمن — صفر منافذ مفتوحة</td>
+</tr>
+<tr>
+<td>النسخ الاحتياطي</td>
+<td>Azure تلقائي</td>
+<td><strong>٣-٢-١ يدوي/مجدول</strong></td>
+<td>مسؤوليتنا الآن — لذا الاستعادة حرجة</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>التجريد <code>IFileStorage</code> المصمَّم في Phase 0 يجعل العودة لـ Azure Blob مستقبلاً <strong>تغيير
+إعداد لا إعادة كتابة</strong> — القرار قابل للعكس إن كبرت الشركة.</p>
+</blockquote>
+
+    </div>
+</body>
+</html>

@@ -91,6 +91,39 @@ class _State extends ConsumerState<BackupScreen> {
     }
   }
 
+  /// حذف نسخة — الخادم يمنع حذف آخر نسخة ناجحة، فنعرض رسالته كما هي.
+  Future<void> _deleteBackup(BackupRecordModel r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف نسخة احتياطية'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text('سيُحذف الأرشيف «${r.fileName}» (${_size(r.sizeBytes)}) نهائياً من الخادم.\n'
+            'لن يمكن الاستعادة منه بعد الحذف.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() { _busy = true; _error = null; _info = null; });
+    try {
+      await ref.read(apiClientProvider).backupDelete(r.id);
+      _info = 'تم حذف النسخة «${r.fileName}».';
+      _list = await ref.read(apiClientProvider).backupList();
+    } on ApiException catch (e) {
+      _error = e.message;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _download(BackupRecordModel r) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -219,6 +252,11 @@ class _State extends ConsumerState<BackupScreen> {
                           icon: const Icon(Icons.restore, color: AppColors.danger),
                           tooltip: 'استعادة هذه النسخة',
                           onPressed: (_busy || r.status != 'Success') ? null : () => _restore(r),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'حذف النسخة',
+                          onPressed: _busy ? null : () => _deleteBackup(r),
                         ),
                       ],
                     ),

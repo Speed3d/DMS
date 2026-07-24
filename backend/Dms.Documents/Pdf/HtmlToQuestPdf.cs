@@ -135,13 +135,29 @@ public static class HtmlToQuestPdf
         {
             string tag = node.Name.ToLowerInvariant();
 
-            bool bold = isBold || tag == "b" || tag == "strong";
+            // العناوين تُعدّ عريضة تلقائياً كما في المتصفح.
+            bool bold = isBold || tag is "b" or "strong" or "h1" or "h2" or "h3" or "h4" or "h5" or "h6";
             bool italic = isItalic || tag == "i" || tag == "em";
             bool underline = isUnderline || tag == "u";
 
             string? nodeColor = color;
             float? nodeFontSize = fontSize;
             string? nodeFontFamily = fontFamily;
+
+            // Hint: زرّ العناوين في المحرر يُنتج <h1>…<h6> بلا style، فبدون هذا التدرّج تُرسم بحجم النص العادي
+            //       (يبدو للمستخدم أن «حجم الخط لا يعمل»). النسب مقاربة لما يعرضه المتصفح.
+            var headingScale = tag switch
+            {
+                "h1" => 2.0f,
+                "h2" => 1.5f,
+                "h3" => 1.17f,
+                "h4" => 1.0f,
+                "h5" => 0.83f,
+                "h6" => 0.67f,
+                _ => 0f,
+            };
+            if (headingScale > 0f) nodeFontSize = BaseFontSize * headingScale;
+
             var style = node.GetAttributeValue("style", "");
             if (!string.IsNullOrEmpty(style))
             {
