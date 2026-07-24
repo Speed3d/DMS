@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Dms.Api.Auth;
 using Dms.Api.Middleware;
+using Dms.Api.Ops;
 using Dms.Api.Seeding;
 using Dms.Documents.Storage;
 using Dms.Infrastructure;
@@ -14,7 +15,17 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
+// وضع أدوات التشغيل: توليد أسرار الإنتاج ثم الخروج (لا يُقلع الخادم).
+// Hint: يُستدعى مرة واحدة على السيرفر — Dms.Api.exe generate-secrets --out <مسار>
+if (args.Length > 0 && args[0].Equals("generate-secrets", StringComparison.OrdinalIgnoreCase))
+    return SecretsGenerator.Run(args);
+
 var builder = WebApplication.CreateBuilder(args);
+
+// تشغيل كخدمة ويندوز على السيرفر (تبدأ مع الإقلاع وتتعافى من التعطّل تلقائياً).
+// Hint: عديم الأثر عند التشغيل العادي بـ dotnet run — يُفعَّل فقط حين يستضيف مدير خدمات ويندوز العملية.
+//       التسجيل: sc.exe create DmsApi binPath= "<مسار>\Dms.Api.exe" start= auto
+builder.Host.UseWindowsService(o => o.ServiceName = "DMS API");
 
 // حدود حجم الطلب: المرفق الأقصى 50 ميغابايت (AttachmentService) + هامش لترويسات multipart.
 // Hint: بدون هذا يقطع Kestrel الطلب عند ~28 ميغابايت بـ 413 غامض قبل وصوله للخدمة،
@@ -142,5 +153,6 @@ await DbSeeder.MigrateAndSeedAsync(app.Services, app.Configuration,
     app.Services.GetRequiredService<ILogger<Program>>());
 
 app.Run();
+return 0; // لازم لأن وضع أدوات التشغيل أعلاه يُرجع رمز خروج
 
 public partial class Program; // لإتاحة اختبارات التكامل لاحقاً

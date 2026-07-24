@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../models.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
@@ -70,6 +71,26 @@ class _State extends ConsumerState<BackupScreen> {
     }
   }
 
+  /// استعادة نسخة — عملية تدميرية، لذا التأكيد بكتابة الكلمة يدوياً لا بزرّ واحد.
+  /// Hint: شاشة كاملة لا حوار (حقل نصّي داخل حوار يسبب خلل disposed EngineFlutterView على الويب).
+  Future<void> _restore(BackupRecordModel r) async {
+    final confirmed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => _RestoreConfirmPage(record: r, fmtSize: _size, fmtDate: _dt)));
+    if (confirmed != true) return;
+
+    setState(() { _busy = true; _error = null; _info = null; });
+    try {
+      await ref.read(apiClientProvider).backupRestore(r.id);
+      _info = 'تمت الاستعادة بنجاح من ${r.fileName}. أُنشئت نسخة أمان تلقائية قبل الاستبدال.';
+      // Hint: القاعدة تغيّرت بالكامل — نعيد تحميل كل شيء بدل الاعتماد على بيانات قديمة في الذاكرة.
+      await _load();
+    } on ApiException catch (e) {
+      _error = e.message;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _download(BackupRecordModel r) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -95,6 +116,14 @@ class _State extends ConsumerState<BackupScreen> {
           const SizedBox(height: 4),
           const Text('يشمل قاعدة البيانات وملفات المرفقات/المستندات في أرشيف مضغوط.',
               style: TextStyle(color: Colors.grey)),
+          const SizedBox(height: 6),
+          // شرح سياسة الاحتفاظ للمالك — يفسّر اختلاف أحجام النسخ ولماذا تختفي القديمة.
+          const Text(
+            'الجدولة «يومي» تُنتج دورة كاملة تلقائياً: نسخة يومية خفيفة (قاعدة البيانات فقط)، '
+            'وترقية لنسخة كاملة كل جمعة وأول كل شهر. '
+            'يُحتفظ بآخر ٧ يومية و٤ أسبوعية و١٢ شهرية، وتُحذف الأقدم تلقائياً.',
+            style: TextStyle(color: Colors.grey, fontSize: 12.5, height: 1.6),
+          ),
           const SizedBox(height: 16),
 
           // الجدولة
@@ -174,11 +203,24 @@ class _State extends ConsumerState<BackupScreen> {
                     leading: Icon(r.status == 'Success' ? Icons.check_circle : Icons.error,
                         color: r.status == 'Success' ? Colors.green : Colors.red),
                     title: Text(_dt(r.createdAt)),
-                    subtitle: Text('${r.type == 'Manual' ? 'يدوي' : 'مجدول'} • ${_size(r.sizeBytes)}${r.note != null ? '\n${r.note}' : ''}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.download),
-                      tooltip: 'تنزيل',
-                      onPressed: r.status == 'Success' ? () => _download(r) : null,
+                    // النطاق والتصنيف يوضّحان ماذا تتضمّن النسخة ولماذا يختلف حجمها.
+                    subtitle: Text(
+                        '${backupCategoryLabel(r.category)} • ${backupScopeLabel(r.scope)} • ${_size(r.sizeBytes)}'
+                        '${r.note != null ? '\n${r.note}' : ''}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.download),
+                          tooltip: 'تنزيل',
+                          onPressed: (_busy || r.status != 'Success') ? null : () => _download(r),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.restore, color: AppColors.danger),
+                          tooltip: 'استعادة هذه النسخة',
+                          onPressed: (_busy || r.status != 'Success') ? null : () => _restore(r),
+                        ),
+                      ],
                     ),
                   ),
                 )),
@@ -186,4 +228,148 @@ class _State extends ConsumerState<BackupScreen> {
       ),
     );
   }
+}
+
+// ─────────────────────────── شاشة تأكيد الاستعادة ───────────────────────────
+/// شاشة تأكيد الاستعادة — عملية تدميرية تستبدل قاعدة البيانات والملفات بالكامل.
+/// Hint: التأكيد بكتابة الكلمة يدوياً (لا بزرّ واحد) حتى لا تقع بالخطأ، وهي نفس الكلمة
+///       التي يتحقق منها الباك-إند. شاشة كاملة لا حوار — الحقول النصّية داخل الحوارات
+///       تسبب خلل `disposed EngineFlutterView` في Flutter Web.
+class _RestoreConfirmPage extends StatefulWidget {
+  final BackupRecordModel record;
+  final String Function(int) fmtSize;
+  final String Function(DateTime) fmtDate;
+  const _RestoreConfirmPage({required this.record, required this.fmtSize, required this.fmtDate});
+
+  @override
+  State<_RestoreConfirmPage> createState() => _RestoreConfirmPageState();
+}
+
+class _RestoreConfirmPageState extends State<_RestoreConfirmPage> {
+  final _controller = TextEditingController();
+  bool get _matches => _controller.text.trim() == kRestoreConfirmation;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.record;
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('تأكيد استعادة نسخة احتياطية'), centerTitle: true),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.08),
+                  border: Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+                      const SizedBox(width: 8),
+                      Text('عملية لا رجعة فيها مباشرةً',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold, color: AppColors.danger)),
+                    ]),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'سيُستبدل محتوى النظام بالكامل — قاعدة البيانات وكل الملفات — بمحتوى هذه النسخة. '
+                      'كل ما أُضيف بعد تاريخها سيختفي.\n\n'
+                      'سيتوقّف النظام عن خدمة المستخدمين لثوانٍ أثناء العملية، '
+                      'وستُؤخذ نسخة أمان تلقائية قبل الاستبدال يمكن الرجوع إليها.',
+                      style: TextStyle(height: 1.7),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              Text('النسخة المختارة', style: theme.textTheme.titleSmall),
+              const Divider(),
+              _row('التاريخ', widget.fmtDate(r.createdAt)),
+              _row('الملف', r.fileName),
+              _row('المحتوى', backupScopeLabel(r.scope)),
+              _row('التصنيف', backupCategoryLabel(r.category)),
+              _row('الحجم', widget.fmtSize(r.sizeBytes)),
+              if (r.scope == 'DbOnly')
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    'ملاحظة: هذه نسخة قاعدة بيانات فقط — ستبقى ملفات المرفقات الحالية كما هي بلا تغيير.',
+                    style: TextStyle(fontSize: 13, color: Colors.orange),
+                  ),
+                ),
+              const SizedBox(height: 24),
+
+              Text('للمتابعة، اكتب كلمة «$kRestoreConfirmation» في الحقل أدناه:',
+                  style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  hintText: kRestoreConfirmation,
+                  suffixIcon: _matches ? const Icon(Icons.check_circle, color: AppColors.success) : null,
+                ),
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) { if (_matches) Navigator.pop(context, true); },
+              ),
+              const SizedBox(height: 24),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: const Text('إلغاء'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton.icon(
+                      // الزر معطّل حتى تُكتب الكلمة بالضبط.
+                      onPressed: _matches ? () => Navigator.pop(context, true) : null,
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          padding: const EdgeInsets.symmetric(vertical: 16)),
+                      icon: const Icon(Icons.restore),
+                      label: const Text('استعادة الآن'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 90, child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13))),
+            Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ],
+        ),
+      );
 }

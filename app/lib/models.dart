@@ -269,18 +269,45 @@ class BackupScheduleModel {
         j['nextRunAt'] != null ? DateTime.tryParse(j['nextRunAt']) : null);
 }
 
+/// كلمة التأكيد المطلوبة لاستعادة نسخة احتياطية.
+/// Hint: يجب أن تطابق `BackupService.RestoreConfirmation` في الباك-إند حرفياً وإلا رُفض الطلب بـ 400.
+const String kRestoreConfirmation = 'استعادة';
+
+/// الاسم العربي لنطاق النسخة (ماذا تتضمّن).
+String backupScopeLabel(String scope) => switch (scope) {
+      'DbOnly' => 'قاعدة البيانات فقط',
+      'Full' => 'كاملة (قاعدة + ملفات)',
+      _ => scope,
+    };
+
+/// الاسم العربي لتصنيف الاحتفاظ.
+String backupCategoryLabel(String category) => switch (category) {
+      'Manual' => 'يدوية',
+      'Daily' => 'يومية',
+      'Weekly' => 'أسبوعية',
+      'Monthly' => 'شهرية',
+      _ => category,
+    };
+
 class BackupRecordModel {
   final int id;
   final DateTime createdAt;
   final String fileName;
   final int sizeBytes;
   final String type;
+  /// نطاق النسخة: DbOnly / Full (Hint: اليومية المجدولة قاعدة فقط — أخفّ للرفع السحابي).
+  final String scope;
+  /// تصنيف الاحتفاظ: Manual / Daily / Weekly / Monthly.
+  final String category;
   final String status;
   final String? note;
-  BackupRecordModel(this.id, this.createdAt, this.fileName, this.sizeBytes, this.type, this.status, this.note);
+  BackupRecordModel(this.id, this.createdAt, this.fileName, this.sizeBytes, this.type,
+      this.scope, this.category, this.status, this.note);
   factory BackupRecordModel.fromJson(Map<String, dynamic> j) => BackupRecordModel(
         j['backupRecordId'], DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
-        j['fileName'] ?? '', j['sizeBytes'] ?? 0, j['type'] ?? 'Manual', j['status'] ?? 'Success', j['note']);
+        j['fileName'] ?? '', j['sizeBytes'] ?? 0, j['type'] ?? 'Manual',
+        j['scope'] ?? 'Full', j['category'] ?? 'Manual',
+        j['status'] ?? 'Success', j['note']);
 }
 
 class FinancialRow {

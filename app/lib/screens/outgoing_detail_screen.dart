@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
+import '../core/local_archive.dart';
 import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -42,13 +43,35 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     setState(() => _busy = true);
     try {
       await ref.read(apiClientProvider).approve(widget.id);
-      _snack('تم الاعتماد وتوليد الرقم والـ PDF بنجاح.');
       invalidateOutgoing(ref); // تحديث اللوحة/الإشعارات فوراً (يظهر المبلغ المعتمد)
+
+      // نسخة محلية تلقائية على جهاز المستخدم بعد الاعتماد.
+      // Hint: نسخة اطلاع لا سجل رسمي — الأصل في السيرفر. فشلها لا يُبطل الاعتماد.
+      final saved = await _saveLocalCopyAfterApproval();
+      _snack(saved == null
+          ? 'تم الاعتماد وتوليد الرقم والـ PDF بنجاح.'
+          : 'تم الاعتماد بنجاح. حُفظت نسخة على جهازك:\n$saved');
+
       _reload();
     } on ApiException catch (e) {
       _snack(e.message, error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// ينزّل PDF الكتاب المعتمد ويحفظ نسخة محلية. يعيد المسار (سطح المكتب) أو null.
+  Future<String?> _saveLocalCopyAfterApproval() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final detail = await api.outgoingGet(widget.id);
+      if (!detail.hasPdf) return null;
+      final bytes = await api.outgoingPdf(widget.id);
+      // اسم الملف برقم الكتاب الرسمي ليسهل إيجاده لاحقاً.
+      final name = '${detail.number ?? 'book-${widget.id}'}.pdf';
+      return await saveLocalCopy(bytes, name, 'الصادر');
+    } catch (_) {
+      return null; // لا نُزعج المستخدم بخطأ في نسخة اختيارية
     }
   }
 

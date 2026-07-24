@@ -396,6 +396,19 @@ class ApiClient {
   Future<BackupRecordModel> backupRun() async =>
       BackupRecordModel.fromJson(await _post('/backup/run', null));
 
+  /// استعادة نسخة احتياطية — عملية تدميرية.
+  /// Hint: الخادم يأخذ نسخة أمان تلقائياً ثم يدخل وضع صيانة، فتُرفض بقية الطلبات بـ 503 لثوانٍ.
+  ///       المهلة موسّعة لأن الاستعادة أبطأ من طلب عادي.
+  Future<void> backupRestore(int id) async {
+    try {
+      await _dio.post('/backup/$id/restore',
+          data: {'confirmation': kRestoreConfirmation},
+          options: Options(receiveTimeout: const Duration(minutes: 10)));
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<Uint8List> backupDownload(int id) async {
     try {
       final res = await _dio.get<List<int>>('/backup/$id/download',
