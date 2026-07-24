@@ -19,7 +19,16 @@ public sealed class BackupController(IBackupService backup) : ControllerBase
 
     [HttpPost("run")]
     public async Task<ActionResult<BackupRecordDto>> Run(CancellationToken ct)
-        => Map(await backup.RunAsync(BackupType.Manual, ct));
+        // النسخة اليدوية دائماً كاملة وتصنيفها Manual (لا تُقلَّم إلا عند تجاوز سقف كبير).
+        => Map(await backup.RunAsync(BackupType.Manual, BackupScope.Full, RetentionCategory.Manual, ct));
+
+    /// <summary>استعادة نسخة احتياطية — عملية تدميرية تتطلب كلمة تأكيد في الجسم.</summary>
+    [HttpPost("{id:int}/restore")]
+    public async Task<IActionResult> Restore(int id, RestoreBackupRequest req, CancellationToken ct)
+    {
+        await backup.RestoreAsync(id, req.Confirmation, ct);
+        return Ok(new { message = "تمت الاستعادة بنجاح. أُنشئت نسخة أمان تلقائية قبل الاستبدال." });
+    }
 
     [HttpGet("schedule")]
     public async Task<ActionResult<BackupScheduleDto>> GetSchedule(CancellationToken ct)
@@ -37,7 +46,7 @@ public sealed class BackupController(IBackupService backup) : ControllerBase
     }
 
     private static BackupRecordDto Map(BackupRecord r) =>
-        new(r.BackupRecordId, r.CreatedAt, r.CreatedByUserId, r.FileName, r.SizeBytes, r.Type, r.Status, r.Note);
+        new(r.BackupRecordId, r.CreatedAt, r.CreatedByUserId, r.FileName, r.SizeBytes, r.Type, r.Scope, r.Category, r.Status, r.Note);
 
     private static BackupScheduleDto MapSchedule(BackupSchedule s) =>
         new(s.Frequency, s.Enabled, s.Hour, s.LastRunAt, s.NextRunAt);

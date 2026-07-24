@@ -121,6 +121,8 @@ var app = builder.Build();
 
 // ----- الـ Pipeline -----
 app.UseMiddleware<ExceptionMiddleware>();
+// يجب أن يسبق المصادقة: يرفض الطلبات بـ 503 أثناء الصيانة (الاستعادة) قبل لمس قاعدة البيانات.
+app.UseMiddleware<MaintenanceMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

@@ -141,9 +141,10 @@ public sealed record FinancialReportDto(DateTime? From, DateTime? To, List<Finan
 public sealed record ActivityRowDto(DateTime Timestamp, int? UserId, string UserName, string Action, string EntityType, string? EntityId, string? Details);
 
 // ----------------- Backup -----------------
-public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupStatus Status, string? Note);
+public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupScope Scope, RetentionCategory Category, BackupStatus Status, string? Note);
 public sealed record BackupScheduleDto(BackupFrequency Frequency, bool Enabled, int Hour, DateTime? LastRunAt, DateTime? NextRunAt);
 public sealed record UpdateBackupScheduleRequest(BackupFrequency Frequency, bool Enabled, int Hour);
+public sealed record RestoreBackupRequest(string Confirmation);
 
 // ----------------- Audit / Verify -----------------
 public sealed record AuditResponse(long LogId, int? UserId, string Action, string EntityType, string? EntityId, string? Details, DateTime Timestamp);

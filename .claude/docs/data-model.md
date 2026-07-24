@@ -52,6 +52,7 @@
 
 ### BackupRecord / BackupSchedule (نظامي — بلا عزل شركة)
 - `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled), Status(Success/Failed), Note?`.
+- `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled), Scope(DbOnly/Full), Category(Manual/Daily/Weekly/Monthly), Status(Success/Failed), Note?`. سياسة الاحتفاظ (جد/أب/ابن) في `Dms.Domain/Backup.cs` — ADR-014.
 - `BackupSchedule` (صفّ مفرد): `BackupScheduleId, Frequency(Off/Daily/Weekly), Enabled, Hour(0-23), LastRunAt?, NextRunAt?`.
 
 ### Counter / AuditLog

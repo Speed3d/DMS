@@ -42,6 +42,8 @@ public static class DependencyInjection
         services.AddScoped<IArchiveService, ArchiveService>();
         services.AddScoped<IAttachmentService, AttachmentService>();
         services.AddScoped<IReportService, ReportService>();
+        // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
+        services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();
         services.AddHostedService<BackupScheduler>();
         services.AddScoped<BookRenderer>();
