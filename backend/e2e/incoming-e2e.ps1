@@ -285,7 +285,9 @@ if ($EmployeeUser -and $EmployeePwd) {
             $sNew = (NewBook "كتاب جديد للموظف" $sTok).Body
             $sUpd2 = $upd.Clone(); $sUpd2.subject = "تعديل كتاب جديد"
             Expect "قبول: الموظف يعدّل كتابه وهو (جديد)" (Api PUT "/incoming/$($sNew.incomingId)" $sUpd2 $sTok $cid).Status 200
-            Expect "رفض: سجل الحركة محجوب عن الموظف" (Api GET "/incoming/$sid/movements" $null $sTok $cid).Status 403
+            # سجل الحركة صار متاحاً لكل من يستطيع الإحالة (قرار المالك) — والموظف يُحيل،
+            # فيراه. المحجوب هو القارئ وحده.
+            Expect "الموظف يرى سجل حركة كتابه (يستطيع الإحالة)" (Api GET "/incoming/$sid/movements" $null $sTok $cid).Status 200
             Expect "رفض: الموظف لا يرى كتاب غيره"     (Api GET "/incoming/$bid" $null $sTok $cid).Status 404
         } else { Bad "تعذّر الدخول بـ $EmployeeUser : $($sLogin.Status)" }
     } else { Bad "المستخدم $EmployeeUser غير موجود" }

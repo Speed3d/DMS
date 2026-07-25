@@ -7,6 +7,7 @@ import '../core/downloader.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import 'archive_form_screen.dart';
 
@@ -76,6 +77,25 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
     try {
       final bytes = await ref.read(apiClientProvider).downloadAttachment(a.attachmentId);
       await downloadBytes(bytes, a.fileName, 'application/octet-stream');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// عرض المرفق داخل التطبيق بدل تنزيله (PDF والصور).
+  Future<void> _view(AttachmentModel a) async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await ref.read(apiClientProvider).downloadAttachment(a.attachmentId);
+      if (!mounted) return;
+      await AttachmentViewer.show(
+        context,
+        bytes: bytes,
+        fileName: a.fileName,
+        onDownload: () => downloadBytes(bytes, a.fileName, 'application/octet-stream'),
+      );
     } on ApiException catch (e) {
       _snack(e.message, error: true);
     } finally {
@@ -358,9 +378,19 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                                                 ),
                                                 title: Text(a.fileName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                                                 subtitle: Text('${a.fileType.toUpperCase()} • ${(a.fileSize / 1024).toStringAsFixed(0)} KB', style: const TextStyle(fontSize: 12)),
+                                                onTap: _busy || !AttachmentViewer.canView(a.fileName)
+                                                    ? null
+                                                    : () => _view(a),
                                                 trailing: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
+                                                    if (AttachmentViewer.canView(a.fileName))
+                                                      IconButton(
+                                                        icon: const Icon(Icons.visibility_rounded),
+                                                        color: AppColors.navyDeep,
+                                                        onPressed: _busy ? null : () => _view(a),
+                                                        tooltip: 'عرض',
+                                                      ),
                                                     IconButton(
                                                       icon: const Icon(Icons.download_rounded),
                                                       color: AppColors.navyDeep,

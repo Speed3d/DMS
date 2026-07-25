@@ -270,6 +270,11 @@ public sealed class IncomingService(
 
     public async Task ForwardAsync(int id, int departmentId, string? note, CancellationToken ct = default)
     {
+        // القارئ لا يُحيل: دوره اطّلاع لا معالجة. (كان الإحالة بلا أي قيد دور، فكان القارئ
+        // يستطيع تحويل كتاب رسمي — تشديد مقصود.)
+        if (current.Role is UserRole.Reader)
+            throw new ForbiddenException("القارئ لا يملك صلاحية إحالة الكتب.");
+
         var book = await GetAsync(id, ct);
 
         // القسم يجب أن يكون موجوداً ونشطاً وضمن نفس الشركة.
@@ -442,8 +447,10 @@ public sealed class IncomingService(
 
     public async Task<List<MovementLogData>> GetMovementsAsync(int incomingId, CancellationToken ct = default)
     {
-        // حسب الخطة: يظهر فقط للسوبر أدمن ورئيس الشركة (المرحلة 1)
-        if (current.Role is not (UserRole.SuperAdmin or UserRole.President))
+        // سجل الحركة يراه **كل من يستطيع إحالة الكتاب** (قرار المالك): من يقرّر الوجهة
+        // التالية يحتاج أن يعرف أين مرّ الكتاب وما كُتب في ملاحظات الإحالات السابقة.
+        // القارئ مستثنى لأنه لا يُحيل أصلاً — انظر EnsureCanForward.
+        if (current.Role is UserRole.Reader)
             throw new ForbiddenException("لا تملك صلاحية رؤية سجل الحركة.");
 
         _ = await GetAsync(incomingId, ct); // تحقّق أمني: الكتاب ضمن شركة المستخدم ورؤيته

@@ -8,6 +8,7 @@ import '../core/incoming_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/status_pill.dart';
 import 'incoming_form_screen.dart';
@@ -148,6 +149,18 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
       return;
     }
 
+    // مسار الإحالات السابقة — من يقرّر الوجهة التالية يحتاج أن يعرف أين مرّ الكتاب
+    // وما كُتب في كل إحالة. فشلُ الجلب لا يمنع الإحالة (السجل معلومة مساعدة).
+    List<MovementLogItem> history = const [];
+    try {
+      history = (await ref.read(apiClientProvider).incomingMovements(widget.id))
+          .where((m) => m.action == 'Forwarded')
+          .toList();
+    } on ApiException catch (_) {
+      // القارئ محجوب عن السجل — ولا يصل هنا أصلاً لأنه لا يُحيل.
+    }
+    if (!mounted) return;
+
     int? deptId;
     String note = '';
     final ok = await showDialog<bool>(
@@ -156,23 +169,30 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
         return AlertDialog(
           title: const Text('إحالة الكتاب لقسم'),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<int?>(
-                initialValue: deptId,
-                decoration: const InputDecoration(labelText: 'القسم المُحال إليه'),
-                items: depts
-                    .map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => deptId = v),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                decoration: const InputDecoration(labelText: 'ملاحظة أو توجيه (اختياري)'),
-                onChanged: (v) => note = v,
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (history.isNotEmpty) ...[
+                  _ForwardHistory(history: history),
+                  const SizedBox(height: 16),
+                ],
+                DropdownButtonFormField<int?>(
+                  initialValue: deptId,
+                  decoration: const InputDecoration(labelText: 'القسم المُحال إليه'),
+                  items: depts
+                      .map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => deptId = v),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  decoration: const InputDecoration(labelText: 'ملاحظة أو توجيه (اختياري)'),
+                  onChanged: (v) => note = v,
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
@@ -315,9 +335,9 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
           final d = snap.data!;
           final currentUser = ref.watch(sessionProvider).auth;
           final role = currentUser?.role ?? '';
-          // سجل الحركة يظهر فقط للسوبر أدمن والرئيس
-          final canViewMovements =
-              currentUser != null && (currentUser.isSuperAdmin || role == 'President');
+          // سجل الحركة يراه كل من يستطيع الإحالة — أي كل الأدوار عدا القارئ
+          // (مرآة لقاعدة الباك-إند في GetMovementsAsync).
+          final canViewMovements = currentUser != null && role != 'Reader';
           // المدير فأعلى (Hint: مرآة لـ RequireRole(Manager) في الباك-إند)
           final isManagerOrAbove = role == 'SuperAdmin' || role == 'President' || role == 'Manager';
           final canManageLink = isManagerOrAbove;
@@ -629,6 +649,25 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
     }
   }
 
+  /// عرض المرفق داخل التطبيق بدل تنزيله — معظم مرفقات الوارد صور ممسوحة.
+  Future<void> _view(AttachmentModel a) async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await ref.read(apiClientProvider).downloadIncomingAttachment(widget.incomingId, a.attachmentId);
+      if (!mounted) return;
+      await AttachmentViewer.show(
+        context,
+        bytes: bytes,
+        fileName: a.fileName,
+        onDownload: () => downloadBytes(bytes, a.fileName, 'application/octet-stream'),
+      );
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   /// أيقونة حسب نوع الملف (Hint: تسهّل التمييز البصري بين المسح الضوئي والمخططات والجداول).
   IconData _iconFor(String fileName) {
     final ext = fileName.split('.').last.toLowerCase();
@@ -684,9 +723,19 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
                           leading: Icon(_iconFor(a.fileName), color: AppColors.gold),
                           title: Text(a.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text('${(a.fileSize / 1024 / 1024).toStringAsFixed(2)} م.ب'),
+                          // النقر على السطر يفتح العارض مباشرةً — أسرع مسار للمسح الضوئي.
+                          onTap: _busy || !AttachmentViewer.canView(a.fileName)
+                              ? null
+                              : () => _view(a),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (AttachmentViewer.canView(a.fileName))
+                                IconButton(
+                                  tooltip: 'عرض',
+                                  icon: const Icon(Icons.visibility_rounded),
+                                  onPressed: _busy ? null : () => _view(a),
+                                ),
                               IconButton(
                                 tooltip: 'تنزيل',
                                 icon: const Icon(Icons.download_rounded),
@@ -705,6 +754,60 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ----------------- مسار الإحالات السابقة (داخل حوار الإحالة) -----------------
+
+/// يعرض أين مرّ الكتاب سابقاً وملاحظة كل إحالة.
+///
+/// Hint: كانت الإحالة «عمياء» — تختار الوجهة بلا معرفة أين مرّ الكتاب ولا ما طُلب فيه
+/// سابقاً. المعلومة كانت مسجَّلة في `MovementLog` منذ البداية لكنها لم تُعرض هنا قط.
+class _ForwardHistory extends StatelessWidget {
+  final List<MovementLogItem> history;
+  const _ForwardHistory({required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('yyyy/MM/dd HH:mm');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.route_rounded, size: 18),
+            const SizedBox(width: 6),
+            Text('مسار الكتاب (${history.length} إحالة)',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          ]),
+          const SizedBox(height: 8),
+          ...history.asMap().entries.map((e) {
+            final m = e.value;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${e.key + 1}. ${m.fromDepartment ?? 'غير محدد'} ← ${m.toDepartment ?? 'غير محدد'}',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                  Text('${m.performedByUserName} · ${fmt.format(m.performedAt)}',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  // الوصف يحمل نصّ الملاحظة إن كُتبت عند الإحالة.
+                  if (m.description.contains('ملاحظة:'))
+                    Text(m.description.substring(m.description.indexOf('ملاحظة:')),
+                        style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic)),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );

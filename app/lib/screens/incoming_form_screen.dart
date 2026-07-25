@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +9,14 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+
+/// ملف اختاره المستخدم قبل حفظ الكتاب — يُرفَع بعد الإنشاء (المرفق يحتاج `OwnerId`).
+class _PendingFile {
+  final String name;
+  final Uint8List bytes;
+  const _PendingFile(this.name, this.bytes);
+  int get sizeKb => (bytes.length / 1024).ceil();
+}
 
 /// Hint: شاشة إضافة أو تعديل كتاب وارد
 class IncomingFormScreen extends ConsumerStatefulWidget {
@@ -30,6 +41,12 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
   num? _legacyAmount;
   String? _legacyCurrency;
   num? _legacyRate;
+
+  /// ملفات اختيرت قبل الحفظ — تُرفَع بعد إنشاء الكتاب.
+  ///
+  /// Hint: كان المرفق يتطلّب فتح الكتاب بعد حفظه ثم رفعه من شاشة التفاصيل، وهو ما وصفه
+  ///       المالك بـ«خطأ ومزعج». المرفق يحتاج `OwnerId` فعلاً، فنُجمّع هنا ونرفع بعد الإنشاء.
+  final List<_PendingFile> _pendingAttachments = [];
 
   DateTime _receivedDate = DateTime.now();
   TimeOfDay? _receivedTime = TimeOfDay.now();
@@ -131,6 +148,35 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
     };
   }
 
+  static const _kMaxAttachmentMb = 50; // مرآة لحدّ AttachmentService في الباك-إند
+
+  Future<void> _pickAttachments() async {
+    final res = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'xlsx', 'zip', 'dwg'],
+      withData: true,
+      allowMultiple: true,
+    );
+    if (res == null) return;
+
+    final tooBig = <String>[];
+    setState(() {
+      for (final f in res.files) {
+        if (f.bytes == null) continue;
+        if (f.bytes!.length > _kMaxAttachmentMb * 1024 * 1024) {
+          tooBig.add(f.name);
+          continue;
+        }
+        _pendingAttachments.add(_PendingFile(f.name, f.bytes!));
+      }
+    });
+    // نرفض المتجاوز **هنا** بدل انتظار رفض الخادم بعد الحفظ، حتى لا يُسجَّل الكتاب
+    // ثم يُفاجأ المستخدم بفشل المرفق.
+    if (tooBig.isNotEmpty && mounted) {
+      setState(() => _error = 'تجاوز الحد ($_kMaxAttachmentMb م.ب): ${tooBig.join('، ')}');
+    }
+  }
+
   Future<void> _save() async {
     if (_entitySearchText.trim().isEmpty) {
       setState(() => _error = 'يرجى إدخال الجهة المرسلة.');
@@ -153,11 +199,29 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       }
 
       if (widget.bookId == null) {
-        await api.createIncoming(payload);
+        final created = await api.createIncoming(payload);
+        // المرفق يحتاج كتاباً محفوظاً (OwnerId)، فتُجمَّع الملفات في النموذج وتُرفَع بعد
+        // الإنشاء. فشلُ رفع مرفق **لا يُبطل تسجيل الكتاب** — الكتاب سجل رسمي منذ لحظته،
+        // والمرفق مُلحق به؛ نُبلّغ المستخدم ليعيد الرفع من شاشة التفاصيل.
+        final failed = <String>[];
+        for (final f in _pendingAttachments) {
+          try {
+            await api.uploadIncomingAttachment(created.incomingId, f.bytes, f.name);
+          } on ApiException catch (_) {
+            failed.add(f.name);
+          }
+        }
+        if (mounted && failed.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.danger,
+            content: Text('سُجّل الكتاب، لكن تعذّر رفع: ${failed.join('، ')}. أعِد رفعها من شاشة التفاصيل.'),
+            duration: const Duration(seconds: 6),
+          ));
+        }
       } else {
         await api.updateIncoming(widget.bookId!, payload);
       }
-      
+
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -369,8 +433,15 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
                     ),
                   ),
 
+                  // المرفقات — عند التسجيل الأول فقط. في التعديل تُدار من شاشة التفاصيل
+                  // (حيث تُعرض المرفقات الموجودة وتُحذف).
+                  if (widget.bookId == null) ...[
+                    const SizedBox(height: 24),
+                    _attachmentsCard(),
+                  ],
+
                   const SizedBox(height: 32),
-                  
+
                   SizedBox(
                     height: 56,
                     child: FilledButton.icon(
@@ -397,6 +468,62 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
         },
       ),
     );
+  }
+
+  Widget _attachmentsCard() {
+    return CustomCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.attach_file_rounded, color: AppColors.navyDeep),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('المرفقات (اختياري)',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              TextButton.icon(
+                onPressed: _busy ? null : _pickAttachments,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('إضافة ملفات'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_pendingAttachments.isEmpty)
+            const Text(
+              'اختر صور الكتاب الممسوحة أو ملفاته الآن — تُرفَع تلقائياً بعد الحفظ.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            )
+          else
+            ..._pendingAttachments.map((f) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(_iconFor(f.name), color: AppColors.navyDeep),
+                  title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${f.sizeKb} ك.ب', style: const TextStyle(fontSize: 11)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppColors.danger),
+                    tooltip: 'إزالة',
+                    onPressed: _busy ? null : () => setState(() => _pendingAttachments.remove(f)),
+                  ),
+                )),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconFor(String name) {
+    final ext = name.toLowerCase().split('.').last;
+    return switch (ext) {
+      'pdf' => Icons.picture_as_pdf_rounded,
+      'jpg' || 'jpeg' || 'png' => Icons.image_rounded,
+      'docx' => Icons.description_rounded,
+      'xlsx' => Icons.table_chart_rounded,
+      'zip' => Icons.folder_zip_rounded,
+      _ => Icons.insert_drive_file_rounded,
+    };
   }
 
   InputDecoration _inputDecoration(String label, IconData icon) {
