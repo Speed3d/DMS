@@ -33,12 +33,13 @@
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و `Number` (حيث ليست null).
 
 ### IncomingBook (الوارد)
-`IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), DepartmentId?→Department (القسم المحال إليه — ADR-015), FolderName? (مهجور — نص القسم القديم، للتوافق فقط), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
+`IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), DepartmentId?→Department (القسم المحال إليه — ADR-015), FolderName? (**مشتقّ** — اسم القسم مُسطَّحاً، انظر التحذير أدناه), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
 - **الترقيم فوري عند الإنشاء** (بخلاف الصادر الذي يترقّم عند الاعتماد): `{Prefix}-IN-{Year}-{Serial:D5}` عبر `NumberingService` بنوع عدّاد `"Incoming"` — فكل كتاب وارد سجل رسمي منذ لحظته.
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و`IncomingNumber` (حيث ليست null). فهارس بحث: `EntityId`, `Status`, `ReceivedDate`.
 - **دورة الحياة:** مصفوفة مغلقة في `Dms.Domain/IncomingWorkflow.cs` (ADR-013) — جديد ← (قيد المراجعة | مغلق) · قيد المراجعة ← (تم الرد | مغلق) · تم الرد ← مغلق · مغلق ← مؤرشف · **مؤرشف نهائي**.
 - **الربط بالصادر:** ثنائي الاتجاه — `IncomingBook.ReplyOutgoingId` ↔ `OutgoingBook.ReplyToIncomingId` (علاقة واحد‑لواحد، `SetNull` عند الحذف).
 - **الإحالة والرؤية (ADR-015):** الإحالة تُسنِد الكتاب لقسم (`DepartmentId`)، والموظف/القارئ يرى كتبه **+ كتب قسمه**. `SetNull` عند حذف القسم.
+- ⚠️ **عن `FolderName`:** ليس عموداً ميتاً — `ForwardAsync` **يكتب فيه اسم القسم في كل إحالة** (`book.FolderName = dept.Name`) كنسخة مُسطَّحة للعرض السريع بلا `Join`. فهو **مشتقّ من `DepartmentId`، لا مصدر حقيقة**: لا يُكتب من المستخدم (أُزيل من نموذج التسجيل)، ولا يُفلتَر به (الفلترة بـ `DepartmentId`)، ولا يُحدَّث إن أُعيدت تسمية القسم. **لا تحذفه دون مراجعة كل قارئ له** — الكتب المسجّلة قبل ADR-015 تحمل فيه نصّ القسم القديم وحده (بلا `DepartmentId`).
 
 ### MovementLog (سجل حركة الوارد)
 `MovementId, IncomingId→IncomingBook (Cascade), CompanyId, Action, Description, FromDepartment?, ToDepartment?, PerformedByUserId, PerformedAt`.
@@ -53,8 +54,7 @@
 - `DocumentVersion`: `VersionId, DocType, DocId, VersionNo, SnapshotJson, ChangedByUserId, ChangedAt, ChangeNote?`.
 
 ### BackupRecord / BackupSchedule (نظامي — بلا عزل شركة)
-- `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled), Status(Success/Failed), Note?`.
-- `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled), Scope(DbOnly/Full), Category(Manual/Daily/Weekly/Monthly), Status(Success/Failed), Note?`. سياسة الاحتفاظ (جد/أب/ابن) في `Dms.Domain/Backup.cs` — ADR-014.
+- `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled), Scope(DbOnly/Full), Category(Manual/Daily/Weekly/Monthly), Status(Success/Failed), Note?`. سياسة الاحتفاظ (جد/أب/ابن، 7/4/12/20) والتصنيف التلقائي في `Dms.Domain/Backup.cs` — ADR-014.
 - `BackupSchedule` (صفّ مفرد): `BackupScheduleId, Frequency(Off/Daily/Weekly), Enabled, Hour(0-23), LastRunAt?, NextRunAt?`.
 
 ### Counter / AuditLog
@@ -72,5 +72,24 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-السلسلة الحالية: `InitialCreate` → `AddBackup` → `AddArchiveBodyHtml` → `AddHeaderPhraseToOutgoingBook` → `AddSignatoryFields` → `MakeTemplateNullable` → `AddCompanyLogoImageKey` → `AddUserModules` (عمود `Modules`، افتراضي 63=All).
-> ملاحظة: تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).
+**السلسلة الحالية — 13 migration** (بالترتيب):
+
+| # | Migration | ما أضافه |
+|---|---|---|
+| 1 | `InitialCreate` | كل الجداول الأساسية (يشمل `UserCompany`) |
+| 2 | `AddBackup` | `BackupRecord` + `BackupSchedule` |
+| 3 | `AddArchiveBodyHtml` | متن الأرشيف |
+| 4 | `AddHeaderPhraseToOutgoingBook` | عبارة الترويسة |
+| 5 | `AddSignatoryFields` | حقول الموقّع |
+| 6 | `MakeTemplateNullable` | القالب صار اختيارياً |
+| 7 | `AddCompanyLogoImageKey` | شعار الشركة |
+| 8 | `AddUserModules` | عمود `Modules` (افتراضي **63** = الأقسام الستة وقتها) — ADR-012 |
+| 9 | `AddOutgoingBodyJson` | `BodyJson` (Quill Delta) لاستعادة التنسيق عند التعديل |
+| 10 | `AddIncomingModule` | جدولا `IncomingBooks` و`MovementLogs` + الربط العكسي. **ورقّى `Modules` من 63 إلى 127** للمستخدمين الكاملين (إضافة قسم الوارد) |
+| 11 | `FixMovementLogRelation` | حذف العمود الشبح `IncomingBookIncomingId` **بعد ترحيل البيانات** + FK حقيقي على `IncomingId` |
+| 12 | `AddBackupScopeAndRetention` | `Scope` + `Category` (الصفوف القديمة `Scope=Full`) — ADR-014 |
+| 13 | `AddDepartments` | جدول `Departments` + `User.DepartmentId` + `User.CanManageIncoming` + `IncomingBook.DepartmentId` — ADR-015 |
+
+> **ملاحظات:**
+> - تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).
+> - `AppModule.All` صار **127** (سبعة أقسام) بعد إضافة `Incoming`. من يقرأ الرقم 63 في migration رقم 8 فذلك هو تعريف `All` وقتها؛ الترقية تمّت في migration رقم 10 فلا يوجد مستخدم عالق بلا صلاحية الوارد.

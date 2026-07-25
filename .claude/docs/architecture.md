@@ -1,19 +1,19 @@
 # المعمارية (Architecture)
 
 ## نظرة عامة
-عميل سطح مكتب (Flutter Desktop) ← HTTPS (REST + JWT) ← **ASP.NET Core API مركزي** ← SQL Server + تخزين Blob. كل منطق العمل في الباك-إند؛ العميل رفيع.
+عميل رفيع (Flutter) ← HTTPS (REST + JWT) ← **ASP.NET Core API مركزي** ← SQL Server + تخزين على القرص. كل منطق العمل في الباك-إند.
 
 ```
-[Flutter Desktop]──HTTPS/JWT──> [Dms.Api] ──> [Dms.Infrastructure] ──> SQL Server
-                                    │                  │
-                                    │                  └─> IFileStorage (Blob/محلي)
-                                    └─> [Dms.Documents] (QuestPDF / OpenXML / QR ECDSA)
+[Flutter]──HTTPS/JWT──> [Cloudflare Tunnel] ──> [Dms.Api] ──> [Dms.Infrastructure] ──> SQL Server
+                         (ADR-016، صفر منافذ)      │                  │
+                                                   │                  └─> IFileStorage (قرص السيرفر)
+                                                   └─> [Dms.Documents] (QuestPDF / OpenXML / QR ECDSA)
 ```
 
 ## الطبقات
 | المشروع | المسؤولية | يعتمد على |
 |---|---|---|
-| `Dms.Domain` | كيانات، enums، منطق نقي (FinancialCalculator، RoleHierarchy)، استثناءات المجال | — |
+| `Dms.Domain` | كيانات، enums، منطق نقي (`FinancialCalculator`، `RoleHierarchy`، `IncomingWorkflow`، `BackupRetention`)، استثناءات المجال | — |
 | `Dms.Documents` | توليد PDF (QuestPDF) + Word (OpenXML) + توقيع/تحقق QR (ECDSA P-256) + `IFileStorage` + صور placeholder | — |
 | `Dms.Infrastructure` | `AppDbContext`، الخدمات، التهيئة، مصنع التصميم | Domain, Documents |
 | `Dms.Api` | Controllers، DTOs، JWT، Swagger، middleware، Seed، `ICurrentUser` | Infrastructure, Domain, Documents |
@@ -29,11 +29,23 @@
 ## المصادقة
 - `AuthService.LoginAsync`: تحقق BCrypt + قفل بعد فشل + إصدار `TokenPair` (Access JWT + Refresh مجزّأ).
 - `RefreshAsync`: تدوير الرمز (إبطال القديم + إصدار جديد).
-- claims: `uid`, `role`, `cid` (شركة)، `approve`. `ClaimTypes.Role` مضاف لـ `[Authorize(Roles=...)]`.
+- **claims التوكن (`DmsClaims`) — سبعة:**
+
+| Claim | المعنى | المصدر |
+|---|---|---|
+| `uid` | معرّف المستخدم | — |
+| `role` | الدور (+ `ClaimTypes.Role` لـ `[Authorize(Roles=…)]`) | — |
+| `cids` | قائمة معرّفات الشركات المسموحة (**جمع**) | ADR-011 |
+| `approve` | صلاحية اعتماد الصادر | — |
+| `mods` | bitmask أقسام النظام المسموحة | ADR-012 |
+| `inc_mng` | صلاحية إدارة حالات الوارد | ADR-015 |
+| `dept` | قسم عمل المستخدم (يُضاف فقط إن كان له قسم) | ADR-015 |
 
 ## تعدد الشركات (Row-level)
 - فلتر عام: `(!_filterByCompany || x.CompanyId == _companyId) [&& !IsDeleted]`.
+- **استثناء `User`:** الفلتر يشمل الشركات المُسندة أيضاً — `CompanyId == cid || AssignedCompanies.Any(c => c.CompanyId == cid)` (ADR-011).
 - SuperAdmin بلا شركة فعّالة → بلا فلترة. غير المصادَق → بلا فلترة (لتسجيل الدخول).
+- ⚠️ **درس متكرر:** الفلتر يستبعد السوبر أدمن (`CompanyId = NULL`) وقت وجود شركة فعّالة — فأي جلب **لاسم مستخدم للعرض** يحتاج `IgnoreQueryFilters()` (تجاوز مقصود وموثّق في الكود).
 
 ## توليد المستند (عند الاعتماد)
 1. `OutgoingService.ApproveAsync` داخل `ExecutionStrategy + Transaction`.
@@ -44,6 +56,15 @@
 ## التعديل بعد الاعتماد
 - لقطة JSON للنسخة الحالية في `DocumentVersions` (VersionNo تصاعدي) + تزامن متفائل (`RowVersion`) + إعادة توليد PDF/QR. الرقم يبقى ثابتاً.
 
-## ملاحظات الإنتاج
-- استبدال `LocalFileStorage` بتطبيق Azure Blob (نفس الواجهة).
-- نقل مفاتيح JWT/QR إلى Key Vault. تفعيل App Insights + HTTPS.
+## دورة حياة الوارد والأقسام
+- **الحالات** تتغيّر عبر **مصفوفة مغلقة** في `Dms.Domain/IncomingWorkflow.cs` (ADR-013) — لا انتقال خارجها.
+- **الإحالة** تُسنِد الكتاب لقسم (`IncomingBook.DepartmentId`)، و`IncomingService.Query` تفتح رؤيته لكل موظفي ذلك القسم (ADR-015). هذه القاعدة هي ما يجعل الإحالة إسناداً لا نصّاً.
+
+## وضع الصيانة (أثناء استعادة نسخة — ADR-014)
+- `IMaintenanceState` + `MaintenanceMiddleware`: أثناء الاستعادة تُرفض كل الطلبات بـ **503**، عدا `GET /api/system/status` الذي يبقى مجيباً ليعرف العميل متى عاد النظام.
+- بعد `RESTORE` تلزم ثلاث خطوات وإلا فشلت أول كتابة: `ClearAllPools()` ← `MigrateAsync()` ← `ChangeTracker.Clear()`.
+
+## الإنتاج (سيرفر داخلي — ADR-016)
+- **لا Azure:** `LocalFileStorage` يبقى كما هو (قرص السيرفر)، ومفاتيح JWT/QR تُولَّد على السيرفر وتُحمى بـ BitLocker + NTFS بدل Key Vault.
+- الـAPI **خدمة ويندوز** (`UseWindowsService`)، والوصول عبر **Cloudflare Tunnel** (HTTPS تلقائي، صفر منافذ مفتوحة).
+- تجريد `IFileStorage` يبقى قائماً — لو عاد قرار السحابة يوماً، يكفي تطبيق جديد للواجهة بلا تغيير في الخدمات.
