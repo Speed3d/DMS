@@ -304,11 +304,11 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                                     ),
                                   ),
                                   
-                                  // Approval
+                                  // الاعتماد — صار لكل شركة (ADR-017)، فنعرضه للشركة الفعّالة.
                                   Expanded(
                                     flex: 1,
                                     child: Center(
-                                      child: u.canApprove
+                                      child: u.accessIn(ref.read(sessionProvider).effectiveCompanyId)?.canApprove == true
                                           ? const Icon(Icons.check_rounded, color: Color(0xFF10B981), size: 20)
                                           : const Text('—', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.bold)),
                                     ),
@@ -473,26 +473,21 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   String? _role;
-  bool _canApprove = false;
-  bool _canManageIncoming = false;
-  int? _departmentId;
   bool _isActive = true;
   String? _error;
   List<int> _selectedCompanyIds = [];
-  List<String> _selectedModules = [];
-  late Future<List<Company>> _companiesFuture;
-  late Future<List<DepartmentModel>> _departmentsFuture;
 
-  static const List<String> _allModules = ['Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup'];
-  static const Map<String, String> _moduleLabels = {
-    'Outgoing': 'الصادر',
-    'Incoming': 'الوارد',
-    'Archive': 'الأرشيف',
-    'Reports': 'التقارير',
-    'Users': 'المستخدمون',
-    'Settings': 'الإعدادات',
-    'Backup': 'النسخ الاحتياطي',
-  };
+  /// وصول المستخدم **لكل شركة** (ADR-017) — مفتاحها معرّف الشركة.
+  ///
+  /// Hint: كانت مجموعةَ أقسام واحدة وقسمَ عمل واحد يسريان على كل شركاته، فتعذّر أن يدير
+  /// الصادر في شركة والتقارير في أخرى. البطاقات أدناه تُبنى من هذه الخريطة.
+  final Map<int, CompanyAccess> _access = {};
+
+  late Future<List<Company>> _companiesFuture;
+
+  /// أقسام كل شركة على حدة — تُجلب بـ `?companyId=` لأن النقطة الافتراضية
+  /// تُرجِع أقسام الشركة الفعّالة وحدها.
+  final Map<int, Future<List<DepartmentModel>>> _departmentsByCompany = {};
 
   bool get _isEdit => widget.existing != null;
 
@@ -513,22 +508,32 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   void initState() {
     super.initState();
     _companiesFuture = ref.read(apiClientProvider).companies();
-    _departmentsFuture = ref.read(apiClientProvider).departments();
     final e = widget.existing;
     if (e != null) {
       _fullName.text = e.fullName;
       _username.text = e.username;
       _role = widget.roles.contains(e.role) ? e.role : null;
-      _canApprove = e.canApprove;
-      _canManageIncoming = e.canManageIncoming;
-      _departmentId = e.departmentId;
       _isActive = e.isActive;
       _selectedCompanyIds = List.from(e.companyIds);
-      _selectedModules = List.from(e.modules);
+      for (final c in e.companies) {
+        _access[c.companyId] = c;
+      }
     } else {
-      _selectedModules = List.from(_allModules); // مستخدم جديد: كل الأقسام افتراضاً
+      final cid = ref.read(sessionProvider).effectiveCompanyId;
+      if (cid != null) _selectedCompanyIds = [cid];
       if (widget.roles.isNotEmpty) _role = widget.roles.last; // الأدنى افتراضاً
     }
+    for (final cid in _selectedCompanyIds) {
+      _ensureAccess(cid);
+    }
+  }
+
+  /// يضمن وجود سطر وصول (وأقسام مجلوبة) لكل شركة مُسندة.
+  void _ensureAccess(int companyId) {
+    _access.putIfAbsent(companyId,
+        () => CompanyAccess(companyId: companyId, modules: List.from(kAllModules)));
+    _departmentsByCompany.putIfAbsent(
+        companyId, () => ref.read(apiClientProvider).departments(companyId: companyId));
   }
 
   @override
@@ -555,20 +560,134 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
     }
     setState(() => _error = null);
 
+    // صلاحيات كل شركة على حدة (ADR-017). الأدوار المعفاة تُرسَل بكل الأقسام،
+    // والقسم/إدارة الوارد للموظف والقارئ فقط (المدير فأعلى يديره بحكم دوره).
+    final companies = _selectedCompanyIds.map((cid) {
+      final a = _access[cid] ?? CompanyAccess(companyId: cid, modules: List.from(kAllModules));
+      return {
+        'companyId': cid,
+        'modules': _roleExemptFromModules ? kAllModules : a.modules,
+        'departmentId': _isSubordinate ? a.departmentId : null,
+        'canApprove': a.canApprove,
+        'canManageIncoming': _isSubordinate && a.canManageIncoming,
+      };
+    }).toList();
+
     Navigator.pop<Map<String, dynamic>>(context, {
       'fullName': _fullName.text.trim(),
       'username': _username.text.trim(),
       'password': _password.text,
       'role': _role,
-      'companyIds': _selectedCompanyIds,
-      'canApprove': _canApprove,
       'isActive': _isActive,
-      // إدارة الوارد والقسم للموظف/القارئ فقط (المدير فأعلى يديره بحكم دوره).
-      'canManageIncoming': _isSubordinate && _canManageIncoming,
-      'departmentId': _isSubordinate ? _departmentId : null,
-      // الأقسام يحدّدها المانح فقط؛ الأدوار المعفاة تُرسَل بكل الأقسام.
-      if (_isGranter) 'modules': _roleExemptFromModules ? _allModules : _selectedModules,
+      'companies': companies,
     });
+  }
+
+  /// بطاقة صلاحيات المستخدم وقسمه في شركة واحدة.
+  Widget _companyAccessCard(int companyId, String companyName) {
+    final access = _access[companyId] ??
+        CompanyAccess(companyId: companyId, modules: List.from(kAllModules));
+    final theme = Theme.of(context);
+
+    void update(CompanyAccess next) => setState(() => _access[companyId] = next);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Theme(
+        data: theme.copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: _selectedCompanyIds.length == 1,
+          leading: const Icon(Icons.business_rounded),
+          title: Text(companyName, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(
+            _roleExemptFromModules
+                ? 'وصول كامل (الدور معفى)'
+                : '${access.modules.length} من ${kAllModules.length} أقسام',
+            style: const TextStyle(fontSize: 12),
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          children: [
+            // أقسام النظام — يحدّدها المانح وحده (سوبر أدمن/رئيس شركة).
+            if (_isGranter)
+              _roleExemptFromModules
+                  ? const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Text('هذا الدور يملك وصولاً كاملاً لكل الأقسام.',
+                          style: TextStyle(color: Colors.grey)),
+                    )
+                  : Column(
+                      children: kAllModules.map((m) {
+                        return CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(kModuleLabels[m] ?? m),
+                          value: access.modules.contains(m),
+                          onChanged: (val) {
+                            final next = List<String>.from(access.modules);
+                            if (val == true) {
+                              if (!next.contains(m)) next.add(m);
+                            } else {
+                              next.remove(m);
+                            }
+                            update(access.copyWith(modules: next));
+                          },
+                        );
+                      }).toList(),
+                    ),
+
+            SwitchListTile(
+              value: access.canApprove,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('صلاحية الاعتماد'),
+              subtitle: const Text('اعتماد الكتب الصادرة في هذه الشركة', style: TextStyle(fontSize: 12)),
+              onChanged: (v) => update(access.copyWith(canApprove: v)),
+            ),
+
+            // القسم وإدارة الوارد — للموظف/القارئ فقط (المدير فأعلى يديره بحكم دوره).
+            if (_isSubordinate) ...[
+              FutureBuilder<List<DepartmentModel>>(
+                future: _departmentsByCompany[companyId],
+                builder: (context, snap) {
+                  final all = snap.data ?? const <DepartmentModel>[];
+                  // النشطة + القسم المختار حالياً وإن عُطّل، حتى لا تختفي القيمة المحفوظة.
+                  final items = all
+                      .where((d) => d.isActive || d.departmentId == access.departmentId)
+                      .toList();
+                  return DropdownButtonFormField<int?>(
+                    initialValue: access.departmentId,
+                    decoration: const InputDecoration(
+                      labelText: 'القسم (مكان العمل في هذه الشركة)',
+                      helperText: 'يرى الموظف الكتب الواردة المحالة إلى قسمه',
+                      prefixIcon: Icon(Icons.apartment_rounded),
+                    ),
+                    items: [
+                      const DropdownMenuItem<int?>(value: null, child: Text('— بلا قسم —')),
+                      ...items.map((d) =>
+                          DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name))),
+                    ],
+                    onChanged: (v) => update(v == null
+                        ? access.copyWith(clearDepartment: true)
+                        : access.copyWith(departmentId: v)),
+                  );
+                },
+              ),
+              SwitchListTile(
+                value: access.canManageIncoming,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('صلاحية إدارة الوارد'),
+                subtitle: const Text('تغيير حالة الكتب الواردة (تم الرد · مغلق) — عدا الأرشفة',
+                    style: TextStyle(fontSize: 12)),
+                onChanged: (v) => update(access.copyWith(canManageIncoming: v)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -624,6 +743,7 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                             setState(() {
                               if (val == true) {
                                 _selectedCompanyIds.add(c.companyId);
+                                _ensureAccess(c.companyId); // بطاقة صلاحيات لهذه الشركة
                               } else {
                                 _selectedCompanyIds.remove(c.companyId);
                               }
@@ -637,78 +757,27 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
               ),
               const SizedBox(height: 12),
 
-              // صلاحيات الأقسام — يحدّدها المانح (سوبر أدمن/رئيس شركة) فقط.
-              if (_isGranter) ...[
-                const Text('صلاحيات الوصول للأقسام', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: _roleExemptFromModules
-                      ? const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text('هذا الدور يملك وصولاً كاملاً لكل الأقسام.', style: TextStyle(color: Colors.grey)),
-                        )
-                      : Column(
-                          children: _allModules.map((m) {
-                            return CheckboxListTile(
-                              title: Text(_moduleLabels[m] ?? m),
-                              value: _selectedModules.contains(m),
-                              onChanged: (val) => setState(() {
-                                if (val == true) {
-                                  if (!_selectedModules.contains(m)) _selectedModules.add(m);
-                                } else {
-                                  _selectedModules.remove(m);
-                                }
-                              }),
-                            );
-                          }).toList(),
-                        ),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              SwitchListTile(
-                value: _canApprove, contentPadding: EdgeInsets.zero,
-                title: const Text('صلاحية الاعتماد'),
-                subtitle: const Text('اعتماد الكتب الصادرة', style: TextStyle(fontSize: 12)),
-                onChanged: (v) => setState(() => _canApprove = v),
-              ),
-
-              // القسم وإدارة الوارد — للموظف/القارئ فقط.
-              if (_isSubordinate) ...[
-                const Divider(),
-                FutureBuilder<List<DepartmentModel>>(
-                  future: _departmentsFuture,
+              // ── صلاحيات وقسم **لكل شركة** (ADR-017) ──
+              // Hint: كانت مجموعة واحدة تسري على كل الشركات، فتعذّر أن يدير الموظف الصادر
+              //       في شركة والتقارير في أخرى، أو أن يكون في «المالية» هنا و«الإدارة» هناك.
+              if (_selectedCompanyIds.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('اختر شركة واحدة على الأقل لتحديد صلاحياتها.',
+                      style: TextStyle(color: Colors.grey)),
+                )
+              else
+                FutureBuilder<List<Company>>(
+                  future: _companiesFuture,
                   builder: (context, snap) {
-                    final all = snap.data ?? const <DepartmentModel>[];
-                    // نعرض النشطة + القسم المختار حالياً حتى لو عُطّل (حتى لا تختفي القيمة).
-                    final items = all.where((d) => d.isActive || d.departmentId == _departmentId).toList();
-                    return DropdownButtonFormField<int?>(
-                      initialValue: _departmentId,
-                      decoration: const InputDecoration(
-                        labelText: 'القسم (مكان العمل)',
-                        helperText: 'يرى الموظف الكتب الواردة المحالة إلى قسمه',
-                        prefixIcon: Icon(Icons.apartment_rounded),
-                      ),
-                      items: [
-                        const DropdownMenuItem<int?>(value: null, child: Text('— بلا قسم —')),
-                        ...items.map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name))),
-                      ],
-                      onChanged: (v) => setState(() => _departmentId = v),
+                    final names = {for (final c in (snap.data ?? <Company>[])) c.companyId: c.name};
+                    return Column(
+                      children: _selectedCompanyIds
+                          .map((cid) => _companyAccessCard(cid, names[cid] ?? 'شركة #$cid'))
+                          .toList(),
                     );
                   },
                 ),
-                SwitchListTile(
-                  value: _canManageIncoming, contentPadding: EdgeInsets.zero,
-                  title: const Text('صلاحية إدارة الوارد'),
-                  subtitle: const Text('تغيير حالة الكتب الواردة (تم الرد · مغلق) — عدا الأرشفة',
-                      style: TextStyle(fontSize: 12)),
-                  onChanged: (v) => setState(() => _canManageIncoming = v),
-                ),
-              ],
 
               if (_isEdit)
                 SwitchListTile(

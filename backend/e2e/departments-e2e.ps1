@@ -24,8 +24,9 @@ Ok "قسمان: المالية=$finance القانونية=$legal"
 # موظفان بكلمة مرور معروفة — واحد في المالية بصلاحية إدارة، وآخر في القانونية
 function MakeEmp($user,$dept,$manage){
   $ex=(Api GET "/users" $null $admin $cid).B|?{$_.username -eq $user}|select -f 1
-  $body=@{fullName=$user;role='Employee';companyIds=@($cid);isActive=$true;canApprove=$false;
-          modules=@('Incoming');canManageIncoming=$manage;departmentId=$dept}
+  # الصلاحيات والقسم صارت **لكل شركة** (ADR-017).
+  $body=@{fullName=$user;role='Employee';isActive=$true;companies=@(
+            @{companyId=$cid;modules=@('Incoming');departmentId=$dept;canApprove=$false;canManageIncoming=$manage})}
   if($ex){ $body.Remove('password'); $null=Api PUT "/users/$($ex.userId)" $body $admin $cid; return $ex.userId }
   else { $body.username=$user; $body.password='Emp@12345'; return (Api POST "/users" $body $admin $cid).B.userId }
 }

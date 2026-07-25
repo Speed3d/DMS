@@ -8,10 +8,13 @@
 ## المصادقة — `/api/auth`
 | الطريقة | المسار | الوصول | الوصف |
 |---|---|---|---|
-| POST | `/login` | عام | `{username,password}` → توكنات + بيانات المستخدم (تتضمّن `companyIds` و`modules`) |
-| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) + `companyIds`/`modules` محدّثة |
+| POST | `/login` | عام | `{username,password}` → توكنات + `companyIds` + **`companies[]`** (الوصول لكل شركة) |
+| POST | `/refresh` | عام | `{refreshToken}` → توكنات جديدة (تدوير) + `companies[]` محدّثة |
 | POST | `/logout` | مصادَق | إبطال refresh token |
-| GET | `/me` | مصادَق | بيانات المستخدم الحالي (`companyIds` + `modules` = الأقسام المسموحة) |
+| GET | `/me` | مصادَق | بيانات المستخدم — `modules`/`canApprove`/`departmentId`/`canManageIncoming` تخصّ **الشركة الفعّالة** |
+
+> **⚠️ `companies[]` مقابل `/me` (ADR-017):** استجابة الدخول تُرجِع الوصول **لكل شركة** لتتبدّل القائمة الجانبية مع تبديل الشركة بلا إعادة دخول. أما `/me` فيُرجِع القيم **المحسوبة للشركة الفعّالة** للطلب.
+> **السوبر أدمن قد يكون بلا إسناد شركات** فتعود `companies[]` فارغة — وهو معفى ويرى كل شيء. لمعرفة صلاحيته الفعلية استخدم `/me` لا استجابة الدخول.
 | POST | `/change-password` | مصادَق | `{currentPassword,newPassword}` |
 
 ## الشركات — `/api/companies`
@@ -32,12 +35,13 @@
 - `/api/entities` — GET (مصادَق) · POST/PUT/DELETE (Manager+؛ الحذف يُرفض 409 إن كانت مستخدَمة).
 - `/api/document-types` — GET (مصادَق) · POST/PUT (Manager+).
 - `/api/departments` — GET (مصادَق) · POST/PUT/DELETE (Manager+). الأقسام: وجهة إحالة الوارد ومكان عمل الموظف (ADR-015). الحذف يُرفض 409 إن كان محالاً إليه كتب واردة (يُقترح التعطيل).
+  - `GET /?companyId=` — أقسام **شركة بعينها**، للسوبر أدمن ورئيس الشركة فقط (403 لغيرهما، و403 للرئيس خارج شركاته). يلزم لملء نموذج المستخدم متعدد الشركات (ADR-017)؛ بدونه تُرجَع أقسام الشركة الفعّالة وحدها.
 - `/api/exchange-rates` — GET `/` · GET `/latest?currency=USD` · POST (Manager+).
 
 ## المستخدمون والتفويض
 - `/api/users` (SuperAdmin/President/Manager + قسم `Users`): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية والعزل مفروضان في الخدمة.
   - المدخلات تحمل `companyIds` و`modules` (قائمة أسماء الأقسام). **ربط الشركات وتحديد الأقسام حصراً للسوبر أدمن ورئيس الشركة**؛ المدير/الموظف لا يغيّرانها (تُتجاهل ← افتراضي). أدوار السوبر أدمن/الرئيس تُخزَّن بكل الأقسام. غير السوبر أدمن يلزمه شركة واحدة على الأقل. الاستجابة تُعيد `companyIds` و`modules`.
-  - **حقول الأقسام (ADR-015):** `departmentId?` (قسم عمل الموظف — يجب أن يكون ضمن شركته) و`canManageIncoming` (صلاحية إدارة حالات الوارد). **المدير فأعلى يملك `canManageIncoming` بحكم دوره** فتُضبط تلقائياً بغضّ النظر عن المُرسَل. كلاهما يُحمَل في التوكن (claims `dept` و`inc_mng`).
+  - **⚠️ الصلاحيات صارت لكل شركة (ADR-017):** المدخلات تحمل `companies: [{companyId, modules, departmentId, canApprove, canManageIncoming}]` بدل الحقول المفردة، والاستجابة تُرجِع نفس الشكل. `null` = «لا تغيير» (يمنع مسح الإسنادات عند تعديل حقل آخر). **المدير فأعلى يملك `canApprove` و`canManageIncoming` بحكم دوره** في كل شركاته. كل `departmentId` يُتحقَّق منه مقابل **شركة صفّه** (خطأ 400 إن كان من شركة أخرى).
 - `/api/delegations` (Manager+): GET، POST، DELETE `/{id}`.
 
 ## الصادر — `/api/outgoing`

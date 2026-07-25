@@ -13,11 +13,33 @@ namespace Dms.Api.Controllers;
 [Route("api/departments")]
 public sealed class DepartmentsController(AppDbContext db, ICurrentUser current, IAuditService audit) : ControllerBase
 {
+    /// <summary>
+    /// أقسام الشركة الفعّالة. و<paramref name="companyId"/> يوسّع النطاق **للمانح** (سوبر أدمن/رئيس)
+    /// ليملأ نموذج المستخدم بأقسام كل شركة مُسندة له (ADR-017).
+    /// </summary>
+    /// <remarks>
+    /// Hint: بلا هذا المعامل كانت القائمة مفلترة بالشركة الفعّالة وحدها، فتعذّر إسناد الموظف
+    /// لقسم في شركته الثانية — القسم ببساطة لا يظهر.
+    /// </remarks>
     [HttpGet]
-    public async Task<ActionResult<List<DepartmentResponse>>> List(CancellationToken ct)
-        => await db.Departments.OrderBy(d => d.Name)
+    public async Task<ActionResult<List<DepartmentResponse>>> List(int? companyId, CancellationToken ct)
+    {
+        var q = db.Departments.AsQueryable();
+
+        if (companyId is not null)
+        {
+            var granter = current.IsSuperAdmin || current.Role == UserRole.President;
+            if (!granter) throw new ForbiddenException("لا تملك صلاحية استعراض أقسام شركة أخرى.");
+            // السوبر أدمن بلا حدود؛ الرئيس ضمن شركاته وحدها (fail-closed).
+            if (!current.IsSuperAdmin && !current.AllowedCompanyIds.Contains(companyId.Value))
+                throw new ForbiddenException("هذه الشركة ليست ضمن شركاتك.");
+            q = q.IgnoreQueryFilters().Where(d => d.CompanyId == companyId.Value);
+        }
+
+        return await q.OrderBy(d => d.Name)
             .Select(d => new DepartmentResponse(d.DepartmentId, d.CompanyId, d.Name, d.IsActive))
             .ToListAsync(ct);
+    }
 
     [HttpPost]
     [Authorize(Roles = "SuperAdmin,President,Manager")]

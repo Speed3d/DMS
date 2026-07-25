@@ -60,7 +60,10 @@ $login = Api POST "/auth/login" @{ username = $AdminUser; password = $AdminPwd }
 if ($login.Status -ne 200) { Bad "تعذّر الدخول بـ $AdminUser : $($login.Status) $($login.Raw)"; exit 1 }
 $adminTok = $login.Body.accessToken
 Ok "دخول $AdminUser — الدور: $($login.Body.role)"
-if ($login.Body.modules -contains "Incoming") { Ok "صلاحية قسم الوارد متاحة" } else { Bad "لا يملك صلاحية قسم الوارد" }
+# الصلاحيات صارت لكل شركة (ADR-017)، والسوبر أدمن قد يكون بلا إسناد أصلاً — فالمرجع
+# هو /auth/me الذي يحسب صلاحية **الشركة الفعّالة** ويُعفي السوبر أدمن والرئيس.
+$me = Api GET "/auth/me" $null $adminTok $null
+if ($me.Body.modules -contains "Incoming") { Ok "صلاحية قسم الوارد متاحة" } else { Bad "لا يملك صلاحية قسم الوارد" }
 
 $company = (Api GET "/companies" $null $adminTok $null).Body | Select-Object -First 1
 if (-not $company) { Bad "لا توجد شركة في النظام"; exit 1 }
@@ -243,18 +246,24 @@ if ($EmployeeUser -and $EmployeePwd) {
     $emp = $users | Where-Object { $_.username -eq $EmployeeUser } | Select-Object -First 1
     if ($emp) {
         # تعديل المستخدم يُنفَّذ **دائماً** (لا فقط عند نقص صلاحية الوارد) ليُختبر في كل تشغيل
-        # مسارُ العيب الذي مسح قسم الموظف وصلاحيته: عقد التعديل يمنح canManageIncoming
-        # و departmentId القيمتين false/null عند غيابهما، فأي PUT ناقص يمسحهما **بصمت**.
-        $mods = @($emp.modules); if ($mods -notcontains "Incoming") { $mods += "Incoming" }
+        # مسارُ العيب الذي مسح قسم الموظف وصلاحيته: أي حمولة ناقصة تمسحهما **بصمت**.
+        # الصلاحيات والقسم صارت لكل شركة (ADR-017) ⇒ نُعيد إرسال **كل** إسناداته كما هي.
+        $before = @($emp.companies | Where-Object { $_.companyId -eq $cid } | Select-Object -First 1)[0]
+        $payload = @($emp.companies | ForEach-Object {
+            $mods = @($_.modules)
+            if ($_.companyId -eq $cid -and $mods -notcontains "Incoming") { $mods += "Incoming" }
+            @{ companyId = $_.companyId; modules = $mods; departmentId = $_.departmentId
+               canApprove = $_.canApprove; canManageIncoming = $_.canManageIncoming } })
+
         Expect "تعديل $EmployeeUser (مع ضمان صلاحية الوارد)" (Api PUT "/users/$($emp.userId)" @{
-            fullName = $emp.fullName; role = $emp.role; companyIds = $emp.companyIds
-            isActive = $true; canApprove = $emp.canApprove; modules = $mods
-            canManageIncoming = $emp.canManageIncoming; departmentId = $emp.departmentId } $adminTok $cid).Status 200
+            fullName = $emp.fullName; role = $emp.role; isActive = $true
+            companies = $payload } $adminTok $cid).Status 200
 
         # حارس الانحدار: التعديل يجب ألّا يمسّ قسم الموظف ولا صلاحية إدارة الوارد.
         $after = (Api GET "/users" $null $adminTok $cid).Body | Where-Object { $_.userId -eq $emp.userId }
-        Expect "التعديل حافظ على قسم الموظف" "$($after.departmentId)" "$($emp.departmentId)"
-        Expect "التعديل حافظ على صلاحية إدارة الوارد" "$($after.canManageIncoming)" "$($emp.canManageIncoming)"
+        $afterAcc = @($after.companies | Where-Object { $_.companyId -eq $cid } | Select-Object -First 1)[0]
+        Expect "التعديل حافظ على قسم الموظف" "$($afterAcc.departmentId)" "$($before.departmentId)"
+        Expect "التعديل حافظ على صلاحية إدارة الوارد" "$($afterAcc.canManageIncoming)" "$($before.canManageIncoming)"
 
         $sLogin = Api POST "/auth/login" @{ username = $EmployeeUser; password = $EmployeePwd } $null $null
         if ($sLogin.Status -eq 200) {

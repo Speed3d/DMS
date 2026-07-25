@@ -56,7 +56,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(sessionProvider).auth!;
+    final session = ref.watch(sessionProvider);
+    final auth = session.auth!;
     final canManageUsers = const ['SuperAdmin', 'President', 'Manager'].contains(auth.role);
     final isSuper = auth.isSuperAdmin;
 
@@ -75,7 +76,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     if (_index >= pages.length) _index = 0;
     // إن كان القسم الحالي غير مسموح، عُد للرئيسية.
-    if (!_isIndexAllowed(_index, auth, canManageUsers, isSuper)) _index = 0;
+    if (!_isIndexAllowed(_index, session, canManageUsers, isSuper)) _index = 0;
 
     return Scaffold(
       body: Row(
@@ -95,7 +96,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   onSelected: (i) => setState(() => _index = i),
                   canManageUsers: canManageUsers,
                   isSuperAdmin: isSuper,
-                  modules: auth.modules,
+                  modules: session.modules,
                 ),
               ),
             ),
@@ -195,15 +196,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  bool _isIndexAllowed(int index, AuthResult auth, bool canManageUsers, bool isSuper) => switch (index) {
+  bool _isIndexAllowed(int index, SessionState session, bool canManageUsers, bool isSuper) => switch (index) {
         0 || 1 => true,
-        2 => auth.hasModule('Outgoing'),
-        3 => auth.hasModule('Incoming'),
-        4 => auth.hasModule('Archive'),
-        5 => auth.hasModule('Reports'),
-        6 => canManageUsers && auth.hasModule('Settings'),
-        7 => canManageUsers && auth.hasModule('Users'),
-        8 => isSuper && auth.hasModule('Backup'),
+        2 => session.hasModule('Outgoing'),
+        3 => session.hasModule('Incoming'),
+        4 => session.hasModule('Archive'),
+        5 => session.hasModule('Reports'),
+        6 => canManageUsers && session.hasModule('Settings'),
+        7 => canManageUsers && session.hasModule('Users'),
+        8 => isSuper && session.hasModule('Backup'),
         _ => false,
       };
 

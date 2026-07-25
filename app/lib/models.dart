@@ -9,11 +9,11 @@ class AuthResult {
   final String username;
   final String role;
   final List<int> companyIds;
-  final bool canApprove;
   final bool mustChangePassword;
 
-  /// أقسام النظام المسموح للمستخدم بالوصول إليها (السوبر أدمن/الرئيس = الكل).
-  final List<String> modules;
+  /// وصول المستخدم **في كل شركة على حدة** (ADR-017) — تحتاجه القائمة الجانبية لتتبدّل
+  /// مع تبديل الشركة بلا إعادة دخول.
+  final List<CompanyAccess> companies;
 
   AuthResult({
     required this.accessToken,
@@ -24,15 +24,36 @@ class AuthResult {
     required this.username,
     required this.role,
     required this.companyIds,
-    required this.canApprove,
     required this.mustChangePassword,
-    required this.modules,
+    required this.companies,
   });
 
   bool get isSuperAdmin => role == 'SuperAdmin';
 
-  /// هل يملك المستخدم صلاحية الوصول للقسم؟
-  bool hasModule(String module) => modules.contains(module);
+  /// الأدوار المعفاة من تقييد الأقسام — وصول كامل في كل شركاتها (مرآة لقاعدة الباك-إند).
+  bool get _isExempt => role == 'SuperAdmin' || role == 'President';
+
+  CompanyAccess? accessIn(int? companyId) {
+    if (companyId == null) return null;
+    for (final c in companies) {
+      if (c.companyId == companyId) return c;
+    }
+    return null;
+  }
+
+  /// أقسام النظام المسموحة في الشركة الفعّالة.
+  ///
+  /// Hint: المعفَون يرون كل شيء حتى لو كانوا بلا إسناد أصلاً (السوبر أدمن قد يكون بلا شركة).
+  List<String> modulesIn(int? companyId) {
+    if (_isExempt) return kAllModules;
+    return accessIn(companyId)?.modules ?? const [];
+  }
+
+  /// هل يملك المستخدم صلاحية الوصول للقسم في الشركة الفعّالة؟
+  bool hasModule(String module, int? companyId) => modulesIn(companyId).contains(module);
+
+  /// صلاحية اعتماد الصادر في الشركة الفعّالة.
+  bool canApproveIn(int? companyId) => _isExempt || (accessIn(companyId)?.canApprove ?? false);
 
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(
         accessToken: j['accessToken'],
@@ -43,9 +64,10 @@ class AuthResult {
         username: j['username'] ?? '',
         role: j['role'] ?? 'Reader',
         companyIds: j['companyIds'] != null ? List<int>.from(j['companyIds']) : [],
-        canApprove: j['canApprove'] ?? false,
         mustChangePassword: j['mustChangePassword'] ?? false,
-        modules: j['modules'] != null ? List<String>.from(j['modules']) : const [],
+        companies: j['companies'] != null
+            ? (j['companies'] as List).map((e) => CompanyAccess.fromJson(e)).toList()
+            : const [],
       );
 
   Map<String, dynamic> toJson() => {
@@ -57,11 +79,25 @@ class AuthResult {
         'username': username,
         'role': role,
         'companyIds': companyIds,
-        'canApprove': canApprove,
         'mustChangePassword': mustChangePassword,
-        'modules': modules,
+        'companies': companies.map((c) => c.toJson()).toList(),
       };
 }
+
+/// أقسام النظام السبعة — مصدر واحد بدل تكرار القائمة في الشاشات.
+const List<String> kAllModules = [
+  'Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup',
+];
+
+const Map<String, String> kModuleLabels = {
+  'Outgoing': 'الصادر',
+  'Incoming': 'الوارد',
+  'Archive': 'الأرشيف',
+  'Reports': 'التقارير',
+  'Users': 'المستخدمون',
+  'Settings': 'الإعدادات',
+  'Backup': 'النسخ الاحتياطي',
+};
 
 class Company {
   final int companyId;
@@ -188,12 +224,11 @@ class UserModel {
   final String username;
   final String role;
   final List<int> companyIds;
-  final bool canApprove;
   final bool isActive;
   final bool mustChangePassword;
-  final List<String> modules;
-  final bool canManageIncoming;
-  final int? departmentId;
+
+  /// صلاحيات المستخدم وقسمه **في كل شركة على حدة** (ADR-017).
+  final List<CompanyAccess> companies;
 
   UserModel({
     required this.userId,
@@ -201,13 +236,19 @@ class UserModel {
     required this.username,
     required this.role,
     required this.companyIds,
-    required this.canApprove,
     required this.isActive,
     required this.mustChangePassword,
-    required this.modules,
-    required this.canManageIncoming,
-    required this.departmentId,
+    required this.companies,
   });
+
+  /// وصول المستخدم في شركة بعينها، أو `null` إن لم يكن مُسنَداً لها.
+  CompanyAccess? accessIn(int? companyId) {
+    if (companyId == null) return null;
+    for (final c in companies) {
+      if (c.companyId == companyId) return c;
+    }
+    return null;
+  }
 
   factory UserModel.fromJson(Map<String, dynamic> j) => UserModel(
         userId: j['userId'],
@@ -215,12 +256,62 @@ class UserModel {
         username: j['username'] ?? '',
         role: j['role'] ?? 'Reader',
         companyIds: j['companyIds'] != null ? List<int>.from(j['companyIds']) : [],
-        canApprove: j['canApprove'] ?? false,
         isActive: j['isActive'] ?? true,
         mustChangePassword: j['mustChangePassword'] ?? false,
+        companies: j['companies'] != null
+            ? (j['companies'] as List).map((e) => CompanyAccess.fromJson(e)).toList()
+            : const [],
+      );
+}
+
+/// صلاحيات المستخدم وقسمه في شركة واحدة (ADR-017).
+///
+/// Hint: كانت هذه القيم واحدة تسري على كل شركات المستخدم، فتعذّر أن يدير الصادر في شركة
+/// والتقارير في أخرى، أو أن يكون في «المالية» هنا و«الإدارة» هناك.
+class CompanyAccess {
+  final int companyId;
+  final List<String> modules;
+  final int? departmentId;
+  final bool canApprove;
+  final bool canManageIncoming;
+
+  const CompanyAccess({
+    required this.companyId,
+    required this.modules,
+    this.departmentId,
+    this.canApprove = false,
+    this.canManageIncoming = false,
+  });
+
+  factory CompanyAccess.fromJson(Map<String, dynamic> j) => CompanyAccess(
+        companyId: j['companyId'],
         modules: j['modules'] != null ? List<String>.from(j['modules']) : const [],
-        canManageIncoming: j['canManageIncoming'] ?? false,
         departmentId: j['departmentId'],
+        canApprove: j['canApprove'] ?? false,
+        canManageIncoming: j['canManageIncoming'] ?? false,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'companyId': companyId,
+        'modules': modules,
+        'departmentId': departmentId,
+        'canApprove': canApprove,
+        'canManageIncoming': canManageIncoming,
+      };
+
+  CompanyAccess copyWith({
+    List<String>? modules,
+    int? departmentId,
+    bool clearDepartment = false,
+    bool? canApprove,
+    bool? canManageIncoming,
+  }) =>
+      CompanyAccess(
+        companyId: companyId,
+        modules: modules ?? this.modules,
+        departmentId: clearDepartment ? null : (departmentId ?? this.departmentId),
+        canApprove: canApprove ?? this.canApprove,
+        canManageIncoming: canManageIncoming ?? this.canManageIncoming,
       );
 }
 

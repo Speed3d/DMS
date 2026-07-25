@@ -7,15 +7,17 @@ import 'session.dart';
 
 /// قائمة الصادر الكاملة (لوحة التحكم).
 final outgoingListProvider = FutureProvider.autoDispose<List<OutgoingListItem>>((ref) async {
-  final auth = ref.watch(sessionProvider).auth;
-  if (auth == null || !auth.hasModule('Outgoing')) return <OutgoingListItem>[];
+  final session = ref.watch(sessionProvider);
+  final auth = session.auth;
+  if (auth == null || !session.hasModule('Outgoing')) return <OutgoingListItem>[];
   return ref.read(apiClientProvider).outgoingList();
 });
 
 /// المسودات المعلّقة (إشعارات الشريط العلوي).
 final pendingDraftsProvider = FutureProvider.autoDispose<List<OutgoingListItem>>((ref) async {
-  final auth = ref.watch(sessionProvider).auth;
-  if (auth == null || !auth.hasModule('Outgoing')) return <OutgoingListItem>[];
+  final session = ref.watch(sessionProvider);
+  final auth = session.auth;
+  if (auth == null || !session.hasModule('Outgoing')) return <OutgoingListItem>[];
   final items = await ref.read(apiClientProvider).outgoingList();
   return items.where((e) => e.status.toLowerCase().contains('draft')).toList();
 });

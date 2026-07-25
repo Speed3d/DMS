@@ -83,10 +83,6 @@ public class AppDbContext : DbContext
             e.HasQueryFilter(x => !_filterByCompany
                 || x.CompanyId == _companyId
                 || x.AssignedCompanies.Any(c => c.CompanyId == _companyId));
-
-            // قسم المستخدم — SetNull عند حذف القسم حتى لا يُمنع حذف قسم بسبب ارتباط مستخدم به.
-            e.HasOne(x => x.Department).WithMany()
-                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<UserCompany>(e =>
@@ -94,6 +90,10 @@ public class AppDbContext : DbContext
             e.HasIndex(x => new { x.UserId, x.CompanyId }).IsUnique();
             e.HasOne(x => x.User).WithMany(u => u.AssignedCompanies)
                 .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+
+            // قسم المستخدم في هذه الشركة — SetNull حتى لا يُمنع حذف قسم بسبب ارتباط مستخدم به (ADR-017).
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
         });
 
         // ---- ApprovalDelegation ----

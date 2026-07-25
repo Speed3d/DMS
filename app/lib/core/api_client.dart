@@ -135,8 +135,12 @@ class ApiClient {
       EntityModel.fromJson(await _post('/entities', {'name': name, 'kind': kind}));
 
   // ---------- الأقسام ----------
-  Future<List<DepartmentModel>> departments() async =>
-      (await _get('/departments') as List).map((e) => DepartmentModel.fromJson(e)).toList();
+  /// أقسام الشركة الفعّالة، أو أقسام شركة بعينها عبر [companyId] — يتطلب صلاحية
+  /// المانح (سوبر أدمن/رئيس شركة)، ويلزم لملء نموذج المستخدم متعدد الشركات (ADR-017).
+  Future<List<DepartmentModel>> departments({int? companyId}) async =>
+      (await _get('/departments${companyId == null ? '' : '?companyId=$companyId'}') as List)
+          .map((e) => DepartmentModel.fromJson(e))
+          .toList();
 
   Future<DepartmentModel> createDepartment(String name) async =>
       DepartmentModel.fromJson(await _post('/departments', {'name': name}));

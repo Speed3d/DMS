@@ -33,20 +33,26 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool IsSuperAdmin => Role == UserRole.SuperAdmin;
 
-    public bool CanApprove => _user?.FindFirstValue(DmsClaims.CanApprove) == "1";
+    // ── الصلاحيات والقسم: قيمة **كل شركة على حدة** (ADR-017) ──
+    // تُقرأ من خريطة في الـclaim وتُنتقى بالشركة الفعّالة. شركة خارج الخريطة ⇒ لا صلاحية
+    // ولا قسم (فشل مغلق، كما نصّت ADR-012).
 
-    public bool CanManageIncoming => _user?.FindFirstValue(DmsClaims.CanManageIncoming) == "1";
+    private int? PerCompany(string claim) =>
+        PerCompanyClaim.Read(_user?.FindFirstValue(claim), ActiveCompanyId);
 
-    public int? DepartmentId =>
-        int.TryParse(_user?.FindFirstValue(DmsClaims.DepartmentId), out var id) ? id : null;
+    public bool CanApprove => PerCompany(DmsClaims.CanApprove) == 1;
+
+    public bool CanManageIncoming => PerCompany(DmsClaims.CanManageIncoming) == 1;
+
+    public int? DepartmentId => PerCompany(DmsClaims.DepartmentId);
 
     public AppModule AllowedModules
     {
         get
         {
-            // السوبر أدمن ورئيس الشركة معفيان — وصول كامل لكل الأقسام.
+            // السوبر أدمن ورئيس الشركة معفيان — وصول كامل في كل شركاتهم.
             if (Role is UserRole.SuperAdmin or UserRole.President) return AppModule.All;
-            return int.TryParse(_user?.FindFirstValue(DmsClaims.Modules), out var m) ? (AppModule)m : AppModule.None;
+            return PerCompany(DmsClaims.Modules) is { } m ? (AppModule)m : AppModule.None;
         }
     }
 

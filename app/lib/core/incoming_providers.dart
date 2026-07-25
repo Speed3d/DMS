@@ -32,15 +32,17 @@ final incomingDateToFilterProvider = NotifierProvider<DateTimeNullableNotifier, 
 
 // ----------------- الأقسام (لفلاتر الوارد وإحالته) -----------------
 final departmentsListProvider = FutureProvider.autoDispose<List<DepartmentModel>>((ref) async {
-  final auth = ref.watch(sessionProvider).auth;
+  final session = ref.watch(sessionProvider);
+  final auth = session.auth;
   if (auth == null) return <DepartmentModel>[];
   return ref.read(apiClientProvider).departments();
 });
 
 // ----------------- قائمة الكتب الواردة -----------------
 final incomingListProvider = FutureProvider.autoDispose<List<IncomingListItem>>((ref) async {
-  final auth = ref.watch(sessionProvider).auth;
-  if (auth == null || !auth.hasModule('Incoming')) return <IncomingListItem>[];
+  final session = ref.watch(sessionProvider);
+  final auth = session.auth;
+  if (auth == null || !session.hasModule('Incoming')) return <IncomingListItem>[];
   
   final api = ref.watch(apiClientProvider);
   final search = ref.watch(incomingSearchQueryProvider);
@@ -61,8 +63,9 @@ final incomingListProvider = FutureProvider.autoDispose<List<IncomingListItem>>(
 
 // ----------------- إشعارات الوارد -----------------
 final pendingIncomingProvider = FutureProvider.autoDispose<List<IncomingListItem>>((ref) async {
-  final auth = ref.watch(sessionProvider).auth;
-  if (auth == null || !auth.hasModule('Incoming')) return <IncomingListItem>[];
+  final session = ref.watch(sessionProvider);
+  final auth = session.auth;
+  if (auth == null || !session.hasModule('Incoming')) return <IncomingListItem>[];
   
   final items = await ref.read(apiClientProvider).incomingList();
   return items.where((e) => e.status == 'New' || e.status == 'InReview').toList();

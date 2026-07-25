@@ -21,8 +21,7 @@ public sealed class UsersController(IUserService users) : ControllerBase
     public async Task<ActionResult<UserResponse>> Create(CreateUserRequest req, CancellationToken ct)
     {
         var u = await users.CreateAsync(
-            new CreateUserInput(req.FullName, req.Username, req.Password, req.Role, req.CompanyIds, req.CanApprove, req.Modules,
-                req.CanManageIncoming, req.DepartmentId), ct);
+            new CreateUserInput(req.FullName, req.Username, req.Password, req.Role, ToInputs(req.Companies)), ct);
         return Map(u);
     }
 
@@ -30,8 +29,7 @@ public sealed class UsersController(IUserService users) : ControllerBase
     public async Task<ActionResult<UserResponse>> Update(int id, UpdateUserRequest req, CancellationToken ct)
     {
         var u = await users.UpdateAsync(id,
-            new UpdateUserInput(req.FullName, req.Role, req.CompanyIds, req.IsActive, req.CanApprove, req.Modules,
-                req.CanManageIncoming, req.DepartmentId), ct);
+            new UpdateUserInput(req.FullName, req.Role, ToInputs(req.Companies), req.IsActive), ct);
         return Map(u);
     }
 
@@ -42,9 +40,14 @@ public sealed class UsersController(IUserService users) : ControllerBase
         return NoContent();
     }
 
+    private static List<UserCompanyInput>? ToInputs(List<UserCompanyDto>? dtos) =>
+        dtos?.Select(c => new UserCompanyInput(
+            c.CompanyId, c.Modules, c.DepartmentId, c.CanApprove, c.CanManageIncoming)).ToList();
+
     private static UserResponse Map(User u) =>
         new(u.UserId, u.FullName, u.Username, u.Role,
             u.AssignedCompanies.Select(c => c.CompanyId).ToList(),
-            u.CanApprove, u.IsActive, u.MustChangePassword, u.Modules.ToNames(),
-            u.CanManageIncoming, u.DepartmentId);
+            u.IsActive, u.MustChangePassword,
+            u.AssignedCompanies.Select(c => new UserCompanyDto(
+                c.CompanyId, c.Modules.ToNames(), c.DepartmentId, c.CanApprove, c.CanManageIncoming)).ToList());
 }

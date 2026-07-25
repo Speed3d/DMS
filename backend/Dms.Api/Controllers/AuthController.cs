@@ -40,7 +40,7 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
     public ActionResult<MeResponse> Me()
         => new MeResponse(current.UserId!.Value, User.Identity!.Name ?? "",
             User.Identity!.Name ?? "", current.Role!.Value, current.AllowedCompanyIds, current.CanApprove,
-            current.AllowedModules.ToNames());
+            current.AllowedModules.ToNames(), current.DepartmentId, current.CanManageIncoming);
 
     [Authorize]
     [HttpPost("change-password")]
@@ -52,5 +52,5 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
 
     private static AuthResponse Map(AuthResult r) => new(
         r.AccessToken, r.AccessExpires, r.RefreshToken, r.UserId, r.FullName,
-        r.Username, r.Role, r.CompanyIds, r.CanApprove, r.MustChangePassword, r.Modules);
+        r.Username, r.Role, r.CompanyIds, r.MustChangePassword, r.Companies);
 }

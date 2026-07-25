@@ -9,25 +9,10 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public UserRole Role { get; set; }
 
-    /// <summary>شركة المستخدم. null للسوبر أدمن (يرى الكل).</summary>
-    public int? CompanyId { get; set; }
-
-    /// <summary>صلاحية اعتماد الكتب (المدير فأعلى افتراضياً، أو بتفويض).</summary>
-    public bool CanApprove { get; set; }
-
     /// <summary>
-    /// صلاحية إدارة حالات الكتب الواردة (تغيير الحالة بكل الانتقالات عدا الأرشفة).
-    /// Hint: تُمنح لموظفين مخوّلين — بدونها يقتصر الموظف على «جديد ← قيد المراجعة» (نمط CanApprove للصادر).
+    /// الشركة **الرئيسية** — دورها افتراضٌ عند غياب ترويسة <c>X-Company-Id</c> فقط. null للسوبر أدمن.
     /// </summary>
-    public bool CanManageIncoming { get; set; }
-
-    /// <summary>القسم الذي يعمل فيه المستخدم (اختياري). Hint: يحدّد أي كتب واردة محالة يراها.</summary>
-    public int? DepartmentId { get; set; }
-
-    public Department? Department { get; set; }
-
-    /// <summary>الأقسام المسموح للمستخدم بالوصول إليها (افتراضي: الكل). يُعفى منها السوبر أدمن ورئيس الشركة.</summary>
-    public AppModule Modules { get; set; } = AppModule.All;
+    public int? CompanyId { get; set; }
 
     public bool IsActive { get; set; } = true;
 
@@ -41,16 +26,38 @@ public class User
     public int? CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    /// <summary>شركات إضافية مُسندة (لرئيس الشركة على أكثر من شركة).</summary>
+    /// <summary>الشركات المُسندة — وكلٌّ منها يحمل صلاحيات المستخدم وقسمه **في تلك الشركة**.</summary>
     public ICollection<UserCompany> AssignedCompanies { get; set; } = new List<UserCompany>();
 }
 
-/// <summary>إسناد مستخدم لشركة إضافية (خاصة برئيس الشركة).</summary>
+/// <summary>
+/// إسناد مستخدم لشركة، **وحاملُ صلاحياته وقسمه فيها** (ADR-017).
+/// </summary>
+/// <remarks>
+/// Hint: كانت هذه الحقول على <see cref="User"/> بقيمة واحدة تسري على كل شركاته، فتعذّر أن يدير
+/// الصادر في شركة والتقارير في أخرى، أو أن يكون في «المالية» هنا و«الإدارة» هناك. نقلها إلى
+/// الإسناد يجعل كل شركة عالماً مستقلاً — وهو ما تعنيه «متعدد الشركات» فعلاً.
+/// </remarks>
 public class UserCompany
 {
     public int UserCompanyId { get; set; }
     public int UserId { get; set; }
     public int CompanyId { get; set; }
 
+    /// <summary>أقسام النظام المسموحة في هذه الشركة (افتراضي: الكل). السوبر أدمن ورئيس الشركة معفيان.</summary>
+    public AppModule Modules { get; set; } = AppModule.All;
+
+    /// <summary>قسم عمل المستخدم في هذه الشركة. Hint: يحدّد أي كتب واردة محالة يراها هنا.</summary>
+    public int? DepartmentId { get; set; }
+
+    /// <summary>صلاحية اعتماد الصادر في هذه الشركة (المدير فأعلى يملكها بحكم دوره).</summary>
+    public bool CanApprove { get; set; }
+
+    /// <summary>
+    /// صلاحية إدارة حالات الوارد في هذه الشركة — كل الانتقالات عدا الأرشفة (نمط CanApprove).
+    /// </summary>
+    public bool CanManageIncoming { get; set; }
+
     public User? User { get; set; }
+    public Department? Department { get; set; }
 }

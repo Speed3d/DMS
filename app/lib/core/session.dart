@@ -24,6 +24,17 @@ class SessionState {
   bool get needsCompanySelection =>
       auth != null && (auth!.companyIds.length > 1 || auth!.isSuperAdmin) && activeCompanyId == null && !bypassCompanySelection;
 
+  // ── الصلاحيات تخصّ **الشركة الفعّالة** (ADR-017) ──
+  // Hint: مركزيّتها هنا تمنع أن تنسى شاشةٌ تمريرَ الشركة فتعرض قسماً لا يملكه المستخدم فيها.
+
+  /// أقسام النظام المسموحة في الشركة الفعّالة (المعفَون يرون الكل).
+  List<String> get modules => auth?.modulesIn(effectiveCompanyId) ?? const [];
+
+  bool hasModule(String module) => auth?.hasModule(module, effectiveCompanyId) ?? false;
+
+  /// صلاحية اعتماد الصادر في الشركة الفعّالة.
+  bool get canApprove => auth?.canApproveIn(effectiveCompanyId) ?? false;
+
   SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool? bypassCompanySelection, bool clearAuth = false, bool clearCompany = false}) =>
       SessionState(
         auth: clearAuth ? null : (auth ?? this.auth),

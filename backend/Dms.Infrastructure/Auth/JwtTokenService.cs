@@ -13,8 +13,10 @@ public static class DmsClaims
 {
     public const string UserId = "uid";
     public const string CompanyIds = "cids";
-    public const string CanApprove = "approve";
     public const string Role = "role";
+
+    // ↓ أربعتها **خرائط لكل شركة** بصيغة PerCompanyClaim (ADR-017)، لا قيماً مفردة.
+    public const string CanApprove = "approve";
     public const string Modules = "mods";
     public const string CanManageIncoming = "inc_mng";
     public const string DepartmentId = "dept";
@@ -44,16 +46,25 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
             new(ClaimTypes.Name, user.Username),
             new(DmsClaims.Role, user.Role.ToString()),
             new(ClaimTypes.Role, user.Role.ToString()),
-            new(DmsClaims.CanApprove, user.CanApprove ? "1" : "0"),
-            new(DmsClaims.CanManageIncoming, user.CanManageIncoming ? "1" : "0"),
-            new(DmsClaims.Modules, ((int)user.Modules).ToString()),
         };
-        if (user.DepartmentId is not null)
-            claims.Add(new Claim(DmsClaims.DepartmentId, user.DepartmentId.Value.ToString()));
-        if (user.AssignedCompanies.Any())
+
+        // الصلاحيات والقسم تختلف باختلاف الشركة (ADR-017) ⇒ تُرمَّز خرائطَ «شركة:قيمة».
+        var links = user.AssignedCompanies.ToList();
+        if (links.Count > 0)
         {
-            var ids = string.Join(",", user.AssignedCompanies.Select(c => c.CompanyId));
-            claims.Add(new Claim(DmsClaims.CompanyIds, ids));
+            claims.Add(new Claim(DmsClaims.CompanyIds, string.Join(",", links.Select(c => c.CompanyId))));
+            claims.Add(new Claim(DmsClaims.Modules,
+                PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => (int)c.Modules))));
+            claims.Add(new Claim(DmsClaims.CanApprove,
+                PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanApprove ? 1 : 0))));
+            claims.Add(new Claim(DmsClaims.CanManageIncoming,
+                PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanManageIncoming ? 1 : 0))));
+
+            // القسم اختياري — تُدرَج الشركات التي له فيها قسم فقط.
+            var depts = links.Where(c => c.DepartmentId is not null)
+                             .ToDictionary(c => c.CompanyId, c => c.DepartmentId!.Value);
+            if (depts.Count > 0)
+                claims.Add(new Claim(DmsClaims.DepartmentId, PerCompanyClaim.Encode(depts)));
         }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_s.SigningKey));

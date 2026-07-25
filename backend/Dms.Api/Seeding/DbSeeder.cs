@@ -27,8 +27,8 @@ public static class DbSeeder
                 Username = username,
                 PasswordHash = hasher.Hash(password),
                 Role = UserRole.SuperAdmin,
+                // بلا شركة ولا إسنادات: السوبر أدمن معفى من قيود الأقسام والصلاحيات (ADR-017).
                 CompanyId = null,
-                CanApprove = true,
                 IsActive = true,
                 MustChangePassword = true,
                 CreatedAt = DateTime.UtcNow,

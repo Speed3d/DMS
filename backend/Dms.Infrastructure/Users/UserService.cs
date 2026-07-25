@@ -6,12 +6,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Infrastructure.Users;
 
-public sealed record CreateUserInput(
-    string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules,
-    bool CanManageIncoming = false, int? DepartmentId = null);
+/// <summary>صلاحيات المستخدم وقسمه **في شركة واحدة** (ADR-017).</summary>
+public sealed record UserCompanyInput(
+    int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
+    bool CanApprove = false, bool CanManageIncoming = false);
 
-public sealed record UpdateUserInput(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules,
-    bool CanManageIncoming = false, int? DepartmentId = null);
+public sealed record CreateUserInput(
+    string FullName, string Username, string Password, UserRole Role, List<UserCompanyInput>? Companies);
+
+public sealed record UpdateUserInput(
+    string FullName, UserRole Role, List<UserCompanyInput>? Companies, bool IsActive);
 
 public interface IUserService
 {
@@ -48,12 +52,10 @@ public sealed class UserService(
         if (await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Username == input.Username, ct))
             throw new ConflictException("اسم المستخدم مستخدم بالفعل.");
 
-        var companyIds = ResolveCompanies(input.CompanyIds, input.Role);
-        if (input.Role != UserRole.SuperAdmin && !companyIds.Any())
+        var links = await ResolveLinksAsync(input.Companies, input.Role, ct);
+        if (input.Role != UserRole.SuperAdmin && links.Count == 0)
             throw new ValidationException("يجب إسناد المستخدم لشركة واحدة على الأقل.");
-        int? primaryCompanyId = companyIds.Any() ? companyIds.First() : null;
-
-        await ValidateDepartmentAsync(input.DepartmentId, primaryCompanyId, ct);
+        int? primaryCompanyId = links.Count > 0 ? links[0].CompanyId : null;
 
         var user = new User
         {
@@ -62,16 +64,11 @@ public sealed class UserService(
             PasswordHash = hasher.Hash(input.Password),
             Role = input.Role,
             CompanyId = primaryCompanyId,
-            CanApprove = input.CanApprove || RoleHierarchy.IsManagerOrAbove(input.Role),
-            // المدير فأعلى يدير الوارد بحكم دوره؛ ولغيره تُمنح الصلاحية صراحةً.
-            CanManageIncoming = input.CanManageIncoming || RoleHierarchy.IsManagerOrAbove(input.Role),
-            DepartmentId = input.DepartmentId,
-            Modules = ResolveModules(input.Modules, input.Role),
             IsActive = true,
             MustChangePassword = true,
             CreatedByUserId = current.UserId,
             CreatedAt = DateTime.UtcNow,
-            AssignedCompanies = companyIds.Select(c => new UserCompany { CompanyId = c }).ToList()
+            AssignedCompanies = links
         };
         db.Users.Add(user);
         audit.Add("Create", nameof(User), null, $"إنشاء مستخدم {user.Username} ({user.Role})", primaryCompanyId);
@@ -89,33 +86,21 @@ public sealed class UserService(
         EnsureCanManage(input.Role);    // الدور الجديد
         if (user.UserId == current.UserId) throw new ValidationException("لا يمكنك تعديل دورك بنفسك.");
 
-        await ValidateDepartmentAsync(input.DepartmentId, user.CompanyId, ct);
-
         user.FullName = input.FullName.Trim();
         user.Role = input.Role;
         user.IsActive = input.IsActive;
-        user.CanApprove = input.CanApprove || RoleHierarchy.IsManagerOrAbove(input.Role);
-        user.CanManageIncoming = input.CanManageIncoming || RoleHierarchy.IsManagerOrAbove(input.Role);
-        user.DepartmentId = input.DepartmentId;
 
-        // الأقسام: السوبر أدمن/الرئيس معفيان (All)؛ غيرهما يحدّدها السوبر أدمن/الرئيس فقط عند إرسالها.
-        if (input.Role is UserRole.SuperAdmin or UserRole.President)
-            user.Modules = AppModule.All;
-        else if (CanManageCompanies && input.Modules is not null)
-            user.Modules = AppModuleExtensions.FromNames(input.Modules);
-
-        // إسناد الشركات: السوبر أدمن ورئيس الشركة فقط، وفقط عند إرسال قائمة صريحة
+        // الإسناد وما يحمله من صلاحيات وقسم: يُعاد بناؤه فقط عند إرسال قائمة صريحة
         // (null = «لا تغيير» — يمنع مسح الإسنادات بالخطأ عند تعديل حقول أخرى).
-        if (CanManageCompanies && input.CompanyIds is not null)
+        if (input.Companies is not null)
         {
-            var companyIds = ResolveCompanies(input.CompanyIds, input.Role);
-            if (input.Role != UserRole.SuperAdmin && !companyIds.Any())
+            var links = await ResolveLinksAsync(input.Companies, input.Role, ct);
+            if (input.Role != UserRole.SuperAdmin && links.Count == 0)
                 throw new ValidationException("يجب إسناد المستخدم لشركة واحدة على الأقل.");
 
-            user.CompanyId = companyIds.Any() ? companyIds.First() : null;
+            user.CompanyId = links.Count > 0 ? links[0].CompanyId : null;
             user.AssignedCompanies.Clear();
-            foreach (var cid in companyIds)
-                user.AssignedCompanies.Add(new UserCompany { CompanyId = cid });
+            foreach (var link in links) user.AssignedCompanies.Add(link);
         }
 
         audit.Add("Update", nameof(User), id.ToString(), null, user.CompanyId);
@@ -150,17 +135,56 @@ public sealed class UserService(
     }
 
     /// <summary>
-    /// يتحقق أن القسم موجود ضمن شركة المستخدم (Hint: يمنع إسناد موظف لقسم شركة أخرى).
+    /// يبني إسنادات الشركات وما تحمله من صلاحيات وقسم (ADR-017).
     /// </summary>
-    private async Task ValidateDepartmentAsync(int? departmentId, int? companyId, CancellationToken ct)
+    /// <remarks>
+    /// Hint: كان القسم يُتحقَّق منه مقابل الشركة **الرئيسية** وحدها، فكان قسمٌ من شركة ثانية
+    /// يُرفَض دائماً. الآن يُتحقَّق من كل قسم مقابل **شركة صفّه**.
+    /// </remarks>
+    private async Task<List<UserCompany>> ResolveLinksAsync(
+        List<UserCompanyInput>? requested, UserRole role, CancellationToken ct)
     {
-        if (departmentId is null) return;
-        if (companyId is null)
-            throw new ValidationException("لا يمكن إسناد قسم لمستخدم بلا شركة.");
-        var ok = await db.Departments.IgnoreQueryFilters()
-            .AnyAsync(d => d.DepartmentId == departmentId && d.CompanyId == companyId, ct);
-        if (!ok)
-            throw new ValidationException("القسم المحدّد غير موجود في شركة المستخدم.");
+        var byCompany = (requested ?? new List<UserCompanyInput>())
+            .GroupBy(c => c.CompanyId)
+            .ToDictionary(g => g.Key, g => g.Last());
+
+        var companyIds = ResolveCompanies(byCompany.Keys.ToList(), role);
+        if (companyIds.Count == 0) return new List<UserCompany>();
+
+        // المدير فأعلى يعتمد ويدير الوارد بحكم دوره في كل شركاته.
+        var byRole = RoleHierarchy.IsManagerOrAbove(role);
+
+        // أقسام الشركات المطلوبة دفعةً واحدة (تفادياً لاستعلام لكل صفّ).
+        var wanted = byCompany.Values.Where(c => c.DepartmentId is not null)
+            .Select(c => c.DepartmentId!.Value).Distinct().ToList();
+        var deptCompany = wanted.Count == 0
+            ? new Dictionary<int, int>()
+            : await db.Departments.IgnoreQueryFilters()
+                .Where(d => wanted.Contains(d.DepartmentId))
+                .ToDictionaryAsync(d => d.DepartmentId, d => d.CompanyId, ct);
+
+        var links = new List<UserCompany>();
+        foreach (var cid in companyIds)
+        {
+            byCompany.TryGetValue(cid, out var wish);
+
+            int? deptId = wish?.DepartmentId;
+            if (deptId is not null)
+            {
+                if (!deptCompany.TryGetValue(deptId.Value, out var owner) || owner != cid)
+                    throw new ValidationException("القسم المحدّد غير موجود في الشركة المسندة له.");
+            }
+
+            links.Add(new UserCompany
+            {
+                CompanyId = cid,
+                Modules = ResolveModules(wish?.Modules, role),
+                DepartmentId = deptId,
+                CanApprove = byRole || (wish?.CanApprove ?? false),
+                CanManageIncoming = byRole || (wish?.CanManageIncoming ?? false),
+            });
+        }
+        return links;
     }
 
     private List<int> ResolveCompanies(List<int>? requested, UserRole role)

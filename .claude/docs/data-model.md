@@ -10,9 +10,11 @@
 ### Template
 `TemplateId, CompanyId→Company, Name, HeaderImageKey?, FooterImageKey?, WatermarkImageKey?, WatermarkOpacity(0-100), Margin{Top,Right,Bottom,Left}, PageSize, FontFamily, IsActive, CreatedAt, UpdatedAt` — قالب بالصور (مفاتيح Blob).
 
-### User / UserCompany (تعدد الشركات — ADR-011)
-- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية**), CanApprove, CanManageIncoming (إدارة حالات الوارد — ADR-015), DepartmentId?→Department (مكان العمل), Modules (`AppModule` bitmask، افتراضي All — صلاحيات الأقسام، ADR-012), IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
-- `UserCompany`: `UserCompanyId, UserId, CompanyId` — إسناد المستخدم لشركة (فريد على UserId+CompanyId). المستخدم قد يُربط بشركة أو عدّة شركات؛ الربط صلاحية للسوبر أدمن/رئيس الشركة، ولكل مستخدم غير سوبر أدمن شركة واحدة على الأقل.
+### User / UserCompany (تعدد الشركات — ADR-011 · صلاحيات لكل شركة — ADR-017)
+- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية** — دورها افتراضٌ عند غياب ترويسة `X-Company-Id` فقط), IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
+- `UserCompany`: `UserCompanyId, UserId, CompanyId, Modules (`AppModule` bitmask، افتراضي All — ADR-012), DepartmentId?→Department (SetNull), CanApprove, CanManageIncoming` — إسناد المستخدم لشركة **وحاملُ صلاحياته وقسمه فيها**. فريد على `(UserId, CompanyId)`. الربط صلاحية للسوبر أدمن/رئيس الشركة، ولكل مستخدم غير سوبر أدمن شركة واحدة على الأقل.
+  - ⚠️ **الحقول الأربعة كانت على `User`** (قيمة واحدة تسري على كل الشركات) وانتقلت في migration `AddPerCompanyPermissions` (ADR-017). الآن يمكن للموظف أن يدير الصادر والوارد في شركة، والصادر والتقارير في أخرى، ويكون في «المالية» هنا و«الإدارة» هناك.
+  - **السوبر أدمن ورئيس الشركة معفيان** من تقييد الأقسام (وصول كامل في كل شركاتهم)؛ والسوبر أدمن قد يكون **بلا إسناد أصلاً**.
 
 ### RefreshToken
 `RefreshTokenId, UserId, TokenHash (مجزّأ), ExpiresAt, CreatedAt, RevokedAt?`.
@@ -89,6 +91,7 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 11 | `FixMovementLogRelation` | حذف العمود الشبح `IncomingBookIncomingId` **بعد ترحيل البيانات** + FK حقيقي على `IncomingId` |
 | 12 | `AddBackupScopeAndRetention` | `Scope` + `Category` (الصفوف القديمة `Scope=Full`) — ADR-014 |
 | 13 | `AddDepartments` | جدول `Departments` + `User.DepartmentId` + `User.CanManageIncoming` + `IncomingBook.DepartmentId` — ADR-015 |
+| 14 | `AddPerCompanyPermissions` | نقل `Modules`/`DepartmentId`/`CanApprove`/`CanManageIncoming` من `Users` إلى `UserCompanies` — ADR-017. ⚠️ **الترتيب داخلها مقصود** (إضافة ← نقل ← إسقاط)؛ السقالة المولَّدة كانت تُسقط أولاً فتمحو صلاحيات الجميع |
 
 > **ملاحظات:**
 > - تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).

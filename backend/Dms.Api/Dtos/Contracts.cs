@@ -1,4 +1,5 @@
 using Dms.Domain;
+using Dms.Infrastructure.Auth;
 
 namespace Dms.Api.Dtos;
 
@@ -9,8 +10,11 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 public sealed record AuthResponse(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
     int UserId, string FullName, string Username, UserRole Role,
-    List<int> CompanyIds, bool CanApprove, bool MustChangePassword, List<string> Modules);
-public sealed record MeResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, List<string> Modules);
+    List<int> CompanyIds, bool MustChangePassword, List<CompanyAccess> Companies);
+/// <summary>`canApprove` و`modules` هنا تخصّ **الشركة الفعّالة** للطلب (ADR-017).</summary>
+public sealed record MeResponse(
+    int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
+    bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -41,13 +45,19 @@ public sealed record ExchangeRateRequest(Currency Currency, decimal Rate, DateTi
 public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency, decimal Rate, DateTime EffectiveDate);
 
 // ----------------- Users / Delegations -----------------
-public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules = null,
-    bool CanManageIncoming = false, int? DepartmentId = null);
-public sealed record UpdateUserRequest(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules = null,
-    bool CanManageIncoming = false, int? DepartmentId = null);
+/// <summary>صلاحيات المستخدم وقسمه في شركة واحدة (ADR-017).</summary>
+public sealed record UserCompanyDto(
+    int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
+    bool CanApprove = false, bool CanManageIncoming = false);
+
+public sealed record CreateUserRequest(
+    string FullName, string Username, string Password, UserRole Role, List<UserCompanyDto>? Companies);
+public sealed record UpdateUserRequest(
+    string FullName, UserRole Role, List<UserCompanyDto>? Companies, bool IsActive);
 public sealed record ResetPasswordRequest(string NewPassword);
-public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, bool IsActive, bool MustChangePassword, List<string> Modules,
-    bool CanManageIncoming, int? DepartmentId);
+public sealed record UserResponse(
+    int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
+    bool IsActive, bool MustChangePassword, List<UserCompanyDto> Companies);
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);

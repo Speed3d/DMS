@@ -5,10 +5,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Infrastructure.Auth;
 
+/// <summary>وصول المستخدم في شركة واحدة — الأقسام المسموحة وقسم العمل والصلاحيات (ADR-017).</summary>
+public sealed record CompanyAccess(
+    int CompanyId, List<string> Modules, int? DepartmentId, bool CanApprove, bool CanManageIncoming);
+
 public sealed record AuthResult(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
     int UserId, string FullName, string Username, UserRole Role,
-    List<int> CompanyIds, bool CanApprove, bool MustChangePassword, List<string> Modules);
+    List<int> CompanyIds, bool MustChangePassword, List<CompanyAccess> Companies);
 
 public interface IAuthService
 {
@@ -115,10 +119,21 @@ public sealed class AuthService(
         // SaveChanges يتم في المستدعي
         await Task.CompletedTask;
         var companyIds = user.AssignedCompanies.Select(c => c.CompanyId).ToList();
-        // القيمة الفعّالة: السوبر أدمن ورئيس الشركة يريان كل الأقسام.
-        var effectiveModules = user.Role is UserRole.SuperAdmin or UserRole.President ? AppModule.All : user.Modules;
+
+        // الوصول **لكل شركة** (ADR-017) — تحتاجه الواجهة لتحدّث قائمتها الجانبية عند تبديل
+        // الشركة بلا إعادة دخول. الأدوار المعفاة (سوبر أدمن/رئيس) تُرسَل بكل الأقسام.
+        var exempt = user.Role is UserRole.SuperAdmin or UserRole.President;
+        var access = user.AssignedCompanies
+            .Select(c => new CompanyAccess(
+                c.CompanyId,
+                (exempt ? AppModule.All : c.Modules).ToNames(),
+                c.DepartmentId,
+                c.CanApprove,
+                c.CanManageIncoming))
+            .ToList();
+
         return new AuthResult(pair.AccessToken, pair.AccessExpires, pair.RefreshToken,
             user.UserId, user.FullName, user.Username, user.Role, companyIds,
-            user.CanApprove, user.MustChangePassword, effectiveModules.ToNames());
+            user.MustChangePassword, access);
     }
 }
