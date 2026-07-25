@@ -14,6 +14,7 @@ import '../core/local_storage.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/pdf_preview_pane.dart';
 import 'package:printing/printing.dart';
 
 /// Hint: شاشة إضافة كتاب صادر جديد مع محرر النصوص الاحترافي Quill
@@ -211,99 +212,17 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
     }
   }
 
-  /// لوحة المعاينة — ترويسة بالحالة وزر تحديث، ثم الـPDF.
-  Widget _previewPane() {
-    return CustomCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-            decoration: const BoxDecoration(
-              color: AppColors.navyDeep,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                const Text('معاينة الكتاب',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                // مؤشّر التقادم: يمنع أن يُصدّق المستخدم معاينةً لم تَعُد تطابق ما كتبه.
-                if (_previewStale)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.gold.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('غير محدَّثة',
-                        style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ),
-                const SizedBox(width: 4),
-                if (_previewBusy)
-                  const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: SizedBox(
-                      width: 18, height: 18,
-                      child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2),
-                    ),
-                  )
-                else
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                    tooltip: 'تحديث المعاينة',
-                    onPressed: _refreshPreview,
-                  ),
-              ],
-            ),
-          ),
-          Expanded(child: _previewBody()),
-        ],
-      ),
-    );
-  }
-
-  Widget _previewBody() {
-    if (_previewError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(_previewError!,
-              textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+  /// لوحة المعاينة — ويدجت مشترك بين شاشات الصادر الثلاث.
+  Widget _previewPane() => CustomCard(
+        padding: EdgeInsets.zero,
+        child: PdfPreviewPane(
+          bytes: _previewBytes,
+          busy: _previewBusy,
+          stale: _previewStale,
+          error: _previewError,
+          onRefresh: _refreshPreview,
         ),
       );
-    }
-    if (_previewBytes == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.description_outlined, size: 48, color: Colors.grey.withValues(alpha: 0.5)),
-              const SizedBox(height: 12),
-              const Text(
-                'اضغط «تحديث المعاينة» لترى شكل الكتاب النهائي\nبالقالب والخط والحجم كما سيُطبع.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    final bytes = _previewBytes!;
-    return PdfPreview(
-      build: (format) => bytes,
-      canChangeOrientation: false,
-      canChangePageFormat: false,
-      canDebug: false,
-      allowPrinting: false,
-      pdfFileName: 'preview-outgoing.pdf',
-    );
-  }
 
   Future<void> _save() async {
     if (_entitySearchText.trim().isEmpty) {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +13,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/pdf_preview_pane.dart';
 
 /// Hint: شاشة تعديل مسودة صادر
 class OutgoingEditDraftScreen extends ConsumerStatefulWidget {
@@ -38,6 +40,12 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
   String? _currency;
   bool _busy = false;
   String? _error;
+
+  // ── لوحة المعاينة (البند 5) — نفس سلوك شاشة الإنشاء ──
+  Uint8List? _previewBytes;
+  bool _previewBusy = false;
+  bool _previewStale = false;
+  String? _previewError;
   late Future<_Refs> _refs;
 
   @override
@@ -55,6 +63,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     
     // إعداد المحرر: من Quill Delta (تنسيق كامل) إن وُجد، وإلا نص خام من HTML (مسودات قديمة).
     _quillController = _buildController(b);
+    _quillController.addListener(_markPreviewStale);
 
     _date = b.date;
     _entityId = b.entityId;
@@ -134,38 +143,37 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     };
   }
 
-  /// معاينة داخل البرنامج قبل الحفظ (تُرسِل الحمولة الحالية غير المحفوظة).
-  Future<void> _preview() async {
+  /// يولّد المعاينة في السيرفر ويعرضها في اللوحة الجانبية (تحديث عند الطلب).
+  Future<void> _refreshPreview() async {
     final payload = _buildPayload();
     if (payload == null) return;
-    setState(() { _busy = true; _error = null; });
+    setState(() { _previewBusy = true; _previewError = null; });
     try {
       final bytes = await ref.read(apiClientProvider).previewOutgoing(payload);
       if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => Dialog(
-          insetPadding: const EdgeInsets.all(24),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: PdfPreview(
-              build: (format) => bytes,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              canDebug: false,
-              pdfFileName: 'preview-${widget.book.outgoingId}.pdf',
-            ),
-          ),
-        ),
-      );
+      setState(() { _previewBytes = bytes; _previewStale = false; });
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _previewError = e.message);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _previewBusy = false);
     }
   }
+
+  void _markPreviewStale() {
+    if (_previewBytes == null || _previewStale) return;
+    setState(() => _previewStale = true);
+  }
+
+  Widget _previewPane() => CustomCard(
+        padding: EdgeInsets.zero,
+        child: PdfPreviewPane(
+          bytes: _previewBytes,
+          busy: _previewBusy,
+          stale: _previewStale,
+          error: _previewError,
+          onRefresh: _refreshPreview,
+        ),
+      );
 
   Future<void> _save() async {
     final payload = _buildPayload();
@@ -203,7 +211,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
           final refs = snap.data!;
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1000),
+              constraints: const BoxConstraints(maxWidth: 1700),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -402,22 +410,6 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                           Row(
                             children: [
                               Expanded(
-                                child: SizedBox(
-                                  height: 56,
-                                  child: FilledButton.icon(
-                                    onPressed: _busy ? null : _preview,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: AppColors.gold,
-                                      foregroundColor: AppColors.navyDeep,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                    icon: const Icon(Icons.preview_rounded),
-                                    label: const Text('معاينة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
                                 flex: 2,
                                 child: SizedBox(
                                   height: 56,
@@ -444,6 +436,14 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                  // القسم الأيسر: المعاينة بجانب نص الكتاب (نفس شاشة الإنشاء).
+                  Expanded(
+                    flex: 5,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                      child: _previewPane(),
                     ),
                   ),
                 ],
