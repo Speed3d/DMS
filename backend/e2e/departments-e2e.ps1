@@ -33,9 +33,13 @@ $empFin=MakeEmp "emp_fin" $finance $true    # المالية + صلاحية إد
 $empLeg=MakeEmp "emp_leg" $legal  $false    # القانونية بلا صلاحية
 Ok "موظفان: emp_fin(مالية+إدارة) emp_leg(قانونية)"
 
-# دخول الموظفَين (قد يتطلبان تغيير كلمة مرور أول مرة)
+# دخول الموظفَين — قابل لإعادة التشغيل.
+# Hint: الموظف الجديد يُنشأ بـ 'Emp@12345' ويُجبَر على تغييرها إلى 'Emp@12345new'، فالتشغيل
+# الثاني لا تنفع فيه الكلمة الأولى. نجرّب **الأحدث أولاً** لأن إعادة التشغيل هي الحالة الشائعة،
+# فلا نُراكم محاولات فاشلة (القفل بعد 5). الدخول الناجح يصفّر العدّاد.
 function EmpLogin($user){
-  $r=Api POST "/auth/login" @{username=$user;password='Emp@12345'} $null $null
+  $r=Api POST "/auth/login" @{username=$user;password='Emp@12345new'} $null $null
+  if($r.S -ne 200){ $r=Api POST "/auth/login" @{username=$user;password='Emp@12345'} $null $null }
   if($r.B.mustChangePassword){ $tok=$r.B.accessToken
     $null=Api POST "/auth/change-password" @{currentPassword='Emp@12345';newPassword='Emp@12345new'} $tok $null
     $r=Api POST "/auth/login" @{username=$user;password='Emp@12345new'} $null $null }

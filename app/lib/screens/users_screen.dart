@@ -5,6 +5,22 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../models.dart';
 
+/// الحقول التي ينتجها نموذج المستخدم ولا يقبلها عقد **التعديل**:
+/// اسم المستخدم لا يتغيّر بعد الإنشاء، وكلمة المرور لها مسار مستقل (reset-password).
+const kUserCreateOnlyFields = {'username', 'password'};
+
+/// يبني حمولة تعديل المستخدم من حمولة النموذج بالحذف لا بالانتقاء.
+///
+/// Hint: كانت هذه الحمولة تُبنى بقائمة حقول مختارة يدوياً، فسقط منها `companyIds`
+/// (وأُصلح)، ثم سقط منها `canManageIncoming` و`departmentId` — ولأن عقد الباك-إند
+/// يمنحهما القيمتين الافتراضيتين `false`/`null`، كان كل تعديل **يمسح** قسم الموظف
+/// وصلاحيته بصمت. البناء بالحذف يجعل أي حقل جديد يصل تلقائياً، فلا يتكرّر العيب.
+Map<String, dynamic> buildUserUpdateBody(Map<String, dynamic> formPayload) {
+  final body = Map<String, dynamic>.from(formPayload);
+  body.removeWhere((k, _) => kUserCreateOnlyFields.contains(k));
+  return body;
+}
+
 const _roleLabels = {
   'SuperAdmin': 'سوبر أدمن',
   'President': 'رئيس الشركة',
@@ -86,14 +102,7 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
         builder: (_) => _UserFormPage(roles: _manageableRoles(), existing: u)));
     if (res == null) return;
     try {
-      await ref.read(apiClientProvider).updateUser(u.userId, {
-        'fullName': res['fullName'], 'role': res['role'],
-        'isActive': res['isActive'], 'canApprove': res['canApprove'],
-        // إسناد الشركات (كان مفقوداً ← لهذا كانت التعديلات لا تُحفظ). السوبر أدمن/الرئيس فقط يعدّلانه بالباك-إند.
-        'companyIds': res['companyIds'],
-        // الأقسام تُرسَل فقط إن كان المُعدِّل مانحاً (المدير لا يرسلها ← لا تتغيّر).
-        if (res.containsKey('modules')) 'modules': res['modules'],
-      });
+      await ref.read(apiClientProvider).updateUser(u.userId, buildUserUpdateBody(res));
       if (mounted) _reload();
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));

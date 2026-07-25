@@ -93,7 +93,9 @@
 ## التقارير — `/api/reports`
 | الطريقة | المسار | الوصف |
 |---|---|---|
-| GET | `/financial?from=&to=&entityId=&source=` | تقرير مالي (JSON): يجمع الصادر المعتمد + الأرشيف بالدينار. `source`: All/Outgoing/Archive. الموظف/القارئ: عمله فقط |
+| GET | `/financial?from=&to=&entityId=&source=` | تقرير مالي (JSON): يجمع **الصادر المعتمد + الأرشيف** بالدينار. `source`: `All`/`Outgoing`/`Archive`. الموظف/القارئ: عمله فقط |
+
+> ⚠️ **مصدر «وارد» أُزيل من التقرير (2026-07-25)** بقرار المالك — الكتاب الوارد يُسجَّل للمتابعة لا للمحاسبة. قيمة `source=Incoming` لم تعد تُرجِع صفوفاً. أعمدة المبالغ باقية في `IncomingBooks` فالقرار قابل للتراجع بلا فقدان بيانات.
 | GET | `/financial/pdf?...` | تصدير التقرير PDF (QuestPDF) |
 | GET | `/financial/excel?...` | تصدير التقرير Excel (.xlsx) |
 

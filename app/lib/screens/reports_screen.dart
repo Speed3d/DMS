@@ -109,9 +109,9 @@ class _State extends ConsumerState<ReportsScreen> {
                 initialValue: _source,
                 decoration: const InputDecoration(labelText: 'المصدر', isDense: true),
                 items: const [
+                  // Hint: «الوارد» أُزيل من مصادر التقرير المالي بقرار المالك (2026-07-25).
                   DropdownMenuItem(value: 'All', child: Text('الكل')),
                   DropdownMenuItem(value: 'Outgoing', child: Text('الصادر')),
-                  DropdownMenuItem(value: 'Incoming', child: Text('الوارد')),
                   DropdownMenuItem(value: 'Archive', child: Text('الأرشيف')),
                 ],
                 onChanged: (v) => setState(() => _source = v ?? 'All'),

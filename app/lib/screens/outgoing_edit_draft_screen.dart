@@ -6,6 +6,8 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:printing/printing.dart';
 import '../core/api_client.dart';
 import '../core/quill_html.dart';
+import '../core/quill_toolbar.dart';
+import '../widgets/currency_selector.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -309,15 +311,9 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
-                                      flex: 1,
-                                      child: DropdownButtonFormField<String>(
-                                        isExpanded: true,
-                                        initialValue: _currency,
-                                        decoration: _inputDecoration('العملة', Icons.currency_exchange_rounded),
-                                        items: const [
-                                          DropdownMenuItem(value: 'IQD', child: Text('دينار', overflow: TextOverflow.ellipsis)),
-                                          DropdownMenuItem(value: 'USD', child: Text('دولار', overflow: TextOverflow.ellipsis)),
-                                        ],
+                                      flex: 2,
+                                      child: CurrencySelector(
+                                        value: _currency,
                                         onChanged: (v) => setState(() => _currency = v),
                                       ),
                                     ),
@@ -377,30 +373,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                                     padding: const EdgeInsets.all(8),
                                     child: quill.QuillSimpleToolbar(
                                       controller: _quillController,
-                                      config: const quill.QuillSimpleToolbarConfig(
-                                        multiRowsDisplay: true,
-                                        showAlignmentButtons: true,
-                                        showCodeBlock: false,
-                                        showInlineCode: false,
-                                        showQuote: false,
-                                        showClearFormat: false,
-                                        showSearchButton: false,
-                                        showSubscript: false,
-                                        showSuperscript: false,
-                                        showListCheck: false,
-                                        buttonOptions: quill.QuillSimpleToolbarButtonOptions(
-                                          fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
-                                            renderFontFamilies: false,
-                                            items: {
-                                              'Amiri': 'Amiri',
-                                              'Cairo': 'Cairo',
-                                              'Arial': 'Arial',
-                                              'Times New Roman': 'Times New Roman',
-                                              'مسح': 'Clear',
-                                            },
-                                          ),
-                                        ),
-                                      ),
+                                      config: kQuillToolbarConfig,
                                     ),
                                   ),
                                   

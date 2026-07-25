@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../core/api_client.dart';
+import '../core/quill_toolbar.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -393,6 +394,12 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                             scrollDirection: Axis.horizontal,
                             child: quill.QuillSimpleToolbar(
                               controller: _quillController,
+                              // Hint: كان بلا إعداد فبقي بالخطوط الافتراضية والأحجام المسمّاة.
+                              //       نمنحه خيارات الأزرار نفسها (خطوط عربية + أحجام رقمية)
+                              //       دون تغيير تخطيطه (شريط أفقي قابل للتمرير).
+                              config: const quill.QuillSimpleToolbarConfig(
+                                buttonOptions: kQuillButtonOptions,
+                              ),
                             ),
                           ),
                         ),

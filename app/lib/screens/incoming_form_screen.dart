@@ -20,8 +20,16 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
   final _externalNumber = TextEditingController();
   final _keywords = TextEditingController();
   final _notes = TextEditingController();
-  final _amount = TextEditingController();
-  final _rate = TextEditingController();
+
+  /// قيم مالية **قديمة** بلا واجهة.
+  ///
+  /// Hint: أُلغي كارت التفاصيل المالية من الوارد بقرار المالك (2026-07-25) وأُزيل مصدر «وارد»
+  ///       من التقرير المالي، لكن الأعمدة باقية في القاعدة فلا تُتلف بيانات مُدخَلة سابقاً.
+  ///       نحمل قيم الكتاب ونُعيد إرسالها كما هي، وإلا مسحها أي تعديل لاحق بصمت —
+  ///       وهو نفس عيب «الحمولة الناقصة» الذي أصلحناه في نموذج المستخدم.
+  num? _legacyAmount;
+  String? _legacyCurrency;
+  num? _legacyRate;
 
   DateTime _receivedDate = DateTime.now();
   TimeOfDay? _receivedTime = TimeOfDay.now();
@@ -33,9 +41,7 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
   int? _documentTypeId;
   /// Hint: القيمة تُرسل كما هي للباك-إند — يجب أن تبقى دائماً أحد مفاتيح [kReceiveMethods].
   String _receiveMethod = kDefaultReceiveMethod;
-  String? _currency;
-  
-  bool _showFinancials = false;
+
   bool _busy = false;
   String? _error;
 
@@ -77,12 +83,10 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
         // Hint: حماية من قيمة غير معروفة (بيانات قديمة) — الـ Dropdown يتطلب قيمة ضمن عناصره وإلا تحطّمت الشاشة.
         _receiveMethod = kReceiveMethods.containsKey(d.receiveMethod) ? d.receiveMethod : kDefaultReceiveMethod;
         
-        if (d.amount != null) {
-          _showFinancials = true;
-          _amount.text = d.amount.toString();
-          _currency = d.currency;
-          if (d.exchangeRate != null) _rate.text = d.exchangeRate.toString();
-        }
+        // تُحمَل لتُعاد كما هي (لا واجهة لها) — انظر تعليق الحقول أعلاه.
+        _legacyAmount = d.amount;
+        _legacyCurrency = d.currency;
+        _legacyRate = d.exchangeRate;
       }
 
       return _Refs(entities, docTypes);
@@ -101,18 +105,6 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       return null;
     }
     
-    num? amount;
-    num? rate;
-    if (_showFinancials && _amount.text.trim().isNotEmpty) {
-      amount = num.tryParse(_amount.text.trim());
-      if (amount == null) { setState(() => _error = 'صيغة المبلغ غير صالحة.'); return null; }
-      if (_currency == null) { setState(() => _error = 'يرجى اختيار العملة.'); return null; }
-      if (_currency == 'USD') {
-        rate = num.tryParse(_rate.text.trim());
-        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي للدولار.'); return null; }
-      }
-    }
-
     String? timeStr;
     if (_receivedTime != null) {
       final h = _receivedTime!.hour.toString().padLeft(2, '0');
@@ -132,9 +124,10 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       'folderName': null,
       'keywords': _keywords.text.trim().isEmpty ? null : _keywords.text.trim(),
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-      'amount': amount,
-      'currency': amount == null ? null : _currency,
-      'exchangeRate': rate,
+      // تُعاد كما وردت — لا واجهة لها بعد إلغاء الكارت، وإسقاطها يمسح مبالغ الكتب القديمة.
+      'amount': _legacyAmount,
+      'currency': _legacyAmount == null ? null : _legacyCurrency,
+      'exchangeRate': _legacyRate,
     };
   }
 
@@ -372,73 +365,6 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
                           maxLines: 2,
                           decoration: _inputDecoration('ملاحظات إضافية', Icons.note_rounded),
                         ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // التفاصيل المالية
-                  CustomCard(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
-                              child: const Icon(Icons.monetization_on_rounded, color: AppColors.gold),
-                            ),
-                            const SizedBox(width: 12),
-                            const Flexible(child: Text('التفاصيل المالية (اختياري)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                            const Spacer(),
-                            Switch(
-                              value: _showFinancials,
-                              activeThumbColor: AppColors.gold,
-                              onChanged: (v) => setState(() => _showFinancials = v),
-                            ),
-                          ],
-                        ),
-                        
-                        if (_showFinancials) ...[
-                          const Divider(height: 32),
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: TextField(
-                                  controller: _amount,
-                                  keyboardType: TextInputType.number,
-                                  decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 1,
-                                child: DropdownButtonFormField<String>(
-                                  isExpanded: true,
-                                  initialValue: _currency,
-                                  decoration: _inputDecoration('العملة', Icons.currency_exchange_rounded),
-                                  items: const [
-                                    DropdownMenuItem(value: 'IQD', child: Text('دينار')),
-                                    DropdownMenuItem(value: 'USD', child: Text('دولار')),
-                                  ],
-                                  onChanged: (v) => setState(() => _currency = v),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (_currency == 'USD') ...[
-                            const SizedBox(height: 16),
-                            TextField(
-                              controller: _rate,
-                              keyboardType: TextInputType.number,
-                              decoration: _inputDecoration('سعر الصرف لدينار', Icons.price_change_rounded),
-                            ),
-                          ],
-                        ],
                       ],
                     ),
                   ),

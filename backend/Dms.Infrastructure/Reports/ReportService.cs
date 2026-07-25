@@ -77,20 +77,10 @@ public sealed class ReportService(AppDbContext db, ICurrentUser current) : IRepo
             }));
         }
 
-        var includeIncoming = source is "All" or "Incoming";
-        if (includeIncoming)
-        {
-            var iq = db.IncomingBooks.Where(b => b.AmountInIqd != null);
-            if (OwnOnly) iq = iq.Where(b => b.ReceivedByUserId == current.UserId);
-            if (from is not null) iq = iq.Where(b => b.ReceivedDate >= from);
-            if (to is not null) iq = iq.Where(b => b.ReceivedDate <= to);
-            if (entityId is not null) iq = iq.Where(b => b.EntityId == entityId);
-
-            rows.AddRange(await iq
-                .Select(b => new FinancialReportRow("وارد", b.IncomingNumber ?? b.ExternalNumber!, b.ReceivedDate, b.Entity!.Name,
-                    b.Amount, b.Currency, b.AmountInIqd))
-                .ToListAsync(ct));
-        }
+        // Hint: أُلغي مصدر «وارد» من التقرير المالي بقرار المالك (2026-07-25) لأن الكتاب الوارد
+        //       يُسجَّل للمتابعة لا للمحاسبة، فمبالغه كانت تضخّم الإجمالي بلا معنى مالي.
+        //       أعمدة المبالغ باقية في جدول IncomingBooks (لم تُحذف بـmigration) فالقرار قابل
+        //       للتراجع ببساطة، والبيانات القديمة سليمة.
 
         rows = rows.OrderBy(r => r.Date).ToList();
         var total = rows.Sum(r => r.AmountInIqd ?? 0m);

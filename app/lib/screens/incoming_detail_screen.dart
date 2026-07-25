@@ -401,20 +401,9 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                               const SizedBox(height: 16),
                               _buildInfoRow('القسم المحال إليه', d.departmentName ?? 'غير محال', Icons.apartment_rounded),
                               
-                              if (d.amount != null) ...[
-                                const Divider(height: 32),
-                                const Text('التفاصيل المالية',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                const SizedBox(height: 16),
-                                _buildInfoRow('المبلغ الأصلي', '${_fmt(d.amount!)} ${d.currency == 'USD' ? 'دولار' : 'دينار'}',
-                                    Icons.monetization_on_rounded),
-                                if (d.currency == 'USD') ...[
-                                  const SizedBox(height: 16),
-                                  _buildInfoRow('سعر الصرف', '${d.exchangeRate}', Icons.currency_exchange_rounded),
-                                ],
-                                const SizedBox(height: 16),
-                                _buildInfoRow('المعادل بالدينار', '${_fmt(d.amountInIqd ?? 0)} د.ع', Icons.payments_rounded),
-                              ],
+                              // Hint: أُلغيت التفاصيل المالية من الوارد بقرار المالك (2026-07-25)
+                              //       وأُزيل مصدر «وارد» من التقرير المالي. البيانات القديمة باقية
+                              //       في القاعدة (لا migration حذف) فالقرار قابل للتراجع.
 
                               // ━━━ الارتباط بالصادر ━━━
                               const Divider(height: 32),
@@ -549,9 +538,6 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     }
     return button;
   }
-
-  String _fmt(num n) =>
-      n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }
 
 // ----------------- ويدجت المرفقات -----------------
