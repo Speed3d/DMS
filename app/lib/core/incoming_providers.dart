@@ -13,7 +13,6 @@ class StringNullableNotifier extends Notifier<String?> {
   @override set state(String? value) => super.state = value;
 }
 final incomingStatusFilterProvider = NotifierProvider<StringNullableNotifier, String?>(StringNullableNotifier.new);
-final incomingFolderNameFilterProvider = NotifierProvider<StringNullableNotifier, String?>(StringNullableNotifier.new);
 
 class IntNullableNotifier extends Notifier<int?> {
   @override int? build() => null;
@@ -22,6 +21,7 @@ class IntNullableNotifier extends Notifier<int?> {
 final incomingEntityFilterProvider = NotifierProvider<IntNullableNotifier, int?>(IntNullableNotifier.new);
 final incomingDocTypeFilterProvider = NotifierProvider<IntNullableNotifier, int?>(IntNullableNotifier.new);
 final incomingReceiveMethodFilterProvider = NotifierProvider<IntNullableNotifier, int?>(IntNullableNotifier.new);
+final incomingDepartmentFilterProvider = NotifierProvider<IntNullableNotifier, int?>(IntNullableNotifier.new);
 
 class DateTimeNullableNotifier extends Notifier<DateTime?> {
   @override DateTime? build() => null;
@@ -29,6 +29,13 @@ class DateTimeNullableNotifier extends Notifier<DateTime?> {
 }
 final incomingDateFromFilterProvider = NotifierProvider<DateTimeNullableNotifier, DateTime?>(DateTimeNullableNotifier.new);
 final incomingDateToFilterProvider = NotifierProvider<DateTimeNullableNotifier, DateTime?>(DateTimeNullableNotifier.new);
+
+// ----------------- الأقسام (لفلاتر الوارد وإحالته) -----------------
+final departmentsListProvider = FutureProvider.autoDispose<List<DepartmentModel>>((ref) async {
+  final auth = ref.watch(sessionProvider).auth;
+  if (auth == null) return <DepartmentModel>[];
+  return ref.read(apiClientProvider).departments();
+});
 
 // ----------------- قائمة الكتب الواردة -----------------
 final incomingListProvider = FutureProvider.autoDispose<List<IncomingListItem>>((ref) async {
@@ -42,13 +49,13 @@ final incomingListProvider = FutureProvider.autoDispose<List<IncomingListItem>>(
   final from = ref.watch(incomingDateFromFilterProvider);
   final to = ref.watch(incomingDateToFilterProvider);
   final docType = ref.watch(incomingDocTypeFilterProvider);
-  final folder = ref.watch(incomingFolderNameFilterProvider);
+  final departmentId = ref.watch(incomingDepartmentFilterProvider);
   final receiveMethod = ref.watch(incomingReceiveMethodFilterProvider);
-  
+
   return api.incomingList(
     search: search, status: status, entityId: entityId,
     from: from, to: to, documentTypeId: docType,
-    folderName: folder, receiveMethod: receiveMethod
+    departmentId: departmentId, receiveMethod: receiveMethod
   );
 });
 

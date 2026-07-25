@@ -33,7 +33,14 @@ public class IncomingBook
     
     public IncomingStatus Status { get; set; } = IncomingStatus.New;
     
-    /// <summary>اسم المجلد أو القسم المحول إليه (Hint: نص حر لتسهيل الفرز).</summary>
+    /// <summary>
+    /// القسم المحال إليه الكتاب (اختياري).
+    /// Hint: يحلّ محلّ FolderName النصّي — الإحالة صارت إسناداً حقيقياً لقسم يراه موظفوه.
+    /// </summary>
+    public int? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+
+    /// <summary>[مهجور] اسم القسم كنصّ حر — أُبقي للتوافق الخلفي فقط، والمصدر الآن DepartmentId.</summary>
     public string? FolderName { get; set; }
     
     public string? LastAction { get; set; } // وصف نصي لآخر إجراء تم

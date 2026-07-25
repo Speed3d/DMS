@@ -22,10 +22,10 @@ public sealed class IncomingController(
     public async Task<ActionResult<List<IncomingListItem>>> List(
         [FromQuery] string? search, [FromQuery] string? status, [FromQuery] int? entityId,
         [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-        [FromQuery] int? documentTypeId, [FromQuery] string? folderName,
+        [FromQuery] int? documentTypeId, [FromQuery] int? departmentId,
         [FromQuery] int? receiveMethod, CancellationToken ct)
     {
-        var q = incomingService.Query().Include(b => b.Entity).AsQueryable();
+        var q = incomingService.Query().Include(b => b.Entity).Include(b => b.Department).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(b =>
@@ -55,8 +55,8 @@ public sealed class IncomingController(
         if (documentTypeId.HasValue)
             q = q.Where(b => b.DocumentTypeId == documentTypeId.Value);
 
-        if (!string.IsNullOrWhiteSpace(folderName))
-            q = q.Where(b => b.FolderName == folderName);
+        if (departmentId.HasValue)
+            q = q.Where(b => b.DepartmentId == departmentId.Value);
 
         if (receiveMethod.HasValue)
         {
@@ -68,7 +68,8 @@ public sealed class IncomingController(
         var list = await q.OrderByDescending(b => b.ReceivedDate)
             .Select(b => new IncomingListItem(
                 b.IncomingId, b.IncomingNumber, b.ExternalNumber, b.ReceivedDate,
-                b.Subject, b.Entity!.Name, b.Status, b.FolderName, b.AmountInIqd))
+                b.Subject, b.Entity!.Name, b.Status, b.DepartmentId,
+                b.Department != null ? b.Department.Name : b.FolderName, b.AmountInIqd))
             .ToListAsync(ct);
 
         return Ok(list);
@@ -87,7 +88,7 @@ public sealed class IncomingController(
             b.ExternalNumber, b.ExternalDate, b.ReceivedDate, b.ReceivedTime,
             b.EntityId, d.EntityName, b.Subject, b.DocumentTypeId, d.DocumentTypeName,
             b.ReceiveMethod, b.ReceivedByUserId, d.ReceivedByUserName,
-            b.Status, b.FolderName, b.LastAction, b.Keywords, b.Notes,
+            b.Status, b.DepartmentId, d.DepartmentName ?? b.FolderName, b.LastAction, b.Keywords, b.Notes,
             b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
             b.ReplyOutgoingId, d.ReplyOutgoingNumber, b.CreatedAt);
     }
@@ -126,7 +127,7 @@ public sealed class IncomingController(
     [HttpPost("{id:int}/forward")]
     public async Task<ActionResult<IncomingDetail>> Forward(int id, ForwardRequest req, CancellationToken ct)
     {
-        await incomingService.ForwardAsync(id, req.ToDepartment, req.Note, ct);
+        await incomingService.ForwardAsync(id, req.DepartmentId, req.Note, ct);
         return await Get(id, ct);
     }
 

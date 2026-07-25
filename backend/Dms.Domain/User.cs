@@ -15,6 +15,17 @@ public class User
     /// <summary>صلاحية اعتماد الكتب (المدير فأعلى افتراضياً، أو بتفويض).</summary>
     public bool CanApprove { get; set; }
 
+    /// <summary>
+    /// صلاحية إدارة حالات الكتب الواردة (تغيير الحالة بكل الانتقالات عدا الأرشفة).
+    /// Hint: تُمنح لموظفين مخوّلين — بدونها يقتصر الموظف على «جديد ← قيد المراجعة» (نمط CanApprove للصادر).
+    /// </summary>
+    public bool CanManageIncoming { get; set; }
+
+    /// <summary>القسم الذي يعمل فيه المستخدم (اختياري). Hint: يحدّد أي كتب واردة محالة يراها.</summary>
+    public int? DepartmentId { get; set; }
+
+    public Department? Department { get; set; }
+
     /// <summary>الأقسام المسموح للمستخدم بالوصول إليها (افتراضي: الكل). يُعفى منها السوبر أدمن ورئيس الشركة.</summary>
     public AppModule Modules { get; set; } = AppModule.All;
 

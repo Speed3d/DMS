@@ -11,7 +11,7 @@
 `TemplateId, CompanyId→Company, Name, HeaderImageKey?, FooterImageKey?, WatermarkImageKey?, WatermarkOpacity(0-100), Margin{Top,Right,Bottom,Left}, PageSize, FontFamily, IsActive, CreatedAt, UpdatedAt` — قالب بالصور (مفاتيح Blob).
 
 ### User / UserCompany (تعدد الشركات — ADR-011)
-- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية**), CanApprove, Modules (`AppModule` bitmask، افتراضي All — صلاحيات الأقسام، ADR-012), IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
+- `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية**), CanApprove, CanManageIncoming (إدارة حالات الوارد — ADR-015), DepartmentId?→Department (مكان العمل), Modules (`AppModule` bitmask، افتراضي All — صلاحيات الأقسام، ADR-012), IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.
 - `UserCompany`: `UserCompanyId, UserId, CompanyId` — إسناد المستخدم لشركة (فريد على UserId+CompanyId). المستخدم قد يُربط بشركة أو عدّة شركات؛ الربط صلاحية للسوبر أدمن/رئيس الشركة، ولكل مستخدم غير سوبر أدمن شركة واحدة على الأقل.
 
 ### RefreshToken
@@ -20,9 +20,10 @@
 ### ApprovalDelegation
 `DelegationId, CompanyId, FromUserId, ToUserId, StartDate, EndDate? (null=دائم), IsActive, CreatedByUserId, CreatedAt`.
 
-### Entity (الجهة) / DocumentType
+### Entity (الجهة) / DocumentType / Department
 - `Entity`: `EntityId, CompanyId, Name, Kind(Outgoing/Incoming/Both), Notes?`.
 - `DocumentType`: `DocumentTypeId, CompanyId, Name`.
+- `Department` (ADR-015): `DepartmentId, CompanyId, Name, IsActive, CreatedAt`. فهرس فريد `(CompanyId, Name)`. وجهة إحالة الوارد ومكان عمل الموظف. الحذف محروس (يُرفض إن كان محالاً إليه كتب واردة).
 
 ### ExchangeRate (عام، بلا عزل شركة)
 `ExchangeRateId, Currency, Rate(18,4), EffectiveDate, CreatedByUserId, CreatedAt`.
@@ -32,11 +33,12 @@
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و `Number` (حيث ليست null).
 
 ### IncomingBook (الوارد)
-`IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), FolderName? (القسم — نص حر), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
+`IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), DepartmentId?→Department (القسم المحال إليه — ADR-015), FolderName? (مهجور — نص القسم القديم، للتوافق فقط), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
 - **الترقيم فوري عند الإنشاء** (بخلاف الصادر الذي يترقّم عند الاعتماد): `{Prefix}-IN-{Year}-{Serial:D5}` عبر `NumberingService` بنوع عدّاد `"Incoming"` — فكل كتاب وارد سجل رسمي منذ لحظته.
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و`IncomingNumber` (حيث ليست null). فهارس بحث: `EntityId`, `Status`, `ReceivedDate`.
 - **دورة الحياة:** مصفوفة مغلقة في `Dms.Domain/IncomingWorkflow.cs` (ADR-013) — جديد ← (قيد المراجعة | مغلق) · قيد المراجعة ← (تم الرد | مغلق) · تم الرد ← مغلق · مغلق ← مؤرشف · **مؤرشف نهائي**.
 - **الربط بالصادر:** ثنائي الاتجاه — `IncomingBook.ReplyOutgoingId` ↔ `OutgoingBook.ReplyToIncomingId` (علاقة واحد‑لواحد، `SetNull` عند الحذف).
+- **الإحالة والرؤية (ADR-015):** الإحالة تُسنِد الكتاب لقسم (`DepartmentId`)، والموظف/القارئ يرى كتبه **+ كتب قسمه**. `SetNull` عند حذف القسم.
 
 ### MovementLog (سجل حركة الوارد)
 `MovementId, IncomingId→IncomingBook (Cascade), CompanyId, Action, Description, FromDepartment?, ToDepartment?, PerformedByUserId, PerformedAt`.

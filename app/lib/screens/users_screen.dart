@@ -465,11 +465,14 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   final _password = TextEditingController();
   String? _role;
   bool _canApprove = false;
+  bool _canManageIncoming = false;
+  int? _departmentId;
   bool _isActive = true;
   String? _error;
   List<int> _selectedCompanyIds = [];
   List<String> _selectedModules = [];
   late Future<List<Company>> _companiesFuture;
+  late Future<List<DepartmentModel>> _departmentsFuture;
 
   static const List<String> _allModules = ['Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup'];
   static const Map<String, String> _moduleLabels = {
@@ -493,16 +496,23 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   /// أدوار معفاة من التقييد (وصول كامل دائماً).
   bool get _roleExemptFromModules => _role == 'SuperAdmin' || _role == 'President';
 
+  /// الموظف/القارئ فقط من يُسنَد لقسم أو يُمنح صلاحية إدارة الوارد
+  /// (المدير فأعلى يدير الوارد بحكم دوره، ولا معنى لإسناده لقسم واحد).
+  bool get _isSubordinate => _role == 'Employee' || _role == 'Reader';
+
   @override
   void initState() {
     super.initState();
     _companiesFuture = ref.read(apiClientProvider).companies();
+    _departmentsFuture = ref.read(apiClientProvider).departments();
     final e = widget.existing;
     if (e != null) {
       _fullName.text = e.fullName;
       _username.text = e.username;
       _role = widget.roles.contains(e.role) ? e.role : null;
       _canApprove = e.canApprove;
+      _canManageIncoming = e.canManageIncoming;
+      _departmentId = e.departmentId;
       _isActive = e.isActive;
       _selectedCompanyIds = List.from(e.companyIds);
       _selectedModules = List.from(e.modules);
@@ -544,6 +554,9 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
       'companyIds': _selectedCompanyIds,
       'canApprove': _canApprove,
       'isActive': _isActive,
+      // إدارة الوارد والقسم للموظف/القارئ فقط (المدير فأعلى يديره بحكم دوره).
+      'canManageIncoming': _isSubordinate && _canManageIncoming,
+      'departmentId': _isSubordinate ? _departmentId : null,
       // الأقسام يحدّدها المانح فقط؛ الأدوار المعفاة تُرسَل بكل الأقسام.
       if (_isGranter) 'modules': _roleExemptFromModules ? _allModules : _selectedModules,
     });
@@ -651,8 +664,43 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
               SwitchListTile(
                 value: _canApprove, contentPadding: EdgeInsets.zero,
                 title: const Text('صلاحية الاعتماد'),
+                subtitle: const Text('اعتماد الكتب الصادرة', style: TextStyle(fontSize: 12)),
                 onChanged: (v) => setState(() => _canApprove = v),
               ),
+
+              // القسم وإدارة الوارد — للموظف/القارئ فقط.
+              if (_isSubordinate) ...[
+                const Divider(),
+                FutureBuilder<List<DepartmentModel>>(
+                  future: _departmentsFuture,
+                  builder: (context, snap) {
+                    final all = snap.data ?? const <DepartmentModel>[];
+                    // نعرض النشطة + القسم المختار حالياً حتى لو عُطّل (حتى لا تختفي القيمة).
+                    final items = all.where((d) => d.isActive || d.departmentId == _departmentId).toList();
+                    return DropdownButtonFormField<int?>(
+                      initialValue: _departmentId,
+                      decoration: const InputDecoration(
+                        labelText: 'القسم (مكان العمل)',
+                        helperText: 'يرى الموظف الكتب الواردة المحالة إلى قسمه',
+                        prefixIcon: Icon(Icons.apartment_rounded),
+                      ),
+                      items: [
+                        const DropdownMenuItem<int?>(value: null, child: Text('— بلا قسم —')),
+                        ...items.map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name))),
+                      ],
+                      onChanged: (v) => setState(() => _departmentId = v),
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  value: _canManageIncoming, contentPadding: EdgeInsets.zero,
+                  title: const Text('صلاحية إدارة الوارد'),
+                  subtitle: const Text('تغيير حالة الكتب الواردة (تم الرد · مغلق) — عدا الأرشفة',
+                      style: TextStyle(fontSize: 12)),
+                  onChanged: (v) => setState(() => _canManageIncoming = v),
+                ),
+              ],
+
               if (_isEdit)
                 SwitchListTile(
                   value: _isActive, contentPadding: EdgeInsets.zero,

@@ -134,41 +134,61 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
   }
 
   Future<void> _forwardBook() async {
-    String toDept = '';
+    // الأقسام النشطة فقط تصلح وجهةً للإحالة.
+    final List<DepartmentModel> depts;
+    try {
+      depts = (await ref.read(apiClientProvider).departments()).where((d) => d.isActive).toList();
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+      return;
+    }
+    if (!mounted) return;
+    if (depts.isEmpty) {
+      _snack('لا توجد أقسام. أضِف الأقسام من الإعدادات أولاً.', error: true);
+      return;
+    }
+
+    int? deptId;
     String note = '';
     final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('إحالة الكتاب'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: const InputDecoration(labelText: 'القسم المُحال إليه'),
-              onChanged: (v) => toDept = v,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              decoration: const InputDecoration(labelText: 'ملاحظة أو توجيه'),
-              onChanged: (v) => note = v,
+      builder: (c) => StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title: const Text('إحالة الكتاب لقسم'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int?>(
+                initialValue: deptId,
+                decoration: const InputDecoration(labelText: 'القسم المُحال إليه'),
+                items: depts
+                    .map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name)))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => deptId = v),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(labelText: 'ملاحظة أو توجيه (اختياري)'),
+                onChanged: (v) => note = v,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+            FilledButton(
+              onPressed: deptId == null ? null : () => Navigator.pop(c, true),
+              child: const Text('إحالة'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, toDept.trim().isNotEmpty),
-            child: const Text('إحالة'),
-          ),
-        ],
-      ),
+        );
+      }),
     );
-    if (ok != true) return;
+    if (ok != true || deptId == null) return;
 
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider).forwardIncoming(widget.id, toDept.trim(), note);
+      await ref.read(apiClientProvider).forwardIncoming(widget.id, deptId!, note.trim().isEmpty ? null : note.trim());
       _snack('تمت الإحالة بنجاح.');
       invalidateIncoming(ref);
       _reload();
@@ -379,7 +399,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                               const SizedBox(height: 16),
                               _buildInfoRow('طريقة الاستلام', receiveMethodLabel(d.receiveMethod), Icons.inbox_rounded),
                               const SizedBox(height: 16),
-                              _buildInfoRow('القسم المحال إليه', d.folderName ?? 'غير محدد', Icons.folder_shared_rounded),
+                              _buildInfoRow('القسم المحال إليه', d.departmentName ?? 'غير محال', Icons.apartment_rounded),
                               
                               if (d.amount != null) ...[
                                 const Divider(height: 32),

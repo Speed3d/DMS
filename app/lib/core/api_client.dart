@@ -134,6 +134,19 @@ class ApiClient {
   Future<EntityModel> createEntity(String name, String kind) async =>
       EntityModel.fromJson(await _post('/entities', {'name': name, 'kind': kind}));
 
+  // ---------- الأقسام ----------
+  Future<List<DepartmentModel>> departments() async =>
+      (await _get('/departments') as List).map((e) => DepartmentModel.fromJson(e)).toList();
+
+  Future<DepartmentModel> createDepartment(String name) async =>
+      DepartmentModel.fromJson(await _post('/departments', {'name': name}));
+
+  Future<DepartmentModel> updateDepartment(int id, String name, bool isActive) async =>
+      DepartmentModel.fromJson(await _put('/departments/$id', {'name': name, 'isActive': isActive}));
+
+  /// حذف قسم — يرفضه الخادم بـ 409 إن كان محالاً إليه كتب واردة.
+  Future<void> deleteDepartment(int id) => _delete('/departments/$id');
+
   Future<List<TemplateModel>> templates() async =>
       (await _get('/templates') as List).map((e) => TemplateModel.fromJson(e)).toList();
 
@@ -252,7 +265,7 @@ class ApiClient {
   Future<List<IncomingListItem>> incomingList({
     String? search, String? status, int? entityId,
     DateTime? from, DateTime? to, int? documentTypeId,
-    String? folderName, int? receiveMethod,
+    int? departmentId, int? receiveMethod,
   }) async {
     final q = <String, dynamic>{};
     if (search != null && search.isNotEmpty) q['search'] = search;
@@ -261,7 +274,7 @@ class ApiClient {
     if (from != null) q['from'] = from.toIso8601String();
     if (to != null) q['to'] = to.toIso8601String();
     if (documentTypeId != null) q['documentTypeId'] = documentTypeId;
-    if (folderName != null && folderName.isNotEmpty) q['folderName'] = folderName;
+    if (departmentId != null) q['departmentId'] = departmentId;
     if (receiveMethod != null) q['receiveMethod'] = receiveMethod;
     return (await _get('/incoming', query: q) as List).map((e) => IncomingListItem.fromJson(e)).toList();
   }
@@ -278,8 +291,8 @@ class ApiClient {
   Future<IncomingDetail> changeIncomingStatus(int id, String status, String? note) async =>
       IncomingDetail.fromJson(await _post('/incoming/$id/status', {'status': status, 'note': note}));
 
-  Future<IncomingDetail> forwardIncoming(int id, String toDepartment, String? note) async =>
-      IncomingDetail.fromJson(await _post('/incoming/$id/forward', {'toDepartment': toDepartment, 'note': note}));
+  Future<IncomingDetail> forwardIncoming(int id, int departmentId, String? note) async =>
+      IncomingDetail.fromJson(await _post('/incoming/$id/forward', {'departmentId': departmentId, 'note': note}));
 
   Future<IncomingDetail> linkIncoming(int id, int outgoingId) async =>
       IncomingDetail.fromJson(await _post('/incoming/$id/link/$outgoingId', null));

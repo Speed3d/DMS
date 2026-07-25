@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../models.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 
@@ -44,15 +45,16 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isSuper = ref.watch(sessionProvider).auth?.isSuperAdmin ?? false;
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         children: [
           Row(
             children: [
               const Expanded(
-                child: TabBar(tabs: [
+                child: TabBar(isScrollable: true, tabs: [
                   Tab(text: 'الشركات'),
                   Tab(text: 'الجهات'),
+                  Tab(text: 'الأقسام'),
                   Tab(text: 'القوالب'),
                   Tab(text: 'أسعار الصرف'),
                 ]),
@@ -72,6 +74,7 @@ class SettingsScreen extends ConsumerWidget {
             child: TabBarView(children: [
               _CompaniesTab(canCreate: isSuper),
               const _EntitiesTab(),
+              const _DepartmentsTab(),
               const _TemplatesTab(),
               const _RatesTab(),
             ]),
@@ -115,7 +118,7 @@ Future<Map<String, String>?> _prompt(BuildContext context, String title, List<_F
 class _Field {
   final String key, label;
   String val;
-  _Field(this.key, this.label) : val = '';
+  _Field(this.key, this.label, {String initial = ''}) : val = initial;
 }
 
 class _PromptPage extends StatefulWidget {
@@ -318,6 +321,132 @@ class _EntitiesTabState extends ConsumerState<_EntitiesTab> {
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     tooltip: 'حذف الجهة',
                     onPressed: () => _deleteEntity(e),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+}
+
+// ----- الأقسام -----
+/// إدارة أقسام الشركة (وجهات إحالة الوارد ومواقع عمل الموظفين).
+class _DepartmentsTab extends ConsumerStatefulWidget {
+  const _DepartmentsTab();
+  @override
+  ConsumerState<_DepartmentsTab> createState() => _DepartmentsTabState();
+}
+
+class _DepartmentsTabState extends ConsumerState<_DepartmentsTab> {
+  late Future<List<DepartmentModel>> _f;
+  @override
+  void initState() { super.initState(); _f = ref.read(apiClientProvider).departments(); }
+  void _reload() => setState(() { _f = ref.read(apiClientProvider).departments(); });
+
+  Future<void> _add() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final r = await _prompt(context, 'قسم جديد', [_Field('name', 'اسم القسم (مثل: المالية)')]);
+    if (r == null || r['name']!.trim().isEmpty) return;
+    try {
+      await ref.read(apiClientProvider).createDepartment(r['name']!.trim());
+      if (mounted) _reload();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _rename(DepartmentModel d) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final r = await _prompt(context, 'تعديل القسم', [_Field('name', 'اسم القسم', initial: d.name)]);
+    if (r == null || r['name']!.trim().isEmpty) return;
+    try {
+      await ref.read(apiClientProvider).updateDepartment(d.departmentId, r['name']!.trim(), d.isActive);
+      if (mounted) _reload();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _toggleActive(DepartmentModel d) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiClientProvider).updateDepartment(d.departmentId, d.name, !d.isActive);
+      if (mounted) _reload();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _delete(DepartmentModel d) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف قسم'),
+        content: Text('هل تريد حذف القسم «${d.name}»؟\n'
+            'لن يتم الحذف إن كان محالاً إليه كتب واردة — عطّله بدل حذفه في تلك الحالة.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(apiClientProvider).deleteDepartment(d.departmentId);
+      if (mounted) _reload();
+      messenger.showSnackBar(SnackBar(content: Text('تم حذف القسم «${d.name}».'), backgroundColor: Colors.green));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<DepartmentModel>>(
+        future: _f,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
+          final list = snap.data ?? const <DepartmentModel>[];
+          return _Section(
+            addLabel: 'قسم جديد',
+            onAdd: _add,
+            children: [
+              if (list.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('لا توجد أقسام بعد. أضِف أقسام الشركة (الإدارة · المتابعة · المالية …) '
+                      'لتتمكّن من إحالة الكتب الواردة إليها.', style: TextStyle(color: Colors.grey)),
+                ),
+              for (final d in list)
+                ListTile(
+                  leading: Icon(Icons.apartment_rounded,
+                      color: d.isActive ? null : Colors.grey),
+                  title: Text(d.name,
+                      style: TextStyle(
+                          decoration: d.isActive ? null : TextDecoration.lineThrough,
+                          color: d.isActive ? null : Colors.grey)),
+                  subtitle: d.isActive ? null : const Text('معطّل', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(d.isActive ? Icons.toggle_on : Icons.toggle_off,
+                            color: d.isActive ? Colors.green : Colors.grey, size: 28),
+                        tooltip: d.isActive ? 'تعطيل' : 'تفعيل',
+                        onPressed: () => _toggleActive(d),
+                      ),
+                      IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'تعديل', onPressed: () => _rename(d)),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        tooltip: 'حذف',
+                        onPressed: () => _delete(d),
+                      ),
+                    ],
                   ),
                 ),
             ],

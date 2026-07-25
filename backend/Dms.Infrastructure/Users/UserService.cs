@@ -7,9 +7,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Dms.Infrastructure.Users;
 
 public sealed record CreateUserInput(
-    string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules);
+    string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules,
+    bool CanManageIncoming = false, int? DepartmentId = null);
 
-public sealed record UpdateUserInput(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules);
+public sealed record UpdateUserInput(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules,
+    bool CanManageIncoming = false, int? DepartmentId = null);
 
 public interface IUserService
 {
@@ -51,6 +53,8 @@ public sealed class UserService(
             throw new ValidationException("يجب إسناد المستخدم لشركة واحدة على الأقل.");
         int? primaryCompanyId = companyIds.Any() ? companyIds.First() : null;
 
+        await ValidateDepartmentAsync(input.DepartmentId, primaryCompanyId, ct);
+
         var user = new User
         {
             FullName = input.FullName.Trim(),
@@ -59,6 +63,9 @@ public sealed class UserService(
             Role = input.Role,
             CompanyId = primaryCompanyId,
             CanApprove = input.CanApprove || RoleHierarchy.IsManagerOrAbove(input.Role),
+            // المدير فأعلى يدير الوارد بحكم دوره؛ ولغيره تُمنح الصلاحية صراحةً.
+            CanManageIncoming = input.CanManageIncoming || RoleHierarchy.IsManagerOrAbove(input.Role),
+            DepartmentId = input.DepartmentId,
             Modules = ResolveModules(input.Modules, input.Role),
             IsActive = true,
             MustChangePassword = true,
@@ -82,10 +89,14 @@ public sealed class UserService(
         EnsureCanManage(input.Role);    // الدور الجديد
         if (user.UserId == current.UserId) throw new ValidationException("لا يمكنك تعديل دورك بنفسك.");
 
+        await ValidateDepartmentAsync(input.DepartmentId, user.CompanyId, ct);
+
         user.FullName = input.FullName.Trim();
         user.Role = input.Role;
         user.IsActive = input.IsActive;
         user.CanApprove = input.CanApprove || RoleHierarchy.IsManagerOrAbove(input.Role);
+        user.CanManageIncoming = input.CanManageIncoming || RoleHierarchy.IsManagerOrAbove(input.Role);
+        user.DepartmentId = input.DepartmentId;
 
         // الأقسام: السوبر أدمن/الرئيس معفيان (All)؛ غيرهما يحدّدها السوبر أدمن/الرئيس فقط عند إرسالها.
         if (input.Role is UserRole.SuperAdmin or UserRole.President)
@@ -136,6 +147,20 @@ public sealed class UserService(
         var role = current.Role ?? throw new ForbiddenException("غير مصرّح.");
         if (!RoleHierarchy.CanManage(role, targetRole))
             throw new ForbiddenException("لا تملك صلاحية إدارة هذا المستوى.");
+    }
+
+    /// <summary>
+    /// يتحقق أن القسم موجود ضمن شركة المستخدم (Hint: يمنع إسناد موظف لقسم شركة أخرى).
+    /// </summary>
+    private async Task ValidateDepartmentAsync(int? departmentId, int? companyId, CancellationToken ct)
+    {
+        if (departmentId is null) return;
+        if (companyId is null)
+            throw new ValidationException("لا يمكن إسناد قسم لمستخدم بلا شركة.");
+        var ok = await db.Departments.IgnoreQueryFilters()
+            .AnyAsync(d => d.DepartmentId == departmentId && d.CompanyId == companyId, ct);
+        if (!ok)
+            throw new ValidationException("القسم المحدّد غير موجود في شركة المستخدم.");
     }
 
     private List<int> ResolveCompanies(List<int>? requested, UserRole role)

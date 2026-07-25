@@ -29,8 +29,9 @@
 | GET `/{id}/images/{kind}` | مصادَق | جلب الصورة |
 
 ## القوائم
-- `/api/entities` — GET (مصادَق) · POST/PUT (Manager+).
+- `/api/entities` — GET (مصادَق) · POST/PUT/DELETE (Manager+؛ الحذف يُرفض 409 إن كانت مستخدَمة).
 - `/api/document-types` — GET (مصادَق) · POST/PUT (Manager+).
+- `/api/departments` — GET (مصادَق) · POST/PUT/DELETE (Manager+). الأقسام: وجهة إحالة الوارد ومكان عمل الموظف (ADR-015). الحذف يُرفض 409 إن كان محالاً إليه كتب واردة (يُقترح التعطيل).
 - `/api/exchange-rates` — GET `/` · GET `/latest?currency=USD` · POST (Manager+).
 
 ## المستخدمون والتفويض
@@ -57,12 +58,13 @@
 
 | الطريقة | المسار | الوصف |
 |---|---|---|
-| GET | `/?search=&status=&entityId=&from=&to=&documentTypeId=&folderName=&receiveMethod=` | بحث (نصّي في الرقم الداخلي/الخارجي والموضوع والكلمات المفتاحية والملاحظات واسم الجهة). قيمة `status` أو `receiveMethod` غير صحيحة → **400** |
+| GET | `/?search=&status=&entityId=&from=&to=&documentTypeId=&departmentId=&receiveMethod=` | بحث (نصّي في الرقم الداخلي/الخارجي والموضوع والكلمات المفتاحية والملاحظات واسم الجهة). قيمة `status` أو `receiveMethod` غير صحيحة → **400**. الموظف/القارئ يرى كتبه + كتب قسمه (ADR-015) |
 | GET | `/{id}` | تفاصيل (تتضمّن اسم الجهة ونوع المستند واسم المستلم ورقم الصادر المرتبط) |
 | POST | `/` | تسجيل كتاب وارد (Employee+) — **ترقيم فوري** `PREFIX-IN-YEAR-#####`، الحالة الابتدائية `New` |
 | PUT | `/{id}` | تعديل — المدير فأعلى في أي حالة عدا `Archived`؛ المنشئ في حالة `New` فقط |
 | POST | `/{id}/status` | تغيير الحالة `{status,note}` — يخضع لمصفوفة الانتقالات (ADR-013). الأرشفة للمدير فأعلى؛ الموظف/القارئ: `New→InReview` فقط. الملاحظة **إلزامية** عند `Replied` يدوياً بلا ربط بصادر |
-| POST | `/{id}/forward` | إحالة لقسم `{toDepartment,note}` — للحالتين `New`/`InReview` فقط، وتنقل `New` تلقائياً إلى `InReview` |
+| POST | `/{id}/forward` | إحالة لقسم `{departmentId,note}` — للحالتين `New`/`InReview` فقط، وتنقل `New` تلقائياً إلى `InReview`. الكتاب يظهر بعدها لموظفي القسم |
+| POST | `/{id}/status` | تغيير الحالة — الموظف يقتصر على `New→InReview` إلا بصلاحية `CanManageIncoming` فيدير كل الحالات عدا الأرشفة (ADR-015) |
 | POST | `/{id}/link/{outgoingId}` | ربط بصادر **معتمد** (Manager+) → الحالة `Replied`. يُرفض على المغلق/المؤرشف، ويُرفض الربط المزدوج من الطرفين (**409**) |
 | DELETE | `/{id}/link` | فك الارتباط (Manager+) — يُعيد `Replied` إلى `InReview`؛ يُرفض على المؤرشف أو بلا ارتباط (**400**) |
 | DELETE | `/{id}` | حذف ناعم — المنشئ وهو `New`؛ المدير فأعلى لبقية الحالات؛ **المؤرشف: SuperAdmin فقط** |

@@ -192,6 +192,8 @@ class UserModel {
   final bool isActive;
   final bool mustChangePassword;
   final List<String> modules;
+  final bool canManageIncoming;
+  final int? departmentId;
 
   UserModel({
     required this.userId,
@@ -203,6 +205,8 @@ class UserModel {
     required this.isActive,
     required this.mustChangePassword,
     required this.modules,
+    required this.canManageIncoming,
+    required this.departmentId,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> j) => UserModel(
@@ -215,7 +219,20 @@ class UserModel {
         isActive: j['isActive'] ?? true,
         mustChangePassword: j['mustChangePassword'] ?? false,
         modules: j['modules'] != null ? List<String>.from(j['modules']) : const [],
+        canManageIncoming: j['canManageIncoming'] ?? false,
+        departmentId: j['departmentId'],
       );
+}
+
+/// قسم داخل الشركة (وجهة إحالة الوارد ومكان عمل الموظف).
+class DepartmentModel {
+  final int departmentId;
+  final int companyId;
+  final String name;
+  final bool isActive;
+  DepartmentModel(this.departmentId, this.companyId, this.name, this.isActive);
+  factory DepartmentModel.fromJson(Map<String, dynamic> j) => DepartmentModel(
+      j['departmentId'], j['companyId'], j['name'] ?? '', j['isActive'] ?? true);
 }
 
 class DelegationModel {
@@ -543,7 +560,8 @@ class IncomingListItem {
   final String subject;
   final String entityName;
   final String status;
-  final String? folderName;
+  final int? departmentId;
+  final String? departmentName;
   final num? amountInIqd;
 
   IncomingListItem({
@@ -554,7 +572,8 @@ class IncomingListItem {
     required this.subject,
     required this.entityName,
     required this.status,
-    required this.folderName,
+    required this.departmentId,
+    required this.departmentName,
     required this.amountInIqd,
   });
 
@@ -566,7 +585,8 @@ class IncomingListItem {
         subject: j['subject'] ?? '',
         entityName: j['entityName'] ?? '',
         status: j['status'] ?? 'New',
-        folderName: j['folderName'],
+        departmentId: j['departmentId'],
+        departmentName: j['departmentName'],
         amountInIqd: j['amountInIqd'],
       );
 }
@@ -590,7 +610,8 @@ class IncomingDetail {
   final int receivedByUserId;
   final String receivedByUserName;
   final String status;
-  final String? folderName;
+  final int? departmentId;
+  final String? departmentName;
   final String? lastAction;
   final String? keywords;
   final String? notes;
@@ -607,7 +628,7 @@ class IncomingDetail {
     this.externalNumber, this.externalDate, required this.receivedDate, this.receivedTime,
     required this.entityId, required this.entityName, required this.subject, this.documentTypeId, this.documentTypeName,
     required this.receiveMethod, required this.receivedByUserId, required this.receivedByUserName,
-    required this.status, this.folderName, this.lastAction, this.keywords, this.notes,
+    required this.status, this.departmentId, this.departmentName, this.lastAction, this.keywords, this.notes,
     this.amount, this.currency, this.exchangeRate, this.amountInIqd,
     this.replyOutgoingId, this.replyOutgoingNumber, required this.createdAt,
   });
@@ -631,7 +652,8 @@ class IncomingDetail {
         receivedByUserId: j['receivedByUserId'] ?? 0,
         receivedByUserName: j['receivedByUserName'] ?? '',
         status: j['status'] ?? 'New',
-        folderName: j['folderName'],
+        departmentId: j['departmentId'],
+        departmentName: j['departmentName'],
         lastAction: j['lastAction'],
         keywords: j['keywords'],
         notes: j['notes'],

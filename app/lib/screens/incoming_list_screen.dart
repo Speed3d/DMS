@@ -95,6 +95,37 @@ class IncomingListScreen extends ConsumerWidget {
                 ),
               );
 
+              // فلتر القسم — يعرض الأقسام المحال إليها، ليتابع المدير عمل كل قسم.
+              final deptFilterWidget = Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.dividerColor, width: 1.5),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final deptsAsync = ref.watch(departmentsListProvider);
+                      final selected = ref.watch(incomingDepartmentFilterProvider);
+                      final depts = deptsAsync.asData?.value ?? const <DepartmentModel>[];
+                      return DropdownButton<int?>(
+                        value: selected,
+                        isExpanded: true,
+                        hint: const Text('القسم', style: TextStyle(fontSize: 14)),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('كل الأقسام')),
+                          ...depts.map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name))),
+                        ],
+                        onChanged: (v) => ref.read(incomingDepartmentFilterProvider.notifier).state = v,
+                      );
+                    },
+                  ),
+                ),
+              );
+
               final buttonWidget = SizedBox(
                 height: 48,
                 child: ElevatedButton.icon(
@@ -127,6 +158,8 @@ class IncomingListScreen extends ConsumerWidget {
                     const SizedBox(height: 16),
                     filterWidget,
                     const SizedBox(height: 16),
+                    deptFilterWidget,
+                    const SizedBox(height: 16),
                     buttonWidget,
                   ],
                 );
@@ -140,9 +173,11 @@ class IncomingListScreen extends ConsumerWidget {
                       children: [
                         Expanded(child: filterWidget),
                         const SizedBox(width: 16),
-                        Expanded(child: buttonWidget),
+                        Expanded(child: deptFilterWidget),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    buttonWidget,
                   ],
                 );
               }
@@ -151,6 +186,8 @@ class IncomingListScreen extends ConsumerWidget {
                   Expanded(flex: 3, child: searchWidget),
                   const SizedBox(width: 16),
                   Expanded(flex: 2, child: filterWidget),
+                  const SizedBox(width: 16),
+                  Expanded(flex: 2, child: deptFilterWidget),
                   const SizedBox(width: 16),
                   buttonWidget,
                 ],
@@ -274,15 +311,15 @@ class IncomingListScreen extends ConsumerWidget {
                                               style: const TextStyle(fontSize: 13, height: 1.5)),
                                         ),
 
-                                        // القسم المحال إليه (FolderName)
+                                        // القسم المحال إليه
                                         Expanded(
                                           flex: 2,
                                           child: Text(
-                                            it.folderName ?? 'غير محدد',
+                                            it.departmentName ?? 'غير محال',
                                             style: TextStyle(
                                                 fontWeight: FontWeight.w600,
                                                 fontSize: 13,
-                                                color: it.folderName == null
+                                                color: it.departmentName == null
                                                     ? Colors.grey
                                                     : theme.textTheme.bodyMedium?.color),
                                           ),

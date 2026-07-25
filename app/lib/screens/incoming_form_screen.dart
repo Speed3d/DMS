@@ -18,7 +18,6 @@ class IncomingFormScreen extends ConsumerStatefulWidget {
 class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
   final _subject = TextEditingController();
   final _externalNumber = TextEditingController();
-  final _folderName = TextEditingController();
   final _keywords = TextEditingController();
   final _notes = TextEditingController();
   final _amount = TextEditingController();
@@ -58,7 +57,6 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
         final d = await api.incomingGet(widget.bookId!);
         _subject.text = d.subject;
         _externalNumber.text = d.externalNumber ?? '';
-        _folderName.text = d.folderName ?? '';
         _keywords.text = d.keywords ?? '';
         _notes.text = d.notes ?? '';
         _receivedDate = d.receivedDate;
@@ -131,7 +129,7 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       'documentTypeId': _documentTypeId,
       'receiveMethod': _receiveMethod,
       'subject': _subject.text.trim(),
-      'folderName': _folderName.text.trim().isEmpty ? null : _folderName.text.trim(),
+      'folderName': null,
       'keywords': _keywords.text.trim().isEmpty ? null : _keywords.text.trim(),
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'amount': amount,
@@ -361,12 +359,8 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        TextField(
-                          controller: _folderName,
-                          decoration: _inputDecoration('القسم المحال إليه (الإحالة الافتراضية)', Icons.folder_shared_rounded),
-                        ),
-                        const SizedBox(height: 16),
-                        
+                        // Hint: القسم لم يعُد يُكتب هنا — يُسنَد بإجراء «إحالة لقسم» من شاشة التفاصيل،
+                        //       فتظهر الكتب المُحالة تلقائياً لموظفي القسم.
                         TextField(
                           controller: _keywords,
                           decoration: _inputDecoration('الكلمات المفتاحية (مفصولة بفاصلة)', Icons.key_rounded),

@@ -35,6 +35,11 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool CanApprove => _user?.FindFirstValue(DmsClaims.CanApprove) == "1";
 
+    public bool CanManageIncoming => _user?.FindFirstValue(DmsClaims.CanManageIncoming) == "1";
+
+    public int? DepartmentId =>
+        int.TryParse(_user?.FindFirstValue(DmsClaims.DepartmentId), out var id) ? id : null;
+
     public AppModule AllowedModules
     {
         get

@@ -34,6 +34,7 @@ public class AppDbContext : DbContext
     public DbSet<UserCompany> UserCompanies => Set<UserCompany>();
     public DbSet<ApprovalDelegation> ApprovalDelegations => Set<ApprovalDelegation>();
     public DbSet<Entity> Entities => Set<Entity>();
+    public DbSet<Department> Departments => Set<Department>();
     public DbSet<DocumentType> DocumentTypes => Set<DocumentType>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<OutgoingBook> OutgoingBooks => Set<OutgoingBook>();
@@ -82,6 +83,10 @@ public class AppDbContext : DbContext
             e.HasQueryFilter(x => !_filterByCompany
                 || x.CompanyId == _companyId
                 || x.AssignedCompanies.Any(c => c.CompanyId == _companyId));
+
+            // قسم المستخدم — SetNull عند حذف القسم حتى لا يُمنع حذف قسم بسبب ارتباط مستخدم به.
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<UserCompany>(e =>
@@ -173,11 +178,24 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.ReplyOutgoing).WithMany()
                 .HasForeignKey(x => x.ReplyOutgoingId).OnDelete(DeleteBehavior.SetNull);
 
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+
             e.HasIndex(x => x.EntityId);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.ReceivedDate);
+            e.HasIndex(x => x.DepartmentId);
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- Department (عزل صفّي حسب الشركة) ----
+        b.Entity<Department>(e =>
+        {
+            e.HasKey(x => x.DepartmentId);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(150);
+            e.HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 
         // ---- MovementLog ----

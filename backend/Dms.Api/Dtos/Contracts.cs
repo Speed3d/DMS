@@ -34,14 +34,20 @@ public sealed record EntityResponse(int EntityId, int CompanyId, string Name, En
 public sealed record DocumentTypeRequest(int? CompanyId, string Name);
 public sealed record DocumentTypeResponse(int DocumentTypeId, int CompanyId, string Name);
 
+public sealed record DepartmentRequest(int? CompanyId, string Name, bool IsActive = true);
+public sealed record DepartmentResponse(int DepartmentId, int CompanyId, string Name, bool IsActive);
+
 public sealed record ExchangeRateRequest(Currency Currency, decimal Rate, DateTime EffectiveDate);
 public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency, decimal Rate, DateTime EffectiveDate);
 
 // ----------------- Users / Delegations -----------------
-public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules = null);
-public sealed record UpdateUserRequest(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules = null);
+public sealed record CreateUserRequest(string FullName, string Username, string Password, UserRole Role, List<int>? CompanyIds, bool CanApprove, List<string>? Modules = null,
+    bool CanManageIncoming = false, int? DepartmentId = null);
+public sealed record UpdateUserRequest(string FullName, UserRole Role, List<int>? CompanyIds, bool IsActive, bool CanApprove, List<string>? Modules = null,
+    bool CanManageIncoming = false, int? DepartmentId = null);
 public sealed record ResetPasswordRequest(string NewPassword);
-public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, bool IsActive, bool MustChangePassword, List<string> Modules);
+public sealed record UserResponse(int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds, bool CanApprove, bool IsActive, bool MustChangePassword, List<string> Modules,
+    bool CanManageIncoming, int? DepartmentId);
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);
@@ -94,12 +100,12 @@ public sealed record UpdateIncomingRequest(
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record ChangeStatusRequest(IncomingStatus Status, string? Note);
-public sealed record ForwardRequest(string ToDepartment, string? Note);
+public sealed record ForwardRequest(int DepartmentId, string? Note);
 
 public sealed record IncomingListItem(
     int IncomingId, string? IncomingNumber, string? ExternalNumber,
     DateTime ReceivedDate, string Subject, string EntityName,
-    IncomingStatus Status, string? FolderName, decimal? AmountInIqd);
+    IncomingStatus Status, int? DepartmentId, string? DepartmentName, decimal? AmountInIqd);
 
 public sealed record IncomingDetail(
     int IncomingId, int CompanyId, string? IncomingNumber, int? Year, int? SerialNo,
@@ -107,7 +113,7 @@ public sealed record IncomingDetail(
     DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId, string EntityName,
     string Subject, int? DocumentTypeId, string? DocumentTypeName,
     ReceiveMethod ReceiveMethod, int ReceivedByUserId, string ReceivedByUserName,
-    IncomingStatus Status, string? FolderName, string? LastAction, string? Keywords, string? Notes,
+    IncomingStatus Status, int? DepartmentId, string? DepartmentName, string? LastAction, string? Keywords, string? Notes,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
     int? ReplyOutgoingId, string? ReplyOutgoingNumber, DateTime CreatedAt);
 

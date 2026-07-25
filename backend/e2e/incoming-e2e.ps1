@@ -121,22 +121,33 @@ Expect "قبول: قيد المراجعة ← تم الرد (بملاحظة)" (C
 Expect "رفض: تم الرد ← مؤرشف"                 (ChangeStatus $bid "Archived" $null).Status 400
 Expect "رفض: تم الرد ← قيد المراجعة (رجوع)"    (ChangeStatus $bid "InReview" $null).Status 400
 
-# ─────────────────────────── 4) الإحالة ───────────────────────────
+# ─────────────────────────── 4) الإحالة لقسم ───────────────────────────
 Section "4) الإحالة لقسم"
-Expect "رفض إحالة كتاب في حالة (تم الرد)" (Api POST "/incoming/$bid/forward" @{ toDepartment = "قسم المالية"; note = $null } $adminTok $cid).Status 400
+# تجهيز قسم للإحالة إليه (يُعاد استخدامه إن كان موجوداً).
+$deptName = "قسم المالية (E2E)"
+$existingDept = (Api GET "/departments" $null $adminTok $cid).Body | Where-Object { $_.name -eq $deptName } | Select-Object -First 1
+if ($existingDept) { $deptId = $existingDept.departmentId; Ok "قسم موجود: $deptName" }
+else {
+    $newDept = Api POST "/departments" @{ name = $deptName } $adminTok $cid
+    Expect "إنشاء قسم للإحالة" $newDept.Status 200
+    $deptId = $newDept.Body.departmentId
+}
+Expect "رفض إحالة لقسم غير موجود" (Api POST "/incoming/$bid/forward" @{ departmentId = 999999; note = $null } $adminTok $cid).Status 400
+Expect "رفض إحالة كتاب في حالة (تم الرد)" (Api POST "/incoming/$bid/forward" @{ departmentId = $deptId; note = $null } $adminTok $cid).Status 400
 
 $fresh = (NewBook "كتاب لاختبار الإحالة" $adminTok).Body
-$r = Api POST "/incoming/$($fresh.incomingId)/forward" @{ toDepartment = "قسم المالية"; note = "للدراسة والرأي" } $adminTok $cid
+$r = Api POST "/incoming/$($fresh.incomingId)/forward" @{ departmentId = $deptId; note = "للدراسة والرأي" } $adminTok $cid
 Expect "قبول إحالة كتاب (جديد)" $r.Status 200
 if ($r.Body.status -eq "InReview") { Ok "الإحالة نقلت الحالة إلى (قيد المراجعة)" } else { Bad "الحالة بعد الإحالة: $($r.Body.status)" }
-if ($r.Body.folderName -eq "قسم المالية") { Ok "القسم المحال إليه محفوظ" } else { Bad "القسم: $($r.Body.folderName)" }
+if ($r.Body.departmentName -eq $deptName) { Ok "القسم المحال إليه محفوظ" } else { Bad "القسم: $($r.Body.departmentName)" }
+Expect "بحث بفلتر القسم" (Api GET "/incoming?departmentId=$deptId" $null $adminTok $cid).Status 200
 
 # ─────────────────────────── 5) الإغلاق والأرشفة ───────────────────────────
 Section "5) إتمام الدورة حتى الأرشفة"
 Expect "قبول: تم الرد ← مغلق"        (ChangeStatus $bid "Closed" "انتهت المعاملة").Status 200
 Expect "قبول: مغلق ← مؤرشف"          (ChangeStatus $bid "Archived" "أرشفة نهائية").Status 200
 Expect "رفض: مؤرشف ← جديد"           (ChangeStatus $bid "New" $null).Status 400
-Expect "رفض إحالة كتاب مؤرشف"        (Api POST "/incoming/$bid/forward" @{ toDepartment = "قسم آخر"; note = $null } $adminTok $cid).Status 400
+Expect "رفض إحالة كتاب مؤرشف"        (Api POST "/incoming/$bid/forward" @{ departmentId = $deptId; note = $null } $adminTok $cid).Status 400
 $upd = @{ externalNumber="x"; externalDate=$null; receivedDate="2026-07-21T00:00:00"; receivedTime=$null
           entityId=$eid; subject="تعديل ممنوع"; documentTypeId=$null; receiveMethod="Manual"
           folderName=$null; keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null }
