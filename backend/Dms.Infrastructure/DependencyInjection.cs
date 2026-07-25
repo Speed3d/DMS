@@ -46,6 +46,8 @@ public static class DependencyInjection
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();
         services.AddHostedService<BackupScheduler>();
+        // singleton: صور القوالب ثابتة، والتخزين المؤقت لا يُفيد إن ضاع مع كل طلب.
+        services.AddSingleton<TemplateAssetCache>();
         services.AddScoped<BookRenderer>();
 
         return services;

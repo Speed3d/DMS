@@ -14,7 +14,7 @@ public sealed record PdfRenderResult(byte[] Pdf, string QrContent, string QrSign
 /// <summary>
 /// يحوّل كتاباً صادراً (مجال) إلى PDF/Word: يبني صور القالب، يوقّع الـ QR، ويولّد الملفات.
 /// </summary>
-public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions> qrOptions)
+public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions> qrOptions, TemplateAssetCache assets)
 {
     private readonly QrSigningOptions _qr = qrOptions.Value;
     private readonly PdfGenerator _pdf = new();
@@ -66,17 +66,25 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
         ExchangeRate = book.ExchangeRate,
     };
 
-    private async Task<byte[]> LoadOrPlaceholderAsync(string? key, Func<byte[]> placeholder, CancellationToken ct)
-        => key is not null && await storage.ExistsAsync(key, ct)
-            ? await storage.ReadAsync(key, ct)
-            : placeholder();
+    // Hint: صور القالب ثابتة، فتُخزَّن مؤقتاً بمفتاح التخزين نفسه — وهو يحمل Guid فريداً لكل
+    // رفع، فيُبطل نفسه تلقائياً عند تحديث الصورة (انظر TemplateAssetCache).
 
-    private async Task<byte[]> LoadWatermarkAsync(Template template, CancellationToken ct)
+    private Task<byte[]> LoadOrPlaceholderAsync(string? key, Func<byte[]> placeholder, CancellationToken ct)
+        => key is null
+            ? Task.FromResult(placeholder())
+            : assets.GetOrAddAsync(key, async () =>
+                await storage.ExistsAsync(key, ct) ? await storage.ReadAsync(key, ct) : placeholder());
+
+    private Task<byte[]> LoadWatermarkAsync(Template template, CancellationToken ct)
     {
-        if (template.WatermarkImageKey is not null && await storage.ExistsAsync(template.WatermarkImageKey, ct))
-            return ImageOps.ApplyOpacity(await storage.ReadAsync(template.WatermarkImageKey, ct), template.WatermarkOpacity);
+        var key = template.WatermarkImageKey;
+        if (key is null)
+            return Task.FromResult(PlaceholderImages.CreateWatermark(template.WatermarkOpacity));
 
-        // العلامة البديلة تُبنى بالشفافية مباشرةً
-        return PlaceholderImages.CreateWatermark(template.WatermarkOpacity);
+        // الشفافية جزء من الناتج المُعالَج، فتدخل في المفتاح: تغييرها وحدها يُنتج صورة مختلفة.
+        return assets.GetOrAddAsync($"{key}|op{template.WatermarkOpacity}", async () =>
+            await storage.ExistsAsync(key, ct)
+                ? ImageOps.ApplyOpacity(await storage.ReadAsync(key, ct), template.WatermarkOpacity)
+                : PlaceholderImages.CreateWatermark(template.WatermarkOpacity));
     }
 }

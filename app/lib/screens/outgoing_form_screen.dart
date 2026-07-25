@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -40,12 +41,49 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
   bool _busy = false;
   String? _error;
 
+  // ── المعاينة الجانبية (البند 5) ──
+  // Hint: التحديث **عند الطلب** لا مع كل حرف. قياسٌ فعلي: توليد معاينة واحدة ~1.5 ثانية
+  // في السيرفر (QuestPDF + خطوط مضمّنة + صور القالب)، فالتحديث التلقائي المستمر كان
+  // سيُثقل السيرفر الداخلي (ADR-016) ويُبطئ الكتابة. يبقى الترقية لاحقاً خياراً مفتوحاً.
+  Uint8List? _previewBytes;
+  bool _previewBusy = false;
+  /// المعاينة المعروضة لم تعد تطابق المدخلات — نُعلم المستخدم بدل أن يظنّها محدَّثة.
+  bool _previewStale = false;
+  String? _previewError;
+
   late Future<_Refs> _refs;
 
   @override
   void initState() {
     super.initState();
     _refs = _loadRefs();
+    // Hint: الربط من مكان واحد بدل `onChanged` موزَّع على كل حقل — أي حقل جديد يُضاف هنا
+    // فقط، ولا يُنسى فيبقى المستخدم أمام معاينة قديمة يظنّها محدَّثة.
+    for (final c in _previewAffectingControllers) {
+      c.addListener(_markPreviewStale);
+    }
+    _quillController.addListener(_markPreviewStale);
+  }
+
+  /// الحقول التي يظهر أثرها في الـPDF.
+  List<TextEditingController> get _previewAffectingControllers =>
+      [_subject, _headerPhrase, _signatoryName, _signatoryTitle, _amount, _rate];
+
+  @override
+  void dispose() {
+    // Hint: لم تكن الشاشة تُحرّر متحكّماتها أصلاً؛ صار ذلك ألزم بعد إضافة المستمعين
+    // (تحرير المتحكّم يُزيل مستمعيه تلقائياً).
+    for (final c in [_subject, _headerPhrase, _signatoryName, _signatoryTitle, _amount, _rate]) {
+      c.dispose();
+    }
+    _quillController.dispose();
+    super.dispose();
+  }
+
+  /// تُستدعى من كل حقل يؤثّر في الناتج.
+  void _markPreviewStale() {
+    if (_previewBytes == null || _previewStale) return;
+    setState(() => _previewStale = true);
   }
 
   Future<_Refs> _loadRefs() async {
@@ -136,51 +174,135 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
     };
   }
 
-  Future<void> _preview() async {
+  /// يولّد المعاينة في السيرفر ويعرضها في اللوحة الجانبية.
+  ///
+  /// Hint: تُستدعى **عند الطلب** (زر التحديث) وعند التغييرات البنيوية النادرة (القالب)،
+  /// لا مع كل حرف — التوليد ~1.5 ثانية فعلياً.
+  Future<void> _refreshPreview() async {
     if (_entitySearchText.trim().isEmpty) {
-      setState(() => _error = 'يرجى إدخال الجهة المستلمة.');
+      setState(() => _previewError = 'أدخل الجهة المستلمة أولاً لتظهر المعاينة.');
       return;
     }
-    
-    setState(() { _busy = true; _error = null; });
-    
+
+    setState(() { _previewBusy = true; _previewError = null; });
+
     try {
       if (_entityId == null) {
         final newE = await ref.read(apiClientProvider).createEntity(_entitySearchText.trim(), 'Both');
         _entityId = newE.entityId;
       }
-      
+
       final payload = _buildPayload();
       if (payload == null) {
-        setState(() => _busy = false);
+        setState(() => _previewBusy = false);
         return;
       }
 
       final bytes = await ref.read(apiClientProvider).previewOutgoing(payload);
       if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => Dialog(
-          insetPadding: const EdgeInsets.all(24),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: PdfPreview(
-              build: (format) => bytes,
-              canChangeOrientation: false,
-              canChangePageFormat: false,
-              canDebug: false,
-              pdfFileName: 'preview-outgoing.pdf',
+      setState(() {
+        _previewBytes = bytes;
+        _previewStale = false;
+      });
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _previewError = e.message);
+    } finally {
+      if (mounted) setState(() => _previewBusy = false);
+    }
+  }
+
+  /// لوحة المعاينة — ترويسة بالحالة وزر تحديث، ثم الـPDF.
+  Widget _previewPane() {
+    return CustomCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+            decoration: const BoxDecoration(
+              color: AppColors.navyDeep,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
             ),
+            child: Row(
+              children: [
+                const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                const Text('معاينة الكتاب',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                // مؤشّر التقادم: يمنع أن يُصدّق المستخدم معاينةً لم تَعُد تطابق ما كتبه.
+                if (_previewStale)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text('غير محدَّثة',
+                        style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                const SizedBox(width: 4),
+                if (_previewBusy)
+                  const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2),
+                    ),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                    tooltip: 'تحديث المعاينة',
+                    onPressed: _refreshPreview,
+                  ),
+              ],
+            ),
+          ),
+          Expanded(child: _previewBody()),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewBody() {
+    if (_previewError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(_previewError!,
+              textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+        ),
+      );
+    }
+    if (_previewBytes == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.description_outlined, size: 48, color: Colors.grey.withValues(alpha: 0.5)),
+              const SizedBox(height: 12),
+              const Text(
+                'اضغط «تحديث المعاينة» لترى شكل الكتاب النهائي\nبالقالب والخط والحجم كما سيُطبع.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            ],
           ),
         ),
       );
-    } on ApiException catch (e) {
-      setState(() => _error = e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
     }
+    final bytes = _previewBytes!;
+    return PdfPreview(
+      build: (format) => bytes,
+      canChangeOrientation: false,
+      canChangePageFormat: false,
+      canDebug: false,
+      allowPrinting: false,
+      pdfFileName: 'preview-outgoing.pdf',
+    );
   }
 
   Future<void> _save() async {
@@ -248,10 +370,12 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
           }
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1000), // شاشة عريضة تناسب المحرر
+              // اتّسع السقف لثلاثة أعمدة (بيانات · محرر · معاينة) بعد إضافة اللوحة الجانبية.
+              constraints: const BoxConstraints(maxWidth: 1700),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isSmall = constraints.maxWidth < 800;
+                  // العتبة أعلى من السابق لأن العمود الثالث يحتاج مساحة؛ دونها نتحوّل لتبويبين.
+                  final isSmall = constraints.maxWidth < 1200;
 
                   final rightPanelContent = [
                     CustomCard(
@@ -341,7 +465,12 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                             initialValue: _templateId,
                             decoration: _inputDecoration('القالب المعتمد', Icons.style_rounded),
                             items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name, overflow: TextOverflow.ellipsis))).toList(),
-                            onChanged: (v) => setState(() => _templateId = v),
+                            // القالب تغيير بنيوي نادر وأثره كبير (ترويسة/تذييل/علامة مائية)
+                            // ⇒ نُحدّث المعاينة تلقائياً، بخلاف الكتابة في المتن.
+                            onChanged: (v) {
+                              setState(() => _templateId = v);
+                              if (_previewBytes != null) _refreshPreview();
+                            },
                           ),
                           const SizedBox(height: 16),
                           
@@ -543,24 +672,10 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                     ),
                   );
 
+                  // Hint: زر «معاينة» المنفصل أُزيل — المعاينة صارت لوحة دائمة بجانب المحرر
+                  // (شاشة عريضة) أو تبويباً (شاشة ضيقة)، بزر تحديث في ترويستها.
                   final actionButtons = Row(
                     children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 56,
-                          child: FilledButton.icon(
-                            onPressed: _busy ? null : _preview,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.gold,
-                              foregroundColor: AppColors.navyDeep,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            icon: const Icon(Icons.preview_rounded),
-                            label: const Text('معاينة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
                       Expanded(
                         flex: 2,
                         child: SizedBox(
@@ -586,16 +701,46 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                     ],
                   );
 
+                  // شاشة ضيقة: تبويبان — قسمةُ العرض هنا تخنق المحرر (قرار المالك).
                   if (isSmall) {
-                    return ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                      children: [
-                        ...rightPanelContent,
-                        const SizedBox(height: 24),
-                        editorSection,
-                        const SizedBox(height: 24),
-                        actionButtons,
-                      ],
+                    return DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          TabBar(
+                            labelColor: AppColors.navyDeep,
+                            indicatorColor: AppColors.gold,
+                            tabs: [
+                              const Tab(icon: Icon(Icons.edit_rounded), text: 'التحرير'),
+                              Tab(
+                                icon: const Icon(Icons.picture_as_pdf_rounded),
+                                // شارة على التبويب تُغني عن فتحه للتحقق.
+                                text: _previewStale ? 'المعاينة •' : 'المعاينة',
+                              ),
+                            ],
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                ListView(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                                  children: [
+                                    ...rightPanelContent,
+                                    const SizedBox(height: 24),
+                                    editorSection,
+                                    const SizedBox(height: 24),
+                                    actionButtons,
+                                  ],
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: _previewPane(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   }
 
@@ -611,7 +756,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                         ),
                       ),
                       
-                      // القسم الأيسر (المحرر والنص)
+                      // القسم الأوسط (المحرر والنص)
                       Expanded(
                         flex: 6,
                         child: Padding(
@@ -623,6 +768,15 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                               actionButtons,
                             ],
                           ),
+                        ),
+                      ),
+
+                      // القسم الأيسر: المعاينة **بجانب نص الكتاب** كما طلب المالك.
+                      Expanded(
+                        flex: 5,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                          child: _previewPane(),
                         ),
                       ),
                     ],
