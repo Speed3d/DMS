@@ -82,6 +82,51 @@ $null=Api POST "/incoming/$($book2.incomingId)/forward" @{departmentId=$legal;no
 $r=Api POST "/incoming/$($book2.incomingId)/status" @{status='Closed';note='محاولة'} $tokLeg $cid
 if($r.S -eq 403){ Ok "موظف القانونية (بلا صلاحية) مُنع من الإغلاق (403)" } else { Bad "الموظف بلا صلاحية أغلق كتاباً! (HTTP $($r.S))" }
 
+Write-Host "`n=== مرفقات كتاب القسم (بلاغ المالك) ===" -ForegroundColor Cyan
+# admin يرفع مرفقاً على الكتاب المُحال للمالية، ثم موظف المالية يجب أن يراه ويرفع مثله.
+# ⚠️ كان فحص المرفقات يقارن بـ CreatedByUserId (قاعدة الصادر/الأرشيف) فيمنع موظف القسم
+#    من مرفقات كتاب **يراه** — «لا تملك صلاحية الوصول لمرفقات عنصر غيرك».
+# Hint: نستخدم curl.exe للرفع — بناء multipart يدوياً في PowerShell هشّ ويُنتج 400.
+$tmpPdf = Join-Path $env:TEMP "dms-dept-e2e.pdf"
+[System.IO.File]::WriteAllBytes($tmpPdf, [Text.Encoding]::ASCII.GetBytes("%PDF-1.4`n% attachment test`n%%EOF"))
+function UploadPdf($tok,$id){
+  $code = & curl.exe -s -o "$env:TEMP\dept-att.json" -w "%{http_code}" -X POST "$Base/incoming/$id/attachments" `
+          -H "Authorization: Bearer $tok" -H "X-Company-Id: $cid" -F "file=@$tmpPdf"
+  return [int]$code }
+
+# كتاب جديد مُحال للمالية — الكتاب الأول صار (تم الرد) فلم تعُد الإحالة مسموحة عليه.
+$b2=(Api POST "/incoming" @{companyId=$cid;receivedDate='2026-07-26T00:00:00';entityId=$eid;subject='مرفقات وإحالة';receiveMethod='Manual'} $admin $cid).B
+$null=Api POST "/incoming/$($b2.incomingId)/forward" @{departmentId=$finance;note='للمالية'} $admin $cid
+
+$upAdmin=UploadPdf $admin $b2.incomingId
+if($upAdmin -eq 200){ Ok "admin رفع مرفقاً على الكتاب" } else { Bad "فشل رفع مرفق admin (HTTP $upAdmin)" }
+
+$attFin=Api GET "/incoming/$($b2.incomingId)/attachments" $null $tokFin $cid
+if($attFin.S -eq 200){ Ok "موظف المالية يرى مرفقات كتاب قسمه ✔ (كان 403)" }
+else { Bad "موظف المالية مُنع من مرفقات كتاب قسمه (HTTP $($attFin.S))" }
+
+$upFin=UploadPdf $tokFin $b2.incomingId
+if($upFin -eq 200){ Ok "موظف المالية يرفع مرفقاً على كتاب قسمه ✔" } else { Bad "مُنع موظف المالية من الرفع (HTTP $upFin)" }
+
+$attLeg=Api GET "/incoming/$($b2.incomingId)/attachments" $null $tokLeg $cid
+if($attLeg.S -eq 404 -or $attLeg.S -eq 403){ Ok "موظف القانونية محجوب عن مرفقات كتاب قسم آخر ✔ العزل" }
+else { Bad "تسرّب: القانونية رأى مرفقات كتاب المالية (HTTP $($attLeg.S))" }
+
+Write-Host "`n=== الإحالة تُخرج الكتاب من القسم: نجاح لا 404 (بلاغ المالك) ===" -ForegroundColor Cyan
+# ⚠️ كان الكونترولر يُنهي الإحالة بقراءة الكتاب، فيردّ 404 **بعد نجاح العملية وحفظها**
+#    إن أخرجتْه من رؤية المنفِّذ — فيرى المستخدم فشلاً لعملٍ تمّ.
+$fwOut=Api POST "/incoming/$($b2.incomingId)/forward" @{departmentId=$legal;note='تحويل للقانونية'} $tokFin $cid
+if($fwOut.S -eq 200 -or $fwOut.S -eq 204){ Ok "إحالة الكتاب لقسم آخر نجحت بلا 404 (HTTP $($fwOut.S)) ✔" }
+else { Bad "الإحالة ردّت خطأً رغم نجاحها (HTTP $($fwOut.S)) $($fwOut.M)" }
+
+$gone=Api GET "/incoming/$($b2.incomingId)" $null $tokFin $cid
+if($gone.S -eq 404){ Ok "الكتاب غادر قسم المالية فعلاً (404 عند القراءة) ✔ الإحالة نُفِّذت" }
+else { Bad "الكتاب ما زال مرئياً للمالية بعد إحالته (HTTP $($gone.S))" }
+
+$legNow=Api GET "/incoming/$($b2.incomingId)" $null $tokLeg $cid
+if($legNow.S -eq 200){ Ok "موظف القانونية صار يرى الكتاب بعد إحالته إليه ✔" }
+else { Bad "القانونية لا يرى الكتاب المُحال إليه (HTTP $($legNow.S))" }
+
 Write-Host "`n============ النتيجة ============" -ForegroundColor Cyan
 Write-Host "  نجح: $pass" -ForegroundColor Green
 Write-Host "  فشل: $fail" -ForegroundColor $(if($fail){'Red'}else{'Green'})

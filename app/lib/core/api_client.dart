@@ -292,11 +292,21 @@ class ApiClient {
   Future<IncomingDetail> updateIncoming(int id, Map<String, dynamic> body) async =>
       IncomingDetail.fromJson(await _put('/incoming/$id', body));
 
-  Future<IncomingDetail> changeIncomingStatus(int id, String status, String? note) async =>
-      IncomingDetail.fromJson(await _post('/incoming/$id/status', {'status': status, 'note': note}));
+  /// تغيير الحالة — يُرجِع `null` إن نجحت العملية و**لم يعُد المستخدم يرى الكتاب** بعدها
+  /// (مثال: أرشفة تُخرجه من نطاقه). الخادم يردّ حينها `204` بلا جسم.
+  Future<IncomingDetail?> changeIncomingStatus(int id, String status, String? note) async =>
+      _detailOrGone(await _post('/incoming/$id/status', {'status': status, 'note': note}));
 
-  Future<IncomingDetail> forwardIncoming(int id, int departmentId, String? note) async =>
-      IncomingDetail.fromJson(await _post('/incoming/$id/forward', {'departmentId': departmentId, 'note': note}));
+  /// إحالة لقسم — تُرجِع `null` إن نجحت الإحالة وخرج الكتاب من قسم المُحيل
+  /// (وهو الوضع الطبيعي حين يُحيل موظفُ قسمٍ كتابَه إلى قسم آخر).
+  Future<IncomingDetail?> forwardIncoming(int id, int departmentId, String? note) async =>
+      _detailOrGone(await _post('/incoming/$id/forward', {'departmentId': departmentId, 'note': note}));
+
+  /// Hint: كان الخادم يُنهي هذه العمليات بقراءة الكتاب، فيردّ **404 بعد نجاح العملية وحفظها**
+  /// إن أخرجته من رؤية المنفِّذ — فيرى المستخدم فشلاً لعملٍ تمّ. صار يردّ `204`، ونترجمها هنا
+  /// إلى «تمّت ولم يعُد الكتاب لديك».
+  IncomingDetail? _detailOrGone(dynamic body) =>
+      body is Map<String, dynamic> ? IncomingDetail.fromJson(body) : null;
 
   Future<IncomingDetail> linkIncoming(int id, int outgoingId) async =>
       IncomingDetail.fromJson(await _post('/incoming/$id/link/$outgoingId', null));

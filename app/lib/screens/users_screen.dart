@@ -620,22 +620,46 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                           style: TextStyle(color: Colors.grey)),
                     )
                   : Column(
-                      children: kAllModules.map((m) {
-                        return CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(kModuleLabels[m] ?? m),
-                          value: access.modules.contains(m),
-                          onChanged: (val) {
-                            final next = List<String>.from(access.modules);
-                            if (val == true) {
-                              if (!next.contains(m)) next.add(m);
-                            } else {
-                              next.remove(m);
-                            }
-                            update(access.copyWith(modules: next));
-                          },
-                        );
+                      children: kAllModules.expand((m) {
+                        final enabled = access.modules.contains(m);
+                        return [
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(kModuleLabels[m] ?? m),
+                            value: enabled,
+                            onChanged: (val) {
+                              final next = List<String>.from(access.modules);
+                              if (val == true) {
+                                if (!next.contains(m)) next.add(m);
+                              } else {
+                                next.remove(m);
+                              }
+                              // إغلاق الوارد يُسقط صلاحيته الفرعية — وإلا بقيت مخزَّنة بلا معنى.
+                              update(m == 'Incoming' && val != true
+                                  ? access.copyWith(modules: next, canManageIncoming: false)
+                                  : access.copyWith(modules: next));
+                            },
+                          ),
+
+                          // ── الصلاحية الفرعية للوارد: تظهر **مُزاحة تحته** ولا تظهر إن كان مُغلقاً ──
+                          // Hint: كانت معروضة أسفل البطاقة بعيداً عن خانة الوارد، فبدت صلاحيةً
+                          // ثانيةً مستقلّة. هي ليست كذلك: «الوارد» يفتح القسم، وهذه تحدّد إلى أي
+                          // مدى يُحرّك الموظف الكتاب. الإزاحة تُظهر التبعية بلا دمجٍ يُفقد التمييز.
+                          if (m == 'Incoming' && enabled && _isSubordinate)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 28),
+                              child: SwitchListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                value: access.canManageIncoming,
+                                title: const Text('إدارة حالات الوارد', style: TextStyle(fontSize: 13)),
+                                subtitle: const Text('«تم الرد» و«مغلق» — الأرشفة تبقى للمدير فأعلى',
+                                    style: TextStyle(fontSize: 11)),
+                                onChanged: (v) => update(access.copyWith(canManageIncoming: v)),
+                              ),
+                            ),
+                        ];
                       }).toList(),
                     ),
 
@@ -647,18 +671,35 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
               onChanged: (v) => update(access.copyWith(canApprove: v)),
             ),
 
-            // القسم وإدارة الوارد — للموظف/القارئ فقط (المدير فأعلى يديره بحكم دوره).
-            if (_isSubordinate) ...[
+            // قسم العمل — للموظف/القارئ فقط (المدير فأعلى لا يُقيَّد بقسم، ADR-015).
+            if (_isSubordinate)
               FutureBuilder<List<DepartmentModel>>(
                 future: _departmentsByCompany[companyId],
                 builder: (context, snap) {
+                  // ⚠️ لا نبني المنسدلة قبل وصول الأقسام: القيمة المحفوظة لن تكون ضمن العناصر
+                  //    بعد، فيفشل تأكيد Flutter («عنصر واحد بالضبط بقيمة كذا») — وهو ما ظهر
+                  //    في سجل الأخطاء بـ dropdown.dart:1028.
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Row(children: [
+                        SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 12),
+                        Text('جارٍ تحميل أقسام الشركة…', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ]),
+                    );
+                  }
                   final all = snap.data ?? const <DepartmentModel>[];
                   // النشطة + القسم المختار حالياً وإن عُطّل، حتى لا تختفي القيمة المحفوظة.
                   final items = all
                       .where((d) => d.isActive || d.departmentId == access.departmentId)
                       .toList();
+                  // حارس أخير: قيمة لا تُقابلها عنصر (قسم حُذف مثلاً) تُعرَض كـ«بلا قسم».
+                  final value = items.any((d) => d.departmentId == access.departmentId)
+                      ? access.departmentId
+                      : null;
                   return DropdownButtonFormField<int?>(
-                    initialValue: access.departmentId,
+                    initialValue: value,
                     decoration: const InputDecoration(
                       labelText: 'القسم (مكان العمل في هذه الشركة)',
                       helperText: 'يرى الموظف الكتب الواردة المحالة إلى قسمه',
@@ -675,15 +716,6 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                   );
                 },
               ),
-              SwitchListTile(
-                value: access.canManageIncoming,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('صلاحية إدارة الوارد'),
-                subtitle: const Text('تغيير حالة الكتب الواردة (تم الرد · مغلق) — عدا الأرشفة',
-                    style: TextStyle(fontSize: 12)),
-                onChanged: (v) => update(access.copyWith(canManageIncoming: v)),
-              ),
-            ],
           ],
         ),
       ),

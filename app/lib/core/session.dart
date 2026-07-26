@@ -20,7 +20,21 @@ class SessionState {
   const SessionState({this.auth, this.activeCompanyId, this.loaded = false, this.bypassCompanySelection = false});
 
   bool get isLoggedIn => auth != null;
-  int? get effectiveCompanyId => activeCompanyId ?? (auth?.companyIds.isNotEmpty == true ? auth!.companyIds.first : null);
+
+  /// الشركة الفعّالة — **مقيّدة بشركات المستخدم الحالي**.
+  ///
+  /// ⚠️ `activeCompanyId` محفوظ على الجهاز، فقد يبقى من مستخدم سابق (سوبر أدمن اختار شركة
+  /// ثم دخل موظفٌ لا يملكها). كان يُمرَّر كما هو في ترويسة `X-Company-Id`، فتعود القوائم
+  /// فارغة بلا أي رسالة — لأن صلاحيات الشركة الخاطئة **تفشل مغلقةً** (ADR-017).
+  /// نتجاهله هنا إن لم يكن ضمن شركات المستخدم بدل أن نُسلّمه للخادم.
+  int? get effectiveCompanyId {
+    // السوبر أدمن غير مقيّد بقائمة شركات (قائمته فارغة أصلاً) — يختار أيّها شاء.
+    if (auth?.isSuperAdmin == true) return activeCompanyId;
+
+    final allowed = auth?.companyIds ?? const <int>[];
+    if (activeCompanyId != null && allowed.contains(activeCompanyId)) return activeCompanyId;
+    return allowed.isNotEmpty ? allowed.first : null;
+  }
   bool get needsCompanySelection =>
       auth != null && (auth!.companyIds.length > 1 || auth!.isSuperAdmin) && activeCompanyId == null && !bypassCompanySelection;
 
@@ -45,6 +59,13 @@ class SessionState {
 }
 
 class SessionNotifier extends Notifier<SessionState> {
+  /// هل استُبدلت الجلسة (دخول/خروج) بينما كان `_load` ما زال يقرأ التخزين؟
+  ///
+  /// Hint: `_load` غير مُنتظَر في `build`، وكان يكتب الحالة عند انتهائه **بلا شرط** —
+  /// فإن سجّل المستخدم دخوله قبل أن يقرأ التخزين، عاد `_load` بقيمٍ قديمة (أو `null`)
+  /// و**مسح الجلسة الجديدة**. وهذا ما جعل أول دخول يبدو فارغاً ثم يعمل بعد إعادة الدخول.
+  bool _sessionReplaced = false;
+
   @override
   SessionState build() {
     _load();
@@ -66,10 +87,17 @@ class SessionNotifier extends Notifier<SessionState> {
     }
     final cidStr = await secureStorage.read(key: _kCompany);
     final cid = cidStr != null ? int.tryParse(cidStr) : prefs.getInt(_kCompany);
+
+    // لا نكتب فوق جلسة أُنشئت بعد أن بدأت القراءة — نكتفي بوسم التحميل منتهياً.
+    if (_sessionReplaced) {
+      state = state.copyWith(loaded: true);
+      return;
+    }
     state = SessionState(auth: auth, activeCompanyId: cid, loaded: true);
   }
 
   Future<void> setAuth(AuthResult auth) async {
+    _sessionReplaced = true;
     const secureStorage = FlutterSecureStorage();
     await secureStorage.write(key: _kAuth, value: jsonEncode(auth.toJson()));
     // إذا لم يكن لديه شركات، cid = null
@@ -117,6 +145,7 @@ class SessionNotifier extends Notifier<SessionState> {
   }
 
   Future<void> logout() async {
+    _sessionReplaced = true;
     const secureStorage = FlutterSecureStorage();
     await secureStorage.delete(key: _kAuth);
     await secureStorage.delete(key: _kCompany);

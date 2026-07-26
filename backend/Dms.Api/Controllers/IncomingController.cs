@@ -121,14 +121,35 @@ public sealed class IncomingController(
     public async Task<ActionResult<IncomingDetail>> ChangeStatus(int id, ChangeStatusRequest req, CancellationToken ct)
     {
         await incomingService.ChangeStatusAsync(id, req.Status, req.Note, ct);
-        return await Get(id, ct);
+        return await DetailAfterMutationAsync(id, ct);
     }
 
     [HttpPost("{id:int}/forward")]
     public async Task<ActionResult<IncomingDetail>> Forward(int id, ForwardRequest req, CancellationToken ct)
     {
         await incomingService.ForwardAsync(id, req.DepartmentId, req.Note, ct);
-        return await Get(id, ct);
+        return await DetailAfterMutationAsync(id, ct);
+    }
+
+    /// <summary>
+    /// يُعيد تفاصيل الكتاب بعد عملية ناجحة — أو <c>204</c> إن لم يعُد المنفِّذ يراه.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ كانت هذه العمليات تُنهي بـ<c>return await Get(id, ct)</c>، فإذا **أخرجت العمليةُ
+    /// الكتابَ من رؤية المنفِّذ** (إحالة موظف لكتاب قسمه إلى قسم آخر، أو أرشفة) فشلت القراءة
+    /// التالية بـ<c>404</c> — **بعد أن كُتب التغيير وحُفظ**. فيرى المستخدم فشلاً لعملية نجحت،
+    /// فيُعيدها أو يظنّ بياناته ضاعت. الردّ الصحيح هنا «تمّت، ولم يعُد الكتاب لديك».
+    /// </remarks>
+    private async Task<ActionResult<IncomingDetail>> DetailAfterMutationAsync(int id, CancellationToken ct)
+    {
+        try
+        {
+            return Map(await incomingService.GetDetailAsync(id, ct));
+        }
+        catch (NotFoundException)
+        {
+            return NoContent();
+        }
     }
 
     [HttpPost("{id:int}/link/{outgoingId:int}")]

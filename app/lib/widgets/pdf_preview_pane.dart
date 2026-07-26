@@ -114,7 +114,11 @@ class PdfPreviewPane extends StatelessWidget {
     }
     final data = bytes!;
     return PdfPreview(
-      build: (format) => data,
+      // ⚠️ نسخة جديدة في كل استدعاء — لا نُمرّر نفس المخزن.
+      // على الويب تُرسِل المكتبة البايتات إلى Web Worker بـ«نقل» (transfer) فيصير المخزن
+      // الأصلي **منفصلاً**، فأي إعادة رسم تالية تفشل بـ
+      // `DataCloneError: ArrayBuffer at index 0 is already detached`.
+      build: (format) => Uint8List.fromList(data),
       canChangeOrientation: false,
       canChangePageFormat: false,
       canDebug: false,

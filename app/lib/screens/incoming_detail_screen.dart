@@ -122,10 +122,17 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
 
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider)
+      final still = await ref.read(apiClientProvider)
           .changeIncomingStatus(widget.id, chosen, note.trim().isEmpty ? null : note.trim());
-      _snack('تم تغيير الحالة بنجاح.');
       invalidateIncoming(ref);
+      if (!mounted) return;
+      if (still == null) {
+        // نجح التغيير لكنه أخرج الكتاب من نطاق رؤية المستخدم (الأرشفة مثلاً).
+        _snack('تم تغيير الحالة — لم يعُد الكتاب ضمن نطاقك.');
+        Navigator.of(context).pop(true);
+        return;
+      }
+      _snack('تم تغيير الحالة بنجاح.');
       _reload();
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -208,9 +215,18 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
 
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider).forwardIncoming(widget.id, deptId!, note.trim().isEmpty ? null : note.trim());
-      _snack('تمت الإحالة بنجاح.');
+      final deptName = depts.firstWhere((d) => d.departmentId == deptId).name;
+      final still = await ref.read(apiClientProvider)
+          .forwardIncoming(widget.id, deptId!, note.trim().isEmpty ? null : note.trim());
       invalidateIncoming(ref);
+      if (!mounted) return;
+      if (still == null) {
+        // الإحالة نجحت وخرج الكتاب من قسم المُحيل — نُغلق الشاشة بدل إعادة تحميل محكومة بالفشل.
+        _snack('تمت الإحالة إلى «$deptName» — لم يعُد الكتاب ضمن قسمك.');
+        Navigator.of(context).pop(true);
+        return;
+      }
+      _snack('تمت الإحالة إلى «$deptName».');
       _reload();
     } on ApiException catch (e) {
       _snack(e.message, error: true);

@@ -273,8 +273,17 @@ if ($EmployeeUser -and $EmployeePwd) {
             Expect "الموظف يسجّل كتاباً وارداً" $sBook.Status 200
             $sid = $sBook.Body.incomingId
             Expect "الموظف: جديد ← قيد المراجعة (مسموح)" (Api POST "/incoming/$sid/status" @{ status = "InReview"; note = $null } $sTok $cid).Status 200
-            Expect "رفض: الموظف يغلق كتاباً"            (Api POST "/incoming/$sid/status" @{ status = "Closed"; note = "إغلاق" } $sTok $cid).Status 403
-            Expect "رفض: الموظف يضع (تم الرد)"          (Api POST "/incoming/$sid/status" @{ status = "Replied"; note = "رد" } $sTok $cid).Status 403
+            # Hint: التوقّع يتبع صلاحية الموظف الفعلية لا افتراضاً ثابتاً — فالسكربت يُشغَّل
+            # بموظفين مختلفين، ومَن يملك CanManageIncoming **يُفترض** أن ينجح لا أن يُمنع.
+            # (كان يفترض دائماً 403 فيفشل زوراً مع موظف مخوّل.)
+            if ($before.canManageIncoming) {
+                Expect "الموظف المخوّل يضع (تم الرد)" (Api POST "/incoming/$sid/status" @{ status = "Replied"; note = "رد" } $sTok $cid).Status 200
+                Expect "الموظف المخوّل يغلق كتاباً"   (Api POST "/incoming/$sid/status" @{ status = "Closed"; note = "إغلاق" } $sTok $cid).Status 200
+                Expect "رفض: حتى المخوّل لا يؤرشف"    (Api POST "/incoming/$sid/status" @{ status = "Archived"; note = "أرشفة" } $sTok $cid).Status 403
+            } else {
+                Expect "رفض: الموظف يغلق كتاباً"            (Api POST "/incoming/$sid/status" @{ status = "Closed"; note = "إغلاق" } $sTok $cid).Status 403
+                Expect "رفض: الموظف يضع (تم الرد)"          (Api POST "/incoming/$sid/status" @{ status = "Replied"; note = "رد" } $sTok $cid).Status 403
+            }
             if ($approved) {
                 Expect "رفض: الموظف يربط بصادر (منع الالتفاف)" (Api POST "/incoming/$sid/link/$($approved.outgoingId)" $null $sTok $cid).Status 403
                 Expect "رفض: الموظف يفك ارتباطاً"              (Api DELETE "/incoming/$sid/link" $null $sTok $cid).Status 403

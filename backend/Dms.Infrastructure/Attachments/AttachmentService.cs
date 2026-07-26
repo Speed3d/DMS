@@ -1,5 +1,6 @@
 using Dms.Documents.Storage;
 using Dms.Domain;
+using Dms.Infrastructure.Incoming;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +16,8 @@ public interface IAttachmentService
 }
 
 public sealed class AttachmentService(
-    AppDbContext db, ICurrentUser current, IAuditService audit, IFileStorage storage) : IAttachmentService
+    AppDbContext db, ICurrentUser current, IAuditService audit, IFileStorage storage,
+    IIncomingService incoming) : IAttachmentService
 {
     private const long MaxBytes = 50 * 1024 * 1024; // 50MB
     private static readonly string[] Allowed = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".zip", ".dwg"];
@@ -93,14 +95,25 @@ public sealed class AttachmentService(
         if (!current.HasModule(requiredModule))
             throw new ForbiddenException("لا تملك صلاحية الوصول لهذا القسم.");
 
+        // ── الوارد: الرؤية ليست «مَن أنشأ» بل قاعدة ADR-015 ──
+        // ⚠️ كان الوارد يُفحَص بـ CreatedByUserId مثل الصادر والأرشيف، فكان موظف القسم يُمنع
+        //    من مرفقات كتاب **مُحال إلى قسمه** («لا تملك صلاحية الوصول لمرفقات عنصر غيرك»)
+        //    رغم أنه يرى الكتاب نفسه. السبب أن قاعدة الرؤية كانت مكتوبة في مكانين فتباعدا.
+        //    نستدعي الآن **نفس** استعلام الخدمة، فلا مجال لتباعد ثانٍ.
+        if (type == OwnerType.Incoming)
+        {
+            var visible = await incoming.Query().AnyAsync(b => b.IncomingId == ownerId, ct);
+            if (!visible)
+                throw new NotFoundException("الكتاب الوارد غير موجود أو لا تملك صلاحية رؤيته.");
+            return;
+        }
+
         int? creator = type switch
         {
             OwnerType.Outgoing => await db.OutgoingBooks.Where(b => b.OutgoingId == ownerId)
                 .Select(b => (int?)b.CreatedByUserId).FirstOrDefaultAsync(ct),
             OwnerType.Archive => await db.ArchiveDocs.Where(a => a.ArchiveId == ownerId)
                 .Select(a => (int?)a.CreatedByUserId).FirstOrDefaultAsync(ct),
-            OwnerType.Incoming => await db.IncomingBooks.Where(b => b.IncomingId == ownerId)
-                .Select(b => (int?)b.CreatedByUserId).FirstOrDefaultAsync(ct),
             _ => null,
         };
         if (creator is null)
