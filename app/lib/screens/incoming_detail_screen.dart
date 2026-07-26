@@ -679,6 +679,10 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
       );
     } on ApiException catch (e) {
       _snack(e.message, error: true);
+    } catch (e) {
+      // Hint: فشل **العرض** ليس فشل شبكة. بلا هذا الفرع كان أي خطأ في رسم الملف يظهر
+      // برسالة «تعذّر الوصول إلى الخادم» فيوجّه التشخيص إلى الاتصال بدل الملف نفسه.
+      _snack('تعذّر عرض هذا الملف داخل البرنامج — جرّب تنزيله.', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
