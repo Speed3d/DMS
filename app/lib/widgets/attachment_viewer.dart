@@ -51,7 +51,12 @@ class AttachmentViewer {
               Flexible(
                 child: isPdf
                     ? PdfPreview(
-                        build: (format) => bytes,
+                        // ⚠️ نسخة جديدة في كل استدعاء — لا نُمرّر نفس المخزن.
+                        // على الويب تُرسِل المكتبة البايتات إلى Web Worker بـ«نقل» (transfer)
+                        // فيصير المخزن الأصلي **منفصلاً**، فأي رسم تالٍ (صفحة أخرى · تكبير ·
+                        // إعادة بناء) يفشل — ويفشل معه زر التنزيل داخل العارض لأنه يقرأ
+                        // نفس المخزن. وهذا ما جعل زر العين يفشل **حتى للأدمن**.
+                        build: (format) => Uint8List.fromList(bytes),
                         canChangeOrientation: false,
                         canChangePageFormat: false,
                         canDebug: false,

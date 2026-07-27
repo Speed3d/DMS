@@ -111,7 +111,9 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1000),
           child: PdfPreview(
-            build: (format) => bytes,
+            // نسخة جديدة في كل استدعاء — تمرير نفس المخزن يجعله «منفصلاً» بعد أول رسم
+            // على الويب (transfer إلى Web Worker) فتفشل الرسمات التالية.
+            build: (format) => Uint8List.fromList(bytes),
             canChangeOrientation: false,
             canChangePageFormat: false,
             canDebug: false,
