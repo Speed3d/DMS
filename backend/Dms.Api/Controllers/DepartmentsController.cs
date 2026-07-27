@@ -90,7 +90,9 @@ public sealed class DepartmentsController(AppDbContext db, ICurrentUser current,
         var d = await db.Departments.FirstOrDefaultAsync(x => x.DepartmentId == id, ct)
                 ?? throw new NotFoundException("القسم غير موجود.");
 
-        var usedInIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.DepartmentId == id, ct);
+        // الأقسام صارت متعدّدة لكل كتاب (ADR-018) — نعدّ الكتب التي **من ضمن** إسناداتها هذا القسم.
+        var usedInIncoming = await db.IncomingBooks.IgnoreQueryFilters()
+            .CountAsync(b => b.Assignments.Any(a => a.DepartmentId == id), ct);
         if (usedInIncoming > 0)
             throw new ConflictException(
                 $"لا يمكن حذف القسم «{d.Name}» لأنه محال إليه {usedInIncoming} كتاب وارد. عطّله بدل حذفه.");

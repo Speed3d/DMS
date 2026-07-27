@@ -161,7 +161,6 @@ public class AppDbContext : DbContext
             e.Property(x => x.Subject).IsRequired().HasMaxLength(500);
             e.Property(x => x.ExternalNumber).HasMaxLength(100);
             e.Property(x => x.Keywords).HasMaxLength(1000);
-            e.Property(x => x.FolderName).HasMaxLength(200);
             e.Property(x => x.LastAction).HasMaxLength(500);
 
             e.Property(x => x.Amount).HasPrecision(18, 2);
@@ -178,15 +177,29 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.ReplyOutgoing).WithMany()
                 .HasForeignKey(x => x.ReplyOutgoingId).OnDelete(DeleteBehavior.SetNull);
 
-            e.HasOne(x => x.Department).WithMany()
-                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
-
             e.HasIndex(x => x.EntityId);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.ReceivedDate);
-            e.HasIndex(x => x.DepartmentId);
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- IncomingAssignment (إحالة لعدة أقسام — ADR-018) ----
+        b.Entity<IncomingAssignment>(e =>
+        {
+            e.HasKey(x => x.IncomingAssignmentId);
+            e.Property(x => x.Note).HasMaxLength(1000);
+
+            // فريد: إعادة الإحالة لقسم موجود تُحدّث ملاحظته ولا تُنشئ سطراً ثانياً.
+            e.HasIndex(x => new { x.IncomingId, x.DepartmentId }).IsUnique();
+
+            e.HasOne(x => x.Incoming).WithMany(b2 => b2.Assignments)
+                .HasForeignKey(x => x.IncomingId).OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict: حذف قسم محال إليه كتب مرفوض أصلاً في DepartmentsController،
+            // فلا نسمح بحذف صامت يُفقد الكتاب إسناده.
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // ---- Department (عزل صفّي حسب الشركة) ----

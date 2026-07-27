@@ -16,7 +16,6 @@ public sealed record CreateIncomingInput(
     string Subject,
     int? DocumentTypeId,
     ReceiveMethod ReceiveMethod,
-    string? FolderName,
     string? Keywords,
     string? Notes,
     decimal? Amount,
@@ -32,7 +31,6 @@ public sealed record UpdateIncomingInput(
     string Subject,
     int? DocumentTypeId,
     ReceiveMethod ReceiveMethod,
-    string? FolderName,
     string? Keywords,
     string? Notes,
     decimal? Amount,
@@ -49,7 +47,13 @@ public sealed record IncomingDetailData(
     string? DocumentTypeName,
     string ReceivedByUserName,
     string? ReplyOutgoingNumber,
-    string? DepartmentName);
+    IReadOnlyList<AssignmentData> Departments);
+
+/// <summary>إسناد قسم مع اسمه واسم مَن أحاله (للعرض).</summary>
+public sealed record AssignmentData(int DepartmentId, string Name, string? Note, string AssignedByUserName, DateTime AssignedAt);
+
+/// <summary>قسم مُحال إليه مع ملاحظته الخاصة (ADR-018).</summary>
+public sealed record ForwardTarget(int DepartmentId, string? Note);
 
 /// <summary>حركة مع اسم منفّذها (Hint: الاسم لا يُخزَّن في السجل بل يُجلب عند العرض).</summary>
 public sealed record MovementLogData(MovementLog Log, string PerformedByUserName);
@@ -62,7 +66,7 @@ public interface IIncomingService
     Task<IncomingBook> CreateAsync(CreateIncomingInput input, CancellationToken ct = default);
     Task<IncomingBook> UpdateAsync(int id, UpdateIncomingInput input, CancellationToken ct = default);
     Task ChangeStatusAsync(int id, IncomingStatus newStatus, string? note, CancellationToken ct = default);
-    Task ForwardAsync(int id, int departmentId, string? note, CancellationToken ct = default);
+    Task ForwardAsync(int id, IReadOnlyList<ForwardTarget> targets, string? generalNote, CancellationToken ct = default);
     Task LinkToOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default);
     Task UnlinkFromOutgoingAsync(int incomingId, CancellationToken ct = default);
     Task SoftDeleteAsync(int id, CancellationToken ct = default);
@@ -80,15 +84,24 @@ public sealed class IncomingService(
     public IQueryable<IncomingBook> Query()
     {
         var q = db.IncomingBooks.AsQueryable();
-        // الموظف/القارئ يرى: كتبه التي استلمها + الكتب المُحالة إلى قسمه (إن كان مُسنَداً لقسم).
-        // Hint: هذا ما يجعل الإحالة مفيدة — كتاب مُحال لـ«المالية» يظهر لكل موظفي المالية.
-        //       المدير فأعلى يرى كل كتب الشركة (بلا تقييد هنا).
+        // الموظف/القارئ يرى ثلاثة أنواع من الكتب:
+        //   1) ما استلمه بنفسه.
+        //   2) ما أُحيل إلى قسمه — وهذا ما يجعل الإحالة مفيدة: كتاب مُحال لـ«المالية»
+        //      يظهر لكل موظفي المالية.
+        //   3) **ما أحاله هو بنفسه إلى أي قسم** — ولو لم يكن مستلِمَه ولا من قسم الوجهة.
+        // المدير فأعلى يرى كل كتب الشركة (بلا تقييد هنا).
+        //
+        // ⚠️ البند (3) ليس تزيّناً: قبله كان موظفُ «المالية» الذي يُحيل كتاباً إلى «القانونية»
+        //    **يفقد رؤيته للكتاب فور إحالته** إن لم يكن مستلِمَه — فيختفي من قائمته عملٌ
+        //    باشره بنفسه ولا يقدر على متابعة مصيره. «مَن أحال يبقى يرى» قاعدةُ متابعةٍ لا
+        //    امتياز، ونستند فيها إلى AssignedByUserId المسجَّل على الإسناد نفسه (ADR-018).
         if (current.Role is UserRole.Employee or UserRole.Reader)
         {
             var uid = current.UserId;
             var dept = current.DepartmentId;
             q = q.Where(b => b.ReceivedByUserId == uid
-                             || (dept != null && b.DepartmentId == dept));
+                             || (dept != null && b.Assignments.Any(a => a.DepartmentId == dept))
+                             || b.Assignments.Any(a => a.AssignedByUserId == uid));
         }
         return q;
     }
@@ -105,7 +118,7 @@ public sealed class IncomingService(
         var book = await Query()
             .Include(b => b.Entity)
             .Include(b => b.ReplyOutgoing)
-            .Include(b => b.Department)
+            .Include(b => b.Assignments).ThenInclude(a => a.Department)
             .FirstOrDefaultAsync(b => b.IncomingId == id, ct)
             ?? throw new NotFoundException("الكتاب الوارد غير موجود أو لا تملك صلاحية رؤيته.");
 
@@ -114,13 +127,25 @@ public sealed class IncomingService(
             : await db.DocumentTypes.Where(d => d.DocumentTypeId == book.DocumentTypeId)
                 .Select(d => d.Name).FirstOrDefaultAsync(ct);
 
+        // أسماء المُحيلين دفعةً واحدة (تفادي N+1)، ثم تُركَّب مع كل إسناد.
+        var assignerIds = book.Assignments.Select(a => a.AssignedByUserId).Distinct().ToList();
+        var assignerNames = new Dictionary<int, string>();
+        foreach (var uid in assignerIds) assignerNames[uid] = await UserNameAsync(uid, ct);
+
+        var departments = book.Assignments
+            .OrderBy(a => a.AssignedAt)
+            .Select(a => new AssignmentData(
+                a.DepartmentId, a.Department?.Name ?? "—", a.Note,
+                assignerNames.TryGetValue(a.AssignedByUserId, out var n) ? n : "—", a.AssignedAt))
+            .ToList();
+
         return new IncomingDetailData(
             book,
             book.Entity?.Name ?? "—",
             docTypeName,
             await UserNameAsync(book.ReceivedByUserId, ct),
             book.ReplyOutgoing?.Number,
-            book.Department?.Name);
+            departments);
     }
 
     public async Task<IncomingBook> CreateAsync(CreateIncomingInput input, CancellationToken ct = default)
@@ -157,7 +182,6 @@ public sealed class IncomingService(
                 Subject = input.Subject.Trim(),
                 DocumentTypeId = input.DocumentTypeId,
                 ReceiveMethod = input.ReceiveMethod,
-                FolderName = input.FolderName?.Trim(),
                 Keywords = input.Keywords?.Trim(),
                 Notes = input.Notes?.Trim(),
                 Amount = input.Amount,
@@ -208,7 +232,6 @@ public sealed class IncomingService(
         book.Subject = input.Subject.Trim();
         book.DocumentTypeId = input.DocumentTypeId;
         book.ReceiveMethod = input.ReceiveMethod;
-        book.FolderName = input.FolderName?.Trim();
         book.Keywords = input.Keywords?.Trim();
         book.Notes = input.Notes?.Trim();
         book.Amount = input.Amount;
@@ -268,60 +291,99 @@ public sealed class IncomingService(
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task ForwardAsync(int id, int departmentId, string? note, CancellationToken ct = default)
+    /// <summary>إحالة الكتاب إلى **قسم واحد أو أكثر** معاً، بملاحظة لكل قسم وملاحظة عامة (ADR-018).</summary>
+    /// <remarks>
+    /// الإحالة **تراكمية**: تُضيف أقساماً ولا تُزيح الموجود (قرار المالك) — لأن الإزاحة الضمنية
+    /// تُفقد قسماً كتابَه بلا أن يقصد أحد. وإعادة الإحالة لقسم موجود **تُحدّث ملاحظته** ولا تُكرّره.
+    /// </remarks>
+    public async Task ForwardAsync(int id, IReadOnlyList<ForwardTarget> targets, string? generalNote, CancellationToken ct = default)
     {
-        // القارئ لا يُحيل: دوره اطّلاع لا معالجة. (كان الإحالة بلا أي قيد دور، فكان القارئ
-        // يستطيع تحويل كتاب رسمي — تشديد مقصود.)
+        // القارئ لا يُحيل: دوره اطّلاع لا معالجة.
         if (current.Role is UserRole.Reader)
             throw new ForbiddenException("القارئ لا يملك صلاحية إحالة الكتب.");
 
-        var book = await GetAsync(id, ct);
+        if (targets is null || targets.Count == 0)
+            throw new ValidationException("اختر قسماً واحداً على الأقل للإحالة إليه.");
 
-        // القسم يجب أن يكون موجوداً ونشطاً وضمن نفس الشركة.
-        var dept = await db.Departments.FirstOrDefaultAsync(
-                       d => d.DepartmentId == departmentId && d.CompanyId == book.CompanyId, ct)
-                   ?? throw new ValidationException("القسم غير موجود في هذه الشركة.");
-        if (!dept.IsActive)
-            throw new ValidationException($"القسم «{dept.Name}» معطّل — لا يمكن الإحالة إليه.");
+        var book = await db.IncomingBooks.Include(b => b.Assignments)
+                       .FirstOrDefaultAsync(b => b.IncomingId == id, ct) is { } found
+                       && (await Query().AnyAsync(b => b.IncomingId == id, ct))
+                   ? found
+                   : throw new NotFoundException("الكتاب الوارد غير موجود أو لا تملك صلاحية رؤيته.");
 
-        // Hint: الإحالة إجراء تشغيلي على كتاب قيد المعالجة — لا تُقبل على كتاب مغلق أو مؤرشف
-        // (وإلا أعادت السجل الرسمي إلى قيد المراجعة).
+        // Hint: الإحالة إجراء تشغيلي على كتاب قيد المعالجة — لا تُقبل على مغلق أو مؤرشف.
         if (!IncomingWorkflow.IsOperable(book.Status))
             throw new ValidationException(
                 $"لا يمكن إحالة كتاب في حالة ({ArabicName(book.Status)}) — الإحالة متاحة للكتب (جديد) أو (قيد المراجعة) فقط.");
 
-        // اسم القسم السابق للسجلّ (Hint: من العلاقة إن وُجدت، وإلا الحقل النصّي المهجور للكتب القديمة).
-        var oldDeptName = book.DepartmentId is not null
-            ? await db.Departments.Where(d => d.DepartmentId == book.DepartmentId).Select(d => d.Name).FirstOrDefaultAsync(ct)
-            : book.FolderName;
+        var wantedIds = targets.Select(t => t.DepartmentId).Distinct().ToList();
+        var depts = await db.Departments
+            .Where(d => wantedIds.Contains(d.DepartmentId) && d.CompanyId == book.CompanyId)
+            .ToListAsync(ct);
 
-        book.DepartmentId = dept.DepartmentId;
-        book.FolderName = dept.Name; // نُبقي النصّ متزامناً لعرض سريع بلا Join إضافي.
-        if (book.Status == IncomingStatus.New)
-            book.Status = IncomingStatus.InReview;  // الإحالة تنقل الكتاب الجديد تلقائياً لقيد المراجعة
-        book.LastAction = $"محال إلى {dept.Name}";
-        book.UpdatedAt = DateTime.UtcNow;
-
-        var description = $"تم التحويل من ({oldDeptName ?? "غير محدد"}) إلى ({dept.Name})";
-        if (!string.IsNullOrWhiteSpace(note)) description += $". ملاحظة: {note.Trim()}";
-
-        var log = new MovementLog
+        // نتحقّق من **كل** الأقسام قبل تعديل أي شيء — إحالة نصفية أسوأ من رفض كامل.
+        foreach (var wanted in wantedIds)
         {
-            CompanyId = book.CompanyId,
-            IncomingId = book.IncomingId,
-            Action = "Forwarded",
-            Description = description,
-            FromDepartment = oldDeptName,
-            ToDepartment = dept.Name,
-            PerformedByUserId = current.UserId!.Value,
-            PerformedAt = DateTime.UtcNow
-        };
-        db.MovementLogs.Add(log);
+            var d = depts.FirstOrDefault(x => x.DepartmentId == wanted)
+                    ?? throw new ValidationException("أحد الأقسام المحدّدة غير موجود في هذه الشركة.");
+            if (!d.IsActive)
+                throw new ValidationException($"القسم «{d.Name}» معطّل — لا يمكن الإحالة إليه.");
+        }
 
-        audit.Add("Forward", nameof(IncomingBook), id.ToString(), dept.Name, book.CompanyId);
+        var now = DateTime.UtcNow;
+        var uid = current.UserId!.Value;
+        var added = new List<string>();
+        var general = generalNote?.Trim();
+
+        foreach (var t in targets)
+        {
+            var dept = depts.First(d => d.DepartmentId == t.DepartmentId);
+            var note = string.IsNullOrWhiteSpace(t.Note) ? null : t.Note!.Trim();
+
+            var existing = book.Assignments.FirstOrDefault(a => a.DepartmentId == dept.DepartmentId);
+            if (existing is not null)
+            {
+                existing.Note = note ?? existing.Note;   // إعادة إحالة = تحديث توجيه، لا تكرار
+                existing.AssignedByUserId = uid;
+                existing.AssignedAt = now;
+            }
+            else
+            {
+                book.Assignments.Add(new IncomingAssignment
+                {
+                    DepartmentId = dept.DepartmentId,
+                    Note = note,
+                    AssignedByUserId = uid,
+                    AssignedAt = now,
+                });
+            }
+            added.Add(dept.Name);
+
+            // سطر سجلّ **لكل قسم**: من يقرأ المسار يحتاج توجيه كل قسم على حدة.
+            var parts = new List<string> { $"أُحيل إلى ({dept.Name})" };
+            if (note is not null) parts.Add($"ملاحظة القسم: {note}");
+            if (!string.IsNullOrWhiteSpace(general)) parts.Add($"ملاحظة عامة: {general}");
+
+            db.MovementLogs.Add(new MovementLog
+            {
+                CompanyId = book.CompanyId,
+                IncomingId = book.IncomingId,
+                Action = "Forwarded",
+                Description = string.Join(". ", parts),
+                ToDepartment = dept.Name,
+                PerformedByUserId = uid,
+                PerformedAt = now,
+            });
+        }
+
+        if (book.Status == IncomingStatus.New)
+            book.Status = IncomingStatus.InReview;  // الإحالة تنقل الجديد تلقائياً لقيد المراجعة
+        book.LastAction = $"محال إلى {string.Join("، ", added)}";
+        book.UpdatedAt = now;
+
+        audit.Add("Forward", nameof(IncomingBook), id.ToString(), string.Join("، ", added), book.CompanyId);
         await db.SaveChangesAsync(ct);
     }
-
     public async Task LinkToOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default)
     {
         // Hint: الربط ينقل الكتاب إلى «تم الرد» — فهو قرار إداري بصلاحية المدير فأعلى،

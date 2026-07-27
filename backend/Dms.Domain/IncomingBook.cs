@@ -34,15 +34,17 @@ public class IncomingBook
     public IncomingStatus Status { get; set; } = IncomingStatus.New;
     
     /// <summary>
-    /// القسم المحال إليه الكتاب (اختياري).
-    /// Hint: يحلّ محلّ FolderName النصّي — الإحالة صارت إسناداً حقيقياً لقسم يراه موظفوه.
+    /// الأقسام المُحال إليها الكتاب — **قد تكون أكثر من واحد في آنٍ معاً** (ADR-018).
     /// </summary>
-    public int? DepartmentId { get; set; }
-    public Department? Department { get; set; }
+    /// <remarks>
+    /// Hint: كان الكتاب يُحال لقسم **واحد** (<c>DepartmentId</c> مفرد يحلّ محلّ <c>FolderName</c>
+    /// النصّي)، فتعذّر أن يعمل قسمان عليه بالتوازي — وكان لا بدّ من انتظار أحدهما ليُعيد إحالته.
+    /// صار الإسناد علاقةً متعدّدة، ولكل إسناد **ملاحظته الخاصة** لأن توجيه المالية يختلف عن
+    /// توجيه المتابعة. والإحالة **تراكمية**: تُضيف أقساماً ولا تُزيح الموجود (قرار المالك) —
+    /// لأن الإزاحة الضمنية تُفقد قسماً كتابَه بلا أن يقصد أحد.
+    /// </remarks>
+    public ICollection<IncomingAssignment> Assignments { get; set; } = new List<IncomingAssignment>();
 
-    /// <summary>[مهجور] اسم القسم كنصّ حر — أُبقي للتوافق الخلفي فقط، والمصدر الآن DepartmentId.</summary>
-    public string? FolderName { get; set; }
-    
     public string? LastAction { get; set; } // وصف نصي لآخر إجراء تم
     public string? Keywords { get; set; }
     public string? Notes { get; set; }

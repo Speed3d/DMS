@@ -25,7 +25,8 @@ public sealed class IncomingController(
         [FromQuery] int? documentTypeId, [FromQuery] int? departmentId,
         [FromQuery] int? receiveMethod, CancellationToken ct)
     {
-        var q = incomingService.Query().Include(b => b.Entity).Include(b => b.Department).AsQueryable();
+        var q = incomingService.Query().Include(b => b.Entity)
+            .Include(b => b.Assignments).ThenInclude(a => a.Department).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(b =>
@@ -55,8 +56,9 @@ public sealed class IncomingController(
         if (documentTypeId.HasValue)
             q = q.Where(b => b.DocumentTypeId == documentTypeId.Value);
 
+        // الفلترة بالقسم صارت «أي إسناد لهذا القسم» بعد تعدّد الأقسام (ADR-018).
         if (departmentId.HasValue)
-            q = q.Where(b => b.DepartmentId == departmentId.Value);
+            q = q.Where(b => b.Assignments.Any(a => a.DepartmentId == departmentId.Value));
 
         if (receiveMethod.HasValue)
         {
@@ -68,8 +70,9 @@ public sealed class IncomingController(
         var list = await q.OrderByDescending(b => b.ReceivedDate)
             .Select(b => new IncomingListItem(
                 b.IncomingId, b.IncomingNumber, b.ExternalNumber, b.ReceivedDate,
-                b.Subject, b.Entity!.Name, b.Status, b.DepartmentId,
-                b.Department != null ? b.Department.Name : b.FolderName, b.AmountInIqd))
+                b.Subject, b.Entity!.Name, b.Status,
+                // الأقسام صارت متعدّدة (ADR-018) — تُعرض مجموعةً في عمود واحد.
+                b.Assignments.Select(a => a.Department!.Name).ToList(), b.AmountInIqd))
             .ToListAsync(ct);
 
         return Ok(list);
@@ -88,7 +91,10 @@ public sealed class IncomingController(
             b.ExternalNumber, b.ExternalDate, b.ReceivedDate, b.ReceivedTime,
             b.EntityId, d.EntityName, b.Subject, b.DocumentTypeId, d.DocumentTypeName,
             b.ReceiveMethod, b.ReceivedByUserId, d.ReceivedByUserName,
-            b.Status, b.DepartmentId, d.DepartmentName ?? b.FolderName, b.LastAction, b.Keywords, b.Notes,
+            b.Status,
+            d.Departments.Select(a => new IncomingAssignmentDto(
+                a.DepartmentId, a.Name, a.Note, a.AssignedByUserName, a.AssignedAt)).ToList(),
+            b.LastAction, b.Keywords, b.Notes,
             b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
             b.ReplyOutgoingId, d.ReplyOutgoingNumber, b.CreatedAt);
     }
@@ -99,7 +105,7 @@ public sealed class IncomingController(
         var b = await incomingService.CreateAsync(new CreateIncomingInput(
             req.CompanyId, req.ExternalNumber, req.ExternalDate, req.ReceivedDate,
             req.ReceivedTime, req.EntityId, req.Subject, req.DocumentTypeId,
-            req.ReceiveMethod, req.FolderName, req.Keywords, req.Notes,
+            req.ReceiveMethod, req.Keywords, req.Notes,
             req.Amount, req.Currency, req.ExchangeRate), ct);
 
         return await Get(b.IncomingId, ct);
@@ -111,7 +117,7 @@ public sealed class IncomingController(
         await incomingService.UpdateAsync(id, new UpdateIncomingInput(
             req.ExternalNumber, req.ExternalDate, req.ReceivedDate, req.ReceivedTime,
             req.EntityId, req.Subject, req.DocumentTypeId, req.ReceiveMethod,
-            req.FolderName, req.Keywords, req.Notes,
+            req.Keywords, req.Notes,
             req.Amount, req.Currency, req.ExchangeRate), ct);
 
         return await Get(id, ct);
@@ -127,7 +133,9 @@ public sealed class IncomingController(
     [HttpPost("{id:int}/forward")]
     public async Task<ActionResult<IncomingDetail>> Forward(int id, ForwardRequest req, CancellationToken ct)
     {
-        await incomingService.ForwardAsync(id, req.DepartmentId, req.Note, ct);
+        var targets = (req.Departments ?? new List<ForwardTargetDto>())
+            .Select(t => new ForwardTarget(t.DepartmentId, t.Note)).ToList();
+        await incomingService.ForwardAsync(id, targets, req.GeneralNote, ct);
         return await DetailAfterMutationAsync(id, ct);
     }
 

@@ -83,7 +83,7 @@ $template = @{
     companyId = $cid; externalNumber = "E2E"; externalDate = "2026-07-18T00:00:00"
     receivedDate = "2026-07-21T00:00:00"; receivedTime = "09:15:00"
     entityId = $eid; subject = "اختبار الوارد"; documentTypeId = $null
-    receiveMethod = "Manual"; folderName = $null; keywords = "اختبار"; notes = $null
+    receiveMethod = "Manual"; keywords = "اختبار"; notes = $null
     amount = $null; currency = $null; exchangeRate = $null
 }
 function NewBook($subject, $token) {
@@ -135,14 +135,17 @@ else {
     Expect "إنشاء قسم للإحالة" $newDept.Status 200
     $deptId = $newDept.Body.departmentId
 }
-Expect "رفض إحالة لقسم غير موجود" (Api POST "/incoming/$bid/forward" @{ departmentId = 999999; note = $null } $adminTok $cid).Status 400
-Expect "رفض إحالة كتاب في حالة (تم الرد)" (Api POST "/incoming/$bid/forward" @{ departmentId = $deptId; note = $null } $adminTok $cid).Status 400
+Expect "رفض إحالة لقسم غير موجود" (Api POST "/incoming/$bid/forward" @{ departments = @(@{departmentId = 999999; note = $null}) } $adminTok $cid).Status 400
+Expect "رفض إحالة كتاب في حالة (تم الرد)" (Api POST "/incoming/$bid/forward" @{ departments = @(@{departmentId = $deptId; note = $null}) } $adminTok $cid).Status 400
 
 $fresh = (NewBook "كتاب لاختبار الإحالة" $adminTok).Body
-$r = Api POST "/incoming/$($fresh.incomingId)/forward" @{ departmentId = $deptId; note = "للدراسة والرأي" } $adminTok $cid
+$r = Api POST "/incoming/$($fresh.incomingId)/forward" @{ departments = @(@{departmentId = $deptId; note = "للدراسة والرأي"}) } $adminTok $cid
 Expect "قبول إحالة كتاب (جديد)" $r.Status 200
 if ($r.Body.status -eq "InReview") { Ok "الإحالة نقلت الحالة إلى (قيد المراجعة)" } else { Bad "الحالة بعد الإحالة: $($r.Body.status)" }
-if ($r.Body.departmentName -eq $deptName) { Ok "القسم المحال إليه محفوظ" } else { Bad "القسم: $($r.Body.departmentName)" }
+# الأقسام صارت قائمة (ADR-018) لا حقلاً مفرداً.
+$asg = @($r.Body.departments)
+if ($asg.Count -eq 1 -and $asg[0].name -eq $deptName) { Ok "القسم المحال إليه محفوظ" } else { Bad "الأقسام: $($asg.Count)" }
+if ($asg[0].note -eq "للدراسة والرأي") { Ok "ملاحظة القسم محفوظة على الإسناد" } else { Bad "ملاحظة الإسناد: $($asg[0].note)" }
 Expect "بحث بفلتر القسم" (Api GET "/incoming?departmentId=$deptId" $null $adminTok $cid).Status 200
 
 # ─────────────────────────── 5) الإغلاق والأرشفة ───────────────────────────
@@ -150,10 +153,10 @@ Section "5) إتمام الدورة حتى الأرشفة"
 Expect "قبول: تم الرد ← مغلق"        (ChangeStatus $bid "Closed" "انتهت المعاملة").Status 200
 Expect "قبول: مغلق ← مؤرشف"          (ChangeStatus $bid "Archived" "أرشفة نهائية").Status 200
 Expect "رفض: مؤرشف ← جديد"           (ChangeStatus $bid "New" $null).Status 400
-Expect "رفض إحالة كتاب مؤرشف"        (Api POST "/incoming/$bid/forward" @{ departmentId = $deptId; note = $null } $adminTok $cid).Status 400
+Expect "رفض إحالة كتاب مؤرشف"        (Api POST "/incoming/$bid/forward" @{ departments = @(@{departmentId = $deptId; note = $null}) } $adminTok $cid).Status 400
 $upd = @{ externalNumber="x"; externalDate=$null; receivedDate="2026-07-21T00:00:00"; receivedTime=$null
           entityId=$eid; subject="تعديل ممنوع"; documentTypeId=$null; receiveMethod="Manual"
-          folderName=$null; keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null }
+          keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null }
 Expect "رفض تعديل كتاب مؤرشف" (Api PUT "/incoming/$bid" $upd $adminTok $cid).Status 400
 
 # سياسة التعديل: المدير فأعلى يصحّح في أي حالة عدا المؤرشف

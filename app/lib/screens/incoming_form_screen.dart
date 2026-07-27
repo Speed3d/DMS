@@ -138,7 +138,7 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       'documentTypeId': _documentTypeId,
       'receiveMethod': _receiveMethod,
       'subject': _subject.text.trim(),
-      'folderName': null,
+      // أُلغي `folderName` مع تعدّد الأقسام (ADR-018) — الوجهة صارت إسناداً حقيقياً لقسم.
       'keywords': _keywords.text.trim().isEmpty ? null : _keywords.text.trim(),
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       // تُعاد كما وردت — لا واجهة لها بعد إلغاء الكارت، وإسقاطها يمسح مبالغ الكتب القديمة.

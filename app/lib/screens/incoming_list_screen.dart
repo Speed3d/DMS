@@ -311,15 +311,19 @@ class IncomingListScreen extends ConsumerWidget {
                                               style: const TextStyle(fontSize: 13, height: 1.5)),
                                         ),
 
-                                        // القسم المحال إليه
+                                        // الأقسام المحال إليها — قد تكون أكثر من واحد (ADR-018)
                                         Expanded(
                                           flex: 2,
                                           child: Text(
-                                            it.departmentName ?? 'غير محال',
+                                            it.departmentNames.isEmpty
+                                                ? 'غير محال'
+                                                : it.departmentNames.join('، '),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
                                                 fontWeight: FontWeight.w600,
                                                 fontSize: 13,
-                                                color: it.departmentName == null
+                                                color: it.departmentNames.isEmpty
                                                     ? Colors.grey
                                                     : theme.textTheme.bodyMedium?.color),
                                           ),

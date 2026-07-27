@@ -53,7 +53,7 @@ $book = (Api POST "/incoming" @{
     companyId=$cid; externalNumber="RESTORE-TEST"; externalDate=$null
     receivedDate="2026-07-22T00:00:00"; receivedTime=$null; entityId=$eid
     subject=$marker; documentTypeId=$null; receiveMethod="Manual"
-    folderName=$null; keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null
+    keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null
 } $tok $cid).Body
 if (-not $book.incomingId) { Bad "تعذّر إنشاء الكتاب الشاهد"; exit 1 }
 Ok "الكتاب الشاهد: $($book.incomingNumber) — «$marker»"

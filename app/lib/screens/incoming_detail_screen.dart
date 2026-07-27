@@ -141,7 +141,8 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     }
   }
 
-  Future<void> _forwardBook() async {
+  /// [d] لازم لمعرفة الأقسام المُحال إليها سلفاً — فتظهر معلَّمة وتُحمَّل ملاحظاتها للتعديل.
+  Future<void> _forwardBook(IncomingDetail d) async {
     // الأقسام النشطة فقط تصلح وجهةً للإحالة.
     final List<DepartmentModel> depts;
     try {
@@ -168,65 +169,38 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     }
     if (!mounted) return;
 
-    int? deptId;
-    String note = '';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => StatefulBuilder(builder: (context, setDialogState) {
-        return AlertDialog(
-          title: const Text('إحالة الكتاب لقسم'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (history.isNotEmpty) ...[
-                  _ForwardHistory(history: history),
-                  const SizedBox(height: 16),
-                ],
-                DropdownButtonFormField<int?>(
-                  initialValue: deptId,
-                  decoration: const InputDecoration(labelText: 'القسم المُحال إليه'),
-                  items: depts
-                      .map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name)))
-                      .toList(),
-                  onChanged: (v) => setDialogState(() => deptId = v),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  decoration: const InputDecoration(labelText: 'ملاحظة أو توجيه (اختياري)'),
-                  onChanged: (v) => note = v,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
-            FilledButton(
-              onPressed: deptId == null ? null : () => Navigator.pop(c, true),
-              child: const Text('إحالة'),
-            ),
-          ],
-        );
-      }),
+    // شاشة كاملة لا حوار: النموذج فيه عدّة حقول نصّية، وحقولُ النصّ داخل الحوارات
+    // تسبب خلل `disposed EngineFlutterView` على الويب (قاعدة المشروع).
+    final result = await Navigator.of(context).push<_ForwardResult>(
+      MaterialPageRoute(
+        builder: (_) => _ForwardScreen(
+          departments: depts,
+          history: history,
+          alreadyAssigned: d.departments,
+        ),
+      ),
     );
-    if (ok != true || deptId == null) return;
+    if (result == null || result.targets.isEmpty) return;
 
     setState(() => _busy = true);
     try {
-      final deptName = depts.firstWhere((d) => d.departmentId == deptId).name;
-      final still = await ref.read(apiClientProvider)
-          .forwardIncoming(widget.id, deptId!, note.trim().isEmpty ? null : note.trim());
+      final names = result.targets
+          .map((t) => depts.firstWhere((d) => d.departmentId == t.departmentId).name)
+          .join('، ');
+      final still = await ref.read(apiClientProvider).forwardIncoming(
+            widget.id,
+            result.targets,
+            generalNote: result.generalNote,
+          );
       invalidateIncoming(ref);
       if (!mounted) return;
       if (still == null) {
-        // الإحالة نجحت وخرج الكتاب من قسم المُحيل — نُغلق الشاشة بدل إعادة تحميل محكومة بالفشل.
-        _snack('تمت الإحالة إلى «$deptName» — لم يعُد الكتاب ضمن قسمك.');
+        // نادر بعد ADR-018 («مَن أحال يبقى يرى»)، لكنه يبقى ممكناً نظرياً.
+        _snack('تمت الإحالة إلى «$names» — لم يعُد الكتاب ضمن نطاقك.');
         Navigator.of(context).pop(true);
         return;
       }
-      _snack('تمت الإحالة إلى «$deptName».');
+      _snack('تمت الإحالة إلى «$names».');
       _reload();
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -395,7 +369,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                           (kIncomingTransitions[d.status] ?? const []).isEmpty ? null : () => _changeStatus(d),
                           disabledHint: 'لا توجد حالة لاحقة متاحة'),
                       _buildActionButton('إحالة لقسم', Icons.forward_to_inbox_rounded, AppColors.navyDeep,
-                          _isOperable(d.status) ? _forwardBook : null,
+                          _isOperable(d.status) ? () => _forwardBook(d) : null,
                           disabledHint: 'الإحالة متاحة للكتب (جديد) أو (قيد المراجعة) فقط'),
                     ],
                   ),
@@ -435,7 +409,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                               const SizedBox(height: 16),
                               _buildInfoRow('طريقة الاستلام', receiveMethodLabel(d.receiveMethod), Icons.inbox_rounded),
                               const SizedBox(height: 16),
-                              _buildInfoRow('القسم المحال إليه', d.departmentName ?? 'غير محال', Icons.apartment_rounded),
+                              _buildAssignmentsRow(d.departments),
                               
                               // Hint: أُلغيت التفاصيل المالية من الوارد بقرار المالك (2026-07-25)
                               //       وأُزيل مصدر «وارد» من التقرير المالي. البيانات القديمة باقية
@@ -519,6 +493,58 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
           );
         },
       ),
+    );
+  }
+
+  /// الأقسام المُحال إليها — قد تكون عدّة (ADR-018)، ولكلٍّ ملاحظتُه ومَن أحاله ومتى.
+  ///
+  /// Hint: نعرض الملاحظة تحت اسم القسم لأنها **توجيهُ عملٍ** لا زينة: من يفتح الكتاب
+  /// من قسم بعينه يحتاج أن يقرأ ما طُلب من قسمه هو، لا أن ينبش سجلّ الحركة.
+  Widget _buildAssignmentsRow(List<IncomingAssignment> assignments) {
+    final theme = Theme.of(context);
+    if (assignments.isEmpty) {
+      return _buildInfoRow('الأقسام المحال إليها', 'غير محال', Icons.apartment_rounded);
+    }
+    final fmt = DateFormat('yyyy/MM/dd HH:mm');
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.apartment_rounded,
+            size: 20, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('الأقسام المحال إليها (${assignments.length})',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+              const SizedBox(height: 4),
+              for (final a in assignments)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(a.name,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      if (a.note != null && a.note!.trim().isNotEmpty)
+                        Text('توجيه: ${a.note}',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.75))),
+                      Text('أحاله ${a.assignedByUserName} • ${fmt.format(a.assignedAt.toLocal())}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -807,7 +833,163 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
   }
 }
 
-// ----------------- مسار الإحالات السابقة (داخل حوار الإحالة) -----------------
+// ----------------- شاشة الإحالة (اختيار متعدد — ADR-018) -----------------
+
+/// نتيجة شاشة الإحالة: الأقسام المختارة بملاحظاتها + ملاحظة عامة.
+typedef _ForwardResult = ({
+  List<({int departmentId, String? note})> targets,
+  String? generalNote,
+});
+
+/// إحالة الكتاب إلى **قسم واحد أو أكثر معاً**، لكل قسم ملاحظته (ADR-018).
+///
+/// Hint: الإحالة تراكمية — الأقسام المُحال إليها سابقاً تظهر معلَّمة، واختيارها من جديد
+/// **يُحدّث ملاحظتها** ولا يُكرّرها ولا يُزيح غيرها. أُلغيت القائمة المنسدلة أحاديةُ
+/// الاختيار لأن الواقع الإداري يفرض أن يخصّ الكتابُ قسمين معاً، وانتظارُ أحدهما ليُعيد
+/// الإحالة يُعطّل التوازي.
+class _ForwardScreen extends StatefulWidget {
+  final List<DepartmentModel> departments;
+  final List<MovementLogItem> history;
+  final List<IncomingAssignment> alreadyAssigned;
+
+  const _ForwardScreen({
+    required this.departments,
+    required this.history,
+    required this.alreadyAssigned,
+  });
+
+  @override
+  State<_ForwardScreen> createState() => _ForwardScreenState();
+}
+
+class _ForwardScreenState extends State<_ForwardScreen> {
+  final _selected = <int>{};
+  final _notes = <int, TextEditingController>{};
+  final _generalNote = TextEditingController();
+
+  @override
+  void dispose() {
+    for (final c in _notes.values) {
+      c.dispose();
+    }
+    _generalNote.dispose();
+    super.dispose();
+  }
+
+  TextEditingController _noteFor(int deptId) => _notes.putIfAbsent(deptId, () {
+        // نبدأ بملاحظة الإسناد القائم إن وُجدت — إعادة الإحالة تعديلُ توجيهٍ لا كتابةٌ من فراغ.
+        final existing = widget.alreadyAssigned
+            .where((a) => a.departmentId == deptId)
+            .map((a) => a.note)
+            .firstOrNull;
+        return TextEditingController(text: existing ?? '');
+      });
+
+  void _toggle(int deptId, bool on) => setState(() {
+        if (on) {
+          _selected.add(deptId);
+          _noteFor(deptId); // يُنشئ المتحكّم مسبقاً ليظهر الحقل بقيمته
+        } else {
+          _selected.remove(deptId);
+        }
+      });
+
+  void _submit() {
+    final targets = _selected.map((id) {
+      final t = _notes[id]?.text.trim() ?? '';
+      return (departmentId: id, note: t.isEmpty ? null : t);
+    }).toList();
+    final g = _generalNote.text.trim();
+    Navigator.of(context).pop((targets: targets, generalNote: g.isEmpty ? null : g));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedIds = widget.alreadyAssigned.map((a) => a.departmentId).toSet();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('إحالة الكتاب إلى الأقسام')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (widget.history.isNotEmpty) ...[
+            _ForwardHistory(history: widget.history),
+            const SizedBox(height: 16),
+          ],
+          Text('اختر قسماً واحداً أو أكثر',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'الإحالة تُضيف الأقسام ولا تُزيح المُحال إليها سابقاً. '
+            'اختيار قسم مُحال إليه من جديد يُحدّث ملاحظته.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          for (final d in widget.departments)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                children: [
+                  CheckboxListTile(
+                    value: _selected.contains(d.departmentId),
+                    onChanged: (v) => _toggle(d.departmentId, v ?? false),
+                    title: Text(d.name),
+                    subtitle: assignedIds.contains(d.departmentId)
+                        ? const Text('مُحال إليه بالفعل — الاختيار يُحدّث ملاحظته',
+                            style: TextStyle(color: AppColors.gold, fontSize: 12))
+                        : null,
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  if (_selected.contains(d.departmentId))
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: TextField(
+                        controller: _noteFor(d.departmentId),
+                        decoration: InputDecoration(
+                          labelText: 'ملاحظة لقسم «${d.name}» (اختياري)',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _generalNote,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'ملاحظة عامة لكل الأقسام (اختياري)',
+              helperText: 'تُضاف إلى سجلّ الحركة لكل قسم مُحال إليه.',
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('إلغاء'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _selected.isEmpty ? null : _submit,
+                  child: Text(_selected.isEmpty
+                      ? 'اختر قسماً'
+                      : 'إحالة إلى ${_selected.length} قسم'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ----------------- مسار الإحالات السابقة (داخل شاشة الإحالة) -----------------
 
 /// يعرض أين مرّ الكتاب سابقاً وملاحظة كل إحالة.
 ///

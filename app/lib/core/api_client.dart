@@ -297,10 +297,24 @@ class ApiClient {
   Future<IncomingDetail?> changeIncomingStatus(int id, String status, String? note) async =>
       _detailOrGone(await _post('/incoming/$id/status', {'status': status, 'note': note}));
 
-  /// إحالة لقسم — تُرجِع `null` إن نجحت الإحالة وخرج الكتاب من قسم المُحيل
-  /// (وهو الوضع الطبيعي حين يُحيل موظفُ قسمٍ كتابَه إلى قسم آخر).
-  Future<IncomingDetail?> forwardIncoming(int id, int departmentId, String? note) async =>
-      _detailOrGone(await _post('/incoming/$id/forward', {'departmentId': departmentId, 'note': note}));
+  /// إحالة إلى **قسم واحد أو أكثر معاً**، لكل قسم ملاحظته، مع ملاحظة عامة اختيارية (ADR-018).
+  ///
+  /// الإحالة **تراكمية**: تُضيف الأقسام ولا تُزيح الموجود، وإعادة الإحالة لقسم موجود
+  /// **تُحدّث ملاحظته** ولا تُكرّره.
+  ///
+  /// تُرجِع `null` في الحالة النادرة التي تُخرج فيها العمليةُ الكتابَ من رؤية المُحيل.
+  /// (نادرة الآن لأن «مَن أحال يبقى يرى» — انظر IncomingService.Query.)
+  Future<IncomingDetail?> forwardIncoming(
+    int id,
+    List<({int departmentId, String? note})> departments, {
+    String? generalNote,
+  }) async =>
+      _detailOrGone(await _post('/incoming/$id/forward', {
+        'departments': [
+          for (final d in departments) {'departmentId': d.departmentId, 'note': d.note}
+        ],
+        'generalNote': generalNote,
+      }));
 
   /// Hint: كان الخادم يُنهي هذه العمليات بقراءة الكتاب، فيردّ **404 بعد نجاح العملية وحفظها**
   /// إن أخرجته من رؤية المنفِّذ — فيرى المستخدم فشلاً لعملٍ تمّ. صار يردّ `204`، ونترجمها هنا

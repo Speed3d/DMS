@@ -52,7 +52,7 @@ if($tokFin -and $tokLeg){ Ok "دخول الموظفَين" } else { Bad "فشل 
 Write-Host "`n=== الاختبار الجوهري: رؤية كتب القسم ===" -ForegroundColor Cyan
 # admin ينشئ كتاباً ويحيله للمالية
 $book=(Api POST "/incoming" @{companyId=$cid;receivedDate='2026-07-25T00:00:00';entityId=$eid;subject='كتاب محال للمالية';receiveMethod='Manual'} $admin $cid).B
-$null=Api POST "/incoming/$($book.incomingId)/forward" @{departmentId=$finance;note='للمراجعة'} $admin $cid
+$null=Api POST "/incoming/$($book.incomingId)/forward" @{departments=@(@{departmentId=$finance;note='للمراجعة'})} $admin $cid
 Ok "admin أنشأ كتاباً وأحاله للمالية: $($book.incomingNumber)"
 
 # موظف المالية يجب أن يراه (رغم أنه لم يستلمه)
@@ -78,7 +78,7 @@ if($r.S -eq 200){ Ok "موظف المالية (بصلاحية إدارة) غيّ
 
 # نحيل كتاباً للقانونية ونتأكد أن موظفها (بلا صلاحية) لا يستطيع تجاوز جديد←قيد المراجعة
 $book2=(Api POST "/incoming" @{companyId=$cid;receivedDate='2026-07-25T00:00:00';entityId=$eid;subject='كتاب للقانونية';receiveMethod='Manual'} $admin $cid).B
-$null=Api POST "/incoming/$($book2.incomingId)/forward" @{departmentId=$legal;note=$null} $admin $cid
+$null=Api POST "/incoming/$($book2.incomingId)/forward" @{departments=@(@{departmentId=$legal;note=$null})} $admin $cid
 $r=Api POST "/incoming/$($book2.incomingId)/status" @{status='Closed';note='محاولة'} $tokLeg $cid
 if($r.S -eq 403){ Ok "موظف القانونية (بلا صلاحية) مُنع من الإغلاق (403)" } else { Bad "الموظف بلا صلاحية أغلق كتاباً! (HTTP $($r.S))" }
 
@@ -96,7 +96,7 @@ function UploadPdf($tok,$id){
 
 # كتاب جديد مُحال للمالية — الكتاب الأول صار (تم الرد) فلم تعُد الإحالة مسموحة عليه.
 $b2=(Api POST "/incoming" @{companyId=$cid;receivedDate='2026-07-26T00:00:00';entityId=$eid;subject='مرفقات وإحالة';receiveMethod='Manual'} $admin $cid).B
-$null=Api POST "/incoming/$($b2.incomingId)/forward" @{departmentId=$finance;note='للمالية'} $admin $cid
+$null=Api POST "/incoming/$($b2.incomingId)/forward" @{departments=@(@{departmentId=$finance;note='للمالية'})} $admin $cid
 
 $upAdmin=UploadPdf $admin $b2.incomingId
 if($upAdmin -eq 200){ Ok "admin رفع مرفقاً على الكتاب" } else { Bad "فشل رفع مرفق admin (HTTP $upAdmin)" }
@@ -112,20 +112,49 @@ $attLeg=Api GET "/incoming/$($b2.incomingId)/attachments" $null $tokLeg $cid
 if($attLeg.S -eq 404 -or $attLeg.S -eq 403){ Ok "موظف القانونية محجوب عن مرفقات كتاب قسم آخر ✔ العزل" }
 else { Bad "تسرّب: القانونية رأى مرفقات كتاب المالية (HTTP $($attLeg.S))" }
 
-Write-Host "`n=== الإحالة تُخرج الكتاب من القسم: نجاح لا 404 (بلاغ المالك) ===" -ForegroundColor Cyan
+Write-Host "`n=== الإحالة تراكمية ومَن أحال يبقى يرى (ADR-018) ===" -ForegroundColor Cyan
 # ⚠️ كان الكونترولر يُنهي الإحالة بقراءة الكتاب، فيردّ 404 **بعد نجاح العملية وحفظها**
 #    إن أخرجتْه من رؤية المنفِّذ — فيرى المستخدم فشلاً لعملٍ تمّ.
-$fwOut=Api POST "/incoming/$($b2.incomingId)/forward" @{departmentId=$legal;note='تحويل للقانونية'} $tokFin $cid
+$fwOut=Api POST "/incoming/$($b2.incomingId)/forward" @{departments=@(@{departmentId=$legal;note='تحويل للقانونية'})} $tokFin $cid
 if($fwOut.S -eq 200 -or $fwOut.S -eq 204){ Ok "إحالة الكتاب لقسم آخر نجحت بلا 404 (HTTP $($fwOut.S)) ✔" }
-else { Bad "الإحالة ردّت خطأً رغم نجاحها (HTTP $($fwOut.S)) $($fwOut.M)" }
+else { Bad "الإحالة ردّت خطأً رغم نجاحها (HTTP $($fwOut.S))" }
 
-$gone=Api GET "/incoming/$($b2.incomingId)" $null $tokFin $cid
-if($gone.S -eq 404){ Ok "الكتاب غادر قسم المالية فعلاً (404 عند القراءة) ✔ الإحالة نُفِّذت" }
-else { Bad "الكتاب ما زال مرئياً للمالية بعد إحالته (HTTP $($gone.S))" }
+# 🔴 انقلبَ التوقّع عمداً (ADR-018): كانت الإحالة **تُزيح** القسم السابق، فيفقد المُحيلُ
+#    رؤيةَ كتابٍ باشره بنفسه ولا يتابع مصيره. صارت **تراكمية**، و«مَن أحال يبقى يرى».
+$still=Api GET "/incoming/$($b2.incomingId)" $null $tokFin $cid
+if($still.S -eq 200){ Ok "موظف المالية ما زال يرى الكتاب بعد إحالته ✔ (مَن أحال يبقى يرى)" }
+else { Bad "المُحيل فقد رؤية كتابه بعد الإحالة (HTTP $($still.S))" }
+
+$names=@($still.B.departments | ForEach-Object { $_.name })
+if($names.Count -eq 2){ Ok "الكتاب مُسنَد لقسمين معاً ✔ ($($names -join '، '))" }
+else { Bad "عدد الأقسام بعد الإحالة التراكمية: $($names.Count) — المتوقّع 2" }
 
 $legNow=Api GET "/incoming/$($b2.incomingId)" $null $tokLeg $cid
 if($legNow.S -eq 200){ Ok "موظف القانونية صار يرى الكتاب بعد إحالته إليه ✔" }
 else { Bad "القانونية لا يرى الكتاب المُحال إليه (HTTP $($legNow.S))" }
+
+# إعادة الإحالة لقسم موجود: تُحدّث ملاحظته ولا تُكرّره.
+$null=Api POST "/incoming/$($b2.incomingId)/forward" @{departments=@(@{departmentId=$legal;note='توجيه محدَّث'})} $admin $cid
+$after=Api GET "/incoming/$($b2.incomingId)" $null $admin $cid
+$legAsg=@($after.B.departments | Where-Object { $_.departmentId -eq $legal })
+if($legAsg.Count -eq 1 -and $legAsg[0].note -eq 'توجيه محدَّث'){ Ok "إعادة الإحالة حدّثت الملاحظة ولم تُكرّر القسم ✔" }
+else { Bad "تكرار أو ملاحظة غير محدَّثة (عدد=$($legAsg.Count))" }
+
+# إحالة إلى قسمين في طلب واحد.
+$b3=(Api POST "/incoming" @{companyId=$cid;receivedDate='2026-07-27T00:00:00';entityId=$eid;subject='إحالة متعددة';receiveMethod='Manual'} $admin $cid).B
+$multi=Api POST "/incoming/$($b3.incomingId)/forward" @{departments=@(@{departmentId=$finance;note='للمالية'},@{departmentId=$legal;note='للقانونية'});generalNote='عاجل'} $admin $cid
+if($multi.S -eq 200 -and @($multi.B.departments).Count -eq 2){ Ok "إحالة لقسمين في طلب واحد ✔" }
+else { Bad "فشل الإحالة المتعددة (HTTP $($multi.S)، أقسام=$(@($multi.B.departments).Count))" }
+
+# قسم واحد غير صالح يُبطل الإحالة كلها — إحالة نصفية أسوأ من رفض كامل.
+$b4=(Api POST "/incoming" @{companyId=$cid;receivedDate='2026-07-27T00:00:00';entityId=$eid;subject='رفض شامل';receiveMethod='Manual'} $admin $cid).B
+$bad=Api POST "/incoming/$($b4.incomingId)/forward" @{departments=@(@{departmentId=$finance;note=$null},@{departmentId=999999;note=$null})} $admin $cid
+$b4After=Api GET "/incoming/$($b4.incomingId)" $null $admin $cid
+if($bad.S -eq 400 -and @($b4After.B.departments).Count -eq 0){ Ok "قسم واحد غير صالح يُبطل الإحالة كلها ✔ (لا إحالة نصفية)" }
+else { Bad "إحالة نصفية أو قبول خاطئ (HTTP $($bad.S)، أقسام=$(@($b4After.B.departments).Count))" }
+
+$empty=Api POST "/incoming/$($b3.incomingId)/forward" @{departments=@()} $admin $cid
+if($empty.S -eq 400){ Ok "رفض إحالة بلا أقسام ✔" } else { Bad "قبلت إحالة بلا أقسام (HTTP $($empty.S))" }
 
 Write-Host "`n============ النتيجة ============" -ForegroundColor Cyan
 Write-Host "  نجح: $pass" -ForegroundColor Green

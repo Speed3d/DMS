@@ -99,23 +99,29 @@ public sealed record CreateIncomingRequest(
     int? CompanyId, string? ExternalNumber, DateTime? ExternalDate,
     DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId,
     string Subject, int? DocumentTypeId, ReceiveMethod ReceiveMethod,
-    string? FolderName, string? Keywords, string? Notes,
+    string? Keywords, string? Notes,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record UpdateIncomingRequest(
     string? ExternalNumber, DateTime? ExternalDate,
     DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId,
     string Subject, int? DocumentTypeId, ReceiveMethod ReceiveMethod,
-    string? FolderName, string? Keywords, string? Notes,
+    string? Keywords, string? Notes,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate);
 
 public sealed record ChangeStatusRequest(IncomingStatus Status, string? Note);
-public sealed record ForwardRequest(int DepartmentId, string? Note);
+/// <summary>إحالة لقسم واحد أو أكثر، بملاحظة لكل قسم وملاحظة عامة اختيارية (ADR-018).</summary>
+public sealed record ForwardRequest(List<ForwardTargetDto> Departments, string? GeneralNote = null);
+public sealed record ForwardTargetDto(int DepartmentId, string? Note = null);
+
+/// <summary>قسم مُحال إليه الكتاب مع ملاحظته ومَن أحاله (ADR-018).</summary>
+public sealed record IncomingAssignmentDto(
+    int DepartmentId, string Name, string? Note, string AssignedByUserName, DateTime AssignedAt);
 
 public sealed record IncomingListItem(
     int IncomingId, string? IncomingNumber, string? ExternalNumber,
     DateTime ReceivedDate, string Subject, string EntityName,
-    IncomingStatus Status, int? DepartmentId, string? DepartmentName, decimal? AmountInIqd);
+    IncomingStatus Status, List<string> DepartmentNames, decimal? AmountInIqd);
 
 public sealed record IncomingDetail(
     int IncomingId, int CompanyId, string? IncomingNumber, int? Year, int? SerialNo,
@@ -123,7 +129,7 @@ public sealed record IncomingDetail(
     DateTime ReceivedDate, TimeSpan? ReceivedTime, int EntityId, string EntityName,
     string Subject, int? DocumentTypeId, string? DocumentTypeName,
     ReceiveMethod ReceiveMethod, int ReceivedByUserId, string ReceivedByUserName,
-    IncomingStatus Status, int? DepartmentId, string? DepartmentName, string? LastAction, string? Keywords, string? Notes,
+    IncomingStatus Status, List<IncomingAssignmentDto> Departments, string? LastAction, string? Keywords, string? Notes,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
     int? ReplyOutgoingId, string? ReplyOutgoingNumber, DateTime CreatedAt);
 

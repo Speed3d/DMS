@@ -651,8 +651,9 @@ class IncomingListItem {
   final String subject;
   final String entityName;
   final String status;
-  final int? departmentId;
-  final String? departmentName;
+
+  /// أسماء الأقسام المُحال إليها الكتاب — قد تكون أكثر من واحد (ADR-018).
+  final List<String> departmentNames;
   final num? amountInIqd;
 
   IncomingListItem({
@@ -663,8 +664,7 @@ class IncomingListItem {
     required this.subject,
     required this.entityName,
     required this.status,
-    required this.departmentId,
-    required this.departmentName,
+    required this.departmentNames,
     required this.amountInIqd,
   });
 
@@ -676,9 +676,34 @@ class IncomingListItem {
         subject: j['subject'] ?? '',
         entityName: j['entityName'] ?? '',
         status: j['status'] ?? 'New',
-        departmentId: j['departmentId'],
-        departmentName: j['departmentName'],
+        departmentNames:
+            j['departmentNames'] != null ? List<String>.from(j['departmentNames']) : const [],
         amountInIqd: j['amountInIqd'],
+      );
+}
+
+/// إسناد كتاب وارد إلى قسم — بملاحظته الخاصة ومَن أحاله ومتى (ADR-018).
+class IncomingAssignment {
+  final int departmentId;
+  final String name;
+  final String? note;
+  final String assignedByUserName;
+  final DateTime assignedAt;
+
+  const IncomingAssignment({
+    required this.departmentId,
+    required this.name,
+    this.note,
+    required this.assignedByUserName,
+    required this.assignedAt,
+  });
+
+  factory IncomingAssignment.fromJson(Map<String, dynamic> j) => IncomingAssignment(
+        departmentId: j['departmentId'],
+        name: j['name'] ?? '—',
+        note: j['note'],
+        assignedByUserName: j['assignedByUserName'] ?? '—',
+        assignedAt: DateTime.tryParse(j['assignedAt'] ?? '') ?? DateTime.now(),
       );
 }
 
@@ -701,8 +726,9 @@ class IncomingDetail {
   final int receivedByUserId;
   final String receivedByUserName;
   final String status;
-  final int? departmentId;
-  final String? departmentName;
+
+  /// الأقسام المُحال إليها مع ملاحظة كل قسم ومَن أحاله (ADR-018).
+  final List<IncomingAssignment> departments;
   final String? lastAction;
   final String? keywords;
   final String? notes;
@@ -719,7 +745,7 @@ class IncomingDetail {
     this.externalNumber, this.externalDate, required this.receivedDate, this.receivedTime,
     required this.entityId, required this.entityName, required this.subject, this.documentTypeId, this.documentTypeName,
     required this.receiveMethod, required this.receivedByUserId, required this.receivedByUserName,
-    required this.status, this.departmentId, this.departmentName, this.lastAction, this.keywords, this.notes,
+    required this.status, this.departments = const [], this.lastAction, this.keywords, this.notes,
     this.amount, this.currency, this.exchangeRate, this.amountInIqd,
     this.replyOutgoingId, this.replyOutgoingNumber, required this.createdAt,
   });
@@ -743,8 +769,9 @@ class IncomingDetail {
         receivedByUserId: j['receivedByUserId'] ?? 0,
         receivedByUserName: j['receivedByUserName'] ?? '',
         status: j['status'] ?? 'New',
-        departmentId: j['departmentId'],
-        departmentName: j['departmentName'],
+        departments: j['departments'] != null
+            ? (j['departments'] as List).map((e) => IncomingAssignment.fromJson(e)).toList()
+            : const [],
         lastAction: j['lastAction'],
         keywords: j['keywords'],
         notes: j['notes'],
