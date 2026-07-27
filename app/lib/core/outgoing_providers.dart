@@ -23,10 +23,16 @@ final pendingDraftsProvider = FutureProvider.autoDispose<List<OutgoingListItem>>
 });
 
 /// عدد المسودات (شارة الشريط الجانبي).
-final outgoingCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final list = await ref.watch(pendingDraftsProvider.future);
-  return list.length;
-});
+///
+/// ⚠️ **مشتقّ من `AsyncValue` مباشرةً، لا عبر `await ref.watch(x.future)`.**
+/// انتظارُ `.future` يُنشئ `ProxyProviderListenable`؛ وحين يُستأنَف اشتراكٌ موقوف
+/// **أثناء طور البناء** — وهذا يحدث كلما تبدّل `TickerMode` لعنصر Overlay، أي عند
+/// كل انتقال بين المسارات وعند إقلاع التطبيق — يُبطل هذا المزوّد نفسه فوراً فيُستدعى
+/// `setState` على `UncontrolledProviderScope` أثناء البناء، ويرمي Riverpod:
+///   «setState() or markNeedsBuild() called during build».
+/// الاشتقاق المتزامن يُلغي السلسلة غير المتزامنة فلا يبقى ما يُبطِل نفسه أثناء البناء.
+final outgoingCountProvider = Provider.autoDispose<AsyncValue<int>>((ref) =>
+    ref.watch(pendingDraftsProvider).whenData((list) => list.length));
 
 /// إبطال كل مزوّدات الصادر ليُعاد جلبها فوراً (بعد اعتماد/إنشاء/تعديل/حذف أو تبديل شركة).
 void invalidateOutgoing(WidgetRef ref) {

@@ -71,10 +71,12 @@ final pendingIncomingProvider = FutureProvider.autoDispose<List<IncomingListItem
   return items.where((e) => e.status == 'New' || e.status == 'InReview').toList();
 });
 
-final incomingCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  final list = await ref.watch(pendingIncomingProvider.future);
-  return list.length;
-});
+/// عدد الوارد المعلّق (شارة الشريط الجانبي).
+///
+/// ⚠️ مشتقّ من `AsyncValue` مباشرةً لا عبر `await ref.watch(x.future)` — انظر التعليل
+/// الكامل في `outgoing_providers.dart` (منع «setState called during build»).
+final incomingCountProvider = Provider.autoDispose<AsyncValue<int>>((ref) =>
+    ref.watch(pendingIncomingProvider).whenData((list) => list.length));
 
 void invalidateIncoming(WidgetRef ref) {
   ref.invalidate(incomingListProvider);
