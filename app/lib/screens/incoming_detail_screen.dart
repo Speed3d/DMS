@@ -169,14 +169,30 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     }
     if (!mounted) return;
 
-    // شاشة كاملة لا حوار: النموذج فيه عدّة حقول نصّية، وحقولُ النصّ داخل الحوارات
-    // تسبب خلل `disposed EngineFlutterView` على الويب (قاعدة المشروع).
+    // نافذة منبثقة مُصغّرة — لكنها **مسار حقيقي (route) لا `showDialog`**:
+    // النموذج فيه عدّة حقول نصّية، وحقولُ النصّ داخل الحوارات تسبب خلل
+    // `disposed EngineFlutterView` على الويب (قاعدة المشروع). `opaque: false` مع
+    // `barrierColor` يمنحان مظهر الحوار وسلوكه (تعتيم خلفي + إغلاق بالنقر خارجها)
+    // بلا مساوئه.
     final result = await Navigator.of(context).push<_ForwardResult>(
-      MaterialPageRoute(
-        builder: (_) => _ForwardScreen(
+      PageRouteBuilder<_ForwardResult>(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black54,
+        barrierLabel: 'إغلاق',
+        transitionDuration: const Duration(milliseconds: 150),
+        pageBuilder: (_, __, ___) => _ForwardScreen(
           departments: depts,
           history: history,
           alreadyAssigned: d.departments,
+        ),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: anim,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.97, end: 1).animate(
+                CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+            child: child,
+          ),
         ),
       ),
     );
@@ -907,11 +923,52 @@ class _ForwardScreenState extends State<_ForwardScreen> {
   Widget build(BuildContext context) {
     final assignedIds = widget.alreadyAssigned.map((a) => a.departmentId).toSet();
 
+    final size = MediaQuery.sizeOf(context);
+
+    // نافذة مُصغّرة وسط الشاشة لا صفحة كاملة (طلب المالك 2026-07-27).
+    // الخلفية شفافة والمسار غير مُعتِم، فيظهر ما تحتها معتَّماً كالحوار تماماً.
     return Scaffold(
-      appBar: AppBar(title: const Text('إحالة الكتاب إلى الأقسام')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      backgroundColor: Colors.transparent,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 560,
+            // نُقيّد الارتفاع بنسبة من الشاشة: القائمة تتمرّر داخلها، فلا تطول النافذة
+            // بطول عدد الأقسام ولا تخرج عن الشاشة على المقاسات الصغيرة.
+            maxHeight: size.height * 0.85,
+          ),
+          child: Material(
+            borderRadius: BorderRadius.circular(16),
+            clipBehavior: Clip.antiAlias,
+            elevation: 8,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ترويسة ثابتة — تبقى ظاهرة أثناء تمرير قائمة الأقسام.
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                  color: AppColors.navyDeep,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.forward_to_inbox_rounded, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text('إحالة الكتاب إلى الأقسام',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        tooltip: 'إغلاق',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.all(16),
+                    children: [
           if (widget.history.isNotEmpty) ...[
             _ForwardHistory(history: widget.history),
             const SizedBox(height: 16),
@@ -963,27 +1020,39 @@ class _ForwardScreenState extends State<_ForwardScreen> {
               helperText: 'تُضاف إلى سجلّ الحركة لكل قسم مُحال إليه.',
             ),
           ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('إلغاء'),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _selected.isEmpty ? null : _submit,
-                  child: Text(_selected.isEmpty
-                      ? 'اختر قسماً'
-                      : 'إحالة إلى ${_selected.length} قسم'),
+                // تذييل ثابت — زرّا الإجراء يبقيان في المتناول مهما طالت قائمة الأقسام.
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('إلغاء'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _selected.isEmpty ? null : _submit,
+                          child: Text(_selected.isEmpty
+                              ? 'اختر قسماً'
+                              : 'إحالة إلى ${_selected.length} قسم'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }

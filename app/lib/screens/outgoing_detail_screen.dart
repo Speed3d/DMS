@@ -16,6 +16,16 @@ import 'incoming_detail_screen.dart';
 import 'outgoing_edit_approved_screen.dart';
 import 'outgoing_edit_draft_screen.dart';
 
+/// إظهار زرّ «تصدير Word» في شاشة تفاصيل الصادر.
+///
+/// 🔒 **مخفيّ بطلب المالك (2026-07-27)** — الميزة **مكتملة ومختبَرة** (النقطة تُرجِع ملف
+/// OpenXML صالحاً، والمتن يُحوَّل من HTML إلى فقرات Word حقيقية بتنسيقها)، وإنما أُخفي
+/// المدخل مؤقتاً بانتظار إشارة المالك.
+///
+/// **للإظهار: اجعل القيمة `true` — لا شيء آخر يلزم.** أُبقيت الشيفرة كاملة عمداً
+/// (الدالة `_exportWord` ونقطة الـAPI ومحوّل HTML) حتى لا يُعاد بناؤها.
+const bool _showWordExport = false;
+
 /// Hint: شاشة تفاصيل الصادر بتصميم أنيق يعتمد على البطاقات
 class OutgoingDetailScreen extends ConsumerStatefulWidget {
   final int id;
@@ -281,18 +291,34 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 children: [
-                  // Hint: ترويسة الكتاب (الإجراءات والحالة)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  // Hint: ترويسة الكتاب (الحالة والرقم + الإجراءات).
+                  // ⚠️ كانت `Row` واحدة بـ`Spacer`، فحين تكثر الأزرار (معتمد + صلاحية اعتماد +
+                  //    تصدير) لا يبقى للصفّ مخرج فيفيض («RenderFlex overflowed by 94 pixels»).
+                  //    `Wrap` يُنزل مجموعةَ الأزرار سطراً كاملاً عند الضيق بدل أن تُقتطع.
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 16,
+                    runSpacing: 12,
                     children: [
-                      StatusPill(status: d.isFinal ? 'Final' : 'Draft'),
-                      const SizedBox(width: 16),
-                      Text(
-                        d.number ?? 'مسودة (بلا رقم حتى الآن)',
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, fontFamily: 'Tahoma', letterSpacing: -0.5),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          StatusPill(status: d.isFinal ? 'Final' : 'Draft'),
+                          const SizedBox(width: 16),
+                          Text(
+                            d.number ?? 'مسودة (بلا رقم حتى الآن)',
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, fontFamily: 'Tahoma', letterSpacing: -0.5),
+                          ),
+                        ],
                       ),
-                      const Spacer(),
-                      // أزرار الإجراءات السريعة
+                      // أزرار الإجراءات السريعة — `spacing: 0` لأن `_buildActionButton`
+                      // يحمل حشوته الخاصة (right: 12)، فلا نُضاعفها.
+                      Wrap(
+                        spacing: 0,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
                       if (!d.isFinal) ...[
                         _buildActionButton('تعديل المسودة', Icons.edit_document, AppColors.warn, () => _editDraft(d)),
                         _buildActionButton('معاينة القالب', Icons.preview_rounded, AppColors.gold, _previewDraft),
@@ -302,14 +328,19 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                       ],
                       if (d.hasPdf)
                         _buildActionButton('تحميل PDF', Icons.picture_as_pdf_rounded, AppColors.gold, _downloadPdf),
-                      // Word متاح للمسودّة والمعتمد معاً — يُولَّد من بيانات الكتاب لا من ملف مخزَّن،
-                      // فلا يشترط `hasPdf` (بخلاف زر PDF أعلاه الذي يقرأ ملفاً مولَّداً عند الاعتماد).
-                      _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.navyDeep,
-                          () => _exportWord(d)),
+                      // 🔒 مخفيّ بطلب المالك (2026-07-27) — **جاهز ومختبَر**، ينتظر إشارته فقط.
+                      // للإظهار: اجعل `_showWordExport = true` أعلى هذا الملف. لا شيء آخر يلزم.
+                      if (_showWordExport)
+                        // Word متاح للمسودّة والمعتمد معاً — يُولَّد من بيانات الكتاب لا من ملف
+                        // مخزَّن، فلا يشترط `hasPdf` (بخلاف زر PDF الذي يقرأ ملفاً مولَّداً عند الاعتماد).
+                        _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.navyDeep,
+                            () => _exportWord(d)),
                       if (d.isFinal) ...[
                         _buildActionButton('تعديل كإصدار', Icons.edit_document, AppColors.warn, () => _editApproved(d)),
                         _buildActionButton('سجل الإصدارات', Icons.history_rounded, AppColors.navyDeep, _showVersions),
                       ]
+                        ],
+                      ),
                     ],
                   ),
                   const SizedBox(height: 32),

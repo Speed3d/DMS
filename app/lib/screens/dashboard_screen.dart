@@ -108,10 +108,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          // ⚠️ `Wrap` لا `Row`: على العرض الضيّق تنكمش البطاقة إلى عشرات
+                          //    البكسلات، و`TextButton` له عرض أدنى لا ينزل عنه، فكان الصفّ
+                          //    يفيض («RenderFlex overflowed by 9.5 pixels»). `Wrap` يُنزل
+                          //    الزرّ سطراً بدل أن يُقتطع.
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
                             children: [
-                              const Flexible(child: Text('أحدث الكتب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                              const Text('أحدث الكتب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                               TextButton(onPressed: (){}, child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold))),
                             ],
                           ),
