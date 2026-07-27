@@ -35,13 +35,20 @@
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و `Number` (حيث ليست null).
 
 ### IncomingBook (الوارد)
-`IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), DepartmentId?→Department (القسم المحال إليه — ADR-015), FolderName? (**مشتقّ** — اسم القسم مُسطَّحاً، انظر التحذير أدناه), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
+`IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
 - **الترقيم فوري عند الإنشاء** (بخلاف الصادر الذي يترقّم عند الاعتماد): `{Prefix}-IN-{Year}-{Serial:D5}` عبر `NumberingService` بنوع عدّاد `"Incoming"` — فكل كتاب وارد سجل رسمي منذ لحظته.
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و`IncomingNumber` (حيث ليست null). فهارس بحث: `EntityId`, `Status`, `ReceivedDate`.
 - **دورة الحياة:** مصفوفة مغلقة في `Dms.Domain/IncomingWorkflow.cs` (ADR-013) — جديد ← (قيد المراجعة | مغلق) · قيد المراجعة ← (تم الرد | مغلق) · تم الرد ← مغلق · مغلق ← مؤرشف · **مؤرشف نهائي**.
 - **الربط بالصادر:** ثنائي الاتجاه — `IncomingBook.ReplyOutgoingId` ↔ `OutgoingBook.ReplyToIncomingId` (علاقة واحد‑لواحد، `SetNull` عند الحذف).
-- **الإحالة والرؤية (ADR-015):** الإحالة تُسنِد الكتاب لقسم (`DepartmentId`)، والموظف/القارئ يرى كتبه **+ كتب قسمه**. `SetNull` عند حذف القسم.
-- ⚠️ **عن `FolderName`:** ليس عموداً ميتاً — `ForwardAsync` **يكتب فيه اسم القسم في كل إحالة** (`book.FolderName = dept.Name`) كنسخة مُسطَّحة للعرض السريع بلا `Join`. فهو **مشتقّ من `DepartmentId`، لا مصدر حقيقة**: لا يُكتب من المستخدم (أُزيل من نموذج التسجيل)، ولا يُفلتَر به (الفلترة بـ `DepartmentId`)، ولا يُحدَّث إن أُعيدت تسمية القسم. **لا تحذفه دون مراجعة كل قارئ له** — الكتب المسجّلة قبل ADR-015 تحمل فيه نصّ القسم القديم وحده (بلا `DepartmentId`).
+- **الإحالة والرؤية (ADR-018):** الإسناد صار **جدولاً مستقلاً** لا عموداً — انظر `IncomingAssignment` أدناه. الموظف/القارئ يرى: كتبه **+ كتب قسمه + ما أحاله بنفسه**.
+- ⚠️ **أُسقط عمودا `DepartmentId` و`FolderName`** في migration `AddMultiDepartmentAssignments` (2026-07-27) بعد **نقل** إسناداتهما إلى الجدول الجديد. `FolderName` كان نسخة مُسطَّحة من اسم القسم فقد آخر معنى لها بتعدّد الأقسام.
+
+### IncomingAssignment (إسناد الوارد لقسم — ADR-018)
+`IncomingAssignmentId, IncomingId→IncomingBook (Cascade), DepartmentId→Department (Restrict), Note?(1000), AssignedByUserId, AssignedAt`.
+- **فهرس فريد على `(IncomingId, DepartmentId)`** — إعادة الإحالة لقسم موجود تُحدّث ملاحظته ولا تُنشئ صفّاً ثانياً.
+- **بلا `CompanyId`:** العزل يأتي من الأب `IncomingBook` المفلتَر بالشركة، ومعرّفات الأقسام فريدة عالمياً — فلا مسار تسرّب.
+- `Restrict` على القسم مقصود: حذف قسم محال إليه كتب **يُرفض** (رسالة صريحة: «عطّله بدل حذفه»).
+- `AssignedByUserId` ليس للسجل فقط — عليه تقوم قاعدة **«مَن أحال يبقى يرى»**.
 
 ### MovementLog (سجل حركة الوارد)
 `MovementId, IncomingId→IncomingBook (Cascade), CompanyId, Action, Description, FromDepartment?, ToDepartment?, PerformedByUserId, PerformedAt`.
