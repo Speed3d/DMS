@@ -49,8 +49,10 @@ public sealed class BackupController(IBackupService backup) : ControllerBase
     [HttpGet("{id:int}/download")]
     public async Task<IActionResult> Download(int id, CancellationToken ct)
     {
-        var (bytes, fileName) = await backup.DownloadAsync(id, ct);
-        return File(bytes, "application/zip", fileName);
+        var (bytes, _) = await backup.DownloadAsync(id, ct);
+        // بلا اسم ملف عمداً: الشاشة تجلب البايتات بـXHR وتحفظها باسم النسخة من بياناتها،
+        // وترويسةُ «تنزيل» تجعل مديري التحميل يختطفون الطلب فلا يصل ردّ (نفس علّة ADR-019).
+        return File(bytes, "application/zip");
     }
 
     private static BackupRecordDto Map(BackupRecord r) =>

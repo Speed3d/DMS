@@ -31,7 +31,9 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
         [FromQuery] int? entityId, [FromQuery] string source = "All", CancellationToken ct = default)
     {
         var bytes = await reports.FinancialPdfAsync(from, to, entityId, source, ct);
-        return File(bytes, "application/pdf", "financial-report.pdf");
+        // بلا اسم ملف عمداً: العميل يجلب البايتات بـXHR ويسمّي الملف بنفسه، وترويسةُ
+        // «تنزيل» تجعل مديري التحميل يختطفون الطلب فلا يصل ردّ (نفس علّة ADR-019).
+        return File(bytes, "application/pdf");
     }
 
     [HttpGet("financial/excel")]
@@ -40,6 +42,7 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
         [FromQuery] int? entityId, [FromQuery] string source = "All", CancellationToken ct = default)
     {
         var bytes = await reports.FinancialExcelAsync(from, to, entityId, source, ct);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "financial-report.xlsx");
+        // بلا اسم ملف عمداً — انظر التعليق في FinancialPdf.
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 }
