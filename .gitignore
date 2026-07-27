@@ -7,6 +7,9 @@ backend/**/appsettings.Development.json
 backend/**/App_Data/
 # Spike output
 backend/**/output/
+# نسخ قاعدة البيانات المحلية (نسخ يدوية قبل عمليات محفوفة بالمخاطر — لا تُدرَج)
+backend/_pre-reset-backup/
+*.bak
 # Flutter (Phase 1)
 .dart_tool/
 .packages

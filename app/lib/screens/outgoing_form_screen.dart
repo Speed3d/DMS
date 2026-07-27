@@ -15,7 +15,6 @@ import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/pdf_preview_pane.dart';
-import 'package:printing/printing.dart';
 
 /// Hint: شاشة إضافة كتاب صادر جديد مع محرر النصوص الاحترافي Quill
 class OutgoingFormScreen extends ConsumerStatefulWidget {

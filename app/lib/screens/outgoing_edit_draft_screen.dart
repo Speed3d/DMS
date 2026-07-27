@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:printing/printing.dart';
 import '../core/api_client.dart';
 import '../core/quill_html.dart';
 import '../core/quill_toolbar.dart';
