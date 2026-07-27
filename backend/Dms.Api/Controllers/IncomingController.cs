@@ -214,9 +214,17 @@ public sealed class IncomingController(
     /// AttachmentService.GetAsync. (أُزيلت سِمة AllowAnonymous ومعامل token الذي كان يُستقبل ويُهمَل.)
     /// </summary>
     [HttpGet("{id:int}/attachments/{attachmentId:int}/download")]
-    public async Task<IActionResult> DownloadAttachment(int id, int attachmentId, CancellationToken ct)
+    public async Task<IActionResult> DownloadAttachment(int id, int attachmentId, bool inline, CancellationToken ct)
     {
         var (meta, content) = await attachmentService.GetAsync(attachmentId, ct);
+
+        // ⚠️ `inline=true` للعرض داخل البرنامج: نُرسل **النوع الحقيقي** وبلا اسم ملف.
+        // تمرير اسم الملف يجعل ASP.NET يضع `Content-Disposition: attachment`، فتُعامَل
+        // الاستجابة كتنزيل — و**مديرو التحميل (مثل IDM) يختطفون الطلب** حتى حين نجلبه
+        // بـXHR للعرض، فيصل العميل بلا ردّ ويظنّها انقطاع شبكة. هذا ما كان يُفشل زر العين
+        // لكل المستخدمين بلا استثناء بينما يبدو التنزيل ناجحاً.
+        if (inline) return File(content, MimeTypes.For(meta.FileName));
+
         return File(content, "application/octet-stream", meta.FileName);
     }
 }

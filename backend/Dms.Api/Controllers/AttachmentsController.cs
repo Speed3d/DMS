@@ -10,10 +10,15 @@ namespace Dms.Api.Controllers;
 public sealed class AttachmentsController(IAttachmentService attachments) : ControllerBase
 {
     [HttpGet("{id:int}")]
-    public async Task<IActionResult> Download(int id, CancellationToken ct)
+    public async Task<IActionResult> Download(int id, bool inline, CancellationToken ct)
     {
         var (meta, content) = await attachments.GetAsync(id, ct);
-        return File(content, ContentTypeFor(meta.FileType), meta.FileName);
+
+        // `inline=true` للعرض داخل البرنامج — بلا اسم ملف حتى لا تصير الاستجابة «تنزيلاً»
+        // فيختطفها مديرو التحميل (انظر MimeTypes).
+        if (inline) return File(content, MimeTypes.For(meta.FileName));
+
+        return File(content, MimeTypes.For(meta.FileName), meta.FileName);
     }
 
     [HttpDelete("{id:int}")]
@@ -22,14 +27,4 @@ public sealed class AttachmentsController(IAttachmentService attachments) : Cont
         await attachments.DeleteAsync(id, ct);
         return NoContent();
     }
-
-    private static string ContentTypeFor(string ext) => ext.ToLowerInvariant() switch
-    {
-        "pdf" => "application/pdf",
-        "png" => "image/png",
-        "jpg" or "jpeg" => "image/jpeg",
-        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        _ => "application/octet-stream",
-    };
 }

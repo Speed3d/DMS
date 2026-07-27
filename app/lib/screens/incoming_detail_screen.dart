@@ -656,7 +656,10 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
   Future<void> _download(AttachmentModel a) async {
     setState(() => _busy = true);
     try {
-      final bytes = await ref.read(apiClientProvider).downloadIncomingAttachment(widget.incomingId, a.attachmentId);
+      // inline حتى هنا: نحن نجلب البايتات بـXHR ثم نحفظها بأنفسنا باسم المرفق، فترويسةُ
+      // «تنزيل» من الخادم لا نفع لها — وضررها أن مدير التحميل يختطف الطلب (انظر api_client).
+      final bytes = await ref.read(apiClientProvider)
+          .downloadIncomingAttachment(widget.incomingId, a.attachmentId, inline: true);
       await downloadBytes(bytes, a.fileName, 'application/octet-stream');
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -669,7 +672,9 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
   Future<void> _view(AttachmentModel a) async {
     setState(() => _busy = true);
     try {
-      final bytes = await ref.read(apiClientProvider).downloadIncomingAttachment(widget.incomingId, a.attachmentId);
+      // inline: للعرض لا للتنزيل — وإلا اختطف مديرُ التحميل الطلب (انظر api_client).
+      final bytes = await ref.read(apiClientProvider)
+          .downloadIncomingAttachment(widget.incomingId, a.attachmentId, inline: true);
       if (!mounted) return;
       await AttachmentViewer.show(
         context,

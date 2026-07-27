@@ -75,7 +75,9 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
   Future<void> _download(AttachmentModel a) async {
     setState(() => _busy = true);
     try {
-      final bytes = await ref.read(apiClientProvider).downloadAttachment(a.attachmentId);
+      // inline حتى هنا: نجلب البايتات بـXHR ونحفظها بأنفسنا، فترويسةُ «تنزيل» من الخادم
+      // ضررُها فقط — يختطف مديرُ التحميل الطلبَ فلا يصل ردّ (انظر api_client).
+      final bytes = await ref.read(apiClientProvider).downloadAttachment(a.attachmentId, inline: true);
       await downloadBytes(bytes, a.fileName, 'application/octet-stream');
     } on ApiException catch (e) {
       _snack(e.message, error: true);
@@ -88,7 +90,8 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
   Future<void> _view(AttachmentModel a) async {
     setState(() => _busy = true);
     try {
-      final bytes = await ref.read(apiClientProvider).downloadAttachment(a.attachmentId);
+      // inline: للعرض لا للتنزيل — وإلا اختطف مديرُ التحميل الطلب (انظر api_client).
+      final bytes = await ref.read(apiClientProvider).downloadAttachment(a.attachmentId, inline: true);
       if (!mounted) return;
       await AttachmentViewer.show(
         context,

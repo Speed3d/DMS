@@ -332,9 +332,19 @@ class ApiClient {
     }
   }
 
-  Future<Uint8List> downloadIncomingAttachment(int id, int attachmentId) async {
+  /// [inline] يطلب الملف **للعرض** لا للتنزيل.
+  ///
+  /// ⚠️ بدونه يردّ الخادم بترويسة «ملف للتنزيل» (`Content-Disposition: attachment`)، فيختطف
+  /// مديرُ التحميل (IDM وأمثاله) الطلبَ **حتى حين نجلبه بـXHR للمعاينة** — فلا يصل ردّ إلى
+  /// Dio ويظهر الخطأ كأنه انقطاع شبكة، بينما يبدأ الملف بالتنزيل. وهذا ما كان يُفشل زر
+  /// العين لكل المستخدمين بلا استثناء.
+  Future<Uint8List> downloadIncomingAttachment(int id, int attachmentId, {bool inline = false}) async {
     try {
-      final res = await _dio.get<List<int>>('/incoming/$id/attachments/$attachmentId/download', options: Options(responseType: ResponseType.bytes));
+      final res = await _dio.get<List<int>>(
+        '/incoming/$id/attachments/$attachmentId/download',
+        queryParameters: inline ? const {'inline': 'true'} : null,
+        options: Options(responseType: ResponseType.bytes),
+      );
       return Uint8List.fromList(res.data ?? <int>[]);
     } on DioException catch (e) {
       throw _map(e);
@@ -382,9 +392,14 @@ class ApiClient {
     }
   }
 
-  Future<Uint8List> downloadAttachment(int id) async {
+  /// [inline] للعرض داخل البرنامج — انظر [downloadIncomingAttachment].
+  Future<Uint8List> downloadAttachment(int id, {bool inline = false}) async {
     try {
-      final res = await _dio.get<List<int>>('/attachments/$id', options: Options(responseType: ResponseType.bytes));
+      final res = await _dio.get<List<int>>(
+        '/attachments/$id',
+        queryParameters: inline ? const {'inline': 'true'} : null,
+        options: Options(responseType: ResponseType.bytes),
+      );
       return Uint8List.fromList(res.data ?? <int>[]);
     } on DioException catch (e) {
       throw _map(e);
