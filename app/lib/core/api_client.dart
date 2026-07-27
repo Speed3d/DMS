@@ -506,6 +506,18 @@ class ApiClient {
 
   Future<void> revokeDelegation(int id) => _delete('/delegations/$id');
 
+  /// تصدير الكتاب إلى Word (‎.docx‎) — يعمل للمسودّة والمعتمد معاً
+  /// (المسودّة تُصدَّر بالرقم «(مسودّة)» بدل الرقم الرسمي).
+  Future<Uint8List> outgoingWord(int id) async {
+    try {
+      final res = await _dio.get<List<int>>('/outgoing/$id/word',
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<Uint8List> outgoingPdf(int id) async {
     try {
       final res = await _dio.get<List<int>>('/outgoing/$id/pdf',

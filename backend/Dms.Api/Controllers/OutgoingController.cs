@@ -125,8 +125,9 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
     public async Task<IActionResult> Word(int id, CancellationToken ct)
     {
         var bytes = await svc.GetWordAsync(id, ct);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            $"outgoing-{id}.docx");
+        // بلا اسم ملف عمداً: الشاشة تجلب البايتات بـXHR وتسمّي الملف برقم الكتاب، وترويسةُ
+        // «تنزيل» تجعل مديري التحميل يختطفون الطلب فلا يصل ردّ (مبدأ ADR-019).
+        return File(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     }
 
     private static OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,

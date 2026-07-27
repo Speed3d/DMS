@@ -87,6 +87,26 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     }
   }
 
+  /// تصدير الكتاب إلى Word — متاح للمسودّة والمعتمد معاً.
+  ///
+  /// Hint: النقطة `GET /outgoing/{id}/word` كانت موجودة وتعمل منذ Phase 0، لكن **لم تكن
+  /// موصولة بأي شاشة** — فبقي معيار القبول «تصدير PDF و Word» مستوفىً في الباك-إند وحده
+  /// بينما لا يجد المستخدم زرّاً (الفجوة G7).
+  Future<void> _exportWord(OutgoingDetail d) async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await ref.read(apiClientProvider).outgoingWord(widget.id);
+      // اسم الملف برقم الكتاب الرسمي ليسهل إيجاده — وبـ«مسودة» إن لم يُعتمد بعد.
+      final name = '${d.number ?? 'مسودة-${widget.id}'}.docx';
+      await downloadBytes(bytes, name,
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _previewDraft() async {
     setState(() => _busy = true);
     try {
@@ -282,6 +302,10 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                       ],
                       if (d.hasPdf)
                         _buildActionButton('تحميل PDF', Icons.picture_as_pdf_rounded, AppColors.gold, _downloadPdf),
+                      // Word متاح للمسودّة والمعتمد معاً — يُولَّد من بيانات الكتاب لا من ملف مخزَّن،
+                      // فلا يشترط `hasPdf` (بخلاف زر PDF أعلاه الذي يقرأ ملفاً مولَّداً عند الاعتماد).
+                      _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.navyDeep,
+                          () => _exportWord(d)),
                       if (d.isFinal) ...[
                         _buildActionButton('تعديل كإصدار', Icons.edit_document, AppColors.warn, () => _editApproved(d)),
                         _buildActionButton('سجل الإصدارات', Icons.history_rounded, AppColors.navyDeep, _showVersions),
