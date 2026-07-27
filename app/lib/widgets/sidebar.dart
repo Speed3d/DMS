@@ -39,9 +39,19 @@ class Sidebar extends ConsumerWidget {
         border: Border(left: BorderSide(color: Colors.white10)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      // ⚠️ الشريط يمتلئ بحسب صلاحيات المستخدم: السوبر أدمن يرى كل البنود + قسم الإدارة،
+      // فيتجاوز المحتوى ارتفاعَ الشاشة على المقاسات المتوسّطة (ظهر كـ«RenderFlex overflowed
+      // by 0.8 pixels» على ارتفاع 667). و`Spacer` وحده لا يُنقذ لأنه ينكمش إلى صفر ثم يفيض.
+      // الحل: يُمرَّر ارتفاع الشاشة كحدٍّ أدنى داخل ScrollView — فيبقى `Spacer` يدفع بطاقة
+      // المزامنة للأسفل حين يتّسع المكان، ويتحوّل الشريط إلى قابل للتمرير حين يضيق.
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
           // Logo & Title
           Row(
             children: [
@@ -137,7 +147,11 @@ class Sidebar extends ConsumerWidget {
               ],
             ),
           ),
-        ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

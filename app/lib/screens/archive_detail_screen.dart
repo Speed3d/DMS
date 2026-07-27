@@ -372,21 +372,39 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                                                 border: Border.all(color: theme.dividerColor),
                                                 borderRadius: BorderRadius.circular(12),
                                               ),
-                                              child: ListTile(
-                                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                                leading: Container(
-                                                  padding: const EdgeInsets.all(12),
-                                                  decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
-                                                  child: Icon(_fileIcon(a.fileType), color: AppColors.navyDeep),
-                                                ),
-                                                title: Text(a.fileName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                                                subtitle: Text('${a.fileType.toUpperCase()} • ${(a.fileSize / 1024).toStringAsFixed(0)} KB', style: const TextStyle(fontSize: 12)),
-                                                onTap: _busy || !AttachmentViewer.canView(a.fileName)
-                                                    ? null
-                                                    : () => _view(a),
-                                                trailing: Row(
-                                                  mainAxisSize: MainAxisSize.min,
+                                              // ⚠️ صفٌّ صريح لا ListTile: ثلاثة أزرار في `trailing`
+                                              // تستهلك عرض السطر كلَّه في بطاقة ضيّقة («Trailing widget
+                                              // consumes the entire tile width»)، والحاوية هنا ليست
+                                              // Material فيختفي أثر النقر. نفس علاج شاشة الوارد.
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                child: Row(
                                                   children: [
+                                                    Container(
+                                                      padding: const EdgeInsets.all(12),
+                                                      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+                                                      child: Icon(_fileIcon(a.fileType), color: AppColors.navyDeep),
+                                                    ),
+                                                    const SizedBox(width: 16),
+                                                    Expanded(
+                                                      child: InkWell(
+                                                        onTap: _busy || !AttachmentViewer.canView(a.fileName)
+                                                            ? null
+                                                            : () => _view(a),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        child: Padding(
+                                                          padding: const EdgeInsets.symmetric(vertical: 6),
+                                                          child: Column(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Text(a.fileName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                                              Text('${a.fileType.toUpperCase()} • ${(a.fileSize / 1024).toStringAsFixed(0)} KB', style: const TextStyle(fontSize: 12)),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                     if (AttachmentViewer.canView(a.fileName))
                                                       IconButton(
                                                         icon: const Icon(Icons.visibility_rounded),

@@ -44,8 +44,46 @@
 
     المتغيّر أدناه يقرأه printing_web ويستبدل به عنوان الـCDN.
     عند ترقية حزمة printing: طابق الإصدار في app/web/pdfjs مع _pdfJsVersion فيها.
+
+    🔴 **البادئة `./` إلزامية — لا تحذفها.** الحزمة تبني `${base}pdf.min.mjs` ثم تستدعي
+    `import(...)`. وبلا `./` يصير النص **مُعرِّف وحدة مجرَّداً** (bare specifier) مثل اسم حزمة،
+    فيرفضه المتصفّح بـ«Failed to resolve module specifier» ولا يُرسل طلباً أصلاً.
+    والأسوأ: الاستثناء يقع داخل `_initPlugin` **بين acquire و release بلا try/finally**، فيبقى
+    القفل محجوزاً ⇒ كل محاولة عرض تالية **تتعلّق إلى الأبد بلا رسالة خطأ** — وهذا ما ظهر
+    كـ«توقّف البرنامج عن العمل» عند الضغط على زر العين.
+    (`./` لا `/` لتبقى نسبيةً إلى `<base href>` إن استُضيف التطبيق تحت مسار فرعي.)
   -->
-  <script>window.dartPdfJsBaseUrl = "pdfjs/";</script>
+  <script>window.dartPdfJsBaseUrl = "./pdfjs/";</script>
+
+  <!--
+    نُحمّل pdf.js بأنفسنا هنا، ولا نترك الحزمة تُحمّله.
+
+    🔴 لماذا: `Printing._initPlugin` في printing 5.15.0 يفعل التالي:
+         await _loading.acquire();
+         if (!_hasPdfJsLib) { ... _pdfJsUrlBase = window.getProperty('dartPdfJsBaseUrl'); ... }
+         _loading.release();          // ← لا يوجد try/finally
+       وقراءةُ الخاصية تُسنِد قيمة JS إلى `String`، فترمي في وضع التصحيح (DDC) —
+       **والاستثناء يقع بعد acquire وقبل release**، فيبقى القفل محجوزاً إلى الأبد:
+       كل استدعاء تالٍ لـ`Printing.info()` أو `Printing.raster()` **يتعلّق بلا رجعة**.
+       والنتيجة كما رآها المالك: زر العين يفتح نافذة تدور **بلا نهاية وبلا رسالة خطأ**،
+       ثم يبدو البرنامج «متوقّفاً عن العمل». ولا يظهر شيء في الكونسول لأن الخطأ يُبتلع.
+
+    ✅ الحل: إن كان `window.pdfjsLib` مضبوطاً و`workerSrc` غير فارغ، فإن `_hasPdfJsLib`
+       يعود true فتتخطّى الحزمة الكتلةَ المعطوبة بأكملها — فلا قراءة خاصية ولا قفل ولا تعليق.
+       وهذا يعمل بلا إنترنت (ADR-016) لأن الملفات محلية.
+
+    ⚠️ `./` إلزامية — بدونها يصير المسار «مُعرِّف وحدة مجرَّداً» يرفضه المتصفّح.
+  -->
+  <script type="module">
+    try {
+      const pdfjs = await import('./pdfjs/pdf.min.mjs');
+      pdfjs.GlobalWorkerOptions.workerSrc = './pdfjs/pdf.worker.min.mjs';
+      window.pdfjsLib = pdfjs;
+    } catch (e) {
+      // لا نُسقط التطبيق: تبقى بقية الشاشات تعمل، وتفشل معاينة الـPDF وحدها بوضوح.
+      console.error('تعذّر تحميل محرّك عرض الـPDF المحلي (app/web/pdfjs):', e);
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

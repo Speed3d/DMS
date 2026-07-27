@@ -741,44 +741,66 @@ class _AttachmentsWidgetState extends ConsumerState<_AttachmentsWidget> {
               if (list.isEmpty) {
                 return const Text('لا توجد مرفقات مع هذا الكتاب الوارد.');
               }
+              // ⚠️ لا نستخدم ListTile هنا: بطاقة المرفقات ضيّقة، وثلاثة أزرار في `trailing`
+              // تستهلك عرض السطر كلَّه فيرمي Flutter «Trailing widget consumes the entire
+              // tile width». كما أن ListTile يرسم أثر النقر على أقرب Material والبطاقة
+              // ليست كذلك («ink splashes may be invisible»). صفٌّ صريح يُنهي العلّتين معاً.
               return Column(
-                children: list
-                    .map((a) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(_iconFor(a.fileName), color: AppColors.gold),
-                          title: Text(a.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('${(a.fileSize / 1024 / 1024).toStringAsFixed(2)} م.ب'),
-                          // النقر على السطر يفتح العارض مباشرةً — أسرع مسار للمسح الضوئي.
-                          onTap: _busy || !AttachmentViewer.canView(a.fileName)
-                              ? null
-                              : () => _view(a),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (AttachmentViewer.canView(a.fileName))
-                                IconButton(
-                                  tooltip: 'عرض',
-                                  icon: const Icon(Icons.visibility_rounded),
-                                  onPressed: _busy ? null : () => _view(a),
-                                ),
-                              IconButton(
-                                tooltip: 'تنزيل',
-                                icon: const Icon(Icons.download_rounded),
-                                onPressed: _busy ? null : () => _download(a),
-                              ),
-                              if (widget.canEdit)
-                                IconButton(
-                                  tooltip: 'حذف',
-                                  icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-                                  onPressed: _busy ? null : () => _delete(a),
-                                ),
-                            ],
-                          ),
-                        ))
-                    .toList(),
+                children: list.map((a) => _attachmentRow(a)).toList(),
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+
+  /// سطر مرفق واحد: أيقونة + (الاسم والحجم) + أزرار الإجراءات.
+  ///
+  /// النقر على الاسم يفتح العارض مباشرةً — أسرع مسار، فمعظم مرفقات الوارد مسح ضوئي.
+  Widget _attachmentRow(AttachmentModel a) {
+    final canView = AttachmentViewer.canView(a.fileName);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(_iconFor(a.fileName), color: AppColors.gold),
+          const SizedBox(width: 12),
+          Expanded(
+            child: InkWell(
+              onTap: _busy || !canView ? null : () => _view(a),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(a.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('${(a.fileSize / 1024 / 1024).toStringAsFixed(2)} م.ب',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (canView)
+            IconButton(
+              tooltip: 'عرض',
+              icon: const Icon(Icons.visibility_rounded),
+              onPressed: _busy ? null : () => _view(a),
+            ),
+          IconButton(
+            tooltip: 'تنزيل',
+            icon: const Icon(Icons.download_rounded),
+            onPressed: _busy ? null : () => _download(a),
+          ),
+          if (widget.canEdit)
+            IconButton(
+              tooltip: 'حذف',
+              icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+              onPressed: _busy ? null : () => _delete(a),
+            ),
         ],
       ),
     );
