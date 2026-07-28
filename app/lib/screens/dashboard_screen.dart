@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../core/archive_providers.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
+import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
@@ -21,6 +23,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final outgoingAsync = ref.watch(outgoingListProvider);
     final incomingAsync = ref.watch(incomingListProvider);
+
+    // ── اللوحة تتبع صلاحيات المستخدم في **الشركة الفعّالة** (ADR-017) ──
+    //
+    // ⚠️ قبل هذا كانت اللوحة بلا أي فحص صلاحيات، والمزوّدات تُرجع قائمة فارغة لمن لا
+    //    يملك القسم ⇒ فتظهر بطاقاته بقيمة **صفر** بدل أن تُخفى. وهذا **أسوأ من الإخفاء**:
+    //    يقرأ الموظفُ «إجمالي الصادر: 0» فيفهم أن الشركة بلا صادر، والحقيقة أنه لا يراه.
+    //    معلومة كاذبة لا معلومة ناقصة.
+    //
+    // Hint: `hasModule` يقرأ الشركة الفعّالة، والمزوّدات تراقب الجلسة — فتبديل الشركة
+    //       يُعيد بناء اللوحة وجلب البيانات تلقائياً بلا أي عمل إضافي هنا.
+    //       والسوبر أدمن ورئيس الشركة معفَيان (`_isExempt`) فيريان كل شيء.
+    final session = ref.watch(sessionProvider);
+    final showOutgoing = session.hasModule('Outgoing');
+    final showIncoming = session.hasModule('Incoming');
+    final showArchive = session.hasModule('Archive');
+
+    // ⚠️ قبل الحكم بـ«لا صلاحيات» نتأكّد أن الجلسة حُمّلت فعلاً: `hasModule` يردّ false
+    //    حين تكون `auth` فارغة، فلولا هذا الفحص لومضت رسالة «لا أقسام متاحة» لحظةَ
+    //    الإقلاع لكل المستخدمين — وهي رسالة مقلقة لا يصحّ أن تظهر خطأً.
+    if (session.auth == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.gold)));
+    }
+
+    if (!showOutgoing && !showIncoming && !showArchive) return const _NoModulesView();
 
     return Scaffold(
       body: outgoingAsync.when(
@@ -67,25 +93,46 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           spacing: spacing,
                           runSpacing: spacing,
                           children: [
-                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${outItems.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
-                            SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$outDrafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
-                            SizedBox(width: cardWidth, child: _buildStatCard('صادر معتمد', '$outFinals', Icons.verified_rounded, AppColors.success)),
-                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الصادر', '${_fmt(outTotalIqd)} د.ع', Icons.payments_rounded, const Color(0xFF3B82F6))),
-                            
-                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الوارد', '${incItems.length}', Icons.inbox_rounded, const Color(0xFF10B981))),
-                            SizedBox(width: cardWidth, child: _buildStatCard('وارد جديد', '$incNew', Icons.mark_email_unread_rounded, AppColors.gold, onTap: () => widget.onNavigate?.call(3))),
-                            SizedBox(width: cardWidth, child: _buildStatCard('وارد مؤرشف', '$incFinals', Icons.archive_rounded, const Color(0xFF64748B))),
+                            if (showOutgoing) ...[
+                              SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${outItems.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
+                              SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$outDrafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
+                              SizedBox(width: cardWidth, child: _buildStatCard('صادر معتمد', '$outFinals', Icons.verified_rounded, AppColors.success)),
+                              SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الصادر', '${_fmt(outTotalIqd)} د.ع', Icons.payments_rounded, const Color(0xFF3B82F6))),
+                            ],
+
+                            if (showIncoming) ...[
+                              SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الوارد', '${incItems.length}', Icons.inbox_rounded, const Color(0xFF10B981))),
+                              SizedBox(width: cardWidth, child: _buildStatCard('وارد جديد', '$incNew', Icons.mark_email_unread_rounded, AppColors.gold, onTap: () => widget.onNavigate?.call(3))),
+                              // «وارد مؤرشف» حالةٌ من حالات الوارد لا وحدة الأرشيف — فتتبع صلاحية Incoming.
+                              SizedBox(width: cardWidth, child: _buildStatCard('وارد مؤرشف', '$incFinals', Icons.mark_email_read_rounded, const Color(0xFF64748B))),
+                            ],
+
+                            // وحدة الأرشيف (الأضابير القديمة) — بطاقة مستقلّة بصلاحيتها الخاصة.
+                            if (showArchive)
+                              Consumer(
+                                builder: (context, ref, _) {
+                                  final count = ref.watch(archiveListProvider).whenOrNull(data: (l) => l.length);
+                                  return SizedBox(
+                                    width: cardWidth,
+                                    child: _buildStatCard('أضابير الأرشيف', count?.toString() ?? '…',
+                                        Icons.archive_rounded, const Color(0xFF8B5CF6),
+                                        onTap: () => widget.onNavigate?.call(4)),
+                                  );
+                                },
+                              ),
                           ],
                         );
                       }
                     ),
                     const SizedBox(height: 32),
 
-                // Hint: القسم الأوسط (الرسوم البيانية + نشاطات أخيرة)
+                // Hint: القسم الأوسط (الرسوم البيانية + نشاطات أخيرة).
+                // كلاهما يقرأ `outItems` وحدها ⇒ يخصّان الصادر، فيُخفيان مع بطاقاته.
+                if (showOutgoing)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final isSmall = constraints.maxWidth < 900;
-                    
+
                     final chartCard = CustomCard(
                       padding: const EdgeInsets.all(28),
                       child: Column(
@@ -395,5 +442,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _fmt(num n) {
     final s = n.toStringAsFixed(0);
     return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+  }
+}
+
+/// ما يُعرض لمستخدم بلا أي قسم تشغيلي في الشركة الفعّالة.
+///
+/// Hint: بدونها كان يرى لوحةً فارغة تماماً فيظنّ النظام معطّلاً. الرسالة تشرح السبب
+/// وتوجّهه إلى الحلّ — وتذكر «هذه الشركة» صراحةً لأن الصلاحيات تخصّ شركة بعينها
+/// (ADR-017)، وقد يملك أقساماً في شركته الأخرى.
+class _NoModulesView extends StatelessWidget {
+  const _NoModulesView();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline_rounded, size: 56,
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.35)),
+                const SizedBox(height: 20),
+                const Text('لا توجد أقسام متاحة لك في هذه الشركة',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                Text(
+                  'حسابك لا يملك صلاحية على الصادر أو الوارد أو الأرشيف هنا. '
+                  'إن كنت تعمل على أكثر من شركة فجرّب التبديل من الشريط العلوي، '
+                  'وإلا فراجع مدير النظام لمنحك الصلاحية.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13.5, height: 1.7,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

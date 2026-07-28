@@ -132,12 +132,15 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                 ),
                 const SizedBox(width: 8),
 
-                // Incoming Notifications
+                // إشعارات الوارد — تظهر لمن يملك قسم «الوارد» في **الشركة الفعّالة** (ADR-017).
+                // Hint: بدون هذا الفحص كان الزرّ يظهر للجميع فارغاً دائماً لمن لا يملك القسم،
+                //       فيبدو كأن لا وارد في الشركة بينما الحقيقة أنه لا يراه.
                 Consumer(
                   builder: (ctx, ref, child) {
+                    if (!ref.watch(sessionProvider).hasModule('Incoming')) return const SizedBox.shrink();
                     final pendingIncList = ref.watch(pendingIncomingProvider).value ?? <IncomingListItem>[];
                     final pendingIncCount = pendingIncList.length;
-                    
+
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -201,14 +204,20 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                     );
                   },
                 ),
-                const SizedBox(width: 8),
+                // الفاصل يتبع زرّ الوارد: لولا ذلك لبقيت مسافة معلّقة حين يُخفى الزرّ.
+                Consumer(
+                  builder: (ctx, ref, _) => ref.watch(sessionProvider).hasModule('Incoming')
+                      ? const SizedBox(width: 8)
+                      : const SizedBox.shrink(),
+                ),
 
-                // Outgoing Notifications
+                // إشعارات الصادر — تظهر لمن يملك قسم «الصادر» في الشركة الفعّالة (ADR-017).
                 Consumer(
                   builder: (ctx, ref, child) {
+                    if (!ref.watch(sessionProvider).hasModule('Outgoing')) return const SizedBox.shrink();
                     final pendingList = ref.watch(pendingDraftsProvider).value ?? <OutgoingListItem>[];
                     final pendingCount = pendingList.length;
-                    
+
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
