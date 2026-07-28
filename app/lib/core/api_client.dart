@@ -383,11 +383,15 @@ class ApiClient {
   ///
   /// Hint: الدمج يتم في الخادم لا هنا — ليبقى العميل رفيعاً، ولأن قاعدة رؤية الوارد
   /// (ADR-015 + ADR-018) لا يجوز أن تُنسخ في العميل حيث لا تُفرض أصلاً.
-  Future<List<ArchiveLensItem>> archiveLens({String? search, int? year, int? departmentId}) async {
+  Future<List<ArchiveLensItem>> archiveLens({
+    String? search, int? year, int? month, int? departmentId, String? source,
+  }) async {
     final q = <String, dynamic>{};
     if (search != null && search.isNotEmpty) q['search'] = search;
     if (year != null) q['year'] = year;
+    if (month != null) q['month'] = month;
     if (departmentId != null) q['departmentId'] = departmentId;
+    if (source != null) q['source'] = source;
     return (await _get('/archive/lens', query: q) as List)
         .map((e) => ArchiveLensItem.fromJson(e))
         .toList();

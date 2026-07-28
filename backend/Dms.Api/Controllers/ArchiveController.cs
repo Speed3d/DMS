@@ -38,13 +38,17 @@ public sealed class ArchiveController(
     /// </remarks>
     [HttpGet("lens")]
     public async Task<ActionResult<List<ArchiveLensItem>>> Lens(
-        [FromQuery] string? search, [FromQuery] int? year, [FromQuery] int? departmentId,
+        [FromQuery] string? search, [FromQuery] int? year, [FromQuery] int? month,
+        [FromQuery] int? departmentId, [FromQuery] string? source,
         CancellationToken ct = default)
     {
         var items = new List<ArchiveLensItem>();
 
+        var wantIncoming = !string.Equals(source, "Paper", StringComparison.OrdinalIgnoreCase);
+        var wantPaper = !string.Equals(source, "Incoming", StringComparison.OrdinalIgnoreCase);
+
         // ---- المصدر الأول: الوارد المؤرشف (يتطلّب قسم الوارد أيضاً) ----
-        if (current.HasModule(AppModule.Incoming))
+        if (wantIncoming && current.HasModule(AppModule.Incoming))
         {
             var q = incomingService.Query()
                 .Where(b => b.Status == IncomingStatus.Archived)
@@ -79,6 +83,8 @@ public sealed class ArchiveController(
         }
 
         // ---- المصدر الثاني: الأضابير الورقية القديمة ----
+        if (wantPaper)
+        {
         var docs = await svc.SearchAsync(new ArchiveSearchInput(search, null, null, null, null), ct);
         var docTypeNames = await db.DocumentTypes.ToDictionaryAsync(t => t.DocumentTypeId, t => t.Name, ct);
 
@@ -95,8 +101,13 @@ public sealed class ArchiveController(
                     a.Department?.Name is null ? [] : [a.Department.Name],
                     a.Notes);
             }));
+        }
 
+        // Hint: الفلترة بالسنة/الشهر بعد الدمج لا قبله — المصدران يشتقّان تاريخهما من
+        //       حقلين مختلفين (`UpdatedAt` للوارد و`BookDate` للأضبارة)، فتوحيدهما هنا
+        //       يضمن أن «شهر ٥» يعني الشيء نفسه في الجهتين.
         if (year.HasValue) items = items.Where(i => i.Year == year.Value).ToList();
+        if (month.HasValue) items = items.Where(i => i.Month == month.Value).ToList();
 
         return items.OrderByDescending(i => i.ArchivedAt).ToList();
     }

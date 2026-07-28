@@ -1,9 +1,9 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../core/api_client.dart';
-import '../core/quill_toolbar.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -22,7 +22,21 @@ class _State extends ConsumerState<ArchiveFormScreen> {
   final _bookNumber = TextEditingController();
   final _keywords = TextEditingController();
   final _notes = TextEditingController();
-  final _quillController = quill.QuillController.basic();
+
+  /// محتوى الأرشيف — **حقل نصّ عادي لا محرّر منسّق**.
+  ///
+  /// ⚠️ كان محرّر Quill بشريط كامل (خط · حجم · عريض · مائل · ألوان)، لكن الحفظ يتم
+  /// بـ`toPlainText()` والعرض بـ`Text` عادي ⇒ **كل تنسيق يكتبه المستخدم يُمحى صامتاً**.
+  /// فالشريط لم يكن زائداً فحسب بل **يَعِد بما لا يُنفَّذ**. وهذا المتن وصفٌ للمستند
+  /// الممسوح لا مستندٌ رسمي (بخلاف متن الصادر الذي يُرسَم في PDF بتنسيقه).
+  /// `TextField` يعطي التراجع والإعادة أصلاً (Ctrl+Z / Ctrl+Y) — وهو ما يحتاجه المالك.
+  final _body = TextEditingController();
+
+  /// ملفات اختيرت قبل الحفظ — تُرفَع بعد إنشاء المستند (المرفق يحتاج مالكاً محفوظاً).
+  final List<_PendingFile> _pending = [];
+
+  /// مرآة لحدّ `AttachmentService` في الباك-إند.
+  static const _kMaxAttachmentMb = 50;
 
   DateTime? _bookDate;
   int? _fromEntityId, _toEntityId, _documentTypeId, _departmentId;
@@ -56,11 +70,8 @@ class _State extends ConsumerState<ArchiveFormScreen> {
       _departmentId = e.departmentId;
       _currency = e.currency;
       
-      // Hint: إضافة النص المحفوظ إلى محرر النصوص
-      if (e.bodyHtml != null && e.bodyHtml!.isNotEmpty) {
-        final text = e.bodyHtml!.replaceAll('<br>', '\n');
-        _quillController.document.insert(0, text);
-      }
+      // المتن يُخزَّن نصّاً مع `<br>` بدل الأسطر — نعكسها للعرض والتحرير.
+      _body.text = (e.bodyHtml ?? '').replaceAll('<br>', '\n');
     }
     _refs = _loadRefs();
   }
@@ -71,8 +82,37 @@ class _State extends ConsumerState<ArchiveFormScreen> {
     _bookNumber.dispose();
     _keywords.dispose();
     _notes.dispose();
-    _quillController.dispose();
+    _body.dispose();
     super.dispose();
+  }
+
+  /// اختيار مرفقات — نفس أنواع وحدّ الوارد (مرآة لقواعد `AttachmentService`).
+  Future<void> _pickAttachments() async {
+    final res = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'docx', 'xlsx', 'zip', 'dwg'],
+      withData: true,
+      allowMultiple: true,
+    );
+    if (res == null) return;
+
+    final tooBig = <String>[];
+    setState(() {
+      for (final f in res.files) {
+        if (f.bytes == null) continue;
+        if (f.bytes!.length > _kMaxAttachmentMb * 1024 * 1024) { tooBig.add(f.name); continue; }
+        if (_pending.any((p) => p.name == f.name)) continue;
+        _pending.add(_PendingFile(f.name, f.bytes!));
+      }
+    });
+
+    // نرفض المتجاوز **هنا** لا بعد الحفظ — حتى لا يُسجَّل المستند ثم يُفاجأ المستخدم بفشل المرفق.
+    if (tooBig.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('تجاوزت الحدّ ($_kMaxAttachmentMb م.ب): ${tooBig.join('، ')}'),
+        backgroundColor: AppColors.danger,
+      ));
+    }
   }
 
   Future<_Refs> _loadRefs() async {
@@ -80,16 +120,11 @@ class _State extends ConsumerState<ArchiveFormScreen> {
     return _Refs(await api.entities(), await api.documentTypes(), await api.departments());
   }
 
-  /// Hint: تحويل من محرر Quill إلى نص/HTML مبسط للإرسال للسيرفر
-  String? _getHtmlFromBody() {
-    if (_quillController.document.isEmpty()) return null;
-    return _quillController.document.toPlainText().replaceAll('\n', '<br>');
-  }
-
   Future<void> _save() async {
     if (_title.text.trim().isEmpty) { setState(() => _error = 'عنوان المستند مطلوب.'); return; }
-    
-    final bodyHtml = _getHtmlFromBody();
+
+    final text = _body.text.trim();
+    final bodyHtml = text.isEmpty ? null : text.replaceAll('\n', '<br>');
 
     final body = {
       'title': _title.text.trim(),
@@ -111,11 +146,35 @@ class _State extends ConsumerState<ArchiveFormScreen> {
     setState(() { _busy = true; _error = null; });
     
     try {
+      final api = ref.read(apiClientProvider);
+      final int archiveId;
       if (_isEdit) {
-        await ref.read(apiClientProvider).updateArchive(widget.existing!.archiveId, body);
+        await api.updateArchive(widget.existing!.archiveId, body);
+        archiveId = widget.existing!.archiveId;
       } else {
-        await ref.read(apiClientProvider).createArchive(body);
+        final created = await api.createArchive(body);
+        archiveId = created.archiveId;
       }
+
+      // المرفق يحتاج مالكاً محفوظاً (OwnerId)، فتُجمَّع الملفات في النموذج وتُرفَع بعده.
+      // ⚠️ **فشلُ رفع مرفق لا يُبطل حفظ المستند** — المستند سجلّ قائم بذاته والمرفق مُلحق
+      //    به؛ نُبلّغ المستخدم ليُعيد الرفع من شاشة التفاصيل بدل أن نفقد ما أدخله.
+      final failed = <String>[];
+      for (final f in _pending) {
+        try {
+          await api.uploadArchiveAttachment(archiveId, f.bytes, f.name);
+        } on ApiException catch (_) {
+          failed.add(f.name);
+        }
+      }
+      if (mounted && failed.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('حُفظ المستند، لكن تعذّر رفع: ${failed.join('، ')} — أعِد رفعها من شاشة التفاصيل.'),
+          backgroundColor: AppColors.warn,
+          duration: const Duration(seconds: 6),
+        ));
+      }
+
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -306,45 +365,88 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                           ],
                         ),
                         const Divider(height: 24),
-                        
-                        // Hint: شريط أدوات Quill Editor
-                        Container(
-                          decoration: BoxDecoration(
-                            color: isDark ? theme.colorScheme.surfaceContainerHighest : Colors.grey.shade100,
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                            border: Border.all(color: theme.dividerColor),
+
+                        // ⚠️ حقل نصّ عادي بدل محرّر منسّق: الحفظ يتم بنصّ مجرّد والعرض
+                        //    بـ`Text` عادي، فأي تنسيق كان يُمحى صامتاً — شريطٌ يَعِد بما
+                        //    لا يُنفَّذ. والتراجع/الإعادة (Ctrl+Z / Ctrl+Y) مدمجان هنا أصلاً.
+                        TextField(
+                          controller: _body,
+                          maxLines: isSmall ? 12 : 16,
+                          textAlignVertical: TextAlignVertical.top,
+                          decoration: InputDecoration(
+                            hintText: 'وصف المستند أو ملاحظات عنه…',
+                            alignLabelWithHint: true,
+                            filled: true,
+                            fillColor: isDark
+                                ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+                                : Colors.grey.shade50,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          padding: const EdgeInsets.all(8),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: quill.QuillSimpleToolbar(
-                              controller: _quillController,
-                              // Hint: كان بلا إعداد فبقي بالخطوط الافتراضية والأحجام المسمّاة.
-                              //       نمنحه خيارات الأزرار نفسها (خطوط عربية + أحجام رقمية)
-                              //       دون تغيير تخطيطه (شريط أفقي قابل للتمرير).
-                              config: const quill.QuillSimpleToolbarConfig(
-                                buttonOptions: kQuillButtonOptions,
+                        ),
+                      ],
+                    ),
+                  );
+
+                  // بطاقة المرفقات — **المدخل الذي كان مفقوداً**: كان المستخدم يحفظ
+                  // المستند ثم يُعيد فتحه ليُرفق الملف. والمرفق هو جوهر الأرشيف لا مُلحق به.
+                  final attachmentsCard = CustomCard(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.attach_file_rounded, color: AppColors.navyDeep),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _isEdit
+                                    ? 'إضافة مرفقات (${_pending.length})'
+                                    : 'المرفقات (${_pending.length})',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                               ),
                             ),
-                          ),
-                        ),
-                        
-                        // Hint: مساحة العمل للكتابة
-                        Container(
-                          height: isSmall ? 400 : null,
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(color: theme.dividerColor),
-                              right: BorderSide(color: theme.dividerColor),
-                              bottom: BorderSide(color: theme.dividerColor),
+                            OutlinedButton.icon(
+                              onPressed: _busy ? null : _pickAttachments,
+                              icon: const Icon(Icons.upload_file_rounded, size: 18),
+                              label: const Text('اختيار ملفات'),
                             ),
-                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: quill.QuillEditor.basic(
-                            controller: _quillController,
-                          ),
+                          ],
                         ),
+                        if (_isEdit) ...[
+                          const SizedBox(height: 6),
+                          Text('المرفقات المرفوعة سابقاً تُدار من شاشة التفاصيل — هنا تُضاف الجديدة فقط.',
+                              style: TextStyle(fontSize: 12,
+                                  color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+                        ],
+                        const Divider(height: 24),
+                        if (_pending.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Text('لم تُختَر ملفات. المسموح: PDF · صور · Word · Excel · ZIP · DWG (حتى $_kMaxAttachmentMb م.ب).',
+                                style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5), fontSize: 12.5)),
+                          )
+                        else
+                          for (var i = 0; i < _pending.length; i++)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.insert_drive_file_outlined, size: 18),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: Text(_pending[i].name,
+                                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 13))),
+                                  Text(_fmtSize(_pending[i].bytes.length),
+                                      style: TextStyle(fontSize: 12,
+                                          color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+                                  IconButton(
+                                    icon: const Icon(Icons.close_rounded, size: 16),
+                                    onPressed: _busy ? null : () => setState(() => _pending.removeAt(i)),
+                                  ),
+                                ],
+                              ),
+                            ),
                       ],
                     ),
                   );
@@ -378,6 +480,8 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                         const SizedBox(height: 24),
                         extraCard,
                         const SizedBox(height: 24),
+                        attachmentsCard,
+                        const SizedBox(height: 24),
                         editorSection,
                         const SizedBox(height: 24),
                         saveButton,
@@ -397,18 +501,20 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                             basicInfoCard,
                             const SizedBox(height: 24),
                             extraCard,
+                            const SizedBox(height: 24),
+                            attachmentsCard,
                           ],
                         ),
                       ),
-                      
-                      // القسم الأيسر (المحرر والنص)
+
+                      // القسم الأيسر (المتن والحفظ)
                       Expanded(
                         flex: 5,
                         child: Padding(
                           padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
                           child: Column(
                             children: [
-                              Expanded(child: editorSection),
+                              Expanded(child: SingleChildScrollView(child: editorSection)),
                               const SizedBox(height: 24),
                               saveButton,
                             ],
@@ -445,4 +551,17 @@ class _Refs {
   final List<DocumentTypeModel> types;
   final List<DepartmentModel> departments;
   _Refs(this.entities, this.types, this.departments);
+}
+
+/// ملف اختير قبل الحفظ — يُحتفظ ببايتاته حتى يُنشأ المستند فيُرفَع إليه.
+class _PendingFile {
+  final String name;
+  final Uint8List bytes;
+  _PendingFile(this.name, this.bytes);
+}
+
+String _fmtSize(int b) {
+  if (b >= 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(1)} م.ب';
+  if (b >= 1024) return '${(b / 1024).toStringAsFixed(0)} ك.ب';
+  return '$b بايت';
 }

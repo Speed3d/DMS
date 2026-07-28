@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../core/incoming_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -21,8 +22,12 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
   late Future<List<ArchiveLensItem>> _future;
   final _search = TextEditingController();
 
-  /// سنة مختارة للفلترة — `null` = كل السنوات.
-  int? _year;
+  /// فلاتر العدسة — `null` في أيٍّ منها = بلا تقييد.
+  int? _year, _month, _departmentId;
+  String? _source;
+
+  bool get _hasFilters =>
+      _year != null || _month != null || _departmentId != null || _source != null;
 
   @override
   void initState() {
@@ -33,8 +38,16 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
   /// Hint: تُجلب من **عدسة الأرشيف** لا من `/archive` وحدها — فالقسم يجمع مصدرين:
   /// الوارد المؤرشف (يبقى كتاباً وارداً، لا يُنقل) والأضابير الورقية القديمة.
   void _reload() {
-    _future = ref.read(apiClientProvider).archiveLens(search: _search.text, year: _year);
+    _future = ref.read(apiClientProvider).archiveLens(
+          search: _search.text, year: _year, month: _month,
+          departmentId: _departmentId, source: _source,
+        );
     setState(() {});
+  }
+
+  void _clearFilters() {
+    _year = null; _month = null; _departmentId = null; _source = null;
+    _reload();
   }
 
   @override
@@ -148,7 +161,12 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                 );
               }
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
+
+            // شريط الفلاتر — الأرشيف يُقرأ بالسنة والشهر أساساً (المحور الزمني)،
+            // والقسم والمصدر ثانويان. Wrap لا Row: العناصر خمسة وتلتفّ على الضيق.
+            _filtersBar(theme),
+            const SizedBox(height: 24),
 
             // Hint: عرض البيانات داخل CustomCard كجدول
             Expanded(
@@ -360,6 +378,87 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
   /// ⚠️ الكتاب المؤرشف يُفتح في **شاشة الوارد** لا في شاشة الأرشيف — لأنه لم يُنقل:
   /// مرفقاته وسجل حركته وربطه بالصادر كلها هناك. فتحُه في شاشة الأرشيف كان سيُظهر
   /// نصف الحقيقة.
+  /// شريط فلاتر الأرشيف: السنة · الشهر · القسم · المصدر.
+  Widget _filtersBar(ThemeData theme) {
+    final thisYear = DateTime.now().year;
+
+    Widget box(Widget child, {double width = 165}) => Container(
+          width: width,
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: theme.dividerColor, width: 1.5),
+          ),
+          child: DropdownButtonHideUnderline(child: child),
+        );
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        box(DropdownButton<int?>(
+          value: _year,
+          isExpanded: true,
+          hint: const Text('السنة', style: TextStyle(fontSize: 13.5)),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          items: [
+            const DropdownMenuItem<int?>(value: null, child: Text('كل السنوات')),
+            for (var y = thisYear; y >= thisYear - 30; y--)
+              DropdownMenuItem<int?>(value: y, child: Text('$y')),
+          ],
+          onChanged: (v) { _year = v; _reload(); },
+        )),
+        box(DropdownButton<int?>(
+          value: _month,
+          isExpanded: true,
+          hint: const Text('الشهر', style: TextStyle(fontSize: 13.5)),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          items: [
+            const DropdownMenuItem<int?>(value: null, child: Text('كل الأشهر')),
+            for (var m = 1; m <= 12; m++)
+              DropdownMenuItem<int?>(value: m, child: Text('شهر $m')),
+          ],
+          onChanged: (v) { _month = v; _reload(); },
+        )),
+        Consumer(builder: (context, ref, _) {
+          final depts = ref.watch(departmentsListProvider).asData?.value ?? const <DepartmentModel>[];
+          return box(DropdownButton<int?>(
+            value: _departmentId,
+            isExpanded: true,
+            hint: const Text('القسم', style: TextStyle(fontSize: 13.5)),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+            items: [
+              const DropdownMenuItem<int?>(value: null, child: Text('كل الأقسام')),
+              ...depts.map((d) => DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name))),
+            ],
+            onChanged: (v) { _departmentId = v; _reload(); },
+          ), width: 185);
+        }),
+        box(DropdownButton<String?>(
+          value: _source,
+          isExpanded: true,
+          hint: const Text('المصدر', style: TextStyle(fontSize: 13.5)),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          items: const [
+            DropdownMenuItem<String?>(value: null, child: Text('الكل')),
+            DropdownMenuItem<String?>(value: 'Incoming', child: Text('وارد مؤرشف')),
+            DropdownMenuItem<String?>(value: 'Paper', child: Text('أضبارة ورقية')),
+          ],
+          onChanged: (v) { _source = v; _reload(); },
+        ), width: 175),
+        if (_hasFilters)
+          TextButton.icon(
+            onPressed: _clearFilters,
+            icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+            label: const Text('مسح الفلاتر'),
+          ),
+      ],
+    );
+  }
+
   void _open(ArchiveLensItem it) async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => it.isIncoming
