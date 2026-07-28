@@ -101,6 +101,97 @@ public sealed class ArchiveController(
         return items.OrderByDescending(i => i.ArchivedAt).ToList();
     }
 
+    /// <summary>
+    /// **استيراد دفعة من الأرشيف الورقي**: ملفات متعدّدة ببيانات وصفية مشتركة.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **لماذا بالجملة لا واحداً واحداً:** أرشيف الشركة ~80 غيغا ≈ **6,500 كتاب**؛
+    /// إدخالها يدوياً بدقيقتين للكتاب = **٢٧ يوم عمل متواصل** — وهو ما لا يكتمل عملياً
+    /// فينتهي الأمر بأرشيف نصفه في النظام ونصفه على أجهزة الموظفين.
+    /// البيانات المشتركة (السنة/الشهر/القسم/الجهة/النوع) تُعطي الترتيب المطلوب نفسه،
+    /// والعنوان يُستخلص من اسم الملف ويُحسَّن لاحقاً عند الحاجة.
+    ///
+    /// **الفشل جزئي:** كل ملف يُعالَج على حدة ويحمل نتيجته، فملفٌ واحد تالف لا يُبطل الدفعة.
+    /// </remarks>
+    [HttpPost("bulk")]
+    [Authorize(Roles = "SuperAdmin,President,Manager")]
+    [RequestSizeLimit(600 * 1024 * 1024)]
+    public async Task<ActionResult<BulkImportResult>> BulkImport(
+        [FromForm] IFormFileCollection files,
+        [FromForm] int? year, [FromForm] int? month,
+        [FromForm] int? departmentId, [FromForm] int? fromEntityId,
+        [FromForm] int? documentTypeId, [FromForm] string? keywords,
+        CancellationToken ct)
+    {
+        if (files is null || files.Count == 0)
+            throw new ValidationException("اختر ملفاً واحداً على الأقل.");
+
+        // سقفٌ للدفعة: يحمي الذاكرة ومهلة الطلب. الأرشيف يُرفع على دفعات شهرية أصلاً.
+        const int maxPerBatch = 50;
+        if (files.Count > maxPerBatch)
+            throw new ValidationException($"الحد الأقصى {maxPerBatch} ملفاً في الدفعة الواحدة — قسّمها على دفعات (شهراً شهراً مثلاً).");
+
+        var rows = new List<BulkImportRow>();
+
+        foreach (var file in files)
+        {
+            var parsed = ArchiveFileNameParser.Parse(file.FileName);
+
+            // ⚠️ يُتتبَّع ليُنظَّف عند فشل الإرفاق: أول نسخة كانت تُنشئ المستند ثم تُرفق،
+            //    فإذا رُفض الملف (امتداد ممنوع مثلاً) بقي **سجلّ أرشيف يتيم بلا ملف** —
+            //    ظهر فعلاً في الاختبار (ArchiveId=5 بصفر مرفقات). ولا نُكرّر قواعد التحقّق
+            //    هنا لأن مصدرها الوحيد `AttachmentService`، ونسخةٌ ثانية منها تتخلّف عنه.
+            int? createdId = null;
+            try
+            {
+                if (file.Length == 0) throw new ValidationException("الملف فارغ.");
+
+                // العنوان: من اسم الملف، وإلا اسم الملف كما هو ليبقى للمالك خيطٌ يتعرّف به
+                // عليه في قائمة «تحتاج عنواناً» — **ولا نخترع عنواناً وهمياً**.
+                var title = parsed.Title ?? Path.GetFileNameWithoutExtension(file.FileName).Trim();
+                if (string.IsNullOrWhiteSpace(title)) title = "بلا عنوان";
+
+                // التاريخ: من اسم الملف إن وُجد، وإلا من بيانات الدفعة (سنة/شهر).
+                var date = parsed.Date
+                           ?? (year is not null ? new DateTime(year.Value, month ?? 1, 1) : (DateTime?)null);
+
+                var doc = await svc.CreateAsync(new CreateArchiveInput(
+                    null, title, null, date,
+                    fromEntityId, null, documentTypeId,
+                    null, null, null, keywords, null, null, departmentId), ct);
+                createdId = doc.ArchiveId;
+
+                using var ms = new MemoryStream();
+                await file.CopyToAsync(ms, ct);
+                await attachments.AddAsync(OwnerType.Archive, doc.ArchiveId, file.FileName, ms.ToArray(), ct);
+
+                rows.Add(new BulkImportRow(file.FileName, true, doc.ArchiveId, doc.ArchiveNumber, title, parsed.NeedsTitle, null));
+            }
+            catch (Exception ex)
+            {
+                // نحذف المستند إن كان أُنشئ قبل فشل الإرفاق — لا نترك سجلاً بلا ملف.
+                if (createdId is not null)
+                {
+                    try { await svc.SoftDeleteAsync(createdId.Value, ct); }
+                    catch { /* أفضل جهد: فشل التنظيف لا يجوز أن يُخفي سبب الفشل الأصلي */ }
+                }
+                // Hint: نلتقط الاستثناء لكل ملف — الرسالة العربية من استثناءات المجال تصل
+                //       للمالك كما هي، وغيرها يُختصر حتى لا نكشف تفاصيل داخلية.
+                var msg = ex is ValidationException or NotFoundException or ConflictException
+                    ? ex.Message
+                    : "تعذّر استيراد هذا الملف.";
+                rows.Add(new BulkImportRow(file.FileName, false, null, null, null, parsed.NeedsTitle, msg));
+            }
+        }
+
+        return new BulkImportResult(
+            rows.Count,
+            rows.Count(r => r.Ok),
+            rows.Count(r => !r.Ok),
+            rows.Count(r => r.Ok && r.NeedsTitle),
+            rows);
+    }
+
     [HttpGet]
     public async Task<ActionResult<List<ArchiveListItem>>> List(
         [FromQuery] string? search, [FromQuery] DateTime? from, [FromQuery] DateTime? to,

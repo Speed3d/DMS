@@ -153,6 +153,18 @@ public sealed record ArchiveListItem(
 /// <summary>مصدر الصفّ في عدسة الأرشيف — يحدّد أي شاشة تُفتح عند النقر.</summary>
 public enum ArchiveSource { Incoming, Paper }
 
+/// <summary>نتيجة استيراد ملف واحد ضمن دفعة.</summary>
+public sealed record BulkImportRow(string FileName, bool Ok, int? ArchiveId, string? Number, string? Title, bool NeedsTitle, string? Error);
+
+/// <summary>حصيلة استيراد دفعة أرشيف ورقي.</summary>
+/// <remarks>
+/// ⚠️ **الفشل جزئي لا كلّي عمداً:** ملفٌ تالف أو بامتداد ممنوع لا يُبطل الدفعة كلها —
+/// وإلا صار على المالك أن يعثر على الملف المخالف بين مئة ملف ويُعيد الرفع من الصفر.
+/// كل صفّ يحمل نتيجته، و<see cref="NeedTitleCount"/> يقول له كم صفّاً يحتاج عنواناً.
+/// </remarks>
+public sealed record BulkImportResult(
+    int Total, int Created, int Failed, int NeedTitleCount, List<BulkImportRow> Rows);
+
 /// <summary>
 /// صفٌّ في **عدسة الأرشيف**: عرض موحّد يجمع الوارد المؤرشف والأضابير الورقية القديمة.
 /// </summary>
