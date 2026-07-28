@@ -64,6 +64,22 @@ public sealed class BackupController(IBackupService backup) : ControllerBase
         // النسخة اليدوية دائماً كاملة وتصنيفها Manual (لا تُقلَّم إلا عند تجاوز سقف كبير).
         => Map(await backup.RunAsync(BackupType.Manual, BackupScope.Full, RetentionCategory.Manual, ct));
 
+    /// <summary>
+    /// **مرآة كاملة** إلى مسار يحدّده المالك (قرص خارجي عادةً): قاعدة + كل الملفات.
+    /// </summary>
+    /// <remarks>
+    /// تُضيف ولا تُكرّر: الموجود بالحجم نفسه يُتخطّى، فالمرة الأولى تنسخ الأرشيف كاملاً
+    /// والمرات التالية دقائق. **لا مسار افتراضي** — يُدخله المالك في كل مرة (قراره).
+    /// </remarks>
+    [HttpPost("mirror")]
+    public async Task<ActionResult<MirrorResult>> Mirror(MirrorRequest req, CancellationToken ct)
+        => await backup.MirrorAsync(req.TargetPath, ct);
+
+    /// <summary>استعادة من مرآة — تدميرية، تتطلب كلمة التأكيد نفسها.</summary>
+    [HttpPost("mirror/restore")]
+    public async Task<ActionResult<MirrorRestoreResult>> RestoreMirror(MirrorRestoreRequest req, CancellationToken ct)
+        => await backup.RestoreFromMirrorAsync(req.SourcePath, req.Confirmation, ct);
+
     /// <summary>استعادة نسخة احتياطية — عملية تدميرية تتطلب كلمة تأكيد في الجسم.</summary>
     [HttpPost("{id:int}/restore")]
     public async Task<IActionResult> Restore(int id, RestoreBackupRequest req, CancellationToken ct)

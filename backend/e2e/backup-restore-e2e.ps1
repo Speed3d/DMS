@@ -90,6 +90,58 @@ $list = (Api GET "/backup" $null $tok $null).Body
 $safety = $list | Where-Object { $_.note -like "*أمان*قبل الاستعادة*" } | Select-Object -First 1
 if ($safety) { Ok "نسخة الأمان سُجّلت تلقائياً: $($safety.fileName)" } else { Bad "لم تُسجَّل نسخة أمان" }
 
+Section "9) تغطية النسخ — تذكير النسخة الكاملة"
+$cov = Api GET "/backup/coverage" $null $tok $null
+Expect "نقطة التغطية تعمل" $cov.Status 200
+if ($cov.Body.urgency -eq "Ok") { Ok "التغطية سليمة بعد نسخة كاملة حديثة" }
+else { Bad "التغطية غير متوقّعة: $($cov.Body.urgency)" }
+
+# ───────────────── المرآة: نسخة كاملة يدوية إلى مسار خارجي ─────────────────
+# ⚠️ المرآة هي ما يحمي المرفقات فعلاً بعد أن صارت المجدولة «قاعدة فقط».
+#    فدورتها (مرآة ← حذف ← استعادة) جزء من معيار القبول 10 لا إضافة تجميلية.
+$mirrorDir = Join-Path $env:TEMP "dms-mirror-e2e"
+if (Test-Path $mirrorDir) { Remove-Item $mirrorDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+Section "10) المرآة ترفض المسارات الخطرة"
+Expect "رفض مسار داخل مجلد نظام" (Api POST "/backup/mirror" @{ targetPath = "C:\Windows\Temp\dms" } $tok $null).Status 400
+Expect "رفض مسار نسبي"            (Api POST "/backup/mirror" @{ targetPath = "mirror" } $tok $null).Status 400
+Expect "رفض مسار بلا حرف قرص"     (Api POST "/backup/mirror" @{ targetPath = "\mirror" } $tok $null).Status 400
+Expect "رفض مسار فارغ"            (Api POST "/backup/mirror" @{ targetPath = "" } $tok $null).Status 400
+
+Section "11) المرآة الأولى تنسخ، والثانية لا تُكرّر"
+$m1 = Api POST "/backup/mirror" @{ targetPath = $mirrorDir } $tok $null
+Expect "المرآة الأولى نجحت" $m1.Status 200
+if ($m1.Body.databaseOk) { Ok "قاعدة البيانات نُسخت إلى المرآة" } else { Bad "فشل نسخ القاعدة: $($m1.Body.note)" }
+if ($m1.Body.copied -gt 0) { Ok "نُسخ $($m1.Body.copied) ملفاً" } else { Bad "لم يُنسخ أي ملف" }
+
+$m2 = Api POST "/backup/mirror" @{ targetPath = $mirrorDir } $tok $null
+if ($m2.Body.copied -eq 0 -and $m2.Body.skipped -gt 0) {
+    Ok "لا تكرار: تُخطّي $($m2.Body.skipped) ملفاً ونُسخ 0"
+} else { Bad "المرآة كرّرت النسخ (نُسخ=$($m2.Body.copied))" }
+
+Section "12) دورة المرآة: حذف ← استعادة ← الكتاب يعود"
+$mMarker = "شاهد المرآة " + (Get-Date -Format "HHmmss")
+$mBook = (Api POST "/incoming" @{
+    companyId=$cid; externalNumber="MIR"; externalDate=$null
+    receivedDate="2026-07-28T00:00:00"; receivedTime=$null; entityId=$eid
+    subject=$mMarker; documentTypeId=$null; receiveMethod="Manual"
+    folderName=$null; keywords=$null; notes=$null; amount=$null; currency=$null; exchangeRate=$null
+} $tok $cid).Body
+if ($mBook) { Ok "الكتاب الشاهد للمرآة: $($mBook.incomingNumber)" } else { Bad "تعذّر إنشاء كتاب المرآة" }
+
+Api POST "/backup/mirror" @{ targetPath = $mirrorDir } $tok $null | Out-Null
+Api DELETE "/incoming/$($mBook.incomingId)" $null $tok $cid | Out-Null
+Expect "الكتاب حُذف قبل الاستعادة" (Api GET "/incoming/$($mBook.incomingId)" $null $tok $cid).Status 404
+
+Expect "رفض استعادة المرآة بتأكيد خاطئ" (Api POST "/backup/mirror/restore" @{ sourcePath = $mirrorDir; confirmation = "نعم" } $tok $null).Status 400
+Expect "الاستعادة من المرآة نجحت" (Api POST "/backup/mirror/restore" @{ sourcePath = $mirrorDir; confirmation = "استعادة" } $tok $null).Status 200
+Start-Sleep -Seconds 2
+Expect "الكتاب الشاهد عاد من المرآة" (Api GET "/incoming/$($mBook.incomingId)" $null $tok $cid).Status 200
+
+# تنظيف
+if (Test-Path $mirrorDir) { Remove-Item $mirrorDir -Recurse -Force -ErrorAction SilentlyContinue }
+Api DELETE "/incoming/$($mBook.incomingId)" $null $tok $cid | Out-Null
+
 Write-Host "`n================ النتيجة ================" -ForegroundColor Cyan
 Write-Host "  نجح: $script:pass" -ForegroundColor Green
 Write-Host "  فشل: $script:fail" -ForegroundColor $(if ($script:fail -gt 0) { "Red" } else { "Green" })

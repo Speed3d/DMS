@@ -30,7 +30,28 @@ public interface IBackupService
     /// Hint: تأخذ نسخة أمان أولاً، ثم تدخل وضع الصيانة، فتستبدل القاعدة والملفات بالكامل.
     /// </summary>
     Task RestoreAsync(int backupRecordId, string confirmation, CancellationToken ct = default);
+
+    /// <summary>
+    /// **مرآة كاملة** إلى مسار يحدّده المالك: قاعدة البيانات + كل ملفات التخزين.
+    /// </summary>
+    /// <remarks>
+    /// تُضيف ولا تُكرّر: الملف الموجود بالحجم نفسه يُتخطّى، فالمرة الأولى تنسخ 80 غيغا
+    /// والمرات التالية دقائق. وهي **يدوية بقرار المالك** ووجهتها قرص خارجي.
+    /// </remarks>
+    Task<MirrorResult> MirrorAsync(string targetPath, CancellationToken ct = default);
+
+    /// <summary>استعادة من مرآة — عملية تدميرية تتطلب تأكيداً صريحاً.</summary>
+    Task<MirrorRestoreResult> RestoreFromMirrorAsync(string sourcePath, string confirmation, CancellationToken ct = default);
 }
+
+/// <summary>حصيلة تشغيل المرآة.</summary>
+/// <param name="Copied">ملفات نُسخت (جديدة أو تغيّر حجمها).</param>
+/// <param name="Skipped">ملفات موجودة سلفاً بالحجم نفسه — لم تُنسخ.</param>
+public sealed record MirrorResult(
+    string TargetPath, int Copied, int Skipped, long CopiedBytes, long TotalBytes, bool DatabaseOk, string? Note);
+
+/// <summary>حصيلة الاستعادة من مرآة.</summary>
+public sealed record MirrorRestoreResult(string SourcePath, int FilesRestored, string Message);
 
 /// <summary>
 /// نسخ احتياطي واستعادة.
@@ -393,6 +414,163 @@ public sealed class BackupService(
         cmd.CommandText = sql;
         cmd.CommandTimeout = timeoutSec;
         await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    // ─────────────────────────── المرآة ───────────────────────────
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// **لماذا مرآة لا ZIP:** النسخة الكاملة تضمّ ~80 غيغا من الأرشيف الورقي **الذي لا يتغيّر
+    /// أبداً**. ضغطها في أرشيف جديد كل مرة = ساعات وتكرارٌ محض. المرآة تنسخ **الجديد فقط**.
+    ///
+    /// ⚠️ **تُضيف ولا تحذف — وهذا مقصود:** الحذف في النظام **ناعم دائماً**، فملفات التخزين
+    /// لا تُحذف قط. فلا حاجة لمزامنة الحذف، وتركها يُلغي أخطر ما في المرايا: مرآةٌ تحذف من
+    /// الوجهة قد تمحو نسختك الوحيدة إن اختلّ المصدر.
+    /// </remarks>
+    public async Task<MirrorResult> MirrorAsync(string targetPath, CancellationToken ct = default)
+    {
+        var target = MirrorPathValidator.Validate(targetPath, paths.StorageRoot, paths.BackupDir);
+        Directory.CreateDirectory(target);
+
+        // 1) قاعدة البيانات — تُستبدل كل مرة (صغيرة، وهي الجزء المتغيّر فعلاً).
+        //
+        // ⚠️ **تُكتب أولاً في مجلد النسخ ثم تُنقل إلى المرآة — وهذا ليس التفافاً بل ضرورة.**
+        //    أمر `BACKUP DATABASE TO DISK` ينفّذه **محرّك SQL Server بحسابه هو**
+        //    (`NT Service\MSSQLSERVER` غالباً) لا عملية التطبيق. فالكتابة المباشرة على قرص
+        //    خارجي تفشل بـ«Operating system error 5 (Access is denied)» لأن حساب الخدمة
+        //    لا يملك صلاحية عليه — **حدث فعلاً في الاختبار الحيّ**، وكان سيضرب المالك عند
+        //    أول مرآة على قرص SSD خارجي: الملفات تُنسخ بنجاح والقاعدة تفشل بصمت.
+        //    الحلّ: SQL يكتب حيث يستطيع، والتطبيق ينقل — وهو يملك صلاحية القرص الخارجي.
+        var stagedBak = Path.Combine(paths.BackupDir, $"mirror-{DateTime.Now:yyyyMMddHHmmss}.bak");
+        var bakPath = Path.Combine(target, "database.bak");
+        var dbOk = true;
+        string? note = null;
+        try
+        {
+            try
+            {
+                await BackupDatabaseAsync(stagedBak, compression: true, ct);
+            }
+            catch
+            {
+                // Hint: بعض إصدارات SQL Express لا تدعم COMPRESSION — نُعيد بلا ضغط.
+                await BackupDatabaseAsync(stagedBak, compression: false, ct);
+            }
+
+            File.Copy(stagedBak, bakPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            dbOk = false;
+            note = "تعذّر نسخ قاعدة البيانات: " + ex.Message;
+        }
+        finally
+        {
+            if (File.Exists(stagedBak)) { try { File.Delete(stagedBak); } catch { /* أفضل جهد */ } }
+        }
+
+        // 2) الملفات — الجديد أو ما تغيّر حجمه فقط.
+        var filesTarget = Path.Combine(target, "files");
+        Directory.CreateDirectory(filesTarget);
+
+        int copied = 0, skipped = 0;
+        long copiedBytes = 0, totalBytes = 0;
+
+        if (Directory.Exists(paths.StorageRoot))
+        {
+            foreach (var src in Directory.EnumerateFiles(paths.StorageRoot, "*", SearchOption.AllDirectories))
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var rel = Path.GetRelativePath(paths.StorageRoot, src);
+                var dest = Path.Combine(filesTarget, rel);
+                var srcInfo = new FileInfo(src);
+                totalBytes += srcInfo.Length;
+
+                // المقارنة بالحجم تكفي: أسماء الملفات هنا تحمل معرّفاً فريداً ولا يُعاد
+                // استخدامها، فاختلاف الحجم يعني ملفاً مختلفاً فعلاً.
+                var destInfo = new FileInfo(dest);
+                if (destInfo.Exists && destInfo.Length == srcInfo.Length) { skipped++; continue; }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(src, dest, overwrite: true);
+                copied++;
+                copiedBytes += srcInfo.Length;
+            }
+        }
+
+        audit.Add("Mirror", nameof(BackupRecord), null,
+            $"مرآة إلى {target} — نُسخ {copied}، تُخطّي {skipped}", null);
+        await db.SaveChangesAsync(ct);
+
+        return new MirrorResult(target, copied, skipped, copiedBytes, totalBytes, dbOk, note);
+    }
+
+    /// <inheritdoc/>
+    public async Task<MirrorRestoreResult> RestoreFromMirrorAsync(
+        string sourcePath, string confirmation, CancellationToken ct = default)
+    {
+        if (!string.Equals(confirmation?.Trim(), RestoreConfirmation, StringComparison.Ordinal))
+            throw new ValidationException($"للتأكيد، أرسل كلمة «{RestoreConfirmation}» في حقل التأكيد.");
+
+        var source = MirrorPathValidator.Validate(sourcePath, paths.StorageRoot, paths.BackupDir);
+        var bakPath = Path.Combine(source, "database.bak");
+        if (!File.Exists(bakPath))
+            throw new NotFoundException($"لم يُعثر على database.bak في المسار المحدّد ({source}).");
+
+        var filesDir = Path.Combine(source, "files");
+
+        // نسخة أمان قبل أي استبدال — نفس ضمانة الاستعادة العادية.
+        var (safetyZip, safetySize, safetyStatus, safetyNote) = await CreateArchiveAsync(BackupScope.Full, ct);
+        var restoreUserId = current.UserId;
+
+        // ⚠️ نفس علّة الكتابة بالعكس: `RESTORE DATABASE FROM DISK` يقرأه **محرّك SQL بحسابه**،
+        //    وقد لا يملك صلاحية القرص الخارجي. فينقله التطبيق إلى مجلد النسخ أولاً.
+        var stagedBak = Path.Combine(paths.BackupDir, $"mirror-restore-{DateTime.Now:yyyyMMddHHmmss}.bak");
+        File.Copy(bakPath, stagedBak, overwrite: true);
+
+        maintenance.Enter("جارٍ الاستعادة من المرآة — النظام متوقّف مؤقتاً.");
+        var restored = 0;
+        try
+        {
+            await RestoreDatabaseAsync(stagedBak, ct);
+            if (Directory.Exists(filesDir))
+            {
+                RestoreStorageFiles(filesDir);
+                restored = Directory.EnumerateFiles(filesDir, "*", SearchOption.AllDirectories).Count();
+            }
+        }
+        finally
+        {
+            maintenance.Exit();
+            if (File.Exists(stagedBak)) { try { File.Delete(stagedBak); } catch { /* أفضل جهد */ } }
+        }
+
+        // ⚠️ الخطوات الثلاث بعد أي استعادة — بترتيبها (درس مكلّف سابق):
+        //    تفريغ تجمّع الاتصالات (قُتلت بـSINGLE_USER) ← ترقية المخطّط (النسخة قد تكون
+        //    أقدم من الكود) ← تفريغ متتبّع التغييرات (صار يتعقّب كياناتٍ من قاعدة مستبدَلة).
+        SqlConnection.ClearAllPools();
+        await db.Database.MigrateAsync(ct);
+        db.ChangeTracker.Clear();
+
+        db.BackupRecords.Add(new BackupRecord
+        {
+            CreatedAt = DateTime.UtcNow,
+            CreatedByUserId = restoreUserId,
+            FileName = safetyZip,
+            SizeBytes = safetySize,
+            Type = BackupType.Manual,
+            Scope = BackupScope.Full,
+            Category = RetentionCategory.Manual,
+            Status = safetyStatus,
+            Note = "نسخة أمان تلقائية قبل الاستعادة من المرآة" + (safetyNote is null ? "" : " | " + safetyNote),
+        });
+        audit.Add("RestoreMirror", nameof(BackupRecord), null,
+            $"استعادة من مرآة {source} — أُعيد {restored} ملفاً (نسخة أمان: {safetyZip})", null);
+        await db.SaveChangesAsync(ct);
+
+        return new MirrorRestoreResult(source, restored,
+            $"تمت الاستعادة من المرآة. أُعيد {restored} ملفاً، وأُنشئت نسخة أمان قبل الاستبدال.");
     }
 
     // ─────────────────────────── بيان الملفات ───────────────────────────

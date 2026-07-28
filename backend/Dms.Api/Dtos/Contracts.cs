@@ -222,6 +222,12 @@ public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int
 /// </remarks>
 public sealed record BackupCoverageDto(
     DateTime? LastFullBackupAt, int? DaysSinceFullBackup, int MaxAgeDays, string Urgency, string Message);
+
+/// <summary>مسار المرآة — يُدخله المالك في كل مرة، **بلا افتراض** (قراره).</summary>
+public sealed record MirrorRequest(string TargetPath);
+
+/// <summary>استعادة من مرآة — تتطلب كلمة التأكيد نفسها («استعادة»).</summary>
+public sealed record MirrorRestoreRequest(string SourcePath, string Confirmation);
 public sealed record BackupScheduleDto(BackupFrequency Frequency, bool Enabled, int Hour, DateTime? LastRunAt, DateTime? NextRunAt);
 public sealed record UpdateBackupScheduleRequest(BackupFrequency Frequency, bool Enabled, int Hour);
 public sealed record RestoreBackupRequest(string Confirmation);
