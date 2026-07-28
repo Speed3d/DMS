@@ -164,8 +164,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             crossAxisAlignment: WrapCrossAlignment.center,
                             spacing: 8,
                             children: [
-                              const Text('أحدث الكتب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                              TextButton(onPressed: (){}, child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold))),
+                              // العنوان «الصادر» لا «الكتب»: البطاقة تقرأ `outItems` وحدها،
+                              // فالعنوان العام يوهم مَن يملك الوحدتين أنه سيرى الوارد أيضاً.
+                              const Text('أحدث الصادر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                              TextButton(onPressed: () => widget.onNavigate?.call(2), child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold))),
                             ],
                           ),
                           const SizedBox(height: 16),
