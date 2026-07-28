@@ -39,8 +39,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
               final incNew = incItems.where((e) => e.status.toLowerCase().contains('new')).length;
               final incFinals = incItems.where((e) => e.status.toLowerCase().contains('archived')).length;
-              final incTotalIqd = incItems
-                  .fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
+              // Hint: أُزيلت بطاقة «إجمالي مبالغ الوارد» وحسابها (طلب المالك 2026-07-28) —
+              //       الوارد لم يعُد يُسجَّل بمبالغ منذ قرار 2026-07-25، فالبطاقة تعرض صفراً دائماً
+              //       وتوحي بأن الحقل ما زال مستخدَماً. (الصادر يحتفظ ببطاقته لأنه ما زال مالياً.)
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(32),
@@ -74,7 +75,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الوارد', '${incItems.length}', Icons.inbox_rounded, const Color(0xFF10B981))),
                             SizedBox(width: cardWidth, child: _buildStatCard('وارد جديد', '$incNew', Icons.mark_email_unread_rounded, AppColors.gold, onTap: () => widget.onNavigate?.call(3))),
                             SizedBox(width: cardWidth, child: _buildStatCard('وارد مؤرشف', '$incFinals', Icons.archive_rounded, const Color(0xFF64748B))),
-                            SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الوارد', '${_fmt(incTotalIqd)} د.ع', Icons.account_balance_wallet_rounded, const Color(0xFF10B981))),
                           ],
                         );
                       }
