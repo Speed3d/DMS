@@ -64,7 +64,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   .fold<num>(0, (a, e) => a + (e.amountInIqd ?? 0));
 
               final incNew = incItems.where((e) => e.status.toLowerCase().contains('new')).length;
-              final incFinals = incItems.where((e) => e.status.toLowerCase().contains('archived')).length;
+
               // Hint: أُزيلت بطاقة «إجمالي مبالغ الوارد» وحسابها (طلب المالك 2026-07-28) —
               //       الوارد لم يعُد يُسجَّل بمبالغ منذ قرار 2026-07-25، فالبطاقة تعرض صفراً دائماً
               //       وتوحي بأن الحقل ما زال مستخدَماً. (الصادر يحتفظ ببطاقته لأنه ما زال مالياً.)
@@ -103,23 +103,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             if (showIncoming) ...[
                               SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الوارد', '${incItems.length}', Icons.inbox_rounded, const Color(0xFF10B981))),
                               SizedBox(width: cardWidth, child: _buildStatCard('وارد جديد', '$incNew', Icons.mark_email_unread_rounded, AppColors.gold, onTap: () => widget.onNavigate?.call(3))),
-                              // «وارد مؤرشف» حالةٌ من حالات الوارد لا وحدة الأرشيف — فتتبع صلاحية Incoming.
-                              SizedBox(width: cardWidth, child: _buildStatCard('وارد مؤرشف', '$incFinals', Icons.mark_email_read_rounded, const Color(0xFF64748B))),
                             ],
 
-                            // وحدة الأرشيف (الأضابير القديمة) — بطاقة مستقلّة بصلاحيتها الخاصة.
+                            // ⚠️ «وارد مؤرشف» و«أضابير الأرشيف» يُعدّان من **عدسة الأرشيف**
+                            //    لا من قائمة الوارد: الأخيرة صارت تستبعد المؤرشف افتراضياً،
+                            //    فلو عُدَّ منها لعرض صفراً دائماً — وهو ما حدث فعلاً وأُصلح.
+                            //    وكلاهما يتطلّب قسم «الأرشيف» لأن مصدرهما عدسته.
                             if (showArchive)
-                              Consumer(
-                                builder: (context, ref, _) {
-                                  final count = ref.watch(archiveListProvider).whenOrNull(data: (l) => l.length);
-                                  return SizedBox(
+                              ...(() {
+                                final lens = ref.watch(archiveLensProvider).whenOrNull(data: (l) => l);
+                                final incArchived = lens?.where((e) => e.isIncoming).length;
+                                final paper = lens?.where((e) => !e.isIncoming).length;
+                                return [
+                                  if (showIncoming)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard('وارد مؤرشف', incArchived?.toString() ?? '…',
+                                          Icons.mark_email_read_rounded, const Color(0xFF64748B),
+                                          onTap: () => widget.onNavigate?.call(4)),
+                                    ),
+                                  SizedBox(
                                     width: cardWidth,
-                                    child: _buildStatCard('أضابير الأرشيف', count?.toString() ?? '…',
+                                    child: _buildStatCard('أضابير الأرشيف', paper?.toString() ?? '…',
                                         Icons.archive_rounded, const Color(0xFF8B5CF6),
                                         onTap: () => widget.onNavigate?.call(4)),
-                                  );
-                                },
-                              ),
+                                  ),
+                                ];
+                              })(),
                           ],
                         );
                       }

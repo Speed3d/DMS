@@ -378,6 +378,21 @@ class ApiClient {
   Future<void> backupDelete(int id) => _delete('/backup/$id');
 
   // ---------- الأرشيف ----------
+
+  /// **عدسة الأرشيف** — الوارد المؤرشف + الأضابير الورقية في قائمة واحدة.
+  ///
+  /// Hint: الدمج يتم في الخادم لا هنا — ليبقى العميل رفيعاً، ولأن قاعدة رؤية الوارد
+  /// (ADR-015 + ADR-018) لا يجوز أن تُنسخ في العميل حيث لا تُفرض أصلاً.
+  Future<List<ArchiveLensItem>> archiveLens({String? search, int? year, int? departmentId}) async {
+    final q = <String, dynamic>{};
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    if (year != null) q['year'] = year;
+    if (departmentId != null) q['departmentId'] = departmentId;
+    return (await _get('/archive/lens', query: q) as List)
+        .map((e) => ArchiveLensItem.fromJson(e))
+        .toList();
+  }
+
   Future<List<ArchiveListItem>> archiveList({String? search, DateTime? from, DateTime? to, int? documentTypeId, int? entityId}) async {
     final q = <String, dynamic>{};
     if (search != null && search.isNotEmpty) q['search'] = search;

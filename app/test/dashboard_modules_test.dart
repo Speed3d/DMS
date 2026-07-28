@@ -43,7 +43,7 @@ void main() {
           // بيانات ثابتة: الاختبار يخصّ **الحجب** لا الأرقام، ولا يلمس الشبكة.
           outgoingListProvider.overrideWith((ref) async => <OutgoingListItem>[]),
           incomingListProvider.overrideWith((ref) async => <IncomingListItem>[]),
-          archiveListProvider.overrideWith((ref) async => <ArchiveListItem>[]),
+          archiveLensProvider.overrideWith((ref) async => <ArchiveLensItem>[]),
         ],
         child: const MaterialApp(
           home: Directionality(textDirection: TextDirection.rtl, child: DashboardScreen()),
@@ -58,7 +58,12 @@ void main() {
 
     expect(find.text('إجمالي الوارد'), findsOneWidget);
     expect(find.text('وارد جديد'), findsOneWidget);
-    expect(find.text('وارد مؤرشف'), findsOneWidget);
+
+    // ⚠️ «وارد مؤرشف» **يتطلّب قسم الأرشيف أيضاً** منذ إعادة تصميم الأرشيف
+    // (2026-07-28): المؤرشف صار يُعرض في قسم الأرشيف، ومصدر عدّه عدسته — ومن لا يملك
+    // القسم لا يستطيع فتحه أصلاً، فعرض رقم لا يقدر على التحقق منه هو نفس عيب
+    // «المعلومة الكاذبة» الذي وُجد هذا الاختبار لمنعه.
+    expect(find.text('وارد مؤرشف'), findsNothing);
 
     expect(find.text('إجمالي الصادر'), findsNothing);
     expect(find.text('بانتظار الاعتماد'), findsNothing);
@@ -89,6 +94,8 @@ void main() {
     expect(find.text('إجمالي الصادر'), findsOneWidget);
     expect(find.text('إجمالي الوارد'), findsOneWidget);
     expect(find.text('أضابير الأرشيف'), findsOneWidget);
+    // بامتلاك الوارد **والأرشيف** معاً تظهر بطاقة المؤرشف — بخلاف الوارد وحده.
+    expect(find.text('وارد مؤرشف'), findsOneWidget);
     expect(find.text('نشاط الصادر (الأسبوع الحالي)'), findsOneWidget);
   });
 

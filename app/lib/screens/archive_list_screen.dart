@@ -7,6 +7,7 @@ import '../models.dart';
 import '../widgets/custom_card.dart';
 import 'archive_form_screen.dart';
 import 'archive_detail_screen.dart';
+import 'incoming_detail_screen.dart';
 
 /// Hint: شاشة قائمة الأرشيف - عرض المستندات بأسلوب جدول عصري وأنيق
 class ArchiveListScreen extends ConsumerStatefulWidget {
@@ -16,8 +17,11 @@ class ArchiveListScreen extends ConsumerStatefulWidget {
 }
 
 class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
-  late Future<List<ArchiveListItem>> _future;
+  late Future<List<ArchiveLensItem>> _future;
   final _search = TextEditingController();
+
+  /// سنة مختارة للفلترة — `null` = كل السنوات.
+  int? _year;
 
   @override
   void initState() {
@@ -25,8 +29,10 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
     _reload();
   }
 
+  /// Hint: تُجلب من **عدسة الأرشيف** لا من `/archive` وحدها — فالقسم يجمع مصدرين:
+  /// الوارد المؤرشف (يبقى كتاباً وارداً، لا يُنقل) والأضابير الورقية القديمة.
   void _reload() {
-    _future = ref.read(apiClientProvider).archiveList(search: _search.text);
+    _future = ref.read(apiClientProvider).archiveLens(search: _search.text, year: _year);
     setState(() {});
   }
 
@@ -122,7 +128,7 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
             Expanded(
               child: CustomCard(
                 padding: EdgeInsets.zero,
-                child: FutureBuilder<List<ArchiveListItem>>(
+                child: FutureBuilder<List<ArchiveLensItem>>(
                   future: _future,
                   builder: (context, snap) {
                     if (snap.connectionState != ConnectionState.done) {
@@ -154,10 +160,10 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  _headerCell('رقم الأرشيف وتاريخه', flex: 2),
-                                  _headerCell('عنوان المستند / رقم الكتاب', flex: 3),
-                                  _headerCell('المبلغ (د.ع)', flex: 2),
-                                  _headerCell('تاريخ الكتاب', flex: 2),
+                                  _headerCell('الرقم والمصدر', flex: 2),
+                                  _headerCell('العنوان', flex: 3),
+                                  _headerCell('القسم', flex: 2),
+                                  _headerCell('تاريخ الأرشفة', flex: 2),
                                   _headerCell('إجراءات', flex: 1, align: TextAlign.center),
                                 ],
                               ),
@@ -171,59 +177,82 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                                 itemBuilder: (_, i) {
                                   final it = items[i];
                                   return InkWell(
-                                    onTap: () => _openDetail(it.archiveId),
+                                    onTap: () => _open(it),
                                     hoverColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                                       child: Row(
                                         crossAxisAlignment: CrossAxisAlignment.center,
                                         children: [
-                                          // رقم الأرشيف وتاريخ الإضافة
+                                          // الرقم + شارة المصدر (وارد مؤرشف / أضبارة ورقية)
                                           Expanded(
                                             flex: 2,
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                Text(it.archiveNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                                                Text(it.number, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                                                 const SizedBox(height: 4),
-                                                Text('مضاف: ${DateFormat('yyyy/MM/dd').format(it.createdAt)}', style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6), fontSize: 12)),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: (it.isIncoming ? AppColors.success : AppColors.navyDeep).withValues(alpha: 0.12),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    it.isIncoming ? 'وارد مؤرشف' : 'أضبارة ورقية',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: it.isIncoming ? AppColors.success : AppColors.navyDeep,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
                                               ],
                                             ),
                                           ),
-                                          
-                                          // العنوان ورقم الكتاب
+
+                                          // العنوان ونوع المستند
                                           Expanded(
                                             flex: 3,
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.5)),
-                                                if (it.bookNumber != null && it.bookNumber!.isNotEmpty) ...[
+                                                if (it.documentTypeName != null || it.entityName != null) ...[
                                                   const SizedBox(height: 4),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                    decoration: BoxDecoration(color: AppColors.navyDeep.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-                                                    child: Text('كتاب: ${it.bookNumber}', style: const TextStyle(fontSize: 11, color: AppColors.navyDeep, fontWeight: FontWeight.w600)),
+                                                  Text(
+                                                    [it.documentTypeName, it.entityName].where((e) => e != null).join(' · '),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(fontSize: 11.5, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
                                                   ),
-                                                ]
+                                                ],
                                               ],
                                             ),
                                           ),
 
-                                          // المبلغ
+                                          // القسم — قد يكون فارغاً أو متعدّداً (ADR-018)
                                           Expanded(
                                             flex: 2,
                                             child: Text(
-                                              it.amountInIqd != null && it.amountInIqd! > 0 ? '${_fmt(it.amountInIqd!)} د.ع' : '-',
-                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                              it.departmentNames.isEmpty ? 'بلا قسم' : it.departmentNames.join('، '),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: it.departmentNames.isEmpty ? FontWeight.normal : FontWeight.w600,
+                                                color: it.departmentNames.isEmpty
+                                                    ? theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.45)
+                                                    : null,
+                                              ),
                                             ),
                                           ),
 
-                                          // تاريخ الكتاب
+                                          // تاريخ الأرشفة
                                           Expanded(
                                             flex: 2,
                                             child: Text(
-                                              it.bookDate != null ? DateFormat('yyyy/MM/dd').format(it.bookDate!) : '—',
+                                              DateFormat('yyyy/MM/dd').format(it.archivedAt),
                                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                                             ),
                                           ),
@@ -236,7 +265,7 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                                               child: IconButton(
                                                 icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                                                 color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4),
-                                                onPressed: () => _openDetail(it.archiveId),
+                                                onPressed: () => _open(it),
                                               ),
                                             ),
                                           ),
@@ -300,11 +329,17 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
     );
   }
 
-  void _openDetail(int id) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ArchiveDetailScreen(id: id)));
+  /// يفتح الصفّ في شاشته الصحيحة حسب مصدره.
+  ///
+  /// ⚠️ الكتاب المؤرشف يُفتح في **شاشة الوارد** لا في شاشة الأرشيف — لأنه لم يُنقل:
+  /// مرفقاته وسجل حركته وربطه بالصادر كلها هناك. فتحُه في شاشة الأرشيف كان سيُظهر
+  /// نصف الحقيقة.
+  void _open(ArchiveLensItem it) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => it.isIncoming
+          ? IncomingDetailScreen(id: it.id)
+          : ArchiveDetailScreen(id: it.id),
+    ));
     _reload();
   }
-
-  String _fmt(num n) =>
-      n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }

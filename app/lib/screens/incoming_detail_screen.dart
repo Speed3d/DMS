@@ -64,10 +64,14 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (context, setDialogState) {
-        // Hint: الملاحظة إلزامية عند «تم الرد» يدوياً بلا ربط بصادر — نفس قاعدة الباك-إند.
-        final noteRequired = newStatus == 'Replied' && d.replyOutgoingId == null;
+        // الملاحظة إلزامية في حالتين — مرآة لقاعدتَي الباك-إند:
+        //   ١) «تم الرد» يدوياً بلا ربط بصادر (توثيق سبب الرد).
+        //   ٢) **فكّ الأرشفة** — يفتح قفل التعديل على السجل الرسمي، فالسبب هو الأثر
+        //      الوحيد الذي يشرح لاحقاً لماذا خرج كتابٌ من الأرشيف ومن أذِن به.
+        final isUnarchiving = d.status == 'Archived';
+        final noteRequired = (newStatus == 'Replied' && d.replyOutgoingId == null) || isUnarchiving;
         return AlertDialog(
-          title: const Text('تغيير حالة الكتاب'),
+          title: Text(isUnarchiving ? 'فكّ أرشفة الكتاب' : 'تغيير حالة الكتاب'),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -85,9 +89,18 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                 onChanged: (v) => setDialogState(() => newStatus = v),
               ),
               const SizedBox(height: 16),
+              if (isUnarchiving) ...[
+                const SizedBox(height: 4),
+                const Text(
+                  'الكتاب سيعود إلى قائمة الوارد بحالة (مغلق)، ويخرج من قسم الأرشيف.',
+                  style: TextStyle(fontSize: 12, height: 1.5),
+                ),
+              ],
               TextField(
                 decoration: InputDecoration(
-                  labelText: noteRequired ? 'ملاحظة (إلزامية)' : 'ملاحظة (اختياري)',
+                  labelText: isUnarchiving
+                      ? 'سبب فكّ الأرشفة (إلزامي)'
+                      : (noteRequired ? 'ملاحظة (إلزامية)' : 'ملاحظة (اختياري)'),
                   errorText: noteError,
                 ),
                 onChanged: (v) => setDialogState(() {
@@ -104,8 +117,9 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                   ? null
                   : () {
                       if (noteRequired && note.trim().isEmpty) {
-                        setDialogState(() =>
-                            noteError = 'الملاحظة إلزامية عند اختيار (تم الرد) بدون ربط بكتاب صادر.');
+                        setDialogState(() => noteError = isUnarchiving
+                            ? 'سبب فكّ الأرشفة إلزامي — يُسجَّل في سجل الحركة والتدقيق.'
+                            : 'الملاحظة إلزامية عند اختيار (تم الرد) بدون ربط بكتاب صادر.');
                         return;
                       }
                       Navigator.pop(c, true);
@@ -379,9 +393,14 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                       _buildActionButton('تعديل', Icons.edit_document, AppColors.warn,
                           canEdit ? () => _edit(d) : null,
                           disabledHint: d.status == 'Archived'
-                              ? 'لا يمكن تعديل كتاب مؤرشف — الأرشفة نهائية'
+                              ? 'الكتاب المؤرشف لا يُعدَّل — فُكّ الأرشفة أولاً'
                               : 'التعديل في هذه الحالة يتطلب صلاحية المدير فأعلى'),
-                      _buildActionButton('تغيير الحالة', Icons.swap_horiz_rounded, Colors.blue,
+                      // الزرّ نفسه يخدم فكّ الأرشفة — فهو انتقال حالة كغيره، لكن نصّه
+                      // يتغيّر لأن «تغيير الحالة» لا يصف ما يفعله للمستخدم في هذه الحالة.
+                      _buildActionButton(
+                          d.status == 'Archived' ? 'فكّ الأرشفة' : 'تغيير الحالة',
+                          d.status == 'Archived' ? Icons.unarchive_rounded : Icons.swap_horiz_rounded,
+                          Colors.blue,
                           (kIncomingTransitions[d.status] ?? const []).isEmpty ? null : () => _changeStatus(d),
                           disabledHint: 'لا توجد حالة لاحقة متاحة'),
                       _buildActionButton('إحالة لقسم', Icons.forward_to_inbox_rounded, AppColors.navyDeep,

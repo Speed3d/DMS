@@ -498,6 +498,49 @@ class ArchiveDetail {
       );
 }
 
+/// صفٌّ في **عدسة الأرشيف** — عرض موحّد يجمع الوارد المؤرشف والأضابير الورقية.
+///
+/// ⚠️ الكتاب المؤرشف **لا يُنقل ولا يُنسخ**؛ يبقى كتاباً وارداً برقمه ومرفقاته وسجل
+/// حركته، والأرشيف عدسةُ قراءة فوقه. لذلك [source] يحدّد أي شاشة تُفتح عند النقر.
+class ArchiveLensItem {
+  /// 'Incoming' = كتاب وارد مؤرشف · 'Paper' = أضبارة ورقية قديمة.
+  final String source;
+  final int id;
+  final String number;
+  final String title;
+  final DateTime archivedAt;
+  final int year, month;
+  final String? entityName, documentTypeName, note;
+
+  /// قد تكون **فارغة**: الإحالة متاحة في «جديد/قيد المراجعة» فقط، فكتابٌ مرّ
+  /// (جديد ← مغلق ← مؤرشف) لا قسم له — وهذا واقع أغلب المؤرشف لا حالة نادرة.
+  final List<String> departmentNames;
+
+  ArchiveLensItem({
+    required this.source, required this.id, required this.number, required this.title,
+    required this.archivedAt, required this.year, required this.month,
+    required this.departmentNames,
+    this.entityName, this.documentTypeName, this.note,
+  });
+
+  bool get isIncoming => source == 'Incoming';
+
+  factory ArchiveLensItem.fromJson(Map<String, dynamic> j) => ArchiveLensItem(
+        source: j['source']?.toString() ?? 'Paper',
+        id: j['id'],
+        number: j['number'] ?? '—',
+        title: j['title'] ?? '',
+        archivedAt: DateTime.tryParse(j['archivedAt'] ?? '') ?? DateTime.now(),
+        year: j['year'] ?? 0,
+        month: j['month'] ?? 0,
+        entityName: j['entityName'],
+        documentTypeName: j['documentTypeName'],
+        departmentNames:
+            j['departmentNames'] != null ? List<String>.from(j['departmentNames']) : const [],
+        note: j['note'],
+      );
+}
+
 class AttachmentModel {
   final int attachmentId;
   final String fileName;
@@ -637,12 +680,17 @@ const Map<String, String> kIncomingStatuses = {
 /// الانتقالات المسموحة بين الحالات.
 /// Hint: نسخة مطابقة لمصفوفة `AllowedTransitions` في `IncomingService` بالباك-إند —
 /// تُستخدم لعرض الخيارات المتاحة فقط بدل ترك المستخدم يصطدم برسالة رفض من الخادم.
+/// مرآة لمصفوفة الانتقالات في الباك-إند (`IncomingWorkflow.Transitions`).
+///
+/// ⚠️ **الباك-إند هو مصدر الحقيقة** — هذه نسخة للعرض فقط تُحدَّد أي أزرار تظهر.
+/// أي تعديل هنا بلا تعديل هناك يُنتج زرّاً يفشل عند الضغط، والعكس يُخفي إجراءً مسموحاً.
 const Map<String, List<String>> kIncomingTransitions = {
   'New': ['InReview', 'Closed'],
   'InReview': ['Replied', 'Closed'],
   'Replied': ['Closed'],
   'Closed': ['Archived'],
-  'Archived': <String>[],
+  // فكّ الأرشفة — للمدير فأعلى بسبب إلزامي (قرار المالك 2026-07-28، يُعدّل ADR-013).
+  'Archived': ['Closed'],
 };
 
 /// الاسم العربي للحالة (Hint: يعيد المفتاح نفسه إن كانت الحالة غير معروفة بدل إظهار فراغ).
