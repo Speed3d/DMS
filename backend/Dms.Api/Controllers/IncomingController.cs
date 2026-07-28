@@ -37,11 +37,21 @@ public sealed class IncomingController(
                 (b.Notes != null && b.Notes.Contains(search)) ||
                 b.Entity!.Name.Contains(search));
 
+        // ⚠️ المؤرشف يُستبعد من القائمة **الافتراضية** فقط — مكانه صار قسم الأرشيف.
+        //    ويظهر فور اختيار الحالة «مؤرشف» صراحةً من الفلتر، فلا يضيع على من يبحث عنه.
+        //
+        // Hint: الاستبعاد هنا في الـController **عمداً لا في `Query()`**: الأخيرة تحكم رؤية
+        //       الكتاب في كل مسار — المرفقات وسجل الحركة وعدسة الأرشيف وفكّ الأرشفة نفسه —
+        //       فحجبُ المؤرشف فيها كان سيُعطّل هذه المسارات كلها لا القائمة وحدها.
         if (!string.IsNullOrWhiteSpace(status))
         {
             if (!Enum.TryParse<IncomingStatus>(status, ignoreCase: true, out var parsedStatus))
                 throw new Dms.Domain.ValidationException("قيمة الحالة غير صحيحة.");
             q = q.Where(b => b.Status == parsedStatus);
+        }
+        else
+        {
+            q = q.Where(b => b.Status != IncomingStatus.Archived);
         }
 
         if (entityId.HasValue)

@@ -9,13 +9,15 @@ public sealed record CreateArchiveInput(
     int? CompanyId, string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string? Keywords, string? Notes, string? BodyHtml);
+    string? Keywords, string? Notes, string? BodyHtml,
+    int? DepartmentId = null);
 
 public sealed record UpdateArchiveInput(
     string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string? Keywords, string? Notes, string? BodyHtml);
+    string? Keywords, string? Notes, string? BodyHtml,
+    int? DepartmentId = null);
 
 public sealed record ArchiveSearchInput(
     string? Text, DateTime? From, DateTime? To, int? DocumentTypeId, int? EntityId);
@@ -34,11 +36,28 @@ public sealed class ArchiveService(
 {
     private const string CounterType = "Archive";
 
+    /// <summary>
+    /// رؤية الأضابير الورقية — **على قاعدة رؤية الوارد نفسها** (قرار المالك 2026-07-28).
+    /// </summary>
+    /// <remarks>
+    /// الموظف/القارئ يرى: ما أنشأه هو **+ أضابير قسمه**. المدير فأعلى يرى كل شيء.
+    ///
+    /// ⚠️ كانت القاعدة «ما أنشأه هو **فقط**» — مختلفة كلياً عن الوارد، ونتيجتها أن أضبارة
+    /// يُدخلها موظف تصير **قبراً**: لا يراها زميله في القسم نفسه ولا من يخلفه في وظيفته.
+    /// والأرشيف ذاكرةُ الشركة لا ملكيةَ مُدخِله.
+    ///
+    /// وأضبارة **بلا قسم** تبقى للمنشئ والمدير فأعلى — لا تتسرّب، ولا تختفي عمّن أدخلها.
+    /// </remarks>
     private IQueryable<ArchiveDoc> Query()
     {
         var q = db.ArchiveDocs.AsQueryable();
         if (current.Role is UserRole.Employee or UserRole.Reader)
-            q = q.Where(a => a.CreatedByUserId == current.UserId);
+        {
+            var uid = current.UserId;
+            var dept = current.DepartmentId;
+            q = q.Where(a => a.CreatedByUserId == uid
+                             || (dept != null && a.DepartmentId == dept));
+        }
         return q;
     }
 
@@ -58,7 +77,7 @@ public sealed class ArchiveService(
             q = q.Where(a => a.DocumentTypeId == f.DocumentTypeId);
         if (f.EntityId is not null)
             q = q.Where(a => a.FromEntityId == f.EntityId || a.ToEntityId == f.EntityId);
-        return await q.OrderByDescending(a => a.CreatedAt).ToListAsync(ct);
+        return await q.Include(a => a.Department).OrderByDescending(a => a.CreatedAt).ToListAsync(ct);
     }
 
     public async Task<ArchiveDoc> GetAsync(int id, CancellationToken ct = default)
@@ -94,6 +113,7 @@ public sealed class ArchiveService(
                 FromEntityId = input.FromEntityId,
                 ToEntityId = input.ToEntityId,
                 DocumentTypeId = input.DocumentTypeId,
+                DepartmentId = input.DepartmentId,
                 Amount = input.Amount,
                 Currency = input.Currency,
                 ExchangeRate = input.ExchangeRate,
@@ -125,6 +145,7 @@ public sealed class ArchiveService(
         doc.FromEntityId = input.FromEntityId;
         doc.ToEntityId = input.ToEntityId;
         doc.DocumentTypeId = input.DocumentTypeId;
+        doc.DepartmentId = input.DepartmentId;
         doc.Amount = input.Amount;
         doc.Currency = input.Currency;
         doc.ExchangeRate = input.ExchangeRate;

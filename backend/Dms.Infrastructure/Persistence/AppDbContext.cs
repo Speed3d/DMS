@@ -245,6 +245,12 @@ public class AppDbContext : DbContext
             e.Property(x => x.AmountInIqd).HasPrecision(18, 2);
             e.Property(x => x.Keywords).HasMaxLength(1000);
             e.HasIndex(x => new { x.CompanyId, x.ArchiveNumber });
+            // ⚠️ العلاقة تُضبط صراحةً: EF يولّد عموداً شبحاً إن تُركت ضمنية — حدث فعلاً مع
+            //    `MovementLog → IncomingBook` فاختفت الحركات نهائياً. و`SetNull` مقصود:
+            //    حذف قسم لا يجوز أن يمحو أضبارة، بل يتركها «بلا قسم».
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => new { x.CompanyId, x.DepartmentId });
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
         });
 

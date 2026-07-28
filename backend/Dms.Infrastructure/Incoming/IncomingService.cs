@@ -269,6 +269,12 @@ public sealed class IncomingService(
         if (newStatus == IncomingStatus.Replied && book.ReplyOutgoingId is null && string.IsNullOrWhiteSpace(note))
             throw new ValidationException("يجب إدخال ملاحظة عند تغيير الحالة إلى (تم الرد) يدوياً بدون ربط بكتاب صادر.");
 
+        // ⚠️ **فكّ الأرشفة يتطلّب سبباً إلزامياً.** الأرشفة تُغلق باب التعديل على السجل الرسمي،
+        //    وفكّها يفتحه من جديد — فالسبب ليس تزيّناً بل الأثر الوحيد الذي يشرح لاحقاً
+        //    **لماذا** خرج كتابٌ من الأرشيف ومن أذِن بذلك. بدونه يصير الفكّ عمليةً بلا ذاكرة.
+        if (oldStatus == IncomingStatus.Archived && string.IsNullOrWhiteSpace(note))
+            throw new ValidationException("يجب إدخال سبب فكّ الأرشفة — يُسجَّل في سجل الحركة والتدقيق.");
+
         book.Status = newStatus;
         book.LastAction = $"تغيير الحالة إلى {ArabicName(newStatus)}";
         book.UpdatedAt = DateTime.UtcNow;
@@ -579,7 +585,9 @@ public sealed class IncomingService(
     /// </summary>
     private void EnsureStatusChangePermission(IncomingStatus from, IncomingStatus to)
     {
-        if (to == IncomingStatus.Archived)
+        // الأرشفة **وفكّها** كلاهما للمدير فأعلى — والفكّ يفتح قفل التعديل على السجل
+        // الرسمي، فلا يُترك لصلاحية «إدارة الوارد» التي تُمنح للموظفين.
+        if (to == IncomingStatus.Archived || from == IncomingStatus.Archived)
         {
             RequireRole(UserRole.Manager);
             return;

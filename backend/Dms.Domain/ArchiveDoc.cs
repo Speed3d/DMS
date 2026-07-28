@@ -14,7 +14,18 @@ public class ArchiveDoc
     public int? ToEntityId { get; set; }
     public int? DocumentTypeId { get; set; }
 
-    // مالي (نفس منطق الصادر)
+    /// <summary>القسم الذي تخصّه الأضبارة — **اختياري عمداً**.</summary>
+    /// <remarks>
+    /// ⚠️ لم يُجعل إلزامياً رغم أنه يُحسّن الفلترة: مُدخِلٌ لا يعرف قسم أضبارة ورقية قديمة
+    /// سيُخمّن، فتُصنَّف خطأً وتُعرض على قسم لا علاقة له بها. **بيانات خاطئة أسوأ من ناقصة.**
+    /// وأضبارة بلا قسم يراها منشئها والمدير فأعلى — فلا تضيع ولا تتسرّب.
+    /// </remarks>
+    public int? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+
+    // مالي — **مخفيّ من الواجهة بقرار المالك (2026-07-28)، والأعمدة باقية عمداً.**
+    // ⚠️ لا تُحذف: `ReportService` يقرأ `AmountInIqd` كمصدرٍ في التقرير المالي (صادر + أرشيف)،
+    //    فحذفها يُلغي مصدر تقرير لا حقلاً معطّلاً — ويضرب معيار قبول قائماً.
     public decimal? Amount { get; set; }
     public Currency? Currency { get; set; }
     public decimal? ExchangeRate { get; set; }

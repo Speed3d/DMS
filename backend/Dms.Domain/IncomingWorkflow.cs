@@ -16,7 +16,13 @@ public static class IncomingWorkflow
         [IncomingStatus.InReview] = [IncomingStatus.Replied, IncomingStatus.Closed],
         [IncomingStatus.Replied] = [IncomingStatus.Closed],
         [IncomingStatus.Closed] = [IncomingStatus.Archived],
-        [IncomingStatus.Archived] = [],   // الأرشفة نهائية — لا انتقال بعدها
+
+        // ⚠️ **فكّ الأرشفة** (قرار المالك 2026-07-28، يُعدّل ADR-013): الأرشفة كانت نهائية
+        //    بلا رجعة، وهو ما جعل خطأً واحداً في الأرشفة غير قابل للتصحيح إلا بحذف الكتاب.
+        //    الآن يعود إلى «مغلق» — وهي حالته قبل الأرشفة، فلا يُخترع مسار جديد.
+        //    الحارس مضاعف: **المدير فأعلى + سبب إلزامي** (انظر EnsureStatusChangePermission
+        //    و ChangeStatusAsync)، لأن هذا يفتح **قفل التعديل الوحيد** على السجل الرسمي.
+        [IncomingStatus.Archived] = [IncomingStatus.Closed],
     };
 
     /// <summary>الحالات التي يمكن الانتقال إليها من الحالة المعطاة (قائمة فارغة = حالة نهائية).</summary>

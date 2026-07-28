@@ -45,9 +45,26 @@ public class IncomingWorkflowTests
         Assert.Throws<ValidationException>(() => IncomingWorkflow.EnsureTransitionAllowed(status, status));
     }
 
+    /// <summary>
+    /// فكّ الأرشفة يعيد الكتاب إلى «مغلق» **وحدها** — لا إلى أي حالة أخرى.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ كان هذا الاختبار اسمه `ArchivedIsTerminal` ويفرض أن الأرشفة نهائية بلا رجعة.
+    /// عُدّلت القاعدة بقرار المالك (2026-07-28) فصار الفكّ متاحاً للمدير فأعلى بسبب إلزامي.
+    /// **لم يُحذف الاختبار بل عُكس**: الحدّ الحقيقي أن الفكّ يعود إلى الحالة السابقة للأرشفة
+    /// (مغلق) ولا يفتح مساراً جديداً — فكتابٌ مؤرشف لا يعود «جديداً» ولا «قيد المراجعة».
+    /// </remarks>
     [Fact]
-    public void ArchivedIsTerminal()
-        => Assert.Empty(IncomingWorkflow.NextStatuses(IncomingStatus.Archived));
+    public void ArchivedReturnsToClosedOnly()
+    {
+        var next = IncomingWorkflow.NextStatuses(IncomingStatus.Archived);
+        Assert.Equal([IncomingStatus.Closed], next);
+
+        Assert.True(IncomingWorkflow.CanTransition(IncomingStatus.Archived, IncomingStatus.Closed));
+        Assert.False(IncomingWorkflow.CanTransition(IncomingStatus.Archived, IncomingStatus.New));
+        Assert.False(IncomingWorkflow.CanTransition(IncomingStatus.Archived, IncomingStatus.InReview));
+        Assert.False(IncomingWorkflow.CanTransition(IncomingStatus.Archived, IncomingStatus.Replied));
+    }
 
     [Theory]
     [InlineData(IncomingStatus.New, true)]

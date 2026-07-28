@@ -143,11 +143,41 @@ public sealed record ArchiveRequest(
     int? CompanyId, string Title, string? BookNumber, DateTime? BookDate,
     int? FromEntityId, int? ToEntityId, int? DocumentTypeId,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string? Keywords, string? Notes, string? BodyHtml);
+    string? Keywords, string? Notes, string? BodyHtml,
+    int? DepartmentId = null);
 
 public sealed record ArchiveListItem(
     int ArchiveId, string ArchiveNumber, string Title, string? BookNumber,
     DateTime? BookDate, int? DocumentTypeId, decimal? AmountInIqd, DateTime CreatedAt);
+
+/// <summary>مصدر الصفّ في عدسة الأرشيف — يحدّد أي شاشة تُفتح عند النقر.</summary>
+public enum ArchiveSource { Incoming, Paper }
+
+/// <summary>
+/// صفٌّ في **عدسة الأرشيف**: عرض موحّد يجمع الوارد المؤرشف والأضابير الورقية القديمة.
+/// </summary>
+/// <remarks>
+/// ⚠️ الكتاب الوارد **لا يُنقل ولا يُنسخ** عند الأرشفة — يبقى `IncomingBook` واحداً برقمه
+/// الرسمي ومرفقاته وسجل حركته وربطه بالصادر. الأرشيف **عدسة قراءة** فوقه لا صندوق يبتلعه؛
+/// فالنقل كان سيمنح الكتاب رقمين رسميين ويُنشئ نسختين من الحقيقة ويقطع شبكة مراجعه.
+///
+/// <see cref="DepartmentNames"/> قد تكون **فارغة**: الإحالة متاحة في حالتَي «جديد/قيد
+/// المراجعة» فقط، فمسار (جديد ← مغلق ← مؤرشف) يُنتج كتاباً بلا قسم — وهذا واقع أغلب
+/// المؤرشف في البيانات الحالية، لا حالة نادرة. ولهذا **المحور الأساسي للعرض السنة/الشهر
+/// والقسم فلتر ثانوي**.
+/// </remarks>
+public sealed record ArchiveLensItem(
+    ArchiveSource Source,
+    int Id,
+    string Number,
+    string Title,
+    DateTime ArchivedAt,
+    int Year,
+    int Month,
+    string? EntityName,
+    string? DocumentTypeName,
+    List<string> DepartmentNames,
+    string? Note);
 
 public sealed record ArchiveDetail(
     int ArchiveId, int CompanyId, string ArchiveNumber, string Title, string? BookNumber, DateTime? BookDate,
