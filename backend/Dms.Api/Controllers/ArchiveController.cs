@@ -163,7 +163,7 @@ public sealed class ArchiveController(
         return new AttachmentResponse(a.AttachmentId, a.FileName, a.FileType, a.FileSize, a.UploadedAt);
     }
 
-    /// <summary>يحوّل المستند إلى DTO ويُحلّ اسم نوع المستند من معرّفه.</summary>
+    /// <summary>يحوّل المستند إلى DTO ويُحلّ اسمَي نوع المستند والقسم من معرّفيهما.</summary>
     private async Task<ArchiveDetail> DetailAsync(ArchiveDoc a, CancellationToken ct)
     {
         var typeName = a.DocumentTypeId is null
@@ -171,10 +171,15 @@ public sealed class ArchiveController(
             : await db.DocumentTypes.Where(t => t.DocumentTypeId == a.DocumentTypeId)
                 .Select(t => t.Name).FirstOrDefaultAsync(ct);
 
+        var deptName = a.DepartmentId is null
+            ? null
+            : await db.Departments.Where(d => d.DepartmentId == a.DepartmentId)
+                .Select(d => d.Name).FirstOrDefaultAsync(ct);
+
         return new ArchiveDetail(
             a.ArchiveId, a.CompanyId, a.ArchiveNumber, a.Title, a.BookNumber, a.BookDate,
             a.FromEntityId, a.ToEntityId, a.DocumentTypeId,
             a.Amount, a.Currency, a.ExchangeRate, a.AmountInIqd, a.Keywords, a.Notes, a.BodyHtml, a.CreatedAt,
-            typeName);
+            typeName, a.DepartmentId, deptName);
     }
 }

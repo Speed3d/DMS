@@ -475,6 +475,8 @@ class ArchiveDetail {
   final String? keywords, notes, bodyHtml;
   /// اسم نوع المستند كما يحلّه الخادم — بدونه كانت الشاشة تعرض «مستند ذو نوع #3».
   final String? documentTypeName;
+  /// القسم الذي تخصّه الأضبارة — اختياري (يحدّد من يراها ويُفلتَر به في الأرشيف).
+  final int? departmentId;
   ArchiveDetail({
     required this.archiveId, required this.archiveNumber, required this.title,
     required this.bookNumber, required this.bookDate,
@@ -482,6 +484,7 @@ class ArchiveDetail {
     required this.amount, required this.currency, required this.exchangeRate, required this.amountInIqd,
     required this.keywords, required this.notes, required this.bodyHtml,
     this.documentTypeName,
+    this.departmentId,
   });
   factory ArchiveDetail.fromJson(Map<String, dynamic> j) => ArchiveDetail(
         archiveId: j['archiveId'], archiveNumber: j['archiveNumber'] ?? '', title: j['title'] ?? '',
@@ -491,6 +494,7 @@ class ArchiveDetail {
         amount: j['amount'], currency: j['currency'], exchangeRate: j['exchangeRate'], amountInIqd: j['amountInIqd'],
         keywords: j['keywords'], notes: j['notes'], bodyHtml: j['bodyHtml'],
         documentTypeName: j['documentTypeName'],
+        departmentId: j['departmentId'],
       );
 }
 

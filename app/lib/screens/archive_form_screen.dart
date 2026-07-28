@@ -20,14 +20,17 @@ class ArchiveFormScreen extends ConsumerStatefulWidget {
 class _State extends ConsumerState<ArchiveFormScreen> {
   final _title = TextEditingController();
   final _bookNumber = TextEditingController();
-  final _amount = TextEditingController();
-  final _rate = TextEditingController();
   final _keywords = TextEditingController();
   final _notes = TextEditingController();
   final _quillController = quill.QuillController.basic();
 
   DateTime? _bookDate;
-  int? _fromEntityId, _toEntityId, _documentTypeId;
+  int? _fromEntityId, _toEntityId, _documentTypeId, _departmentId;
+
+  /// ⚠️ **قيم محمولة لا مُدخَلة:** الحقول المالية أُزيلت من الواجهة (2026-07-28) لكن
+  /// الأعمدة باقية في القاعدة، فنحمل قيم المستند ونُعيد إرسالها كما هي — وإلا مسحها
+  /// أوّلُ تعديل بصمت. نفس نمط `_legacy*` في نموذج الوارد.
+  num? _legacyAmount, _legacyRate;
   String? _currency;
   bool _busy = false;
   String? _error;
@@ -42,14 +45,15 @@ class _State extends ConsumerState<ArchiveFormScreen> {
     if (e != null) {
       _title.text = e.title;
       _bookNumber.text = e.bookNumber ?? '';
-      _amount.text = e.amount?.toString() ?? '';
-      _rate.text = e.exchangeRate?.toString() ?? '';
+      _legacyAmount = e.amount;
+      _legacyRate = e.exchangeRate;
       _keywords.text = e.keywords ?? '';
       _notes.text = e.notes ?? '';
       _bookDate = e.bookDate;
       _fromEntityId = e.fromEntityId;
       _toEntityId = e.toEntityId;
       _documentTypeId = e.documentTypeId;
+      _departmentId = e.departmentId;
       _currency = e.currency;
       
       // Hint: إضافة النص المحفوظ إلى محرر النصوص
@@ -63,11 +67,9 @@ class _State extends ConsumerState<ArchiveFormScreen> {
 
   @override
   void dispose() {
-    _title.dispose(); 
-    _bookNumber.dispose(); 
-    _amount.dispose();
-    _rate.dispose(); 
-    _keywords.dispose(); 
+    _title.dispose();
+    _bookNumber.dispose();
+    _keywords.dispose();
     _notes.dispose();
     _quillController.dispose();
     super.dispose();
@@ -75,7 +77,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
 
   Future<_Refs> _loadRefs() async {
     final api = ref.read(apiClientProvider);
-    return _Refs(await api.entities(), await api.documentTypes());
+    return _Refs(await api.entities(), await api.documentTypes(), await api.departments());
   }
 
   /// Hint: تحويل من محرر Quill إلى نص/HTML مبسط للإرسال للسيرفر
@@ -87,17 +89,6 @@ class _State extends ConsumerState<ArchiveFormScreen> {
   Future<void> _save() async {
     if (_title.text.trim().isEmpty) { setState(() => _error = 'عنوان المستند مطلوب.'); return; }
     
-    num? amount; num? rate;
-    if (_amount.text.trim().isNotEmpty) {
-      amount = num.tryParse(_amount.text.trim());
-      if (amount == null) { setState(() => _error = 'صيغة المبلغ غير صالحة.'); return; }
-      if (_currency == null) { setState(() => _error = 'يرجى اختيار العملة.'); return; }
-      if (_currency == 'USD') {
-        rate = num.tryParse(_rate.text.trim());
-        if (rate == null || rate <= 0) { setState(() => _error = 'سعر الصرف إلزامي عند اختيار الدولار.'); return; }
-      }
-    }
-
     final bodyHtml = _getHtmlFromBody();
 
     final body = {
@@ -107,9 +98,11 @@ class _State extends ConsumerState<ArchiveFormScreen> {
       'fromEntityId': _fromEntityId,
       'toEntityId': _toEntityId,
       'documentTypeId': _documentTypeId,
-      'amount': amount,
-      'currency': amount == null ? null : _currency,
-      'exchangeRate': rate,
+      'departmentId': _departmentId,
+      // قيم محمولة كما هي — لا مدخل لها في الواجهة (انظر `_legacy*` أعلى الملف).
+      'amount': _legacyAmount,
+      'currency': _legacyAmount == null ? null : _currency,
+      'exchangeRate': _legacyRate,
       'keywords': _keywords.text.trim().isEmpty ? null : _keywords.text.trim(),
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'bodyHtml': bodyHtml,
@@ -239,56 +232,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                     ),
                   );
 
-                  final routingCard = CustomCard(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: AppColors.navyDeep.withValues(alpha: 0.1), shape: BoxShape.circle),
-                              child: const Icon(Icons.compare_arrows_rounded, color: AppColors.navyDeep),
-                            ),
-                            const SizedBox(width: 12),
-                            const Flexible(child: Text('تفاصيل التوجيه', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                          ],
-                        ),
-                        const Divider(height: 32),
-                        
-                        // Hint: القائمتان مفلترتان بنوع الجهة — الجهة التي أرسلت إلينا نوعها (مستلمة/كلاهما)،
-                        //       والتي أرسلنا إليها نوعها (صادرة/كلاهما). بلا فلترة كانتا تعرضان نفس القائمة
-                        //       فيلتبس على المستخدم أيّهما المرسِل وأيّهما المستقبِل.
-                        DropdownButtonFormField<int?>(
-                          isExpanded: true,
-                          initialValue: _fromEntityId,
-                          decoration: _inputDecoration('الجهة الصادرة (من)', Icons.outbox_rounded),
-                          items: [
-                            const DropdownMenuItem<int?>(value: null, child: Text('— لا شيء —')),
-                            ..._entitiesOfKind(refs.entities, const ['Incoming', 'Both'])
-                                .map((e) => DropdownMenuItem<int?>(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))),
-                          ],
-                          onChanged: (v) => setState(() => _fromEntityId = v),
-                        ),
-                        const SizedBox(height: 16),
-
-                        DropdownButtonFormField<int?>(
-                          isExpanded: true,
-                          initialValue: _toEntityId,
-                          decoration: _inputDecoration('الجهة المستلمة (إلى)', Icons.move_to_inbox_rounded),
-                          items: [
-                            const DropdownMenuItem<int?>(value: null, child: Text('— لا شيء —')),
-                            ..._entitiesOfKind(refs.entities, const ['Outgoing', 'Both'])
-                                .map((e) => DropdownMenuItem<int?>(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))),
-                          ],
-                          onChanged: (v) => setState(() => _toEntityId = v),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  final financialCard = CustomCard(
+                  final extraCard = CustomCard(
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,47 +249,28 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                           ],
                         ),
                         const Divider(height: 32),
-                        
-                        Builder(builder: (context) {
-                          final children = [
-                            Expanded(
-                              flex: 2,
-                              child: TextField(
-                                controller: _amount,
-                                keyboardType: TextInputType.number,
-                                decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 1,
-                              child: DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                initialValue: _currency,
-                                decoration: _inputDecoration('العملة', Icons.currency_exchange_rounded),
-                                items: const [
-                                  DropdownMenuItem(value: 'IQD', child: Text('دينار', overflow: TextOverflow.ellipsis)),
-                                  DropdownMenuItem(value: 'USD', child: Text('دولار', overflow: TextOverflow.ellipsis)),
-                                ],
-                                onChanged: (v) => setState(() => _currency = v),
-                              ),
-                            ),
-                          ];
-                          if (isSmall) {
-                            return Column(children: children.map((e) => Padding(padding: const EdgeInsets.only(bottom: 12), child: e)).toList());
-                          }
-                          return Row(children: children);
-                        }),
-                        if (_currency == 'USD') ...[
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: _rate,
-                            keyboardType: TextInputType.number,
-                            decoration: _inputDecoration('سعر الصرف لدينار', Icons.price_change_rounded),
-                          ),
-                        ],
+
+                        // ⚠️ أُزيلت الحقول المالية و«تفاصيل التوجيه» من هذا النموذج بطلب المالك
+                        //    (2026-07-28) — الأرشيف سجلّ مستندات لا سجلّ محاسبي.
+                        //    **والأعمدة باقية في القاعدة عمداً**: `ReportService` يقرأ
+                        //    `ArchiveDoc.AmountInIqd` كمصدر في التقرير المالي، فحذفها يُلغي
+                        //    مصدر تقرير لا حقلاً معطّلاً. الإخفاء واجهي بحت.
+
+                        // القسم: يُحدّد من يرى الأضبارة (قسمه) ويُفلتَر به في الأرشيف.
+                        // **اختياري عمداً** — إلزامه يدفع المُدخِل للتخمين فتُصنَّف خطأً.
+                        DropdownButtonFormField<int?>(
+                          isExpanded: true,
+                          initialValue: _departmentId,
+                          decoration: _inputDecoration('القسم (اختياري)', Icons.apartment_rounded),
+                          items: [
+                            const DropdownMenuItem<int?>(value: null, child: Text('— بلا قسم —')),
+                            ...refs.departments.map((d) =>
+                                DropdownMenuItem<int?>(value: d.departmentId, child: Text(d.name))),
+                          ],
+                          onChanged: (v) => setState(() => _departmentId = v),
+                        ),
                         const SizedBox(height: 16),
-                        
+
                         TextField(
                           controller: _keywords,
                           decoration: _inputDecoration('كلمات مفتاحية', Icons.tag_rounded),
@@ -451,9 +376,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                       children: [
                         basicInfoCard,
                         const SizedBox(height: 24),
-                        routingCard,
-                        const SizedBox(height: 24),
-                        financialCard,
+                        extraCard,
                         const SizedBox(height: 24),
                         editorSection,
                         const SizedBox(height: 24),
@@ -465,7 +388,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // القسم الأيمن (البيانات الأساسية وتفاصيل التوجيه)
+                      // القسم الأيمن (البيانات الأساسية)
                       Expanded(
                         flex: 4,
                         child: ListView(
@@ -473,9 +396,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                           children: [
                             basicInfoCard,
                             const SizedBox(height: 24),
-                            routingCard,
-                            const SizedBox(height: 24),
-                            financialCard,
+                            extraCard,
                           ],
                         ),
                       ),
@@ -505,11 +426,6 @@ class _State extends ConsumerState<ArchiveFormScreen> {
     );
   }
 
-  /// يرشّح الجهات حسب نوعها، مع الإبقاء على الجهة المختارة حالياً حتى لو خالف نوعها
-  /// (Hint: وإلا اختفت القيمة المحفوظة من القائمة وتحطّم الـ Dropdown عند فتح سجلّ قديم).
-  List<EntityModel> _entitiesOfKind(List<EntityModel> all, List<String> kinds) =>
-      all.where((e) => kinds.contains(e.kind) || e.entityId == _fromEntityId || e.entityId == _toEntityId).toList();
-
   InputDecoration _inputDecoration(String label, IconData icon) {
     final theme = Theme.of(context);
     return InputDecoration(
@@ -527,5 +443,6 @@ class _State extends ConsumerState<ArchiveFormScreen> {
 class _Refs {
   final List<EntityModel> entities;
   final List<DocumentTypeModel> types;
-  _Refs(this.entities, this.types);
+  final List<DepartmentModel> departments;
+  _Refs(this.entities, this.types, this.departments);
 }

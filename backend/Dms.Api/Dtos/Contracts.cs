@@ -186,7 +186,9 @@ public sealed record ArchiveDetail(
     string? Keywords, string? Notes, string? BodyHtml, DateTime CreatedAt,
     // Hint: الاسم يُحلّ في الخادم (كما في IncomingDetail) ليبقى العميل رفيعاً — كانت شاشة
     //       التفاصيل تعرض «مستند ذو نوع #3» لأن المعرّف وحده كان يصل إليها.
-    string? DocumentTypeName = null);
+    string? DocumentTypeName = null,
+    int? DepartmentId = null,
+    string? DepartmentName = null);
 
 public sealed record AttachmentResponse(int AttachmentId, string FileName, string FileType, long FileSize, DateTime UploadedAt);
 
