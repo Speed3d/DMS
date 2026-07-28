@@ -24,7 +24,12 @@ public sealed class DocumentTypesController(AppDbContext db, ICurrentUser curren
     {
         if (string.IsNullOrWhiteSpace(req.Name)) throw new ValidationException("اسم النوع مطلوب.");
         var companyId = current.ActiveCompanyId ?? req.CompanyId ?? throw new ValidationException("حدّد الشركة.");
-        var t = new DocumentType { CompanyId = companyId, Name = req.Name.Trim() };
+
+        var name = req.Name.Trim();
+        if (await db.DocumentTypes.AnyAsync(t => t.CompanyId == companyId && t.Name == name, ct))
+            throw new ConflictException($"يوجد نوع مستند بالاسم «{name}» في هذه الشركة.");
+
+        var t = new DocumentType { CompanyId = companyId, Name = name };
         db.DocumentTypes.Add(t);
         audit.Add("Create", nameof(DocumentType), null, t.Name, companyId);
         await db.SaveChangesAsync(ct);
@@ -37,9 +42,46 @@ public sealed class DocumentTypesController(AppDbContext db, ICurrentUser curren
     {
         var t = await db.DocumentTypes.FirstOrDefaultAsync(x => x.DocumentTypeId == id, ct)
                 ?? throw new NotFoundException("النوع غير موجود.");
-        t.Name = req.Name.Trim();
+        if (string.IsNullOrWhiteSpace(req.Name)) throw new ValidationException("اسم النوع مطلوب.");
+
+        var name = req.Name.Trim();
+        if (await db.DocumentTypes.AnyAsync(x => x.CompanyId == t.CompanyId && x.Name == name && x.DocumentTypeId != id, ct))
+            throw new ConflictException($"يوجد نوع مستند آخر بالاسم «{name}».");
+
+        t.Name = name;
         audit.Add("Update", nameof(DocumentType), id.ToString(), null, t.CompanyId);
         await db.SaveChangesAsync(ct);
         return new DocumentTypeResponse(t.DocumentTypeId, t.CompanyId, t.Name);
+    }
+
+    /// <summary>
+    /// حذف نوع مستند — مسموح فقط إن لم يكن مستخدَماً في أي كتاب وارد أو مستند أرشيف.
+    /// </summary>
+    /// <remarks>
+    /// Hint: النوع ليس له علَم تعطيل (بخلاف القسم)، والحذف مع وجود مراجع كان سيترك
+    /// `DocumentTypeId` يشير إلى صفٍّ محذوف ⇒ يظهر «—» في كتب قديمة بلا تفسير.
+    /// نرفض بـ409 ونذكر العدد بدقّة ليعرف المالك حجم الارتباط قبل أن يقرّر.
+    /// **`IgnoreQueryFilters` مقصود:** العدّ يجب أن يشمل كل الشركات — سوبر أدمن يحذف نوعاً
+    /// من شركة غير فعّالة لديه يجب أن يُمنع أيضاً.
+    /// </remarks>
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "SuperAdmin,President,Manager")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var t = await db.DocumentTypes.FirstOrDefaultAsync(x => x.DocumentTypeId == id, ct)
+                ?? throw new NotFoundException("النوع غير موجود.");
+
+        var usedInIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.DocumentTypeId == id, ct);
+        var usedInArchive = await db.ArchiveDocs.IgnoreQueryFilters().CountAsync(a => a.DocumentTypeId == id, ct);
+        var used = usedInIncoming + usedInArchive;
+        if (used > 0)
+            throw new ConflictException(
+                $"لا يمكن حذف النوع «{t.Name}» لأنه مستخدَم في {used} سجلّ " +
+                $"({usedInIncoming} وارد، {usedInArchive} أرشيف). عدّل اسمه بدل حذفه.");
+
+        db.DocumentTypes.Remove(t);
+        audit.Add("Delete", nameof(DocumentType), id.ToString(), t.Name, t.CompanyId);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
     }
 }

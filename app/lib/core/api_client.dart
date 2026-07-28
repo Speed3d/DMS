@@ -265,6 +265,13 @@ class ApiClient {
   Future<List<DocumentTypeModel>> documentTypes() async =>
       (await _get('/document-types') as List).map((e) => DocumentTypeModel.fromJson(e)).toList();
 
+  Future<void> createDocumentType(String name) => _post('/document-types', {'name': name});
+
+  Future<void> updateDocumentType(int id, String name) => _put('/document-types/$id', {'name': name});
+
+  /// يفشل بـ409 إن كان النوع مستخدَماً في وارد أو أرشيف (الخادم يذكر العدد).
+  Future<void> deleteDocumentType(int id) => _delete('/document-types/$id');
+
   // ---------- الوارد ----------
   Future<List<IncomingListItem>> incomingList({
     String? search, String? status, int? entityId,

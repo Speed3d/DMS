@@ -38,6 +38,14 @@ final departmentsListProvider = FutureProvider.autoDispose<List<DepartmentModel>
   return ref.read(apiClientProvider).departments();
 });
 
+// ----------------- أنواع المستندات (لفلتر الوارد) -----------------
+/// أنواع المستندات المُدارة من الإعدادات — تُستخدم في فلتر قائمة الوارد.
+final documentTypesListProvider = FutureProvider.autoDispose<List<DocumentTypeModel>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session.auth == null) return <DocumentTypeModel>[];
+  return ref.read(apiClientProvider).documentTypes();
+});
+
 // ----------------- قائمة الكتب الواردة -----------------
 final incomingListProvider = FutureProvider.autoDispose<List<IncomingListItem>>((ref) async {
   final session = ref.watch(sessionProvider);

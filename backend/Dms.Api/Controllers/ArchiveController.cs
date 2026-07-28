@@ -3,8 +3,10 @@ using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Archive;
 using Dms.Infrastructure.Attachments;
+using Dms.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Api.Controllers;
 
@@ -12,7 +14,7 @@ namespace Dms.Api.Controllers;
 [Authorize]
 [RequireModule(AppModule.Archive)]
 [Route("api/[controller]")]
-public sealed class ArchiveController(IArchiveService svc, IAttachmentService attachments) : ControllerBase
+public sealed class ArchiveController(IArchiveService svc, IAttachmentService attachments, AppDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<ArchiveListItem>>> List(
@@ -27,7 +29,7 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ArchiveDetail>> Get(int id, CancellationToken ct)
-        => Detail(await svc.GetAsync(id, ct));
+        => await DetailAsync(await svc.GetAsync(id, ct), ct);
 
     [HttpPost]
     public async Task<ActionResult<ArchiveDetail>> Create(ArchiveRequest req, CancellationToken ct)
@@ -36,7 +38,7 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
             req.CompanyId, req.Title, req.BookNumber, req.BookDate,
             req.FromEntityId, req.ToEntityId, req.DocumentTypeId,
             req.Amount, req.Currency, req.ExchangeRate, req.Keywords, req.Notes, req.BodyHtml), ct);
-        return Detail(doc);
+        return await DetailAsync(doc, ct);
     }
 
     [HttpPut("{id:int}")]
@@ -46,7 +48,7 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
             req.Title, req.BookNumber, req.BookDate,
             req.FromEntityId, req.ToEntityId, req.DocumentTypeId,
             req.Amount, req.Currency, req.ExchangeRate, req.Keywords, req.Notes, req.BodyHtml), ct);
-        return Detail(doc);
+        return await DetailAsync(doc, ct);
     }
 
     [HttpDelete("{id:int}")]
@@ -74,8 +76,18 @@ public sealed class ArchiveController(IArchiveService svc, IAttachmentService at
         return new AttachmentResponse(a.AttachmentId, a.FileName, a.FileType, a.FileSize, a.UploadedAt);
     }
 
-    private static ArchiveDetail Detail(ArchiveDoc a) => new(
-        a.ArchiveId, a.CompanyId, a.ArchiveNumber, a.Title, a.BookNumber, a.BookDate,
-        a.FromEntityId, a.ToEntityId, a.DocumentTypeId,
-        a.Amount, a.Currency, a.ExchangeRate, a.AmountInIqd, a.Keywords, a.Notes, a.BodyHtml, a.CreatedAt);
+    /// <summary>يحوّل المستند إلى DTO ويُحلّ اسم نوع المستند من معرّفه.</summary>
+    private async Task<ArchiveDetail> DetailAsync(ArchiveDoc a, CancellationToken ct)
+    {
+        var typeName = a.DocumentTypeId is null
+            ? null
+            : await db.DocumentTypes.Where(t => t.DocumentTypeId == a.DocumentTypeId)
+                .Select(t => t.Name).FirstOrDefaultAsync(ct);
+
+        return new ArchiveDetail(
+            a.ArchiveId, a.CompanyId, a.ArchiveNumber, a.Title, a.BookNumber, a.BookDate,
+            a.FromEntityId, a.ToEntityId, a.DocumentTypeId,
+            a.Amount, a.Currency, a.ExchangeRate, a.AmountInIqd, a.Keywords, a.Notes, a.BodyHtml, a.CreatedAt,
+            typeName);
+    }
 }

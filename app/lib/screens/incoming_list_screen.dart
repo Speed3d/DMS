@@ -126,6 +126,38 @@ class IncomingListScreen extends ConsumerWidget {
                 ),
               );
 
+              // فلتر نوع المستند — كان المزوّد والـAPI موصولين بالكامل **بلا عنصر تحكّم**،
+              // فتعذّر البحث بالنوع رغم أن كل ما تحته جاهز.
+              final typeFilterWidget = Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.dividerColor, width: 1.5),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final typesAsync = ref.watch(documentTypesListProvider);
+                      final selected = ref.watch(incomingDocTypeFilterProvider);
+                      final types = typesAsync.asData?.value ?? const <DocumentTypeModel>[];
+                      return DropdownButton<int?>(
+                        value: selected,
+                        isExpanded: true,
+                        hint: const Text('نوع المستند', style: TextStyle(fontSize: 14)),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('كل الأنواع')),
+                          ...types.map((t) => DropdownMenuItem<int?>(value: t.documentTypeId, child: Text(t.name))),
+                        ],
+                        onChanged: (v) => ref.read(incomingDocTypeFilterProvider.notifier).state = v,
+                      );
+                    },
+                  ),
+                ),
+              );
+
               final buttonWidget = SizedBox(
                 height: 48,
                 child: ElevatedButton.icon(
@@ -160,6 +192,8 @@ class IncomingListScreen extends ConsumerWidget {
                     const SizedBox(height: 16),
                     deptFilterWidget,
                     const SizedBox(height: 16),
+                    typeFilterWidget,
+                    const SizedBox(height: 16),
                     buttonWidget,
                   ],
                 );
@@ -174,6 +208,8 @@ class IncomingListScreen extends ConsumerWidget {
                         Expanded(child: filterWidget),
                         const SizedBox(width: 16),
                         Expanded(child: deptFilterWidget),
+                        const SizedBox(width: 16),
+                        Expanded(child: typeFilterWidget),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -188,6 +224,8 @@ class IncomingListScreen extends ConsumerWidget {
                   Expanded(flex: 2, child: filterWidget),
                   const SizedBox(width: 16),
                   Expanded(flex: 2, child: deptFilterWidget),
+                  const SizedBox(width: 16),
+                  Expanded(flex: 2, child: typeFilterWidget),
                   const SizedBox(width: 16),
                   buttonWidget,
                 ],

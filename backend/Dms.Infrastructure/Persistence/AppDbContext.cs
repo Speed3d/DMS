@@ -115,6 +115,9 @@ public class AppDbContext : DbContext
         b.Entity<DocumentType>(e =>
         {
             e.Property(x => x.Name).IsRequired().HasMaxLength(200);
+            // اسم النوع فريد داخل الشركة الواحدة. الحارس في الـController يعطي رسالة عربية
+            // واضحة، وهذا الفهرس يمنع التسابق (طلبان متزامنان بنفس الاسم يمرّان من الحارس معاً).
+            e.HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 

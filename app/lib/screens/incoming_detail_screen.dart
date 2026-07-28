@@ -424,6 +424,12 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                               ],
                               const SizedBox(height: 16),
                               _buildInfoRow('طريقة الاستلام', receiveMethodLabel(d.receiveMethod), Icons.inbox_rounded),
+                              // نوع المستند: كان يُختار في النموذج ثم **لا يُعرض في أي مكان** —
+                              // فلا المستخدم يتأكّد ممّا اختاره ولا يستفيد منه في القراءة.
+                              if (d.documentTypeName != null) ...[
+                                const SizedBox(height: 16),
+                                _buildInfoRow('نوع المستند', d.documentTypeName!, Icons.label_outline_rounded),
+                              ],
                               const SizedBox(height: 16),
                               _buildAssignmentsRow(d.departments),
                               

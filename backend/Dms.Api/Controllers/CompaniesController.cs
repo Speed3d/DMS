@@ -68,6 +68,13 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
         db.Companies.Add(c);
         audit.Add("Create", nameof(Company), null, $"إنشاء شركة {c.Name}", null);
         await db.SaveChangesAsync(ct);
+
+        // بذر أنواع المستندات الافتراضية — **بعد** الحفظ لأن `CompanyId` يُولَّد هناك.
+        // Hint: بدونها تبدأ الشركة بقائمة أنواع فارغة، فيجد المستخدم الحقل معطّلاً في نموذج
+        //       الوارد ولا يعرف أنه يُملأ من الإعدادات. نقطة انطلاق يعدّلها كما يشاء.
+        db.DocumentTypes.AddRange(DefaultDocumentTypes.For(c.CompanyId));
+        await db.SaveChangesAsync(ct);
+
         return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive, c.DefaultSignatoryName, c.DefaultSignatoryTitle, c.LogoImageKey);
     }
 

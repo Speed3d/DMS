@@ -473,12 +473,15 @@ class ArchiveDetail {
   final num? exchangeRate;
   final num? amountInIqd;
   final String? keywords, notes, bodyHtml;
+  /// اسم نوع المستند كما يحلّه الخادم — بدونه كانت الشاشة تعرض «مستند ذو نوع #3».
+  final String? documentTypeName;
   ArchiveDetail({
     required this.archiveId, required this.archiveNumber, required this.title,
     required this.bookNumber, required this.bookDate,
     required this.fromEntityId, required this.toEntityId, required this.documentTypeId,
     required this.amount, required this.currency, required this.exchangeRate, required this.amountInIqd,
     required this.keywords, required this.notes, required this.bodyHtml,
+    this.documentTypeName,
   });
   factory ArchiveDetail.fromJson(Map<String, dynamic> j) => ArchiveDetail(
         archiveId: j['archiveId'], archiveNumber: j['archiveNumber'] ?? '', title: j['title'] ?? '',
@@ -487,6 +490,7 @@ class ArchiveDetail {
         fromEntityId: j['fromEntityId'], toEntityId: j['toEntityId'], documentTypeId: j['documentTypeId'],
         amount: j['amount'], currency: j['currency'], exchangeRate: j['exchangeRate'], amountInIqd: j['amountInIqd'],
         keywords: j['keywords'], notes: j['notes'], bodyHtml: j['bodyHtml'],
+        documentTypeName: j['documentTypeName'],
       );
 }
 

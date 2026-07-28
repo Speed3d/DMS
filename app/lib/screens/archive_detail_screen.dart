@@ -239,7 +239,8 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                               if (d.bookNumber != null) _detailRow('رقم الكتاب', d.bookNumber!, theme),
                               if (d.bookDate != null) _detailRow('تاريخ الكتاب', DateFormat('yyyy/MM/dd').format(d.bookDate!), theme),
                               _detailRow('تاريخ الأرشفة', d.bookDate == null ? '-' : DateFormat('yyyy/MM/dd HH:mm').format(d.bookDate!), theme),
-                              if (d.documentTypeId != null) _detailRow('نوع المستند', 'مستند ذو نوع #${d.documentTypeId}', theme), // يمكن تحسينه لاحقاً إذا جلبنا الاسم
+                              if (d.documentTypeId != null)
+                                _detailRow('نوع المستند', d.documentTypeName ?? '—', theme),
                             ],
                           ),
                         ),

@@ -45,7 +45,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isSuper = ref.watch(sessionProvider).auth?.isSuperAdmin ?? false;
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Column(
         children: [
           Row(
@@ -55,6 +55,7 @@ class SettingsScreen extends ConsumerWidget {
                   Tab(text: 'الشركات'),
                   Tab(text: 'الجهات'),
                   Tab(text: 'الأقسام'),
+                  Tab(text: 'أنواع المستندات'),
                   Tab(text: 'القوالب'),
                   Tab(text: 'أسعار الصرف'),
                 ]),
@@ -75,6 +76,7 @@ class SettingsScreen extends ConsumerWidget {
               _CompaniesTab(canCreate: isSuper),
               const _EntitiesTab(),
               const _DepartmentsTab(),
+              const _DocumentTypesTab(),
               const _TemplatesTab(),
               const _RatesTab(),
             ]),
@@ -321,6 +323,116 @@ class _EntitiesTabState extends ConsumerState<_EntitiesTab> {
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     tooltip: 'حذف الجهة',
                     onPressed: () => _deleteEntity(e),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+}
+
+// ----- أنواع المستندات -----
+/// إدارة أنواع المستندات (تصنيف الوارد والأرشيف — يُستخدم في الحقل والفلترة).
+///
+/// ⚠️ **سبب وجود هذا التبويب:** الحقل والفلترة ونقاط الـAPI كانت مبنية منذ البداية، لكن
+/// **لا شاشة تملأ القائمة** — فبقيت المنسدلة فارغة أبداً و**صفر** كتاب من 43 يحمل نوعاً.
+/// نفس نمط عيب «تصدير Word»: ميزة بلا مدخل في الواجهة تموت بصمت.
+class _DocumentTypesTab extends ConsumerStatefulWidget {
+  const _DocumentTypesTab();
+  @override
+  ConsumerState<_DocumentTypesTab> createState() => _DocumentTypesTabState();
+}
+
+class _DocumentTypesTabState extends ConsumerState<_DocumentTypesTab> {
+  late Future<List<DocumentTypeModel>> _f;
+  @override
+  void initState() { super.initState(); _f = ref.read(apiClientProvider).documentTypes(); }
+  void _reload() => setState(() { _f = ref.read(apiClientProvider).documentTypes(); });
+
+  Future<void> _add() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final r = await _prompt(context, 'نوع مستند جديد', [_Field('name', 'اسم النوع (مثل: فاتورة)')]);
+    if (r == null || r['name']!.trim().isEmpty) return;
+    try {
+      await ref.read(apiClientProvider).createDocumentType(r['name']!.trim());
+      if (mounted) _reload();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _rename(DocumentTypeModel t) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final r = await _prompt(context, 'تعديل النوع', [_Field('name', 'اسم النوع', initial: t.name)]);
+    if (r == null || r['name']!.trim().isEmpty) return;
+    try {
+      await ref.read(apiClientProvider).updateDocumentType(t.documentTypeId, r['name']!.trim());
+      if (mounted) _reload();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _delete(DocumentTypeModel t) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف نوع مستند'),
+        content: Text('هل تريد حذف النوع «${t.name}»؟\n'
+            'لن يتم الحذف إن كان مستخدَماً في كتب واردة أو مستندات أرشيف — عدّل اسمه بدل حذفه.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(apiClientProvider).deleteDocumentType(t.documentTypeId);
+      if (mounted) _reload();
+      messenger.showSnackBar(SnackBar(content: Text('تم حذف النوع «${t.name}».'), backgroundColor: Colors.green));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<DocumentTypeModel>>(
+        future: _f,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
+          final list = snap.data ?? const <DocumentTypeModel>[];
+          return _Section(
+            addLabel: 'نوع جديد',
+            onAdd: _add,
+            children: [
+              if (list.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('لا توجد أنواع مستندات بعد. أضِف الأنواع التي تتعامل بها '
+                      '(كتاب رسمي · فاتورة · عقد · مخطّط …) لتصنيف الوارد والأرشيف والبحث بها.',
+                      style: TextStyle(color: Colors.grey)),
+                ),
+              for (final t in list)
+                ListTile(
+                  leading: const Icon(Icons.label_outline_rounded),
+                  title: Text(t.name),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'تعديل', onPressed: () => _rename(t)),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        tooltip: 'حذف',
+                        onPressed: () => _delete(t),
+                      ),
+                    ],
                   ),
                 ),
             ],
