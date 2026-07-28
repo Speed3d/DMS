@@ -40,22 +40,66 @@ public static class BackupRetention
     };
 
     /// <summary>
-    /// يحدّد نطاق وتصنيف النسخة المجدولة حسب التاريخ (نمط الجد/الأب/الابن).
-    /// Hint: بإعداد «يومي» واحد تحصل تلقائياً على دورة كاملة — يومية خفيفة (قاعدة فقط)،
-    ///       وترقية لكاملة أسبوعياً (الجمعة) وشهرياً (أول الشهر). الأولوية: شهري > أسبوعي > يومي.
-    ///       منطق نقي في المجال ليبقى قابلاً للاختبار بلا بنية تحتية.
+    /// يحدّد تصنيف النسخة المجدولة حسب التاريخ (نمط الجد/الأب/الابن).
+    /// **والنطاق دائماً «قاعدة فقط»** — انظر المبرّر.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ **كانت المجدولة تُرقّى إلى «كاملة» يوم الجمعة وأول الشهر** — تصميم صحيح حين كان
+    /// التخزين ميغابايتات. لكن أرشيف الشركة الورقي **~80 غيغابايت**، وسياسة الاحتفاظ تُبقي
+    /// ٣٦ نسخة كاملة (٤ أسبوعية + ١٢ شهرية + ٢٠ سنوية):
+    ///
+    ///     ٣٦ × 80 غيغا = **2.9 تيرابايت** — لا قرص في خطة النشر يحتمله، وكل نسخة تستغرق
+    ///     ساعات لتُعيد نسخ أرشيفٍ **لا يتغيّر أبداً**.
+    ///
+    /// **القرار (المالك، 2026-07-28):** المجدولة **قاعدة فقط دائماً** — سريعة وصغيرة تُرفع
+    /// إلى OneDrive، وتحمي من تلف القاعدة والحذف الخاطئ والمهاجرة الفاشلة. أما الملفات
+    /// فتُحمى بنسخة كاملة **يدوية** إلى قرص خارجي (مرآة تُضيف ولا تُكرّر).
+    ///
+    /// 🔴 **الثمن المقصود:** المجدولة وحدها **لا تحمي المرفقات**. ولذلك يتتبّع النظام عمر
+    /// آخر نسخة كاملة ويُنذر تصعيدياً قبل تجاوز ٣٠ يوماً — «يدوي بتذكير» لا «يدوي منسيّ».
+    ///
+    /// Hint: التصنيف يبقى متدرّجاً (شهري > أسبوعي > يومي) فتُحفظ دورة الاحتفاظ ومعها تاريخٌ
+    ///       أعمق — نسخة من أول كل شهر لا سبع نسخ يومية فقط.
+    /// </remarks>
     public static (BackupScope scope, RetentionCategory category) ClassifyScheduled(BackupFrequency freq, DateTime now)
     {
         if (freq == BackupFrequency.Weekly)
-            return (BackupScope.Full, RetentionCategory.Weekly);
+            return (BackupScope.DbOnly, RetentionCategory.Weekly);
 
-        // يومي:
+        // يومي: التصنيف يتدرّج والنطاق ثابت.
         if (now.Day == 1)
-            return (BackupScope.Full, RetentionCategory.Monthly);
+            return (BackupScope.DbOnly, RetentionCategory.Monthly);
         if (now.DayOfWeek == DayOfWeek.Friday)
-            return (BackupScope.Full, RetentionCategory.Weekly);
+            return (BackupScope.DbOnly, RetentionCategory.Weekly);
         return (BackupScope.DbOnly, RetentionCategory.Daily);
+    }
+
+    /// <summary>الحدّ الأقصى المقبول لعمر آخر نسخة كاملة (بالأيام) قبل الإنذار الأحمر.</summary>
+    public const int FullBackupMaxAgeDays = 30;
+
+    /// <summary>خطورة تذكير النسخة الكاملة — تتصاعد مع اقتراب المهلة.</summary>
+    public enum FullBackupUrgency { Ok, Soon, Urgent, Overdue }
+
+    /// <summary>
+    /// يقيس عمر آخر نسخة كاملة ويُصنّف إلحاحه.
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **أضعف حلقة في المنظومة هي ذاكرة المالك.** النسخة الكاملة يدوية بقراره، والمجدولة
+    /// لا تحمي المرفقات — فلو نُسيت شهرين ثم تعطّل القرص ضاعت مرفقات شهرين، **بينما النسخ
+    /// اليومية تعمل بانتظام وتُعطي شعوراً زائفاً بالأمان**. هذا التصنيف هو ما يمنع ذلك.
+    ///
+    /// التصعيد مقصود: تنبيه هادئ قبل ثلاثة أيام، ثم يشتدّ يوماً بيوم، ثم أحمر عند التجاوز.
+    /// و<c>null</c> (لا نسخة كاملة قط) = **متأخّرة** لا «سليمة» — فشل مغلق.
+    /// </remarks>
+    public static FullBackupUrgency ClassifyFullBackupAge(DateTime? lastFullUtc, DateTime nowUtc)
+    {
+        if (lastFullUtc is null) return FullBackupUrgency.Overdue;
+
+        var days = (nowUtc - lastFullUtc.Value).TotalDays;
+        if (days >= FullBackupMaxAgeDays) return FullBackupUrgency.Overdue;
+        if (days >= FullBackupMaxAgeDays - 2) return FullBackupUrgency.Urgent;   // ٢٨ و٢٩
+        if (days >= FullBackupMaxAgeDays - 3) return FullBackupUrgency.Soon;     // ٢٧
+        return FullBackupUrgency.Ok;
     }
 }
 

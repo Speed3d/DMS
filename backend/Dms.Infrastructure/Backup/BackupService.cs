@@ -1,5 +1,6 @@
 using System.Data;
 using System.IO.Compression;
+using System.Text.Json;
 using Dms.Domain;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
@@ -126,6 +127,17 @@ public sealed class BackupService(
                     zip.CreateEntryFromFile(file, rel, CompressionLevel.Optimal);
                 }
             }
+
+            // ⚠️ **بيان الملفات — يُكتب في كل نسخة مهما كان نطاقها.**
+            //
+            // نسخةُ «قاعدة فقط» لا تحوي المرفقات، فاستعادتها تُنتج نظاماً سليم البيانات
+            // **وكل زرّ مرفق فيه يقول «الملف غير موجود»** — عطلٌ صامت يُكتشف بعد أسابيع
+            // ملفاً ملفاً. البيان يجعل النظام قادراً على قول: «استُعيدت القاعدة، و٦٤٣٢ ملفاً
+            // مفقود — استعدها من نسختك الكاملة». **كشفُ حساب لا حماية**، وهذا دوره بالضبط.
+            //
+            // Hint: المسار والحجم يكفيان لكشف الفقد، ولا نحسب بصمة تجزئة — على 80 غيغا
+            //       تستغرق دقائق طويلة في كل نسخة يومية مقابل فائدة لا نحتاجها هنا.
+            WriteManifest(zip, paths.StorageRoot);
         }
         catch (Exception ex)
         {
@@ -209,6 +221,9 @@ public sealed class BackupService(
         if (!File.Exists(zipPath))
             throw new NotFoundException("ملف النسخة غير موجود على الخادم.");
 
+        // عدد الملفات التي تتوقّعها القاعدة المُستعادة ولا وجود لها على القرص (نسخة بلا ملفات).
+        var missingFiles = 0;
+
         // تحقّق مبكر من سلامة الأرشيف قبل لمس أي شيء.
         bool hasDb, hasFiles;
         try
@@ -245,6 +260,9 @@ public sealed class BackupService(
             // Hint: نسخة «قاعدة فقط» لا تلمس الملفات إطلاقاً، فتبقى الملفات الحالية كما هي.
             if (hasFiles)
                 RestoreStorageFiles(Path.Combine(tempDir, "files"));
+            else
+                // نسخة بلا ملفات: نقيس الفجوة بين ما تتوقّعه القاعدة المُستعادة وما هو موجود.
+                missingFiles = CountMissingFromManifest(Path.Combine(tempDir, ManifestName));
         }
         finally
         {
@@ -279,8 +297,13 @@ public sealed class BackupService(
             Status = safetyStatus,
             Note = "نسخة أمان تلقائية قبل الاستعادة" + (safetyNote is null ? "" : " | " + safetyNote),
         });
+        // ⚠️ الفجوة تُدوَّن في التدقيق **صراحةً**: استعادةٌ تُبلّغ «نجحت» بينما آلاف المرفقات
+        //    مفقودة هي أخطر من فشلٍ صريح — لأنها تُطمئن المالك زوراً.
+        var missingNote = missingFiles > 0
+            ? $" | ⚠️ {missingFiles} ملف مرفق مفقود — استعِدها من النسخة الكاملة"
+            : "";
         audit.Add("Restore", nameof(BackupRecord), backupRecordId.ToString(),
-            $"تمت الاستعادة من {rec.FileName} (نسخة أمان: {safetyZip})", null);
+            $"تمت الاستعادة من {rec.FileName} (نسخة أمان: {safetyZip}){missingNote}", null);
         await db.SaveChangesAsync(ct);
     }
 
@@ -370,6 +393,57 @@ public sealed class BackupService(
         cmd.CommandText = sql;
         cmd.CommandTimeout = timeoutSec;
         await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    // ─────────────────────────── بيان الملفات ───────────────────────────
+
+    /// <summary>صفٌّ في بيان الملفات: المسار النسبي وحجمه.</summary>
+    private sealed record ManifestEntry(string Path, long Size);
+
+    private const string ManifestName = "manifest.json";
+
+    /// <summary>يكتب بيان ملفات التخزين داخل أرشيف النسخة.</summary>
+    private static void WriteManifest(ZipArchive zip, string storageRoot)
+    {
+        var entries = Directory.Exists(storageRoot)
+            ? Directory.EnumerateFiles(storageRoot, "*", SearchOption.AllDirectories)
+                .Select(f => new ManifestEntry(
+                    System.IO.Path.GetRelativePath(storageRoot, f).Replace('\\', '/'),
+                    new FileInfo(f).Length))
+                .ToList()
+            : [];
+
+        var entry = zip.CreateEntry(ManifestName, CompressionLevel.Optimal);
+        using var s = entry.Open();
+        JsonSerializer.Serialize(s, entries);
+    }
+
+    /// <summary>
+    /// يقارن بيان النسخة بملفات التخزين الفعلية ويردّ عدد المفقود.
+    /// </summary>
+    /// <remarks>
+    /// يُستدعى بعد استعادة نسخة **لا تحوي ملفات**: القاعدة عادت وهي تشير إلى مرفقات قد لا
+    /// تكون موجودة. الرقم يُبلَّغ للمالك فوراً بدل أن يكتشفه بعد أسابيع ملفاً ملفاً.
+    /// </remarks>
+    private int CountMissingFromManifest(string manifestPath)
+    {
+        try
+        {
+            if (!File.Exists(manifestPath)) return 0;
+            using var s = File.OpenRead(manifestPath);
+            var entries = JsonSerializer.Deserialize<List<ManifestEntry>>(s) ?? [];
+
+            return entries.Count(e =>
+            {
+                var full = System.IO.Path.Combine(paths.StorageRoot, e.Path.Replace('/', System.IO.Path.DirectorySeparatorChar));
+                return !File.Exists(full);
+            });
+        }
+        catch
+        {
+            // بيانٌ تالف لا يجوز أن يُفشل استعادة ناجحة — نتجاهله ونُبلّغ بصفر.
+            return 0;
+        }
     }
 
     /// <summary>

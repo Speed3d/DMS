@@ -211,6 +211,17 @@ public sealed record ActivityRowDto(DateTime Timestamp, int? UserId, string User
 
 // ----------------- Backup -----------------
 public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupScope Scope, RetentionCategory Category, BackupStatus Status, string? Note);
+
+/// <summary>
+/// تغطية النسخ الاحتياطي — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة جديدة.
+/// </summary>
+/// <remarks>
+/// المجدولة صارت «قاعدة فقط» فهي لا تحمي المرفقات؛ الحماية من نسخة كاملة يدوية.
+/// <paramref name="Urgency"/>: <c>Ok</c> · <c>Soon</c> (٣ أيام) · <c>Urgent</c> (يوم/يومان) ·
+/// <c>Overdue</c> (تجاوزت الحدّ **أو لم تُؤخذ قط**).
+/// </remarks>
+public sealed record BackupCoverageDto(
+    DateTime? LastFullBackupAt, int? DaysSinceFullBackup, int MaxAgeDays, string Urgency, string Message);
 public sealed record BackupScheduleDto(BackupFrequency Frequency, bool Enabled, int Hour, DateTime? LastRunAt, DateTime? NextRunAt);
 public sealed record UpdateBackupScheduleRequest(BackupFrequency Frequency, bool Enabled, int Hour);
 public sealed record RestoreBackupRequest(string Confirmation);

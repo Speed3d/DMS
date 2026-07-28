@@ -25,22 +25,38 @@ public class BackupRetentionTests
         Assert.Equal(23, total);
     }
 
-    [Fact]
-    public void FirstOfMonth_IsMonthlyFull()
+    /// <summary>
+    /// 🔴 **الحارس الأهم:** لا نسخة مجدولة تكون «كاملة» مهما كان اليوم.
+    /// </summary>
+    /// <remarks>
+    /// ترقيةُ المجدولة إلى كاملة كانت تعني ٣٦ نسخة × 80 غيغا = **2.9 تيرابايت** بعد استيراد
+    /// الأرشيف الورقي. أيّ عودة لهذا السلوك تُفجّر القرص بصمت — فيُحرَس صراحةً.
+    /// </remarks>
+    [Theory]
+    [InlineData(2026, 8, 1)]    // أول الشهر
+    [InlineData(2026, 8, 7)]    // جمعة
+    [InlineData(2026, 8, 5)]    // يوم عادي
+    [InlineData(2026, 5, 1)]    // أول الشهر وجمعة معاً
+    public void ScheduledBackups_AreNeverFull(int y, int m, int d)
     {
-        var (scope, category) = BackupRetention.ClassifyScheduled(BackupFrequency.Daily, new DateTime(2026, 8, 1));
-        Assert.Equal(BackupScope.Full, scope);
+        var (scope, _) = BackupRetention.ClassifyScheduled(BackupFrequency.Daily, new DateTime(y, m, d));
+        Assert.Equal(BackupScope.DbOnly, scope);
+    }
+
+    [Fact]
+    public void FirstOfMonth_IsMonthlyCategory()
+    {
+        var (_, category) = BackupRetention.ClassifyScheduled(BackupFrequency.Daily, new DateTime(2026, 8, 1));
         Assert.Equal(RetentionCategory.Monthly, category);
     }
 
     [Fact]
-    public void Friday_IsWeeklyFull()
+    public void Friday_IsWeeklyCategory()
     {
-        // 2026-08-07 يوم جمعة (وليس أول الشهر).
+        // 2026-08-07 يوم جمعة (وليس أول الشهر) — التصنيف يتدرّج وإن ثبت النطاق.
         var date = new DateTime(2026, 8, 7);
         Assert.Equal(DayOfWeek.Friday, date.DayOfWeek);
-        var (scope, category) = BackupRetention.ClassifyScheduled(BackupFrequency.Daily, date);
-        Assert.Equal(BackupScope.Full, scope);
+        var (_, category) = BackupRetention.ClassifyScheduled(BackupFrequency.Daily, date);
         Assert.Equal(RetentionCategory.Weekly, category);
     }
 
@@ -64,11 +80,35 @@ public class BackupRetentionTests
     }
 
     [Fact]
-    public void WeeklyFrequency_AlwaysWeeklyFull()
+    public void WeeklyFrequency_IsWeeklyDbOnly()
     {
-        // عند اختيار التكرار «أسبوعي» صراحةً: كل نسخة كاملة بتصنيف أسبوعي بغضّ النظر عن اليوم.
         var (scope, category) = BackupRetention.ClassifyScheduled(BackupFrequency.Weekly, new DateTime(2026, 8, 5));
-        Assert.Equal(BackupScope.Full, scope);
+        Assert.Equal(BackupScope.DbOnly, scope);
         Assert.Equal(RetentionCategory.Weekly, category);
+    }
+
+    // ─────────────── تذكير النسخة الكاملة (يدوية بقرار المالك) ───────────────
+
+    [Fact]
+    public void NoFullBackupEver_IsOverdue()
+    {
+        // فشل مغلق: «لم تُؤخذ قط» ليست حالة سليمة — بل أسوأ الحالات.
+        Assert.Equal(BackupRetention.FullBackupUrgency.Overdue,
+            BackupRetention.ClassifyFullBackupAge(null, DateTime.UtcNow));
+    }
+
+    [Theory]
+    [InlineData(0, BackupRetention.FullBackupUrgency.Ok)]
+    [InlineData(20, BackupRetention.FullBackupUrgency.Ok)]
+    [InlineData(26, BackupRetention.FullBackupUrgency.Ok)]
+    [InlineData(27, BackupRetention.FullBackupUrgency.Soon)]     // ٣ أيام متبقّية
+    [InlineData(28, BackupRetention.FullBackupUrgency.Urgent)]   // يومان
+    [InlineData(29, BackupRetention.FullBackupUrgency.Urgent)]   // يوم
+    [InlineData(30, BackupRetention.FullBackupUrgency.Overdue)]
+    [InlineData(45, BackupRetention.FullBackupUrgency.Overdue)]
+    public void FullBackupAge_EscalatesAsDeadlineApproaches(int daysAgo, BackupRetention.FullBackupUrgency expected)
+    {
+        var now = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(expected, BackupRetention.ClassifyFullBackupAge(now.AddDays(-daysAgo), now));
     }
 }

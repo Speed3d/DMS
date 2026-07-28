@@ -17,6 +17,48 @@ public sealed class BackupController(IBackupService backup) : ControllerBase
     public async Task<ActionResult<List<BackupRecordDto>>> List(CancellationToken ct)
         => (await backup.ListAsync(ct)).Select(Map).ToList();
 
+    /// <summary>حالة تغطية النسخ — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة جديدة.</summary>
+    /// <remarks>
+    /// 🔴 **لماذا هذه النقطة موجودة:** النسخ المجدولة صارت «قاعدة فقط» (لأن ٣٦ نسخة كاملة
+    /// × 80 غيغا = 2.9 تيرابايت)، فهي **لا تحمي المرفقات**. حمايتها تعتمد على نسخة كاملة
+    /// **يدوية** يأخذها المالك — و**أضعف حلقة في المنظومة هي ذاكرته**: لو نُسيت شهرين ثم
+    /// تعطّل القرص ضاعت مرفقات شهرين، بينما النسخ اليومية تعمل بانتظام فتُعطي شعوراً زائفاً
+    /// بالأمان. هذه النقطة تُحوّل «يدوي منسيّ» إلى «يدوي بتذكير».
+    /// </remarks>
+    [HttpGet("coverage")]
+    public async Task<ActionResult<BackupCoverageDto>> Coverage(CancellationToken ct)
+    {
+        var records = await backup.ListAsync(ct);
+        var lastFull = records
+            .Where(r => r.Scope == BackupScope.Full && r.Status == BackupStatus.Success)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefault();
+
+        var now = DateTime.UtcNow;
+        var urgency = BackupRetention.ClassifyFullBackupAge(lastFull?.CreatedAt, now);
+        var days = lastFull is null ? (int?)null : (int)(now - lastFull.CreatedAt).TotalDays;
+
+        return new BackupCoverageDto(
+            lastFull?.CreatedAt,
+            days,
+            BackupRetention.FullBackupMaxAgeDays,
+            urgency.ToString(),
+            MessageFor(urgency, days));
+    }
+
+    private static string MessageFor(BackupRetention.FullBackupUrgency u, int? days) => u switch
+    {
+        BackupRetention.FullBackupUrgency.Ok =>
+            $"آخر نسخة كاملة قبل {days} يوماً — المرفقات محمية.",
+        BackupRetention.FullBackupUrgency.Soon =>
+            $"مضى {days} يوماً على آخر نسخة كاملة — يُستحسن أخذ واحدة خلال ٣ أيام.",
+        BackupRetention.FullBackupUrgency.Urgent =>
+            $"مضى {days} يوماً على آخر نسخة كاملة — تبقّى {BackupRetention.FullBackupMaxAgeDays - days} يوم/أيام.",
+        _ => days is null
+            ? "⚠️ لم تُؤخذ أي نسخة كاملة قط — المرفقات والأرشيف غير محميين من تعطّل القرص."
+            : $"⚠️ مضى {days} يوماً على آخر نسخة كاملة (الحدّ {BackupRetention.FullBackupMaxAgeDays}) — المرفقات في خطر.",
+    };
+
     [HttpPost("run")]
     public async Task<ActionResult<BackupRecordDto>> Run(CancellationToken ct)
         // النسخة اليدوية دائماً كاملة وتصنيفها Manual (لا تُقلَّم إلا عند تجاوز سقف كبير).
