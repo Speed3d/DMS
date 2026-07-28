@@ -100,6 +100,7 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 13 | `AddDepartments` | جدول `Departments` + `User.DepartmentId` + `User.CanManageIncoming` + `IncomingBook.DepartmentId` — ADR-015 |
 | 14 | `AddPerCompanyPermissions` | نقل `Modules`/`DepartmentId`/`CanApprove`/`CanManageIncoming` من `Users` إلى `UserCompanies` — ADR-017. ⚠️ **الترتيب داخلها مقصود** (إضافة ← نقل ← إسقاط)؛ السقالة المولَّدة كانت تُسقط أولاً فتمحو صلاحيات الجميع |
 | 15 | `AddMultiDepartmentAssignments` | جدول `IncomingAssignment` (كتاب ↔ عدّة أقسام) + **إسقاط** `IncomingBooks.DepartmentId` و`FolderName` — ADR-018. ⚠️ **الترتيب مقصود** (إنشاء ← **نقل الإسنادات القائمة** ← إسقاط) — نفس درس ADR-017. طُبِّقت على `DmsDb` بتاريخ 2026-07-27 وتحقُّق النقل تمّ فعلياً |
+| 16 | `AddDocumentTypeUniqueIndex` | فهرس فريد `(CompanyId, Name)` على `DocumentTypes` + **بذر 8 أنواع افتراضية للشركات القائمة**. ⚠️ **البذر في المهاجرة لا في بذر الإقلاع** عمداً: الإقلاع يعمل كل تشغيل فيُعيد ما حذفه المالك؛ والمهاجرة مرّة واحدة. والفهرس **قبل** الإدراج ليفشل فوراً لو كان ثمّة تكرار سابق. طُبِّقت 2026-07-28 (شركتان × 8 أنواع) |
 
 > **ملاحظات:**
 > - تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).

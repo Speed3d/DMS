@@ -79,9 +79,11 @@ public sealed class DepartmentsController(AppDbContext db, ICurrentUser current,
     }
 
     /// <summary>
-    /// حذف قسم — مسموح فقط إن لم يكن مستخدَماً في أي كتاب وارد.
+    /// حذف قسم — مسموح فقط إن لم يكن مستخدَماً في أي كتاب وارد **غير محذوف**.
     /// Hint: ارتباط المستخدمين به يُفكّ تلقائياً (SetNull)، لكن الكتب الواردة المحالة إليه سجلّ
     ///       رسمي — نرفض الحذف بـ 409 ونقترح التعطيل بدلاً منه (يبقى الاسم في السجلات).
+    /// ⚠️ `IgnoreQueryFilters` يُلغي **فلتر الحذف الناعم أيضاً** لا فلتر الشركة وحده، فلولا
+    ///    `!IsDeleted` لبقي كتابٌ حذفه المستخدم قافلاً للقسم إلى الأبد وهو لا يراه في أي قائمة.
     /// </summary>
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
@@ -92,7 +94,7 @@ public sealed class DepartmentsController(AppDbContext db, ICurrentUser current,
 
         // الأقسام صارت متعدّدة لكل كتاب (ADR-018) — نعدّ الكتب التي **من ضمن** إسناداتها هذا القسم.
         var usedInIncoming = await db.IncomingBooks.IgnoreQueryFilters()
-            .CountAsync(b => b.Assignments.Any(a => a.DepartmentId == id), ct);
+            .CountAsync(b => b.Assignments.Any(a => a.DepartmentId == id) && !b.IsDeleted, ct);
         if (usedInIncoming > 0)
             throw new ConflictException(
                 $"لا يمكن حذف القسم «{d.Name}» لأنه محال إليه {usedInIncoming} كتاب وارد. عطّله بدل حذفه.");

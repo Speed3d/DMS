@@ -63,6 +63,10 @@ public sealed class DocumentTypesController(AppDbContext db, ICurrentUser curren
     /// نرفض بـ409 ونذكر العدد بدقّة ليعرف المالك حجم الارتباط قبل أن يقرّر.
     /// **`IgnoreQueryFilters` مقصود:** العدّ يجب أن يشمل كل الشركات — سوبر أدمن يحذف نوعاً
     /// من شركة غير فعّالة لديه يجب أن يُمنع أيضاً.
+    ///
+    /// ⚠️ **لكنه يُلغي فلتر الحذف الناعم كذلك** — ولهذا نستثني المحذوف يدوياً (`!IsDeleted`).
+    /// بدونه يبقى كتابٌ حذفه المستخدم قافلاً للنوع **إلى الأبد** بلا أي وسيلة لمعرفة السبب:
+    /// الحارس يقول «مستخدَم في كتاب» والمستخدم لا يرى ذلك الكتاب في أي قائمة.
     /// </remarks>
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "SuperAdmin,President,Manager")]
@@ -71,8 +75,10 @@ public sealed class DocumentTypesController(AppDbContext db, ICurrentUser curren
         var t = await db.DocumentTypes.FirstOrDefaultAsync(x => x.DocumentTypeId == id, ct)
                 ?? throw new NotFoundException("النوع غير موجود.");
 
-        var usedInIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.DocumentTypeId == id, ct);
-        var usedInArchive = await db.ArchiveDocs.IgnoreQueryFilters().CountAsync(a => a.DocumentTypeId == id, ct);
+        var usedInIncoming = await db.IncomingBooks.IgnoreQueryFilters()
+            .CountAsync(b => b.DocumentTypeId == id && !b.IsDeleted, ct);
+        var usedInArchive = await db.ArchiveDocs.IgnoreQueryFilters()
+            .CountAsync(a => a.DocumentTypeId == id && !a.IsDeleted, ct);
         var used = usedInIncoming + usedInArchive;
         if (used > 0)
             throw new ConflictException(
