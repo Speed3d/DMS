@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import 'archive_bulk_import_screen.dart';
 import 'archive_form_screen.dart';
 import 'archive_detail_screen.dart';
 import 'incoming_detail_screen.dart';
@@ -102,11 +103,34 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                   ),
                 );
 
+                // زرّ الاستيراد بالجملة — المدخل الوحيد لإدخال الأرشيف الورقي القديم
+                // (آلاف الملفات؛ إدخالها فرادى لا يكتمل عملياً).
+                final bulkWidget = SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ArchiveBulkImportScreen()));
+                      _reload();
+                    },
+                    icon: const Icon(Icons.drive_folder_upload_rounded),
+                    label: const Text('استيراد دفعة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.navyDeep,
+                      side: BorderSide(color: AppColors.navyDeep.withValues(alpha: 0.5), width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                    ),
+                  ),
+                );
+
                 if (isSmall) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       searchWidget,
+                      const SizedBox(height: 16),
+                      bulkWidget,
                       const SizedBox(height: 16),
                       buttonWidget,
                     ],
@@ -117,6 +141,8 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                   children: [
                     Expanded(child: searchWidget),
                     const SizedBox(width: 16),
+                    bulkWidget,
+                    const SizedBox(width: 12),
                     buttonWidget,
                   ],
                 );

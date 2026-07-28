@@ -541,6 +541,102 @@ class ArchiveLensItem {
       );
 }
 
+/// نتيجة استيراد ملف واحد ضمن دفعة أرشيف.
+class BulkImportRow {
+  final String fileName;
+  final bool ok;
+  final int? archiveId;
+  final String? number, title, error;
+
+  /// اسم الملف كان بلا معنى (`IMG_0234`) — يحتاج عنواناً يدوياً لاحقاً.
+  final bool needsTitle;
+
+  BulkImportRow({
+    required this.fileName, required this.ok, required this.needsTitle,
+    this.archiveId, this.number, this.title, this.error,
+  });
+
+  factory BulkImportRow.fromJson(Map<String, dynamic> j) => BulkImportRow(
+        fileName: j['fileName'] ?? '',
+        ok: j['ok'] ?? false,
+        needsTitle: j['needsTitle'] ?? false,
+        archiveId: j['archiveId'],
+        number: j['number'],
+        title: j['title'],
+        error: j['error'],
+      );
+}
+
+/// حصيلة استيراد دفعة — **الفشل جزئي**: ملف تالف لا يُبطل الدفعة كلها.
+class BulkImportResult {
+  final int total, created, failed, needTitleCount;
+  final List<BulkImportRow> rows;
+
+  BulkImportResult({
+    required this.total, required this.created, required this.failed,
+    required this.needTitleCount, required this.rows,
+  });
+
+  factory BulkImportResult.fromJson(Map<String, dynamic> j) => BulkImportResult(
+        total: j['total'] ?? 0,
+        created: j['created'] ?? 0,
+        failed: j['failed'] ?? 0,
+        needTitleCount: j['needTitleCount'] ?? 0,
+        rows: (j['rows'] as List? ?? []).map((e) => BulkImportRow.fromJson(e)).toList(),
+      );
+}
+
+/// تغطية النسخ الاحتياطي — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة.
+class BackupCoverage {
+  final DateTime? lastFullBackupAt;
+  final int? daysSince;
+  final int maxAgeDays;
+
+  /// `Ok` · `Soon` · `Urgent` · `Overdue` — وتصاعدها يُحدّد لون التنبيه.
+  final String urgency;
+  final String message;
+
+  BackupCoverage({
+    required this.urgency, required this.message, required this.maxAgeDays,
+    this.lastFullBackupAt, this.daysSince,
+  });
+
+  bool get isOk => urgency == 'Ok';
+  bool get isOverdue => urgency == 'Overdue';
+
+  factory BackupCoverage.fromJson(Map<String, dynamic> j) => BackupCoverage(
+        urgency: j['urgency'] ?? 'Overdue',
+        message: j['message'] ?? '',
+        maxAgeDays: j['maxAgeDays'] ?? 30,
+        lastFullBackupAt: j['lastFullBackupAt'] == null ? null : DateTime.tryParse(j['lastFullBackupAt']),
+        daysSince: j['daysSinceFullBackup'],
+      );
+}
+
+/// حصيلة تشغيل المرآة.
+class MirrorResult {
+  final String targetPath;
+  final int copied, skipped;
+  final num copiedBytes, totalBytes;
+  final bool databaseOk;
+  final String? note;
+
+  MirrorResult({
+    required this.targetPath, required this.copied, required this.skipped,
+    required this.copiedBytes, required this.totalBytes, required this.databaseOk, this.note,
+  });
+
+  factory MirrorResult.fromJson(Map<String, dynamic> j) => MirrorResult(
+        targetPath: j['targetPath'] ?? '',
+        copied: j['copied'] ?? 0,
+        skipped: j['skipped'] ?? 0,
+        copiedBytes: j['copiedBytes'] ?? 0,
+        totalBytes: j['totalBytes'] ?? 0,
+        databaseOk: j['databaseOk'] ?? false,
+        note: j['note'],
+      );
+}
+
 class AttachmentModel {
   final int attachmentId;
   final String fileName;

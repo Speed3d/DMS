@@ -393,6 +393,34 @@ class ApiClient {
         .toList();
   }
 
+  /// **استيراد دفعة أرشيف ورقي** — ملفات متعدّدة ببيانات وصفية مشتركة.
+  ///
+  /// Hint: الفشل **جزئي** — الخادم يُعالج كل ملف على حدة ويردّ نتيجته، فملفٌ تالف
+  /// لا يُبطل الدفعة. سقف الدفعة 50 ملفاً (يُرفع الأرشيف شهراً شهراً).
+  Future<BulkImportResult> archiveBulkImport({
+    required List<({String name, Uint8List bytes})> files,
+    int? year, int? month, int? departmentId, int? fromEntityId, int? documentTypeId,
+    String? keywords,
+  }) async {
+    final form = FormData();
+    for (final f in files) {
+      form.files.add(MapEntry('files', MultipartFile.fromBytes(f.bytes, filename: f.name)));
+    }
+    if (year != null) form.fields.add(MapEntry('year', '$year'));
+    if (month != null) form.fields.add(MapEntry('month', '$month'));
+    if (departmentId != null) form.fields.add(MapEntry('departmentId', '$departmentId'));
+    if (fromEntityId != null) form.fields.add(MapEntry('fromEntityId', '$fromEntityId'));
+    if (documentTypeId != null) form.fields.add(MapEntry('documentTypeId', '$documentTypeId'));
+    if (keywords != null && keywords.isNotEmpty) form.fields.add(MapEntry('keywords', keywords));
+
+    try {
+      final res = await _dio.post('/archive/bulk', data: form);
+      return BulkImportResult.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<List<ArchiveListItem>> archiveList({String? search, DateTime? from, DateTime? to, int? documentTypeId, int? entityId}) async {
     final q = <String, dynamic>{};
     if (search != null && search.isNotEmpty) q['search'] = search;
@@ -498,6 +526,36 @@ class ApiClient {
       final res = await _dio.get<List<int>>('/backup/$id/download',
           options: Options(responseType: ResponseType.bytes));
       return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  /// تغطية النسخ — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة (ADR-020).
+  Future<BackupCoverage> backupCoverage() async =>
+      BackupCoverage.fromJson(await _get('/backup/coverage') as Map<String, dynamic>);
+
+  /// **مرآة كاملة** إلى مسار على السيرفر (قرص خارجي عادةً) — تُضيف ولا تُكرّر.
+  ///
+  /// Hint: المهلة موسّعة — المرة الأولى قد تنسخ عشرات الغيغابايتات.
+  Future<MirrorResult> backupMirror(String targetPath) async {
+    try {
+      final res = await _dio.post('/backup/mirror',
+          data: {'targetPath': targetPath},
+          options: Options(receiveTimeout: const Duration(hours: 3)));
+      return MirrorResult.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  /// استعادة من مرآة — تدميرية، بنفس كلمة تأكيد الاستعادة العادية.
+  Future<String> backupRestoreFromMirror(String sourcePath) async {
+    try {
+      final res = await _dio.post('/backup/mirror/restore',
+          data: {'sourcePath': sourcePath, 'confirmation': kRestoreConfirmation},
+          options: Options(receiveTimeout: const Duration(hours: 3)));
+      return (res.data as Map<String, dynamic>)['message']?.toString() ?? 'تمت الاستعادة.';
     } on DioException catch (e) {
       throw _map(e);
     }
