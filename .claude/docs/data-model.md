@@ -81,7 +81,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 13 migration** (بالترتيب):
+**السلسلة الحالية — 18 migration** (بالترتيب):
 
 | # | Migration | ما أضافه |
 |---|---|---|
@@ -101,6 +101,8 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 14 | `AddPerCompanyPermissions` | نقل `Modules`/`DepartmentId`/`CanApprove`/`CanManageIncoming` من `Users` إلى `UserCompanies` — ADR-017. ⚠️ **الترتيب داخلها مقصود** (إضافة ← نقل ← إسقاط)؛ السقالة المولَّدة كانت تُسقط أولاً فتمحو صلاحيات الجميع |
 | 15 | `AddMultiDepartmentAssignments` | جدول `IncomingAssignment` (كتاب ↔ عدّة أقسام) + **إسقاط** `IncomingBooks.DepartmentId` و`FolderName` — ADR-018. ⚠️ **الترتيب مقصود** (إنشاء ← **نقل الإسنادات القائمة** ← إسقاط) — نفس درس ADR-017. طُبِّقت على `DmsDb` بتاريخ 2026-07-27 وتحقُّق النقل تمّ فعلياً |
 | 16 | `AddDocumentTypeUniqueIndex` | فهرس فريد `(CompanyId, Name)` على `DocumentTypes` + **بذر 8 أنواع افتراضية للشركات القائمة**. ⚠️ **البذر في المهاجرة لا في بذر الإقلاع** عمداً: الإقلاع يعمل كل تشغيل فيُعيد ما حذفه المالك؛ والمهاجرة مرّة واحدة. والفهرس **قبل** الإدراج ليفشل فوراً لو كان ثمّة تكرار سابق. طُبِّقت 2026-07-28 (شركتان × 8 أنواع) |
+| 17 | `AddArchiveDepartmentAndUnarchive` | `ArchiveDoc.DepartmentId` **اختياري** + فهرس `(CompanyId, DepartmentId)` + FK بـ`SetNull` — ADR-021. ⚠️ العلاقة مضبوطة صراحةً (EF يولّد عموداً شبحاً إن تُركت ضمنية — حدث في `MovementLog`)، و`SetNull` مقصود: حذف قسم لا يجوز أن يمحو أضبارة بل يتركها «بلا قسم». **إضافة بحتة**. طُبِّقت 2026-07-28 |
+| 18 | `AddCanViewAllIncoming` | `UserCompany.CanViewAllIncoming` (`bit`، افتراضه `false`) — ADR-022. **إضافة بحتة** ⇒ لا يتغيّر سلوك أي مستخدم قائم. طُبِّقت 2026-07-29 |
 
 > **ملاحظات:**
 > - تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).
