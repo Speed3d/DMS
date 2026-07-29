@@ -41,7 +41,7 @@
 ## المستخدمون والتفويض
 - `/api/users` (SuperAdmin/President/Manager + قسم `Users`): GET، POST، PUT `/{id}`، POST `/{id}/reset-password`. الهرمية والعزل مفروضان في الخدمة.
   - المدخلات تحمل `companyIds` و`modules` (قائمة أسماء الأقسام). **ربط الشركات وتحديد الأقسام حصراً للسوبر أدمن ورئيس الشركة**؛ المدير/الموظف لا يغيّرانها (تُتجاهل ← افتراضي). أدوار السوبر أدمن/الرئيس تُخزَّن بكل الأقسام. غير السوبر أدمن يلزمه شركة واحدة على الأقل. الاستجابة تُعيد `companyIds` و`modules`.
-  - **⚠️ الصلاحيات صارت لكل شركة (ADR-017):** المدخلات تحمل `companies: [{companyId, modules, departmentId, canApprove, canManageIncoming}]` بدل الحقول المفردة، والاستجابة تُرجِع نفس الشكل. `null` = «لا تغيير» (يمنع مسح الإسنادات عند تعديل حقل آخر). **المدير فأعلى يملك `canApprove` و`canManageIncoming` بحكم دوره** في كل شركاته. كل `departmentId` يُتحقَّق منه مقابل **شركة صفّه** (خطأ 400 إن كان من شركة أخرى).
+  - **⚠️ الصلاحيات صارت لكل شركة (ADR-017):** المدخلات تحمل `companies: [{companyId, modules, departmentId, canApprove, canManageIncoming, canViewAllIncoming}]` بدل الحقول المفردة، والاستجابة تُرجِع نفس الشكل. `null` = «لا تغيير» (يمنع مسح الإسنادات عند تعديل حقل آخر). **المدير فأعلى يملك `canApprove` و`canManageIncoming` بحكم دوره** في كل شركاته. كل `departmentId` يُتحقَّق منه مقابل **شركة صفّه** (خطأ 400 إن كان من شركة أخرى).
 - `/api/delegations` (Manager+): GET، POST، DELETE `/{id}`.
 
 ## الصادر — `/api/outgoing`
