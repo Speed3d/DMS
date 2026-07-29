@@ -7,7 +7,8 @@ namespace Dms.Infrastructure.Auth;
 
 /// <summary>وصول المستخدم في شركة واحدة — الأقسام المسموحة وقسم العمل والصلاحيات (ADR-017).</summary>
 public sealed record CompanyAccess(
-    int CompanyId, List<string> Modules, int? DepartmentId, bool CanApprove, bool CanManageIncoming);
+    int CompanyId, List<string> Modules, int? DepartmentId, bool CanApprove, bool CanManageIncoming,
+    bool CanViewAllIncoming = false);
 
 public sealed record AuthResult(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
@@ -129,7 +130,10 @@ public sealed class AuthService(
                 (exempt ? AppModule.All : c.Modules).ToNames(),
                 c.DepartmentId,
                 c.CanApprove,
-                c.CanManageIncoming))
+                c.CanManageIncoming,
+                // المعفَون (سوبر أدمن/رئيس) يرون الكل بحكم دورهم — نعكس ذلك في الردّ
+                // حتى لا تُظهر الواجهة علَماً مطفأً لمن هو في الواقع مُطلَق الرؤية.
+                exempt || c.CanViewAllIncoming))
             .ToList();
 
         return new AuthResult(pair.AccessToken, pair.AccessExpires, pair.RefreshToken,

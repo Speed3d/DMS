@@ -9,7 +9,7 @@ namespace Dms.Infrastructure.Users;
 /// <summary>صلاحيات المستخدم وقسمه **في شركة واحدة** (ADR-017).</summary>
 public sealed record UserCompanyInput(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
-    bool CanApprove = false, bool CanManageIncoming = false);
+    bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false);
 
 public sealed record CreateUserInput(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyInput>? Companies);
@@ -182,6 +182,9 @@ public sealed class UserService(
                 DepartmentId = deptId,
                 CanApprove = byRole || (wish?.CanApprove ?? false),
                 CanManageIncoming = byRole || (wish?.CanManageIncoming ?? false),
+                // Hint: `byRole` يعني المدير فأعلى — وهو يرى كل كتب الشركة بحكم دوره أصلاً
+                //       (قاعدة الرؤية لا تقيّده)، فمنحُه العلَم توثيقٌ للواقع لا توسعة.
+                CanViewAllIncoming = byRole || (wish?.CanViewAllIncoming ?? false),
             });
         }
         return links;

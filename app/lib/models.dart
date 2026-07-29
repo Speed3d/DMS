@@ -275,12 +275,19 @@ class CompanyAccess {
   final bool canApprove;
   final bool canManageIncoming;
 
+  /// **يرى كل الوارد والأرشيف في هذه الشركة — متجاوزاً حدود القسم.**
+  ///
+  /// ⚠️ استثناء مقصود لا توسعة عامة: تُلغي عزل الأقسام لمن تُمنح له. **قراءة خالصة**
+  /// — الإحالة وتغيير الحالة تبقيان محكومتين بـ[canManageIncoming].
+  final bool canViewAllIncoming;
+
   const CompanyAccess({
     required this.companyId,
     required this.modules,
     this.departmentId,
     this.canApprove = false,
     this.canManageIncoming = false,
+    this.canViewAllIncoming = false,
   });
 
   factory CompanyAccess.fromJson(Map<String, dynamic> j) => CompanyAccess(
@@ -289,6 +296,7 @@ class CompanyAccess {
         departmentId: j['departmentId'],
         canApprove: j['canApprove'] ?? false,
         canManageIncoming: j['canManageIncoming'] ?? false,
+        canViewAllIncoming: j['canViewAllIncoming'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -297,6 +305,7 @@ class CompanyAccess {
         'departmentId': departmentId,
         'canApprove': canApprove,
         'canManageIncoming': canManageIncoming,
+        'canViewAllIncoming': canViewAllIncoming,
       };
 
   CompanyAccess copyWith({
@@ -305,6 +314,7 @@ class CompanyAccess {
     bool clearDepartment = false,
     bool? canApprove,
     bool? canManageIncoming,
+    bool? canViewAllIncoming,
   }) =>
       CompanyAccess(
         companyId: companyId,
@@ -312,6 +322,7 @@ class CompanyAccess {
         departmentId: clearDepartment ? null : (departmentId ?? this.departmentId),
         canApprove: canApprove ?? this.canApprove,
         canManageIncoming: canManageIncoming ?? this.canManageIncoming,
+        canViewAllIncoming: canViewAllIncoming ?? this.canViewAllIncoming,
       );
 }
 

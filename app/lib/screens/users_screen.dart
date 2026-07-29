@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../models.dart';
 
 /// الحقول التي ينتجها نموذج المستخدم ولا يقبلها عقد **التعديل**:
@@ -570,6 +571,8 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
         'departmentId': _isSubordinate ? a.departmentId : null,
         'canApprove': a.canApprove,
         'canManageIncoming': _isSubordinate && a.canManageIncoming,
+        // كالتي قبلها: تخصّ المرؤوس وحده — المدير فأعلى يرى الكل بحكم دوره أصلاً.
+        'canViewAllIncoming': _isSubordinate && a.canViewAllIncoming,
       };
     }).toList();
 
@@ -635,9 +638,11 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                               } else {
                                 next.remove(m);
                               }
-                              // إغلاق الوارد يُسقط صلاحيته الفرعية — وإلا بقيت مخزَّنة بلا معنى.
+                              // إغلاق الوارد يُسقط صلاحيتيه الفرعيتين — وإلا بقيتا مخزَّنتين
+                              // بلا معنى، ثم عادتا فجأةً لو أُعيد فتح القسم لاحقاً.
                               update(m == 'Incoming' && val != true
-                                  ? access.copyWith(modules: next, canManageIncoming: false)
+                                  ? access.copyWith(
+                                      modules: next, canManageIncoming: false, canViewAllIncoming: false)
                                   : access.copyWith(modules: next));
                             },
                           ),
@@ -657,6 +662,27 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                                 subtitle: const Text('«تم الرد» و«مغلق» — الأرشفة تبقى للمدير فأعلى',
                                     style: TextStyle(fontSize: 11)),
                                 onChanged: (v) => update(access.copyWith(canManageIncoming: v)),
+                              ),
+                            ),
+
+                          // ── «يرى كل الوارد والأرشيف» — تجاوزٌ لحدود القسم ──
+                          // ⚠️ تُعرَض بلونٍ محذّر ونصٍّ صريح لا ملطّف: هذه الصلاحية **تُلغي
+                          //    عزل الأقسام** الذي بُنيت له وحدة الأقسام كلها (ADR-015/018).
+                          //    مانحُها يجب أن يعرف ما يمنح — لا أن يكتشفه بعد تسريب.
+                          if (m == 'Incoming' && enabled && _isSubordinate)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 28),
+                              child: SwitchListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                value: access.canViewAllIncoming,
+                                activeThumbColor: AppColors.warn,
+                                title: const Text('يرى كل الوارد والأرشيف',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                subtitle: const Text(
+                                    '⚠️ يتجاوز حدود القسم — يقرأ كتب كل الأقسام في هذه الشركة (قراءة فقط)',
+                                    style: TextStyle(fontSize: 11, color: AppColors.warn)),
+                                onChanged: (v) => update(access.copyWith(canViewAllIncoming: v)),
                               ),
                             ),
                         ];

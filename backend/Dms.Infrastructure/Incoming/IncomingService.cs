@@ -95,7 +95,10 @@ public sealed class IncomingService(
         //    **يفقد رؤيته للكتاب فور إحالته** إن لم يكن مستلِمَه — فيختفي من قائمته عملٌ
         //    باشره بنفسه ولا يقدر على متابعة مصيره. «مَن أحال يبقى يرى» قاعدةُ متابعةٍ لا
         //    امتياز، ونستند فيها إلى AssignedByUserId المسجَّل على الإسناد نفسه (ADR-018).
-        if (current.Role is UserRole.Employee or UserRole.Reader)
+        // ⚠️ **صلاحية «يرى كل الوارد»** تتجاوز حدود القسم عمداً (لمدير متابعة أو مدقّق).
+        //    قراءة خالصة: الإحالة وتغيير الحالة تبقيان محكومتين بصلاحياتهما.
+        //    والعزل بين الشركات لا يُمسّ — الفلتر العام على `CompanyId` نافذ فوق هذا.
+        if (current.Role is UserRole.Employee or UserRole.Reader && !current.CanViewAllIncoming)
         {
             var uid = current.UserId;
             var dept = current.DepartmentId;

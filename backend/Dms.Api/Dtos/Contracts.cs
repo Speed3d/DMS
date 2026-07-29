@@ -14,7 +14,8 @@ public sealed record AuthResponse(
 /// <summary>`canApprove` و`modules` هنا تخصّ **الشركة الفعّالة** للطلب (ADR-017).</summary>
 public sealed record MeResponse(
     int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
-    bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming);
+    bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming,
+    bool CanViewAllIncoming = false);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -48,7 +49,7 @@ public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency,
 /// <summary>صلاحيات المستخدم وقسمه في شركة واحدة (ADR-017).</summary>
 public sealed record UserCompanyDto(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
-    bool CanApprove = false, bool CanManageIncoming = false);
+    bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false);
 
 public sealed record CreateUserRequest(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyDto>? Companies);

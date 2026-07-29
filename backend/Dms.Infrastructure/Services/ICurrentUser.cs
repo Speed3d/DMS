@@ -23,6 +23,12 @@ public interface ICurrentUser
     /// <summary>هل يملك المستخدم صلاحية إدارة حالات الكتب الواردة (من الـ JWT)؟</summary>
     bool CanManageIncoming { get; }
 
+    /// <summary>
+    /// هل يرى **كل** الوارد والأرشيف في الشركة الفعّالة متجاوزاً حدود القسم؟ (من الـ JWT)
+    /// </summary>
+    /// <remarks>قراءة خالصة — لا تمنح إحالةً ولا تغييرَ حالة.</remarks>
+    bool CanViewAllIncoming { get; }
+
     /// <summary>قسم المستخدم (من الـ JWT) — يحدّد أي كتب واردة محالة يراها. null إن لم يُسنَد لقسم.</summary>
     int? DepartmentId { get; }
 
@@ -46,6 +52,7 @@ public sealed class SystemUser : ICurrentUser
     public bool IsSuperAdmin => true; // النظام يرى الكل (لا فلترة)
     public bool CanApprove => true;
     public bool CanManageIncoming => true;
+    public bool CanViewAllIncoming => true;   // النظام يرى الكل (لا فلترة)
     public int? DepartmentId => null;
     public List<int> AllowedCompanyIds => new();
     public AppModule AllowedModules => AppModule.All;

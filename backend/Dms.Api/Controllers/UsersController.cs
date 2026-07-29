@@ -42,12 +42,14 @@ public sealed class UsersController(IUserService users) : ControllerBase
 
     private static List<UserCompanyInput>? ToInputs(List<UserCompanyDto>? dtos) =>
         dtos?.Select(c => new UserCompanyInput(
-            c.CompanyId, c.Modules, c.DepartmentId, c.CanApprove, c.CanManageIncoming)).ToList();
+            c.CompanyId, c.Modules, c.DepartmentId, c.CanApprove, c.CanManageIncoming,
+            c.CanViewAllIncoming)).ToList();
 
     private static UserResponse Map(User u) =>
         new(u.UserId, u.FullName, u.Username, u.Role,
             u.AssignedCompanies.Select(c => c.CompanyId).ToList(),
             u.IsActive, u.MustChangePassword,
             u.AssignedCompanies.Select(c => new UserCompanyDto(
-                c.CompanyId, c.Modules.ToNames(), c.DepartmentId, c.CanApprove, c.CanManageIncoming)).ToList());
+                c.CompanyId, c.Modules.ToNames(), c.DepartmentId, c.CanApprove, c.CanManageIncoming,
+                c.CanViewAllIncoming)).ToList());
 }

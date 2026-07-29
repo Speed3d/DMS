@@ -44,6 +44,8 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool CanManageIncoming => PerCompany(DmsClaims.CanManageIncoming) == 1;
 
+    public bool CanViewAllIncoming => PerCompany(DmsClaims.CanViewAllIncoming) == 1;
+
     public int? DepartmentId => PerCompany(DmsClaims.DepartmentId);
 
     public AppModule AllowedModules

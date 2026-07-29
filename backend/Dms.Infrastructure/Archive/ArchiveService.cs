@@ -51,7 +51,9 @@ public sealed class ArchiveService(
     private IQueryable<ArchiveDoc> Query()
     {
         var q = db.ArchiveDocs.AsQueryable();
-        if (current.Role is UserRole.Employee or UserRole.Reader)
+        // ⚠️ نفس صلاحية «يرى كل الوارد» تشمل الأرشيف (قرار المالك: علَمٌ واحد للاثنين —
+        //    فصلُهما يُنتج مصفوفة صلاحيات لا يتذكّرها أحد).
+        if (current.Role is UserRole.Employee or UserRole.Reader && !current.CanViewAllIncoming)
         {
             var uid = current.UserId;
             var dept = current.DepartmentId;

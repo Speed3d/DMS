@@ -15,10 +15,11 @@ public static class DmsClaims
     public const string CompanyIds = "cids";
     public const string Role = "role";
 
-    // ↓ أربعتها **خرائط لكل شركة** بصيغة PerCompanyClaim (ADR-017)، لا قيماً مفردة.
+    // ↓ خمستها **خرائط لكل شركة** بصيغة PerCompanyClaim (ADR-017)، لا قيماً مفردة.
     public const string CanApprove = "approve";
     public const string Modules = "mods";
     public const string CanManageIncoming = "inc_mng";
+    public const string CanViewAllIncoming = "inc_all";
     public const string DepartmentId = "dept";
 }
 
@@ -59,6 +60,8 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
                 PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanApprove ? 1 : 0))));
             claims.Add(new Claim(DmsClaims.CanManageIncoming,
                 PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanManageIncoming ? 1 : 0))));
+            claims.Add(new Claim(DmsClaims.CanViewAllIncoming,
+                PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanViewAllIncoming ? 1 : 0))));
 
             // القسم اختياري — تُدرَج الشركات التي له فيها قسم فقط.
             var depts = links.Where(c => c.DepartmentId is not null)
