@@ -75,6 +75,19 @@ public class UserCompany
     /// </remarks>
     public bool CanViewAllIncoming { get; set; }
 
+    /// <summary>
+    /// **يدير الموظفين والرواتب في هذه الشركة** — إضافةً وتعديلاً وتوليد كشوف وتسديداً (ADR-023).
+    /// </summary>
+    /// <remarks>
+    /// نمط <see cref="CanApprove"/>: القسم (<see cref="AppModule.HR"/>) يفتح **الرؤية**،
+    /// وهذا العلَم يفتح **الكتابة**. فيرى مديرٌ رواتبَ شركته دون أن يملك تعديلها.
+    ///
+    /// ⚠️ والوحدة كلها **للمدير فأعلى** (قرار المالك 2026-08-03): الموظف والقارئ لا يريانها
+    /// إطلاقاً مهما مُنحا من أقسام — الرواتب أحسّ بيانات في النظام، وقاعدة «الموظف يرى عمله
+    /// فقط» تسري عليها كما تسري على المالي.
+    /// </remarks>
+    public bool CanManageHR { get; set; }
+
     public User? User { get; set; }
     public Department? Department { get; set; }
 }

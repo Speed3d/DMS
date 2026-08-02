@@ -48,6 +48,11 @@ public class AppDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<BackupRecord> BackupRecords => Set<BackupRecord>();
     public DbSet<BackupSchedule> BackupSchedules => Set<BackupSchedule>();
+    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<EmployeeCompany> EmployeeCompanies => Set<EmployeeCompany>();
+    public DbSet<PayrollPeriod> PayrollPeriods => Set<PayrollPeriod>();
+    public DbSet<PayrollEntry> PayrollEntries => Set<PayrollEntry>();
+    public DbSet<HrSettings> HrSettings => Set<HrSettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -291,6 +296,111 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.CreatedAt);
         });
         b.Entity<BackupSchedule>();
+
+        // ═══════════ الموظفون والرواتب (ADR-023) ═══════════
+
+        // ---- Employee (عابر للشركات — العزل عبر الإسناد لا عبر عمود) ----
+        b.Entity<Employee>(e =>
+        {
+            e.HasKey(x => x.EmployeeId);
+            e.Property(x => x.FullName).IsRequired().HasMaxLength(200);
+            e.Property(x => x.FullNameEn).HasMaxLength(200);
+            e.Property(x => x.NationalId).HasMaxLength(50);
+            e.Property(x => x.Phone).HasMaxLength(30);
+            e.Property(x => x.Address).HasMaxLength(500);
+            e.Property(x => x.PhotoBlobKey).HasMaxLength(500);
+            e.Property(x => x.Notes).HasMaxLength(2000);
+
+            // رقم الهوية فريد حين يوجد — يمنع تسجيل الشخص نفسه مرتين بملفّين منفصلين.
+            e.HasIndex(x => x.NationalId).IsUnique()
+                .HasFilter("[NationalId] IS NOT NULL AND [IsDeleted] = 0");
+
+            // 🔐 **الفلتر الذي يقوم مقام CompanyId** — مرآةٌ لفلتر User أعلاه.
+            //    بدونه يعود أي موظف في القاعدة لأي مستخدم مصادَق: هويةً وهاتفاً وعنواناً.
+            //    وشرط `!c.IsDeleted` صريحٌ عمداً فلا يعتمد على ترتيب تركيب EF للفلاتر.
+            e.HasQueryFilter(x => !x.IsDeleted
+                && (!_filterByCompany || x.Companies.Any(c => c.CompanyId == _companyId && !c.IsDeleted)));
+        });
+
+        // ---- EmployeeCompany (شروط العمل في شركة بعينها) ----
+        b.Entity<EmployeeCompany>(e =>
+        {
+            e.HasKey(x => x.EmployeeCompanyId);
+            e.Property(x => x.Position).IsRequired().HasMaxLength(200);
+            e.Property(x => x.PositionEn).HasMaxLength(200);
+            e.Property(x => x.TerminationNotes).HasMaxLength(1000);
+            e.Property(x => x.BaseSalary).HasPrecision(18, 2);
+
+            // إسناد واحد لكل (موظف + شركة). الفلتر على المحذوف يسمح بإعادة الإسناد بعد الحذف الناعم.
+            e.HasIndex(x => new { x.EmployeeId, x.CompanyId }).IsUnique()
+                .HasFilter("[IsDeleted] = 0");
+            e.HasIndex(x => new { x.CompanyId, x.IsActive, x.DisplayOrder });
+
+            // ⚠️ صريحة لا ضمنية: العلاقة المتروكة ضمنيةً تولّد عموداً شبحاً — حدث فعلاً مع
+            //    MovementLog → IncomingBook فاختفت الحركات نهائياً.
+            e.HasOne(x => x.Employee).WithMany(p => p.Companies)
+                .HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- PayrollPeriod (كشف شهر) ----
+        b.Entity<PayrollPeriod>(e =>
+        {
+            e.HasKey(x => x.PeriodId);
+            e.Property(x => x.ExchangeRate).HasPrecision(18, 4);
+            e.Property(x => x.ManualBookNumber).HasMaxLength(100);
+            e.Property(x => x.Notes).HasMaxLength(2000);
+            e.Property(x => x.RowVersion).IsRowVersion();
+
+            // كشف واحد لكل (شركة + سنة + شهر).
+            e.HasIndex(x => new { x.CompanyId, x.Year, x.Month }).IsUnique()
+                .HasFilter("[IsDeleted] = 0");
+
+            // SetNull: حذف كتاب الصرف لا يجوز أن يمحو كشف رواتب شهر كامل.
+            e.HasOne(x => x.OutgoingBook).WithMany()
+                .HasForeignKey(x => x.OutgoingBookId).OnDelete(DeleteBehavior.SetNull);
+
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- PayrollEntry (سطر موظف في الكشف) ----
+        b.Entity<PayrollEntry>(e =>
+        {
+            e.HasKey(x => x.EntryId);
+            e.Property(x => x.SnapshotName).IsRequired().HasMaxLength(200);
+            e.Property(x => x.SnapshotPosition).IsRequired().HasMaxLength(200);
+            e.Property(x => x.PaidByCompanyName).HasMaxLength(200);
+            e.Property(x => x.Notes).HasMaxLength(1000);
+
+            e.Property(x => x.SnapshotBaseSalary).HasPrecision(18, 2);
+            e.Property(x => x.BonusAmount).HasPrecision(18, 2);
+            e.Property(x => x.DeductionAmount).HasPrecision(18, 2);
+            e.Property(x => x.AbsenceDeduction).HasPrecision(18, 2);
+            e.Property(x => x.NetSalary).HasPrecision(18, 2);
+            e.Property(x => x.NetSalaryIqd).HasPrecision(18, 2);
+
+            e.HasIndex(x => new { x.PeriodId, x.EmployeeCompanyId }).IsUnique()
+                .HasFilter("[IsDeleted] = 0");
+
+            e.HasOne(x => x.Period).WithMany(p => p.Entries)
+                .HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict: حذف إسناد موظف لا يجوز أن يمحو سطره من كشف **مُسدَّد** — السجل المالي
+            //           يبقى شاهداً على ما صُرف فعلاً.
+            e.HasOne(x => x.EmployeeCompany).WithMany()
+                .HasForeignKey(x => x.EmployeeCompanyId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- HrSettings (إعدادات الوحدة لكل شركة) ----
+        b.Entity<HrSettings>(e =>
+        {
+            e.HasKey(x => x.SettingsId);
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
 
         // ---- AuditLog ----
         b.Entity<AuditLog>(e =>

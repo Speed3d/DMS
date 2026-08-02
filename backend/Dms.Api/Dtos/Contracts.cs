@@ -15,7 +15,7 @@ public sealed record AuthResponse(
 public sealed record MeResponse(
     int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
     bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming,
-    bool CanViewAllIncoming = false);
+    bool CanViewAllIncoming = false, bool CanManageHR = false);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -49,7 +49,8 @@ public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency,
 /// <summary>صلاحيات المستخدم وقسمه في شركة واحدة (ADR-017).</summary>
 public sealed record UserCompanyDto(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
-    bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false);
+    bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
+    bool CanManageHR = false);
 
 public sealed record CreateUserRequest(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyDto>? Companies);
@@ -59,6 +60,89 @@ public sealed record ResetPasswordRequest(string NewPassword);
 public sealed record UserResponse(
     int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
     bool IsActive, bool MustChangePassword, List<UserCompanyDto> Companies);
+
+// ----------------- الموظفون والرواتب (ADR-023) -----------------
+public sealed record EmployeeProfileRequest(
+    string FullName, string? FullNameEn, string? NationalId, string? Phone,
+    string? Address, string? Notes, ReceiptLanguage ReceiptLanguage);
+
+public sealed record EmploymentRequest(
+    string Position, string? PositionEn, DateTime HireDate,
+    Currency SalaryCurrency, decimal BaseSalary, int DisplayOrder, bool IsActive = true);
+
+public sealed record CreateEmployeeRequest(EmployeeProfileRequest Profile, EmploymentRequest Employment);
+
+public sealed record TerminateRequest(DateTime TerminationDate, TerminationReason Reason, string? Notes);
+
+/// <summary>صفّ في قائمة موظفي الشركة (يجمع الشخص وشروط عمله هنا).</summary>
+public sealed record EmployeeListItem(
+    int EmployeeId, int EmployeeCompanyId, string FullName, string? FullNameEn, string? NationalId,
+    string? Phone, bool HasPhoto, string Position, DateTime HireDate, DateTime? TerminationDate,
+    Currency SalaryCurrency, decimal BaseSalary, int DisplayOrder, bool IsActive);
+
+public sealed record EmploymentResponse(
+    int EmployeeCompanyId, int CompanyId, string Position, string? PositionEn,
+    DateTime HireDate, DateTime? TerminationDate, TerminationReason? TerminationReason,
+    string? TerminationNotes, Currency SalaryCurrency, decimal BaseSalary,
+    int DisplayOrder, bool IsActive);
+
+public sealed record EmployeeDetailResponse(
+    int EmployeeId, string FullName, string? FullNameEn, string? NationalId, string? Phone,
+    string? Address, string? Notes, ReceiptLanguage ReceiptLanguage, bool HasPhoto,
+    List<EmploymentResponse> Companies);
+
+public sealed record SalaryHistoryItem(
+    int Year, int Month, string MonthName, decimal NetSalary, Currency Currency,
+    decimal NetSalaryIqd, PayrollStatus PeriodStatus, PayrollPaymentStatus PaymentStatus);
+
+public sealed record ExistingEmployeeResponse(int EmployeeId, string FullName, bool AlreadyInThisCompany);
+
+// ── الرواتب ──
+public sealed record PayrollYearResponse(int Year, int MonthsCreated, int MonthsPaid, decimal TotalIqd);
+
+public sealed record PayrollMonthResponse(
+    int Year, int Month, string MonthName, bool Exists, PayrollStatus? Status,
+    int EmployeeCount, decimal TotalIqd);
+
+public sealed record PayrollEntryResponse(
+    int EntryId, int EmployeeCompanyId, int EmployeeId, int DisplayOrder,
+    string Name, string Position, Currency Currency, decimal BaseSalary,
+    int EligibleDays, int AbsenceDays, decimal? BonusAmount, decimal? DeductionAmount,
+    decimal AbsenceDeduction, bool AbsenceDeductionIsManual,
+    decimal NetSalary, decimal NetSalaryIqd,
+    PayrollPaymentStatus PaymentStatus, int? PaidByCompanyId, string? PaidByCompanyName,
+    bool IsNewHire, bool IsTerminated, string? Notes);
+
+public sealed record PayrollPeriodResponse(
+    int PeriodId, int Year, int Month, string MonthName, PayrollStatus Status,
+    decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode, int WorkingDays,
+    DateTime? PaidAt, int? OutgoingBookId, string? ManualBookNumber, string? Notes,
+    byte[] RowVersion, decimal TotalIqd, List<PayrollEntryResponse> Entries);
+
+/// <summary>مدخلات سطر واحد. **بلا صافٍ عمداً** — الخادم يحسبه ولا يقبله من العميل.</summary>
+public sealed record SaveEntryRequest(
+    int EntryId, int AbsenceDays, decimal? BonusAmount, decimal? DeductionAmount,
+    decimal? ManualAbsenceDeduction, int? EligibleDaysOverride, string? Notes);
+
+public sealed record SaveEntriesRequest(byte[] RowVersion, List<SaveEntryRequest> Entries);
+
+public sealed record PeriodSettingsRequest(
+    byte[] RowVersion, decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode,
+    int WorkingDays, string? Notes);
+
+public sealed record PayRequest(
+    byte[] RowVersion, DateTime PaidAt, int? OutgoingBookId, string? ManualBookNumber, string? Notes);
+
+public sealed record GenerateResponse(int Added, int Existing, int Skipped);
+
+public sealed record ExternalPaymentResponse(
+    int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName);
+
+public sealed record HrSettingsRequest(WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays);
+public sealed record HrSettingsResponse(WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays);
+
+public sealed record HrSummaryResponse(
+    int ActiveEmployees, decimal ThisMonthTotalIqd, decimal ThisYearTotalIqd, int UnpaidMonths);
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);

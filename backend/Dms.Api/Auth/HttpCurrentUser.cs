@@ -46,14 +46,31 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool CanViewAllIncoming => PerCompany(DmsClaims.CanViewAllIncoming) == 1;
 
+    /// <summary>
+    /// إدارة الموظفين والرواتب: **السوبر أدمن ورئيس الشركة دائماً**، وغيرهما بالعلَم.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ الإعفاء بالدور **داخل الخاصية نفسها** (كما في <see cref="AllowedModules"/> أدناه)
+    /// لا في كل خدمة على حدة: السوبر أدمن قد يكون **بلا إسناد لأي شركة**، فلا يحمل توكنه
+    /// خريطةَ `hr_mng` أصلاً وتعود القراءة `null` ⇒ يُحجب عن وحدةٍ يملكها بحكم دوره.
+    /// (وهذا ما جعل `/me` يُرجع `canManageHR=false` لحساب الأدمن في أول تشغيل حيّ.)
+    ///
+    /// و**رئيس الشركة فأعلى** لا «المدير فأعلى» — خلافاً لنمط <c>EffectiveCanApprove</c>:
+    /// لو أُعفي المدير بدوره لما بقي لـ<c>CanManageHR</c> معنى، وهو الفرق بين مديرٍ **يرى**
+    /// الرواتب ومديرٍ **يحرّرها** (قرار المالك 2026-08-03).
+    /// </remarks>
+    public bool CanManageHR =>
+        Role is UserRole.SuperAdmin or UserRole.President || PerCompany(DmsClaims.CanManageHR) == 1;
+
     public int? DepartmentId => PerCompany(DmsClaims.DepartmentId);
 
     public AppModule AllowedModules
     {
         get
         {
-            // السوبر أدمن ورئيس الشركة معفيان — وصول كامل في كل شركاتهم.
-            if (Role is UserRole.SuperAdmin or UserRole.President) return AppModule.All;
+            // السوبر أدمن ورئيس الشركة معفيان — وصول كامل في كل شركاتهم، **بما فيه HR**.
+            // (`AllWithHr` لا `All`: الأخيرة تعمّدت استثناء HR لأنها الافتراض في مواضع صامتة.)
+            if (Role is UserRole.SuperAdmin or UserRole.President) return AppModule.AllWithHr;
             return PerCompany(DmsClaims.Modules) is { } m ? (AppModule)m : AppModule.None;
         }
     }

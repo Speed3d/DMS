@@ -90,10 +90,26 @@ public sealed class AttachmentService(
             OwnerType.Outgoing => AppModule.Outgoing,
             OwnerType.Archive => AppModule.Archive,
             OwnerType.Incoming => AppModule.Incoming,
+            OwnerType.Employee => AppModule.HR,
             _ => throw new ValidationException("نوع غير معروف")
         };
         if (!current.HasModule(requiredModule))
             throw new ForbiddenException("لا تملك صلاحية الوصول لهذا القسم.");
+
+        // ── مستمسكات الموظف: الرؤية بالإسناد لا بالمُنشئ ──
+        // ⚠️ Employee **بلا CreatedByUserId يُقاس عليه** (كيان عابر للشركات)، فقاعدة «عنصر
+        //    غيرك» أدناه لا تنطبق. والحدّ الحقيقي هو الفلتر العام: موظفٌ غير مُسنَد للشركة
+        //    الفعّالة لا يُرى أصلاً. ونضيف حدّ الدور لأن الوحدة كلها للمدير فأعلى (ADR-023).
+        if (type == OwnerType.Employee)
+        {
+            if (current.Role is not { } hrRole || !RoleHierarchy.IsManagerOrAbove(hrRole))
+                throw new ForbiddenException("مستمسكات الموظفين متاحة للمدير فأعلى فقط.");
+
+            var visible = await db.Employees.AnyAsync(e => e.EmployeeId == ownerId, ct);
+            if (!visible)
+                throw new NotFoundException("الموظف غير موجود أو لا تملك صلاحية رؤيته.");
+            return;
+        }
 
         // ── الوارد: الرؤية ليست «مَن أنشأ» بل قاعدة ADR-015 ──
         // ⚠️ كان الوارد يُفحَص بـ CreatedByUserId مثل الصادر والأرشيف، فكان موظف القسم يُمنع

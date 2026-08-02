@@ -29,6 +29,10 @@ public interface ICurrentUser
     /// <remarks>قراءة خالصة — لا تمنح إحالةً ولا تغييرَ حالة.</remarks>
     bool CanViewAllIncoming { get; }
 
+    /// <summary>هل يملك صلاحية **إدارة** الموظفين والرواتب في الشركة الفعّالة؟ (من الـ JWT)</summary>
+    /// <remarks>القسم يفتح الرؤية، وهذا يفتح الكتابة (ADR-023).</remarks>
+    bool CanManageHR { get; }
+
     /// <summary>قسم المستخدم (من الـ JWT) — يحدّد أي كتب واردة محالة يراها. null إن لم يُسنَد لقسم.</summary>
     int? DepartmentId { get; }
 
@@ -53,7 +57,8 @@ public sealed class SystemUser : ICurrentUser
     public bool CanApprove => true;
     public bool CanManageIncoming => true;
     public bool CanViewAllIncoming => true;   // النظام يرى الكل (لا فلترة)
+    public bool CanManageHR => true;
     public int? DepartmentId => null;
     public List<int> AllowedCompanyIds => new();
-    public AppModule AllowedModules => AppModule.All;
+    public AppModule AllowedModules => AppModule.AllWithHr;
 }

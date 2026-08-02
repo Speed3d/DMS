@@ -9,7 +9,8 @@ namespace Dms.Infrastructure.Users;
 /// <summary>صلاحيات المستخدم وقسمه **في شركة واحدة** (ADR-017).</summary>
 public sealed record UserCompanyInput(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
-    bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false);
+    bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
+    bool CanManageHR = false);
 
 public sealed record CreateUserInput(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyInput>? Companies);
@@ -185,6 +186,11 @@ public sealed class UserService(
                 // Hint: `byRole` يعني المدير فأعلى — وهو يرى كل كتب الشركة بحكم دوره أصلاً
                 //       (قاعدة الرؤية لا تقيّده)، فمنحُه العلَم توثيقٌ للواقع لا توسعة.
                 CanViewAllIncoming = byRole || (wish?.CanViewAllIncoming ?? false),
+
+                // ⚠️ **لا `byRole` هنا** خلافاً لأخواتها الثلاث: الوحدة كلها للمدير فأعلى،
+                //    لكن ذلك يفتح **الرؤية** لا **الكتابة**. كونُه مديراً لا يعني تلقائياً أنه
+                //    مَن يحرّر الرواتب — وهذا كل معنى فصل العلَم عن القسم.
+                CanManageHR = wish?.CanManageHR ?? false,
             });
         }
         return links;
@@ -212,11 +218,28 @@ public sealed class UserService(
         return new List<int> { currentCid };
     }
 
-    /// <summary>يحدّد أقسام المستخدم عند الإنشاء: معفيان (All) للسوبر أدمن/الرئيس؛ غيرهما يحدّدها المانح المخوّل وإلا All.</summary>
+    /// <summary>
+    /// يحدّد أقسام المستخدم عند الإنشاء: معفيان (كل شيء) للسوبر أدمن/الرئيس؛ غيرهما يحدّدها
+    /// المانح المخوّل وإلا الأقسام الافتراضية.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **حارسان يمنعان تسريب الرواتب من هذا الموضع بالذات:**
+    /// <list type="number">
+    /// <item>مسار «التوافق الخلفي» يعيد <see cref="AppModule.All"/> **وهي 127 بلا HR** — فلو
+    /// ضُمّت HR إليها لحصل كل مستخدم ينشئه مديرٌ بلا تحديد أقسام على رؤية رواتب الشركة كلها.</item>
+    /// <item>ومَن دون المدير **تُجرَّد منه HR ولو طُلبت صراحةً** — قرار المالك أن الوحدة كلها
+    /// للمدير فأعلى، وحارسٌ في الواجهة وحدها يُلتَفّ عليه بطلب HTTP مباشر.</item>
+    /// </list>
+    /// </remarks>
     private AppModule ResolveModules(List<string>? requested, UserRole targetRole)
     {
-        if (targetRole is UserRole.SuperAdmin or UserRole.President) return AppModule.All;
-        if (CanManageCompanies && requested is not null) return AppModuleExtensions.FromNames(requested);
-        return AppModule.All; // توافق خلفي: المدير لا يقيّد الأقسام
+        if (targetRole is UserRole.SuperAdmin or UserRole.President) return AppModule.AllWithHr;
+
+        var modules = CanManageCompanies && requested is not null
+            ? AppModuleExtensions.FromNames(requested)
+            : AppModule.All; // توافق خلفي: المدير لا يقيّد الأقسام (وAll لا تشمل HR)
+
+        if (!RoleHierarchy.IsManagerOrAbove(targetRole)) modules &= ~AppModule.HR;
+        return modules;
     }
 }

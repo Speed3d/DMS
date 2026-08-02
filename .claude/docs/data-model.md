@@ -19,6 +19,31 @@
 ### RefreshToken
 `RefreshTokenId, UserId, TokenHash (مجزّأ), ExpiresAt, CreatedAt, RevokedAt?`.
 
+### Employee / EmployeeCompany (الموظفون — ADR-023، migration `AddHrModule`)
+- `Employee`: `EmployeeId, FullName, FullNameEn?, NationalId?, Phone?, Address?, PhotoBlobKey?, Notes?, ReceiptLanguage(enum Arabic/English), CreatedByUserId?, CreatedAt, IsDeleted, DeletedByUserId?, DeletedAt?, Companies (تنقّل)` — **بلا `CompanyId`** ليعمل الشخص في شركتين بلا تكرار ملفّه.
+  - 🔐 **العزل بفلترٍ عام عبر الإسناد** (نظير `User` تماماً): `!IsDeleted && (!filter || Companies.Any(c => c.CompanyId == active && !c.IsDeleted))`. **كيانٌ بلا `CompanyId` ليس كياناً بلا عزل** — بدون هذا السطر تُقرأ بياناتُ أي موظف في القاعدة.
+  - فهرس فريد مفلتر على `NationalId` (`IS NOT NULL AND IsDeleted = 0`) — يمنع ملفّين لشخص واحد.
+- `EmployeeCompany`: `EmployeeCompanyId, EmployeeId→Employee (Cascade), CompanyId, Position, PositionEn?, HireDate, TerminationDate?, TerminationReason?(enum), TerminationNotes?, SalaryCurrency(enum), BaseSalary(18,2), DisplayOrder, IsActive, CreatedByUserId?, CreatedAt, UpdatedAt?, + حقول الحذف الناعم` — شروط العمل **في شركة بعينها**. فريد على `(EmployeeId, CompanyId)` مفلتراً على `IsDeleted = 0`.
+
+### PayrollPeriod / PayrollEntry (كشوف الرواتب — ADR-023/024)
+- `PayrollPeriod`: `PeriodId, CompanyId, Year, Month, ExchangeRate?(18,4), WorkingDaysMode(enum Fixed/Calendar), WorkingDays, Status(enum Draft/Paid), PaidAt?, PaidByUserId?, OutgoingBookId?→OutgoingBook (SetNull), ManualBookNumber?, Notes?, CreatedByUserId, CreatedAt, UpdatedAt?, **RowVersion**, + الحذف الناعم` — كشف شهر. فريد على `(CompanyId, Year, Month)` مفلتراً على `IsDeleted = 0`.
+  - **لا كيان «سنة»** — السنوات تُشتق بـ`GROUP BY Year`.
+  - `RowVersion` لأن الكشف يُحفَظ **دفعةً واحدة**: مستخدمان على الشهر نفسه بلا حارس ⇒ الأخير يمحو عمل الأول صامتاً.
+  - `ExchangeRate` **مجمَّد على الفترة** (نفس مبدأ `OutgoingBook.AmountInIqd`)، يُملأ افتراضاً من `ExchangeRate` المركزي.
+- `PayrollEntry`: `EntryId, PeriodId→PayrollPeriod (Cascade), EmployeeCompanyId→EmployeeCompany (**Restrict**), CompanyId (منسوخ للفلترة), DisplayOrder, SnapshotName, SnapshotPosition, SnapshotCurrency, SnapshotBaseSalary(18,2), EligibleDays, AbsenceDays, BonusAmount?(18,2), DeductionAmount?(18,2), AbsenceDeduction(18,2), AbsenceDeductionIsManual, Notes?, NetSalary(18,2), NetSalaryIqd(18,2), PaymentStatus(enum), PaidByCompanyId?, PaidByCompanyName?, IsNewHire, IsTerminated, TerminationDate?, CreatedAt, UpdatedAt?, + الحذف الناعم`. فريد على `(PeriodId, EmployeeCompanyId)` مفلتراً.
+  - حقول `Snapshot*` **لقطة لحظة التوليد** — تغييرُ راتب في آذار لا يُعيد كتابة كشف شباط المُسدَّد.
+  - `Restrict` على الإسناد: حذفُ إسنادٍ لا يجوز أن يمحو سطراً في كشف **مُسدَّد**.
+  - `AbsenceDeductionIsManual` يصون تعديل المستخدم من أن تمحوه إعادةُ الحساب.
+  - `NetSalary`/`NetSalaryIqd` **يحسبهما الخادم دائماً ولا يقبلهما من العميل**.
+
+### HrSettings
+`SettingsId, CompanyId (فريد), DefaultWorkingDaysMode, DefaultWorkingDays, CreatedAt, UpdatedAt?` — إعدادات الوحدة لكل شركة.
+
+### تعديلات على كيانات قائمة (ADR-023)
+- `UserCompany` += `CanManageHR bit NOT NULL DEFAULT 0`.
+- `AppModule` += `HR = 128`؛ و**`All` تبقى 127 بلا HR عمداً**، و`AllWithHr = 255` للمعفَين.
+- `OwnerType` += `Employee = 3` (مستمسكات الموظف).
+
 ### ApprovalDelegation
 `DelegationId, CompanyId, FromUserId, ToUserId, StartDate, EndDate? (null=دائم), IsActive, CreatedByUserId, CreatedAt`.
 
