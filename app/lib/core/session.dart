@@ -49,6 +49,19 @@ class SessionState {
   /// صلاحية اعتماد الصادر في الشركة الفعّالة.
   bool get canApprove => auth?.canApproveIn(effectiveCompanyId) ?? false;
 
+  /// صلاحية **إدارة** الموظفين والرواتب في الشركة الفعّالة (ADR-023).
+  ///
+  /// قسم `HR` يفتح الرؤية وهذا يفتح الكتابة — فمن يراه بلا هذا العلَم يقرأ ولا يحرّر.
+  bool get canManageHr => auth?.canManageHrIn(effectiveCompanyId) ?? false;
+
+  /// هل تظهر وحدة الموظفين والرواتب أصلاً؟ (القسم **مع** الدور — مرآةٌ لـ`[RequireHrModule]`)
+  ///
+  /// ⚠️ الحدّان معاً لا أحدهما: الباك-إند يرفض بـ403 من كان دونه المدير مهما مُنح من أقسام،
+  /// وإظهار بندٍ في الشريط يقود إلى شاشة تردّ 403 أسوأ من إخفائه.
+  bool get canSeeHr =>
+      hasModule('HR') &&
+      const ['SuperAdmin', 'President', 'Manager'].contains(auth?.role);
+
   SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool? bypassCompanySelection, bool clearAuth = false, bool clearCompany = false}) =>
       SessionState(
         auth: clearAuth ? null : (auth ?? this.auth),

@@ -16,6 +16,8 @@ import 'reports_screen.dart';
 import 'settings_screen.dart';
 import 'users_screen.dart';
 import 'backup_screen.dart';
+import 'employee_list_screen.dart';
+import 'payroll_years_screen.dart';
 
 import '../models.dart';
 
@@ -61,7 +63,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final canManageUsers = const ['SuperAdmin', 'President', 'Manager'].contains(auth.role);
     final isSuper = auth.isSuperAdmin;
 
-    // قائمة ثابتة المؤشرات (0..7) — الإظهار/الإخفاء يُدار في الـ Sidebar حسب صلاحيات الأقسام.
+    // قائمة ثابتة المؤشرات (0..10) — الإظهار/الإخفاء يُدار في الـ Sidebar حسب صلاحيات الأقسام.
+    //
+    // 🔴 **الوحدات الجديدة تُلحَق في آخر القائمة ولا تُدرَج في وسطها** مهما بدا موضعها
+    //    الطبيعي أنسب: المؤشرات مرجعيةٌ ثابتة يعتمد عليها `_isIndexAllowed` وعناوين الشاشات
+    //    و`Sidebar`، **و`dashboard_screen` ينادي `onNavigate(2)` و`(3)` برقم حرفي**. إدراج
+    //    بندٍ في الوسط يُزيح كل ما بعده فيفتح زرٌّ شاشةً غير التي يَعِد بها.
+    //    الترتيب **البصري** يحدّده الشريط الجانبي وحده، لا ترتيب هذه القائمة.
     final pages = <Widget>[
       DashboardScreen(onNavigate: (i) => setState(() => _index = i)),
       const OfflineDraftsScreen(),
@@ -72,6 +80,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const SettingsScreen(),
       const UsersScreen(),
       const BackupScreen(),
+      const EmployeeListScreen(),   // 9  — الموظفون
+      const PayrollYearsScreen(),   // 10 — الرواتب
     ];
 
     if (_index >= pages.length) _index = 0;
@@ -97,6 +107,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   canManageUsers: canManageUsers,
                   isSuperAdmin: isSuper,
                   modules: session.modules,
+                  canSeeHr: session.canSeeHr,
                 ),
               ),
             ),
@@ -205,6 +216,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         6 => canManageUsers && session.hasModule('Settings'),
         7 => canManageUsers && session.hasModule('Users'),
         8 => isSuper && session.hasModule('Backup'),
+        // الوحدة كلها للمدير فأعلى — `canSeeHr` يجمع القسم مع الدور (مرآة `[RequireHrModule]`).
+        9 || 10 => session.canSeeHr,
         _ => false,
       };
 
@@ -218,6 +231,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         6 => 'الإعدادات والقوالب',
         7 => 'المستخدمون',
         8 => 'النسخ الاحتياطي',
+        9 => 'الموظفون',
+        10 => 'الرواتب',
         _ => '',
       };
 
@@ -231,6 +246,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         6 => 'إدارة إعدادات النظام وقوالب الطباعة',
         7 => 'إدارة صلاحيات وحسابات الموظفين',
         8 => 'أخذ نسخ احتياطية واستعادتها',
+        9 => 'بطاقات الموظفين وشروط عملهم في هذه الشركة',
+        10 => 'كشوف الرواتب الشهرية وإيصالات الاستلام',
         _ => '',
       };
 }

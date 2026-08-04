@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
+import '../core/hr_providers.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -12,6 +13,9 @@ class Sidebar extends ConsumerWidget {
   final bool isSuperAdmin;
   final List<String> modules;
 
+  /// وحدة الموظفين والرواتب — **القسم مع الدور** (مدير فأعلى)، مرآةُ `[RequireHrModule]`.
+  final bool canSeeHr;
+
   const Sidebar({
     super.key,
     required this.selectedIndex,
@@ -19,6 +23,7 @@ class Sidebar extends ConsumerWidget {
     required this.canManageUsers,
     required this.isSuperAdmin,
     required this.modules,
+    this.canSeeHr = false,
   });
 
   bool get _showSettings => canManageUsers && modules.contains('Settings');
@@ -100,6 +105,20 @@ class Sidebar extends ConsumerWidget {
             ),
           if (modules.contains('Archive')) _buildItem(4, Icons.archive_rounded, 'الأرشيف'),
           if (modules.contains('Reports')) _buildItem(5, Icons.bar_chart_rounded, 'التقارير المالية'),
+
+          // ⚠️ **المؤشران 9 و10 لا 6 و7** — البندان مُلحقان في آخر قائمة الشاشات وموضعُهما
+          //    البصري هنا. الترتيب الظاهر يحدّده هذا الملف، لا ترتيب `pages` في `HomeShell`.
+          if (canSeeHr) ...[
+            _buildItem(9, Icons.groups_2_rounded, 'الموظفون'),
+            Consumer(
+              builder: (context, ref, child) {
+                final countAsync = ref.watch(unpaidMonthsProvider);
+                final badge = countAsync.whenOrNull(
+                    data: (count) => count > 0 ? count.toString() : null);
+                return _buildItem(10, Icons.payments_rounded, 'الرواتب', badge: badge);
+              },
+            ),
+          ],
 
           const SizedBox(height: 18),
 

@@ -1,5 +1,9 @@
 // نماذج البيانات (DTOs) المطابقة لعقود الـ API.
 
+// نماذج وحدة الموظفين والرواتب في ملف مستقلّ (الملف هنا تجاوز الألف سطر)، وتُعاد
+// تصديرها فيصل إليها كل من يستورد `models.dart` كالمعتاد بلا استيراد ثانٍ.
+export 'models_hr.dart';
+
 class AuthResult {
   final String accessToken;
   final DateTime accessExpires;
@@ -55,6 +59,13 @@ class AuthResult {
   /// صلاحية اعتماد الصادر في الشركة الفعّالة.
   bool canApproveIn(int? companyId) => _isExempt || (accessIn(companyId)?.canApprove ?? false);
 
+  /// صلاحية إدارة الموظفين والرواتب في الشركة الفعّالة (ADR-023).
+  ///
+  /// المعفَون (سوبر أدمن/رئيس) يملكونها بحكم دورهم — نظير ما يفعله `HttpCurrentUser`
+  /// في الباك-إند، فالسوبر أدمن قد يكون بلا إسناد لأي شركة أصلاً.
+  bool canManageHrIn(int? companyId) =>
+      _isExempt || (accessIn(companyId)?.canManageHR ?? false);
+
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(
         accessToken: j['accessToken'],
         accessExpires: DateTime.tryParse(j['accessExpires'] ?? '') ?? DateTime.now(),
@@ -84,9 +95,12 @@ class AuthResult {
       };
 }
 
-/// أقسام النظام السبعة — مصدر واحد بدل تكرار القائمة في الشاشات.
+/// أقسام النظام الثمانية — مصدر واحد بدل تكرار القائمة في الشاشات.
+///
+/// ⚠️ **مرآةٌ لمصفوفة `AppModuleExtensions.Individual` في الباك-إند** — قسمٌ ناقص هنا لا يظهر
+/// مربّعه في شاشة المستخدمين، فتموت صلاحيته بصمت (نمط «ميزة بلا مدخل»).
 const List<String> kAllModules = [
-  'Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup',
+  'Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup', 'HR',
 ];
 
 const Map<String, String> kModuleLabels = {
@@ -97,6 +111,7 @@ const Map<String, String> kModuleLabels = {
   'Users': 'المستخدمون',
   'Settings': 'الإعدادات',
   'Backup': 'النسخ الاحتياطي',
+  'HR': 'الموظفون والرواتب',
 };
 
 class Company {
@@ -281,6 +296,12 @@ class CompanyAccess {
   /// — الإحالة وتغيير الحالة تبقيان محكومتين بـ[canManageIncoming].
   final bool canViewAllIncoming;
 
+  /// **يدير الموظفين والرواتب في هذه الشركة** (ADR-023).
+  ///
+  /// قسم `HR` يفتح **الرؤية**، وهذا العلَم يفتح **الكتابة** — فيرى مديرٌ رواتبَ شركته
+  /// دون أن يملك تحريرها. والوحدة كلها **للمدير فأعلى** مهما مُنح غيره من أقسام.
+  final bool canManageHR;
+
   const CompanyAccess({
     required this.companyId,
     required this.modules,
@@ -288,6 +309,7 @@ class CompanyAccess {
     this.canApprove = false,
     this.canManageIncoming = false,
     this.canViewAllIncoming = false,
+    this.canManageHR = false,
   });
 
   factory CompanyAccess.fromJson(Map<String, dynamic> j) => CompanyAccess(
@@ -297,6 +319,7 @@ class CompanyAccess {
         canApprove: j['canApprove'] ?? false,
         canManageIncoming: j['canManageIncoming'] ?? false,
         canViewAllIncoming: j['canViewAllIncoming'] ?? false,
+        canManageHR: j['canManageHR'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -306,6 +329,7 @@ class CompanyAccess {
         'canApprove': canApprove,
         'canManageIncoming': canManageIncoming,
         'canViewAllIncoming': canViewAllIncoming,
+        'canManageHR': canManageHR,
       };
 
   CompanyAccess copyWith({
@@ -315,6 +339,7 @@ class CompanyAccess {
     bool? canApprove,
     bool? canManageIncoming,
     bool? canViewAllIncoming,
+    bool? canManageHR,
   }) =>
       CompanyAccess(
         companyId: companyId,
@@ -323,6 +348,7 @@ class CompanyAccess {
         canApprove: canApprove ?? this.canApprove,
         canManageIncoming: canManageIncoming ?? this.canManageIncoming,
         canViewAllIncoming: canViewAllIncoming ?? this.canViewAllIncoming,
+        canManageHR: canManageHR ?? this.canManageHR,
       );
 }
 

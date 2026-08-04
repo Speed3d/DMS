@@ -622,6 +622,166 @@ class ApiClient {
     }
   }
 
+  // ---------- الموظفون (ADR-023) ----------
+  Future<List<EmployeeListItem>> employees({bool? activeOnly, String? search}) async {
+    final q = <String, dynamic>{};
+    if (activeOnly != null) q['activeOnly'] = activeOnly;
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    return (await _get('/employees', query: q) as List)
+        .map((e) => EmployeeListItem.fromJson(e)).toList();
+  }
+
+  Future<EmployeeDetail> employee(int id) async =>
+      EmployeeDetail.fromJson(await _get('/employees/$id'));
+
+  Future<EmployeeDetail> createEmployee(
+          Map<String, dynamic> profile, Map<String, dynamic> employment) async =>
+      EmployeeDetail.fromJson(
+          await _post('/employees', {'profile': profile, 'employment': employment}));
+
+  Future<EmployeeDetail> updateEmployee(int id, Map<String, dynamic> profile) async =>
+      EmployeeDetail.fromJson(await _put('/employees/$id', profile));
+
+  /// إسناد الموظف للشركة **الفعّالة** أو تحديث شروط عمله فيها.
+  Future<void> saveEmployment(int id, Map<String, dynamic> employment) =>
+      _put('/employees/$id/employment', employment);
+
+  Future<void> terminateEmployee(int id, DateTime date, String reason, String? notes) =>
+      _post('/employees/$id/terminate', {
+        'terminationDate': date.toIso8601String(),
+        'reason': reason,
+        'notes': notes,
+      });
+
+  Future<void> deleteEmployee(int id) => _delete('/employees/$id');
+
+  /// البحث عن موظف قائم قبل إنشاء ملفّ ثانٍ له — يعيد `null` إن لم يوجد.
+  Future<ExistingEmployeeHint?> lookupEmployee(String nationalId) async {
+    final data = await _get('/employees/lookup', query: {'nationalId': nationalId});
+    return data == null ? null : ExistingEmployeeHint.fromJson(data);
+  }
+
+  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12}) async =>
+      (await _get('/employees/$id/salary-history', query: {'take': take}) as List)
+          .map((e) => SalaryHistoryItem.fromJson(e)).toList();
+
+  /// صورة الموظف بالتوكن — الويب لا يمرّر الترويسات مع `Image.network`، فتُجلب بايتاتٍ.
+  Future<Uint8List> employeePhoto(int id) async {
+    try {
+      final res = await _dio.get<List<int>>('/employees/$id/photo',
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<void> uploadEmployeePhoto(int id, String fileName, List<int> bytes) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+    });
+    try {
+      await _dio.post('/employees/$id/photo', data: form);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  // ---------- الرواتب ----------
+  Future<List<PayrollYear>> payrollYears() async =>
+      (await _get('/payroll/years') as List).map((e) => PayrollYear.fromJson(e)).toList();
+
+  Future<List<PayrollMonth>> payrollMonths(int year) async =>
+      (await _get('/payroll/years/$year/months') as List)
+          .map((e) => PayrollMonth.fromJson(e)).toList();
+
+  /// الكشف، أو `null` إن لم يُنشأ بعد.
+  Future<PayrollPeriodModel?> payrollPeriod(int year, int month) async {
+    final data = await _get('/payroll/periods/$year/$month');
+    return data == null ? null : PayrollPeriodModel.fromJson(data);
+  }
+
+  /// توليد **تراكميّ**: يضيف الناقص ولا يمسّ سطراً قائماً → `{added, existing, skipped}`.
+  Future<Map<String, dynamic>> generatePayroll(int year, int month) async =>
+      Map<String, dynamic>.from(await _post('/payroll/periods/$year/$month', null));
+
+  Future<PayrollPeriodModel> updatePayrollSettings(
+    int year, int month, {
+    required List<int> rowVersion,
+    double? exchangeRate,
+    required String workingDaysMode,
+    required int workingDays,
+    String? notes,
+  }) async =>
+      PayrollPeriodModel.fromJson(await _put('/payroll/periods/$year/$month', {
+        'rowVersion': rowVersion,
+        'exchangeRate': exchangeRate,
+        'workingDaysMode': workingDaysMode,
+        'workingDays': workingDays,
+        'notes': notes,
+      }));
+
+  /// حفظ السطور دفعةً. ⚠️ **بلا صافٍ** — الخادم يحسبه ويتجاهل ما يرسله العميل.
+  Future<PayrollPeriodModel> savePayrollEntries(
+          int year, int month, List<int> rowVersion, List<Map<String, dynamic>> entries) async =>
+      PayrollPeriodModel.fromJson(await _put('/payroll/periods/$year/$month/entries', {
+        'rowVersion': rowVersion,
+        'entries': entries,
+      }));
+
+  Future<void> payPayroll(
+    int year, int month, {
+    required List<int> rowVersion,
+    required DateTime paidAt,
+    int? outgoingBookId,
+    String? manualBookNumber,
+    String? notes,
+  }) =>
+      _post('/payroll/periods/$year/$month/pay', {
+        'rowVersion': rowVersion,
+        'paidAt': paidAt.toIso8601String(),
+        'outgoingBookId': outgoingBookId,
+        'manualBookNumber': manualBookNumber,
+        'notes': notes,
+      });
+
+  Future<void> deletePayrollPeriod(int year, int month) =>
+      _delete('/payroll/periods/$year/$month');
+
+  Future<void> deletePayrollYear(int year) => _delete('/payroll/years/$year');
+
+  /// مَن صُرف راتبه من شركة أخرى هذا الشهر (ADR-024) — قراءة خالصة.
+  Future<List<ExternalPaymentHint>> externalPayments(int year, int month) async =>
+      (await _get('/payroll/periods/$year/$month/external-payments') as List)
+          .map((e) => ExternalPaymentHint.fromJson(e)).toList();
+
+  Future<void> confirmExternalPayment(int entryId) =>
+      _post('/payroll/entries/$entryId/confirm-external', null);
+
+  /// ملفّ من مخرجات الكشف: `excel` · `pdf` · `receipts`.
+  Future<Uint8List> payrollFile(int year, int month, String kind, {int? employeeId}) async {
+    try {
+      final res = await _dio.get<List<int>>('/payroll/periods/$year/$month/$kind',
+          queryParameters: employeeId != null ? {'employeeId': employeeId} : null,
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  // ---------- إعدادات الموظفين ----------
+  Future<HrSettingsModel> hrSettings() async =>
+      HrSettingsModel.fromJson(await _get('/hr/settings'));
+
+  Future<HrSettingsModel> updateHrSettings(String mode, int days) async =>
+      HrSettingsModel.fromJson(await _put('/hr/settings', {
+        'defaultWorkingDaysMode': mode,
+        'defaultWorkingDays': days,
+      }));
+
+  Future<HrSummary> hrSummary() async => HrSummary.fromJson(await _get('/hr/summary'));
+
   // ---------- مساعدات ----------
   Future<dynamic> _get(String path, {Map<String, dynamic>? query}) async {
     try {
