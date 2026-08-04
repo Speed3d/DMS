@@ -53,6 +53,8 @@ public class AppDbContext : DbContext
     public DbSet<PayrollPeriod> PayrollPeriods => Set<PayrollPeriod>();
     public DbSet<PayrollEntry> PayrollEntries => Set<PayrollEntry>();
     public DbSet<HrSettings> HrSettings => Set<HrSettings>();
+    public DbSet<EmployeeLeave> EmployeeLeaves => Set<EmployeeLeave>();
+    public DbSet<EmployeeLog> EmployeeLogs => Set<EmployeeLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -399,6 +401,39 @@ public class AppDbContext : DbContext
         {
             e.HasKey(x => x.SettingsId);
             e.HasIndex(x => x.CompanyId).IsUnique();
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
+        // ---- EmployeeLeave (الإجازات) ----
+        b.Entity<EmployeeLeave>(e =>
+        {
+            e.HasKey(x => x.LeaveId);
+            e.Property(x => x.Notes).HasMaxLength(1000);
+            e.Property(x => x.ReviewNotes).HasMaxLength(500);
+
+            e.HasIndex(x => new { x.EmployeeCompanyId, x.FromDate });
+            e.HasIndex(x => new { x.CompanyId, x.Status });
+
+            e.HasOne(x => x.EmployeeCompany).WithMany()
+                .HasForeignKey(x => x.EmployeeCompanyId).OnDelete(DeleteBehavior.Cascade);
+
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- EmployeeLog (سجلّ التغييرات — يُكتب ولا يُعدَّل) ----
+        b.Entity<EmployeeLog>(e =>
+        {
+            e.HasKey(x => x.LogId);
+            e.Property(x => x.Description).IsRequired().HasMaxLength(1000);
+            e.Property(x => x.OldValue).HasMaxLength(500);
+            e.Property(x => x.NewValue).HasMaxLength(500);
+
+            e.HasIndex(x => new { x.EmployeeCompanyId, x.ChangedAt });
+
+            e.HasOne(x => x.EmployeeCompany).WithMany()
+                .HasForeignKey(x => x.EmployeeCompanyId).OnDelete(DeleteBehavior.Cascade);
+
+            // بلا حذف ناعم عمداً: السجلّ شاهدٌ لا سجلّ عمل.
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 

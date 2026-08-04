@@ -37,7 +37,14 @@
   - `NetSalary`/`NetSalaryIqd` **يحسبهما الخادم دائماً ولا يقبلهما من العميل**.
 
 ### HrSettings
-`SettingsId, CompanyId (فريد), DefaultWorkingDaysMode, DefaultWorkingDays, CreatedAt, UpdatedAt?` — إعدادات الوحدة لكل شركة.
+`SettingsId, CompanyId (فريد), DefaultWorkingDaysMode, DefaultWorkingDays, EndOfServiceEnabled, EndOfServiceRatio(enum), EndOfServiceCustomDays?, CreatedAt, UpdatedAt?` — إعدادات الوحدة لكل شركة. مكافأة نهاية الخدمة **مطفأة افتراضياً**.
+
+### EmployeeLeave / EmployeeLog (الدفعة ٢ — migration `AddHrLeavesAndEndOfService`)
+- `EmployeeLeave`: `LeaveId, EmployeeCompanyId→EmployeeCompany (Cascade), CompanyId (منسوخ), LeaveType(enum), FromDate, ToDate, DurationDays (يحسبه الخادم), RequiresApproval, Status(enum Pending/Approved/Rejected), DeductFromSalary, Notes?, CreatedByUserId, CreatedAt, ReviewedByUserId?, ReviewedAt?, ReviewNotes?, + الحذف الناعم`.
+  - **بلا موافقة ⇒ `Approved` فوراً** (حالة معلّقة بلا مراجعٍ تبقى معلّقة للأبد)، والتداخل مع إجازة غير مرفوضة **يُرفض (409)**، والمراجعة **مرّة واحدة**.
+- `EmployeeLog`: `LogId, EmployeeCompanyId→EmployeeCompany (Cascade), CompanyId, ChangeType(enum), Description (نصّ عربي جاهز), OldValue?, NewValue?, ChangedByUserId, ChangedAt`.
+  - **بلا حذف ناعم عمداً** — السجلّ شاهدٌ يُكتب ولا يُعدَّل ولا يُحذف. يُكتب تلقائياً من `EmployeeService` (الراتب · الصفة · الإيقاف · الإنهاء) و`LeaveService` (الإجازات).
+- `PayrollEntry` += `EndOfServiceAmount?(18,2)` — تُقبل **لمن انتهت خدمته في هذا الشهر وحده** (وإلا 400)، وتدخل الصافي كمكافأة.
 
 ### تعديلات على كيانات قائمة (ADR-023)
 - `UserCompany` += `CanManageHR bit NOT NULL DEFAULT 0`.

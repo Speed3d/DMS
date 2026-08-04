@@ -103,6 +103,59 @@ $still=$p4.entries | Where-Object { $_.entryId -eq $rIqd2.entryId } | Select-Obj
 if($g2.added -eq 0 -and $g2.existing -ge 2){ Ok "إعادة التوليد: أُضيف 0 · موجود $($g2.existing)" } else { Bad "إعادة التوليد أضافت $($g2.added)" }
 if([math]::Abs($still.bonusAmount - 100000) -lt 0.01){ Ok "المكافأة اليدوية **باقية** بعد إعادة التوليد ✔ لا يمحو عمل ساعة بضغطة" } else { Bad "المكافأة صارت $($still.bonusAmount) — التوليد محا المدخلات" }
 
+Write-Host "`n=== الإجازات وسجلّ التغييرات (الدفعة ٢) ===" -ForegroundColor Cyan
+# إجازة بلا موافقة ⇒ تُسجَّل مقبولةً مباشرةً (حالة معلّقة بلا مراجعٍ تبقى معلّقة للأبد).
+$lv1=(Api POST "/employees/$e1/leaves" @{leaveType='Annual';fromDate="$Year-$($Month.ToString('00'))-05T00:00:00";toDate="$Year-$($Month.ToString('00'))-07T00:00:00";requiresApproval=$false;deductFromSalary=$false;notes='اختبار'} $admin $cid).B
+if($lv1.durationDays -eq 3){ Ok "الإجازة 3 أيام (الطرفان محسوبان)" } else { Bad "المدّة $($lv1.durationDays) بدل 3" }
+if($lv1.status -eq 'Approved'){ Ok "إجازة بلا موافقة تُسجَّل مقبولةً مباشرةً" } else { Bad "الحالة $($lv1.status)" }
+
+# تداخل مع إجازة قائمة ⇒ رفض
+$dup=Api POST "/employees/$e1/leaves" @{leaveType='Sick';fromDate="$Year-$($Month.ToString('00'))-06T00:00:00";toDate="$Year-$($Month.ToString('00'))-08T00:00:00";requiresApproval=$false;deductFromSalary=$false;notes=$null} $admin $cid
+if($dup.S -eq 409){ Ok "الإجازة المتداخلة مرفوضة (409)" } else { Bad "التداخل ردّ $($dup.S) بدل 409" }
+
+# إجازة بموافقة ⇒ معلّقة ثم تُراجَع مرّةً واحدة
+$lv2=(Api POST "/employees/$e1/leaves" @{leaveType='Administrative';fromDate="$Year-$($Month.ToString('00'))-20T00:00:00";toDate="$Year-$($Month.ToString('00'))-21T00:00:00";requiresApproval=$true;deductFromSalary=$true;notes=$null} $admin $cid).B
+if($lv2.status -eq 'Pending'){ Ok "إجازة بموافقة تبدأ معلّقة" } else { Bad "الحالة $($lv2.status)" }
+$rev=(Api PATCH "/employees/leaves/$($lv2.leaveId)" @{approve=$true;notes='موافق'} $admin $cid).B
+if($rev.status -eq 'Approved'){ Ok "الموافقة على الإجازة" } else { Bad "المراجعة ردّت $($rev.status)" }
+$rev2=Api PATCH "/employees/leaves/$($lv2.leaveId)" @{approve=$false;notes=$null} $admin $cid
+if($rev2.S -eq 409){ Ok "إعادة مراجعة إجازة محسومة مرفوضة (409)" } else { Bad "إعادة المراجعة ردّت $($rev2.S)" }
+
+# سجلّ التغييرات: يُكتب تلقائياً عند تغيير الراتب
+$null=Api PUT "/employees/$e1/employment" @{position='مهندس أول';positionEn='Senior';hireDate='2020-01-01T00:00:00';salaryCurrency='IQD';baseSalary=1350000;displayOrder=1;isActive=$true} $admin $cid
+$log=@(Api GET "/employees/$e1/log" $null $admin $cid).B
+if($log.Count -ge 2){ Ok "سجلّ التغييرات فيه $($log.Count) سطراً" } else { Bad "السجلّ فيه $($log.Count) سطراً" }
+$hasSalary=@($log | Where-Object { $_.changeType -eq 'SalaryChange' }).Count
+$hasPosition=@($log | Where-Object { $_.changeType -eq 'PositionChange' }).Count
+if($hasSalary -ge 1){ Ok "تغيّر الراتب مسجَّل" } else { Bad "تغيّر الراتب غير مسجَّل" }
+if($hasPosition -ge 1){ Ok "تغيّر الصفة مسجَّل" } else { Bad "تغيّر الصفة غير مسجَّل" }
+$hasLeave=@($log | Where-Object { $_.changeType -eq 'LeaveRecorded' }).Count
+if($hasLeave -ge 1){ Ok "الإجازات مسجَّلة في السجلّ" } else { Bad "الإجازات غير مسجَّلة" }
+
+# أعِد الراتب لقيمته كي تبقى بقية التحقّقات على أرقامها
+$null=Api PUT "/employees/$e1/employment" @{position='مهندس';positionEn='Engineer';hireDate='2020-01-01T00:00:00';salaryCurrency='IQD';baseSalary=1200000;displayOrder=1;isActive=$true} $admin $cid
+
+Write-Host "`n=== مكافأة نهاية الخدمة ===" -ForegroundColor Cyan
+$eosOff=@(Api GET "/payroll/periods/$Year/$Month/end-of-service" $null $admin $cid).B
+if($eosOff.Count -eq 0){ Ok "مطفأة افتراضياً ⇒ لا اقتراحات" } else { Bad "اقترحت $($eosOff.Count) رغم أنها مطفأة" }
+$null=Api PUT "/hr/settings" @{defaultWorkingDaysMode='Fixed';defaultWorkingDays=30;endOfServiceEnabled=$true;endOfServiceRatio='MonthPerYear';endOfServiceCustomDays=$null} $admin $cid
+$st=(Api GET "/hr/settings" $null $admin $cid).B
+if($st.endOfServiceEnabled){ Ok "فُعّلت مكافأة نهاية الخدمة (راتب شهر/سنة)" } else { Bad "لم تُفعَّل" }
+$eosBad=Api PUT "/hr/settings" @{defaultWorkingDaysMode='Fixed';defaultWorkingDays=30;endOfServiceEnabled=$true;endOfServiceRatio='CustomDays';endOfServiceCustomDays=$null} $admin $cid
+if($eosBad.S -eq 400){ Ok "«أيام مخصّصة» بلا عدد مرفوضة (400)" } else { Bad "ردّت $($eosBad.S) بدل 400" }
+$null=Api PUT "/hr/settings" @{defaultWorkingDaysMode='Fixed';defaultWorkingDays=30;endOfServiceEnabled=$true;endOfServiceRatio='MonthPerYear';endOfServiceCustomDays=$null} $admin $cid
+
+# مكافأة لمن لم تنتهِ خدمته ⇒ رفض
+$pNow=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$anyRow=$pNow.entries | Select-Object -First 1
+$eosWrong=Api PUT "/payroll/periods/$Year/$Month/entries" @{rowVersion=$pNow.rowVersion;entries=@(@{entryId=$anyRow.entryId;absenceDays=0;bonusAmount=$null;deductionAmount=$null;manualAbsenceDeduction=$null;eligibleDaysOverride=$null;notes=$null;endOfServiceAmount=500000})} $admin $cid
+if($eosWrong.S -eq 400){ Ok "مكافأة نهاية خدمة لموظف مستمرّ مرفوضة (400) ✔ لا مكافأة بلا سبب" } else { Bad "ردّت $($eosWrong.S) بدل 400" }
+
+Write-Host "`n=== ملخّص الوحدة ===" -ForegroundColor Cyan
+$sum=(Api GET "/hr/summary" $null $admin $cid).B
+if($sum.activeEmployees -ge 2){ Ok "الملخّص: $($sum.activeEmployees) موظفاً فعّالاً" } else { Bad "عدد الفعّالين $($sum.activeEmployees)" }
+if($null -ne $sum.pendingLeaves){ Ok "الملخّص يحمل عدد الإجازات المعلّقة ($($sum.pendingLeaves))" } else { Bad "pendingLeaves غائب" }
+
 Write-Host "`n=== المخرجات ===" -ForegroundColor Cyan
 function FileOk($kind,$label){
   $h=@{Authorization="Bearer $admin";"X-Company-Id"="$cid"}
@@ -155,7 +208,7 @@ function EmpLogin($user){
 $tokEmp=EmpLogin $empUser
 if($tokEmp){ Ok "دخول الموظف" } else { Bad "فشل دخول الموظف" }
 
-foreach($ep in @("/employees","/payroll/years","/payroll/periods/$Year/$Month","/hr/settings","/hr/summary","/payroll/periods/$Year/$Month/excel")){
+foreach($ep in @("/employees","/payroll/years","/payroll/periods/$Year/$Month","/hr/settings","/hr/summary","/payroll/periods/$Year/$Month/excel","/employees/$e1/leaves","/employees/$e1/log")){
   $r=Api GET $ep $null $tokEmp $cid
   if($r.S -eq 403){ Ok "الموظف محجوب عن $ep (403)" } else { Bad "تسرّب: $ep ردّ $($r.S) للموظف" }
 }

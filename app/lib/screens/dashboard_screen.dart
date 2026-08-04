@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/archive_providers.dart';
+import '../core/hr_providers.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
 import '../core/session.dart';
@@ -38,6 +39,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final showOutgoing = session.hasModule('Outgoing');
     final showIncoming = session.hasModule('Incoming');
     final showArchive = session.hasModule('Archive');
+    final showHr = session.canSeeHr;
 
     // ⚠️ قبل الحكم بـ«لا صلاحيات» نتأكّد أن الجلسة حُمّلت فعلاً: `hasModule` يردّ false
     //    حين تكون `auth` فارغة، فلولا هذا الفحص لومضت رسالة «لا أقسام متاحة» لحظةَ
@@ -46,7 +48,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.gold)));
     }
 
-    if (!showOutgoing && !showIncoming && !showArchive) return const _NoModulesView();
+    if (!showOutgoing && !showIncoming && !showArchive && !showHr) return const _NoModulesView();
 
     return Scaffold(
       body: outgoingAsync.when(
@@ -128,6 +130,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                         Icons.archive_rounded, const Color(0xFF8B5CF6),
                                         onTap: () => widget.onNavigate?.call(4)),
                                   ),
+                                ];
+                              })(),
+
+                            // ── الموظفون والرواتب (ADR-023) ──
+                            // ⚠️ `canSeeHr` لا `hasModule('HR')`: الوحدة تتطلّب القسم **والدور**،
+                            //    وبطاقةٌ تقود إلى شاشة تردّ 403 أسوأ من بطاقة غائبة.
+                            if (showHr)
+                              ...(() {
+                                final hr = ref.watch(hrSummaryProvider).whenOrNull(data: (s) => s);
+                                return [
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildStatCard(
+                                        'الموظفون الفعّالون', hr?.activeEmployees.toString() ?? '…',
+                                        Icons.groups_2_rounded, const Color(0xFF0EA5E9),
+                                        onTap: () => widget.onNavigate?.call(9)),
+                                  ),
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildStatCard(
+                                        'رواتب هذا الشهر',
+                                        hr == null ? '…' : '${_fmt(hr.thisMonthTotalIqd)} د.ع',
+                                        Icons.payments_rounded, AppColors.gold,
+                                        onTap: () => widget.onNavigate?.call(10)),
+                                  ),
+                                  if ((hr?.unpaidMonths ?? 0) > 0)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard(
+                                          'أشهر غير مُسدَّدة', '${hr!.unpaidMonths}',
+                                          Icons.report_gmailerrorred_rounded, AppColors.danger,
+                                          onTap: () => widget.onNavigate?.call(10)),
+                                    ),
+                                  if ((hr?.pendingLeaves ?? 0) > 0)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard(
+                                          'إجازات بانتظار الموافقة', '${hr!.pendingLeaves}',
+                                          Icons.beach_access_rounded, AppColors.warn,
+                                          onTap: () => widget.onNavigate?.call(9)),
+                                    ),
                                 ];
                               })(),
                           ],

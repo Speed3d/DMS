@@ -17,7 +17,13 @@ public sealed record PayrollMonthSummary(
 /// </summary>
 public sealed record SaveEntryInput(
     int EntryId, int AbsenceDays, decimal? BonusAmount, decimal? DeductionAmount,
-    decimal? ManualAbsenceDeduction, int? EligibleDaysOverride, string? Notes);
+    decimal? ManualAbsenceDeduction, int? EligibleDaysOverride, string? Notes,
+    decimal? EndOfServiceAmount = null);
+
+/// <summary>مكافأة نهاية الخدمة المقترَحة لسطرٍ بعينه (الدفعة ٢).</summary>
+public sealed record EndOfServiceSuggestion(
+    int EntryId, string EmployeeName, decimal Amount, string Currency,
+    decimal YearsServed, int DaysPerYear);
 
 public sealed record PeriodSettingsInput(
     decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode, int WorkingDays, string? Notes);
@@ -45,6 +51,7 @@ public interface IPayrollService
     Task DeleteYearAsync(int year, CancellationToken ct = default);
     Task<List<ExternalPaymentHint>> DetectExternalPaymentsAsync(int year, int month, CancellationToken ct = default);
     Task ConfirmExternalPaymentAsync(int entryId, CancellationToken ct = default);
+    Task<List<EndOfServiceSuggestion>> SuggestEndOfServiceAsync(int year, int month, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -271,6 +278,16 @@ public sealed class PayrollService(
             entry.AbsenceDeductionIsManual = input.ManualAbsenceDeduction is not null;
             entry.Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim();
 
+            if (input.EndOfServiceAmount is { } eos)
+            {
+                if (eos < 0) throw new ValidationException("مكافأة نهاية الخدمة لا تكون سالبة.");
+                // تُقبل على سطر المنتهية خدمته وحده — وإلا صارت باباً لمكافأة بلا سبب.
+                if (!entry.IsTerminated)
+                    throw new ValidationException(
+                        $"«{entry.SnapshotName}» لم تنتهِ خدمته هذا الشهر — لا تُضاف له مكافأة نهاية خدمة.");
+                entry.EndOfServiceAmount = eos == 0 ? null : eos;
+            }
+
             if (input.EligibleDaysOverride is { } days)
             {
                 if (days < 0 || days > period.WorkingDays)
@@ -447,6 +464,50 @@ public sealed class PayrollService(
         await db.SaveChangesAsync(ct);
     }
 
+    // ─────────────────────── مكافأة نهاية الخدمة (الدفعة ٢) ───────────────────────
+
+    /// <summary>
+    /// يقترح مكافأة نهاية خدمة لمن انتهت خدمته في هذا الشهر — **اقتراحٌ لا تطبيق**.
+    /// </summary>
+    /// <remarks>
+    /// لا تُضاف تلقائياً بحال: المكافأة التزامٌ ماليّ يقرّره صاحب العمل بعد مراجعة الخدمة
+    /// والذمّة، وحسابُها آلياً وإدراجُها في الصافي كان سيصرف مبلغاً لم يوافق عليه أحد.
+    /// </remarks>
+    public async Task<List<EndOfServiceSuggestion>> SuggestEndOfServiceAsync(
+        int year, int month, CancellationToken ct = default)
+    {
+        RequireWrite();
+        var companyId = RequireCompany();
+
+        var settings = await db.HrSettings.FirstOrDefaultAsync(s => s.CompanyId == companyId, ct);
+        if (settings is null || !settings.EndOfServiceEnabled) return [];
+
+        var period = await db.PayrollPeriods
+            .Include(p => p.Entries.Where(e => !e.IsDeleted)).ThenInclude(e => e.EmployeeCompany)
+            .FirstOrDefaultAsync(p => p.Year == year && p.Month == month, ct);
+        if (period is null) return [];
+
+        var days = PayrollCalculator.DaysPerYear(
+            settings.EndOfServiceRatio, settings.EndOfServiceCustomDays);
+
+        var result = new List<EndOfServiceSuggestion>();
+        foreach (var e in period.Entries.Where(x => x.IsTerminated))
+        {
+            var link = e.EmployeeCompany;
+            if (link?.TerminationDate is not { } term) continue;
+
+            var amount = PayrollCalculator.SuggestEndOfService(
+                e.SnapshotBaseSalary, link.HireDate, term,
+                settings.EndOfServiceRatio, settings.EndOfServiceCustomDays);
+            if (amount <= 0) continue;
+
+            var years = Math.Round((decimal)((term.Date - link.HireDate.Date).TotalDays / 365.25), 2);
+            result.Add(new EndOfServiceSuggestion(
+                e.EntryId, e.SnapshotName, amount, e.SnapshotCurrency.ToString(), years, days));
+        }
+        return result;
+    }
+
     // ─────────────────────────── مساعدات ───────────────────────────
 
     private void RecomputeAll(PayrollPeriod period)
@@ -465,7 +526,8 @@ public sealed class PayrollService(
             period.Year, period.Month, period.WorkingDays,
             entry.SnapshotBaseSalary, entry.SnapshotCurrency, period.ExchangeRate,
             hire, term,
-            entry.AbsenceDays, entry.BonusAmount, entry.DeductionAmount, manualAbsence);
+            entry.AbsenceDays, entry.BonusAmount, entry.DeductionAmount, manualAbsence,
+            entry.EndOfServiceAmount);
 
         // الأيام المستحقّة قد يكون المستخدم عدّلها يدوياً ⇒ لا نفرض المحسوبة فوقها.
         var eligible = entry.EligibleDays > 0 ? entry.EligibleDays : amounts.EligibleDays;
@@ -473,7 +535,8 @@ public sealed class PayrollService(
         entry.AbsenceDeduction = amounts.AbsenceDeduction;
         entry.NetSalary = PayrollCalculator.NetSalary(
             entry.SnapshotBaseSalary, eligible, period.WorkingDays,
-            entry.BonusAmount, entry.DeductionAmount, amounts.AbsenceDeduction);
+            entry.BonusAmount, entry.DeductionAmount, amounts.AbsenceDeduction,
+            entry.EndOfServiceAmount);
         entry.NetSalaryIqd = PayrollCalculator.ToIqd(
             entry.NetSalary, entry.SnapshotCurrency, period.ExchangeRate);
     }

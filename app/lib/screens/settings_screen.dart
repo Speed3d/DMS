@@ -6,6 +6,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 
 import 'company_edit_screen.dart';
+import 'hr_settings_screen.dart';
 import 'template_edit_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -43,21 +44,26 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isSuper = ref.watch(sessionProvider).auth?.isSuperAdmin ?? false;
+    final session = ref.watch(sessionProvider);
+    final isSuper = session.auth?.isSuperAdmin ?? false;
+    // تبويب الموظفين يظهر لمن يرى الوحدة وحده (القسم مع الدور) — مرآةُ `[RequireHrModule]`.
+    final showHr = session.canSeeHr;
+
     return DefaultTabController(
-      length: 6,
+      length: showHr ? 7 : 6,
       child: Column(
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: TabBar(isScrollable: true, tabs: [
-                  Tab(text: 'الشركات'),
-                  Tab(text: 'الجهات'),
-                  Tab(text: 'الأقسام'),
-                  Tab(text: 'أنواع المستندات'),
-                  Tab(text: 'القوالب'),
-                  Tab(text: 'أسعار الصرف'),
+                  const Tab(text: 'الشركات'),
+                  const Tab(text: 'الجهات'),
+                  const Tab(text: 'الأقسام'),
+                  const Tab(text: 'أنواع المستندات'),
+                  const Tab(text: 'القوالب'),
+                  const Tab(text: 'أسعار الصرف'),
+                  if (showHr) const Tab(text: 'الموظفون والرواتب'),
                 ]),
               ),
               if (isSuper)
@@ -79,6 +85,7 @@ class SettingsScreen extends ConsumerWidget {
               const _DocumentTypesTab(),
               const _TemplatesTab(),
               const _RatesTab(),
+              if (showHr) const HrSettingsScreen(),
             ]),
           ),
         ],

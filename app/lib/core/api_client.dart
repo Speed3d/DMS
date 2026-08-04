@@ -770,14 +770,48 @@ class ApiClient {
     }
   }
 
+  // ---------- الإجازات وسجلّ التغييرات ونهاية الخدمة (الدفعة ٢) ----------
+  Future<List<LeaveModel>> leaves(int employeeId) async =>
+      (await _get('/employees/$employeeId/leaves') as List)
+          .map((e) => LeaveModel.fromJson(e)).toList();
+
+  Future<LeaveModel> addLeave(int employeeId, Map<String, dynamic> body) async =>
+      LeaveModel.fromJson(await _post('/employees/$employeeId/leaves', body));
+
+  Future<LeaveModel> reviewLeave(int leaveId, bool approve, String? notes) async =>
+      LeaveModel.fromJson(await _patch('/employees/leaves/$leaveId', {
+        'approve': approve,
+        'notes': notes,
+      }));
+
+  Future<void> deleteLeave(int leaveId) => _delete('/employees/leaves/$leaveId');
+
+  Future<List<EmployeeLogItem>> employeeLog(int employeeId) async =>
+      (await _get('/employees/$employeeId/log') as List)
+          .map((e) => EmployeeLogItem.fromJson(e)).toList();
+
+  /// مكافآت نهاية الخدمة **المقترَحة** لمن انتهت خدمتهم في هذا الشهر.
+  Future<List<EndOfServiceSuggestion>> endOfServiceSuggestions(int year, int month) async =>
+      (await _get('/payroll/periods/$year/$month/end-of-service') as List)
+          .map((e) => EndOfServiceSuggestion.fromJson(e)).toList();
+
   // ---------- إعدادات الموظفين ----------
   Future<HrSettingsModel> hrSettings() async =>
       HrSettingsModel.fromJson(await _get('/hr/settings'));
 
-  Future<HrSettingsModel> updateHrSettings(String mode, int days) async =>
+  Future<HrSettingsModel> updateHrSettings(
+    String mode,
+    int days, {
+    bool endOfServiceEnabled = false,
+    String endOfServiceRatio = 'MonthPerYear',
+    int? endOfServiceCustomDays,
+  }) async =>
       HrSettingsModel.fromJson(await _put('/hr/settings', {
         'defaultWorkingDaysMode': mode,
         'defaultWorkingDays': days,
+        'endOfServiceEnabled': endOfServiceEnabled,
+        'endOfServiceRatio': endOfServiceRatio,
+        'endOfServiceCustomDays': endOfServiceCustomDays,
       }));
 
   Future<HrSummary> hrSummary() async => HrSummary.fromJson(await _get('/hr/summary'));
@@ -802,6 +836,14 @@ class ApiClient {
   Future<dynamic> _put(String path, Object? body) async {
     try {
       return (await _dio.put(path, data: body)).data;
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<dynamic> _patch(String path, Object? body) async {
+    try {
+      return (await _dio.patch(path, data: body)).data;
     } on DioException catch (e) {
       throw _map(e);
     }

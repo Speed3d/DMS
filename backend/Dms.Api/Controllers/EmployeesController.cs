@@ -15,8 +15,55 @@ namespace Dms.Api.Controllers;
 [Authorize]
 [RequireHrModule]
 [Route("api/employees")]
-public sealed class EmployeesController(IEmployeeService employees) : ControllerBase
+public sealed class EmployeesController(
+    IEmployeeService employees, ILeaveService leaves) : ControllerBase
 {
+    // ─────────────────────── الإجازات وسجلّ التغييرات (الدفعة ٢) ───────────────────────
+
+    [HttpGet("{id:int}/leaves")]
+    public async Task<ActionResult<List<LeaveResponse>>> Leaves(int id, CancellationToken ct)
+        => (await leaves.ListAsync(id, ct)).Select(MapLeave).ToList();
+
+    [HttpPost("{id:int}/leaves")]
+    public async Task<ActionResult<LeaveResponse>> AddLeave(
+        int id, LeaveRequest req, CancellationToken ct)
+        => MapLeave(await leaves.CreateAsync(id,
+            new LeaveInput(req.LeaveType, req.FromDate, req.ToDate,
+                req.RequiresApproval, req.DeductFromSalary, req.Notes), ct));
+
+    [HttpPatch("leaves/{leaveId:int}")]
+    public async Task<ActionResult<LeaveResponse>> ReviewLeave(
+        int leaveId, ReviewLeaveRequest req, CancellationToken ct)
+        => MapLeave(await leaves.ReviewAsync(leaveId, req.Approve, req.Notes, ct));
+
+    [HttpDelete("leaves/{leaveId:int}")]
+    public async Task<IActionResult> DeleteLeave(int leaveId, CancellationToken ct)
+    {
+        await leaves.DeleteAsync(leaveId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("{id:int}/log")]
+    public async Task<ActionResult<List<EmployeeLogResponse>>> Log(int id, CancellationToken ct)
+        => (await leaves.LogAsync(id, ct))
+            .Select(l => new EmployeeLogResponse(
+                l.LogId, l.ChangeType, l.Description, l.OldValue, l.NewValue, l.ChangedAt))
+            .ToList();
+
+    private static LeaveResponse MapLeave(EmployeeLeave l) => new(
+        l.LeaveId, l.LeaveType, ArabicLeaveLabel(l.LeaveType), l.FromDate, l.ToDate,
+        l.DurationDays, l.RequiresApproval, l.Status, l.DeductFromSalary,
+        l.Notes, l.CreatedAt, l.ReviewedAt, l.ReviewNotes);
+
+    private static string ArabicLeaveLabel(LeaveType t) => t switch
+    {
+        LeaveType.Annual => "اعتيادية",
+        LeaveType.Sick => "مرضية",
+        LeaveType.Administrative => "إدارية",
+        LeaveType.Unpaid => "بلا راتب",
+        _ => "أخرى",
+    };
+
     [HttpGet]
     public async Task<ActionResult<List<EmployeeListItem>>> List(
         [FromQuery] bool? activeOnly, [FromQuery] string? search, CancellationToken ct)

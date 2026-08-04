@@ -306,6 +306,112 @@ public class PayrollCalculatorTests
         PayrollCalculator.EnsurePayable("سنان", 900_000m);
     }
 
+    // ─────────────────────── مكافأة نهاية الخدمة (الدفعة ٢) ───────────────────────
+
+    [Theory]
+    [InlineData(EndOfServiceRatio.MonthPerYear, null, 30)]
+    [InlineData(EndOfServiceRatio.HalfMonthPerYear, null, 15)]
+    [InlineData(EndOfServiceRatio.CustomDays, 21, 21)]
+    [InlineData(EndOfServiceRatio.CustomDays, null, 0)]   // مخصّص بلا عدد ⇒ لا استحقاق
+    public void DaysPerYear_FollowsTheChosenRatio(EndOfServiceRatio ratio, int? custom, int expected)
+    {
+        Assert.Equal(expected, PayrollCalculator.DaysPerYear(ratio, custom));
+    }
+
+    [Fact]
+    public void EndOfService_MonthPerYear_ThreeYears_EqualsThreeMonths()
+    {
+        // 3 سنوات × راتب شهر ≈ 3 × 900,000.
+        // ⚠️ الناتج **أعلى** قليلاً من 2,700,000 لا أدنى: المدّة 1096 يوماً (2020 كبيسة)
+        //    و1096 ÷ 365.25 = 3.0007 سنة. نتحقّق من التقارب لا من رقمٍ مضبوط.
+        var amount = PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2020, 1, 1), new DateTime(2023, 1, 1),
+            EndOfServiceRatio.MonthPerYear, null);
+
+        const decimal expected = 3 * 900_000m;
+        Assert.InRange(amount, expected * 0.995m, expected * 1.005m);
+    }
+
+    [Fact]
+    public void EndOfService_HalfMonthPerYear_IsHalfOfMonthPerYear()
+    {
+        var full = PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2020, 1, 1), new DateTime(2024, 1, 1),
+            EndOfServiceRatio.MonthPerYear, null);
+        var half = PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2020, 1, 1), new DateTime(2024, 1, 1),
+            EndOfServiceRatio.HalfMonthPerYear, null);
+
+        Assert.InRange(half, full / 2 - 1m, full / 2 + 1m);
+    }
+
+    [Fact]
+    public void EndOfService_PartialYear_IsProrated_NotRoundedDown()
+    {
+        // سنة ونصف يجب أن تُعطي أكثر من سنة — الكسر محفوظ لا مبتور.
+        var oneYear = PayrollCalculator.SuggestEndOfService(
+            600_000m, new DateTime(2020, 1, 1), new DateTime(2021, 1, 1),
+            EndOfServiceRatio.MonthPerYear, null);
+        var oneAndHalf = PayrollCalculator.SuggestEndOfService(
+            600_000m, new DateTime(2020, 1, 1), new DateTime(2021, 7, 1),
+            EndOfServiceRatio.MonthPerYear, null);
+
+        Assert.True(oneAndHalf > oneYear * 1.4m, $"سنة ونصف={oneAndHalf} وسنة={oneYear}");
+    }
+
+    [Fact]
+    public void EndOfService_DisabledOrZeroService_YieldsNothing()
+    {
+        // خدمةٌ بلا مدّة، ونسبةٌ بلا أيام — كلتاهما صفر لا استثناء.
+        Assert.Equal(0m, PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2023, 5, 1), new DateTime(2023, 5, 1),
+            EndOfServiceRatio.MonthPerYear, null));
+        Assert.Equal(0m, PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2020, 1, 1), new DateTime(2023, 1, 1),
+            EndOfServiceRatio.CustomDays, null));
+    }
+
+    [Fact]
+    public void EndOfService_UsesFixedThirtyDivisor_NotWorkingDays()
+    {
+        // ⚠️ العرف التعاقدي «راتب شهر» لا طول شهر الإنهاء — وإلا اختلفت مكافأة موظفَين
+        //    متطابقَين لأن أحدهما ترك العمل في شباط والآخر في آذار.
+        Assert.Equal(30, PayrollCalculator.EndOfServiceDivisor);
+
+        var febLeaver = PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2020, 3, 1), new DateTime(2023, 2, 28),
+            EndOfServiceRatio.MonthPerYear, null);
+        var marLeaver = PayrollCalculator.SuggestEndOfService(
+            900_000m, new DateTime(2020, 3, 1), new DateTime(2023, 3, 1),
+            EndOfServiceRatio.MonthPerYear, null);
+
+        // الفارق يومان من الخدمة فقط، لا قفزةٌ سببها طول الشهر.
+        Assert.InRange(marLeaver - febLeaver, 0m, 3_000m);
+    }
+
+    [Fact]
+    public void NetSalary_AddsEndOfService_AsABonus()
+    {
+        var net = PayrollCalculator.NetSalary(
+            900_000m, 30, 30, bonus: null, deduction: null, absenceDeduction: 0m,
+            endOfService: 2_700_000m);
+
+        Assert.Equal(3_600_000m, net);
+    }
+
+    [Fact]
+    public void Compute_FlowsEndOfService_IntoNetAndIqd()
+    {
+        var r = PayrollCalculator.Compute(
+            2026, 7, 30, baseSalary: 700m, Currency.USD, exchangeRate: 1310m,
+            hireDate: new DateTime(2020, 1, 1), terminationDate: new DateTime(2026, 7, 31),
+            absenceDays: 0, bonus: null, deduction: null, manualAbsenceDeduction: null,
+            endOfService: 300m);
+
+        Assert.Equal(1000m, r.NetSalary);            // 700 + 300
+        Assert.Equal(1_310_000m, r.NetSalaryIqd);    // × 1310
+    }
+
     // ─────────────────────────── أسماء الأشهر ───────────────────────────
 
     [Fact]

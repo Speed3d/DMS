@@ -21,6 +21,8 @@ class EmployeeDetailScreen extends ConsumerStatefulWidget {
 class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
   EmployeeDetail? _employee;
   List<SalaryHistoryItem> _history = const [];
+  List<LeaveModel> _leaves = const [];
+  List<EmployeeLogItem> _log = const [];
   Uint8List? _photo;
   bool _loading = true;
   String? _error;
@@ -43,6 +45,8 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       final api = ref.read(apiClientProvider);
       final e = await api.employee(widget.employeeId);
       final h = await api.salaryHistory(widget.employeeId);
+      final lv = await api.leaves(widget.employeeId);
+      final lg = await api.employeeLog(widget.employeeId);
       Uint8List? photo;
       if (e.hasPhoto) {
         try {
@@ -55,6 +59,8 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       setState(() {
         _employee = e;
         _history = h;
+        _leaves = lv;
+        _log = lg;
         _photo = photo;
         _loading = false;
       });
@@ -89,6 +95,60 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       _changed = true;
       await _load();
       if (mounted) _snack('سُجّل إنهاء الخدمة.');
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  Future<void> _addLeave() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const _LeaveDialog(),
+    );
+    if (result == null) return;
+    try {
+      await ref.read(apiClientProvider).addLeave(widget.employeeId, result);
+      _changed = true;
+      await _load();
+      if (mounted) _snack('سُجّلت الإجازة.');
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  Future<void> _reviewLeave(LeaveModel leave, bool approve) async {
+    try {
+      await ref.read(apiClientProvider).reviewLeave(leave.leaveId, approve, null);
+      _changed = true;
+      await _load();
+      if (mounted) _snack(approve ? 'قُبلت الإجازة.' : 'رُفضت الإجازة.');
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  Future<void> _deleteLeave(LeaveModel leave) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حذف الإجازة'),
+        content: Text('حذف إجازة ${leave.leaveTypeLabel} '
+            '(${DateFormat('yyyy-MM-dd').format(leave.fromDate)})؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(apiClientProvider).deleteLeave(leave.leaveId);
+      _changed = true;
+      await _load();
     } catch (e) {
       if (mounted) _snack('$e', error: true);
     }
@@ -153,7 +213,17 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
                       const SizedBox(height: 20),
                       _InfoCard(employee: e),
                       const SizedBox(height: 20),
+                      _LeavesCard(
+                        leaves: _leaves,
+                        canManage: canManage,
+                        onAdd: _addLeave,
+                        onReview: _reviewLeave,
+                        onDelete: _deleteLeave,
+                      ),
+                      const SizedBox(height: 20),
                       _SalaryHistoryCard(items: _history, onPrint: _printReceipt),
+                      const SizedBox(height: 20),
+                      _ChangeLogCard(items: _log),
                     ],
                   ),
       ),
@@ -375,6 +445,322 @@ class _SalaryHistoryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LeavesCard extends StatelessWidget {
+  final List<LeaveModel> leaves;
+  final bool canManage;
+  final VoidCallback onAdd;
+  final void Function(LeaveModel, bool) onReview;
+  final ValueChanged<LeaveModel> onDelete;
+
+  const _LeavesCard({
+    required this.leaves, required this.canManage,
+    required this.onAdd, required this.onReview, required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final date = DateFormat('yyyy-MM-dd');
+
+    return CustomCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            const Expanded(
+                child: _CardTitle(icon: Icons.beach_access_rounded, title: 'الإجازات')),
+            if (canManage)
+              TextButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('إجازة جديدة'),
+              ),
+          ]),
+          if (leaves.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: Text('لا توجد إجازات مسجَّلة.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+            )
+          else
+            ...leaves.map((l) {
+              final color = l.isPending
+                  ? (isDark ? AppColors.warnDark : AppColors.warn)
+                  : l.isRejected
+                      ? (isDark ? AppColors.dangerDark : AppColors.danger)
+                      : (isDark ? AppColors.successDark : AppColors.success);
+              final label = l.isPending ? 'بانتظار الموافقة' : (l.isRejected ? 'مرفوضة' : 'مقبولة');
+
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 96,
+                      child: Text(l.leaveTypeLabel,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${date.format(l.fromDate)} → ${date.format(l.toDate)}  ·  ${l.durationDays} يوماً',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+                    if (l.deductFromSalary)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        child: Text('تُحسم',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? AppColors.dangerDark : AppColors.danger)),
+                      ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(label,
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+                    ),
+                    if (canManage && l.isPending) ...[
+                      IconButton(
+                        onPressed: () => onReview(l, true),
+                        icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                        tooltip: 'موافقة',
+                        color: isDark ? AppColors.successDark : AppColors.success,
+                      ),
+                      IconButton(
+                        onPressed: () => onReview(l, false),
+                        icon: const Icon(Icons.cancel_outlined, size: 18),
+                        tooltip: 'رفض',
+                        color: isDark ? AppColors.dangerDark : AppColors.danger,
+                      ),
+                    ],
+                    if (canManage)
+                      IconButton(
+                        onPressed: () => onDelete(l),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        tooltip: 'حذف',
+                      ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+}
+
+/// سجلّ التغييرات — **قراءة فقط**: يُكتب ولا يُعدَّل ولا يُحذف.
+class _ChangeLogCard extends StatelessWidget {
+  final List<EmployeeLogItem> items;
+  const _ChangeLogCard({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final date = DateFormat('yyyy-MM-dd HH:mm');
+
+    return CustomCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _CardTitle(icon: Icons.history_rounded, title: 'سجلّ التغييرات'),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: Text('لا تغييرات مسجَّلة بعد.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+            )
+          else
+            ...items.map((l) => Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Container(
+                          width: 8, height: 8,
+                          decoration: const BoxDecoration(
+                              color: AppColors.gold, shape: BoxShape.circle),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // الوصف نصٌّ عربي جاهز من الخادم — لا يُركَّب هنا.
+                            Text(l.description,
+                                style: const TextStyle(fontSize: 13, height: 1.5)),
+                            Text(date.format(l.changedAt),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.textTheme.bodyMedium?.color
+                                        ?.withValues(alpha: 0.5))),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+        ],
+      ),
+    );
+  }
+}
+
+/// نافذة تسجيل إجازة.
+class _LeaveDialog extends StatefulWidget {
+  const _LeaveDialog();
+  @override
+  State<_LeaveDialog> createState() => _LeaveDialogState();
+}
+
+class _LeaveDialogState extends State<_LeaveDialog> {
+  String _type = 'Annual';
+  DateTime _from = DateTime.now();
+  DateTime _to = DateTime.now();
+  bool _requiresApproval = false;
+  bool _deduct = false;
+  final _notes = TextEditingController();
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  int get _days => _to.difference(_from).inDays + 1;
+  bool get _invalid => _to.isBefore(_from);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('إجازة جديدة'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _type,
+              decoration: const InputDecoration(labelText: 'نوع الإجازة', isDense: true),
+              items: kLeaveTypes.entries
+                  .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .toList(),
+              onChanged: (v) => setState(() => _type = v!),
+            ),
+            const SizedBox(height: 8),
+            _DatePickRow(
+              label: 'من',
+              value: _from,
+              onChanged: (d) => setState(() {
+                _from = d;
+                if (_to.isBefore(_from)) _to = _from;
+              }),
+            ),
+            _DatePickRow(label: 'إلى', value: _to, onChanged: (d) => setState(() => _to = d)),
+            if (!_invalid)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('المدّة: $_days يوماً',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _requiresApproval,
+              title: const Text('تحتاج موافقة', style: TextStyle(fontSize: 13)),
+              subtitle: const Text('بدونها تُسجَّل مقبولةً مباشرةً',
+                  style: TextStyle(fontSize: 11)),
+              onChanged: (v) => setState(() => _requiresApproval = v),
+            ),
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _deduct,
+              activeThumbColor: AppColors.warn,
+              title: const Text('تُحسم من الراتب', style: TextStyle(fontSize: 13)),
+              subtitle: const Text('الحسم يُطبَّق يدوياً في كشف الشهر المعني',
+                  style: TextStyle(fontSize: 11)),
+              onChanged: (v) => setState(() => _deduct = v),
+            ),
+            TextField(
+              controller: _notes,
+              maxLines: 2,
+              decoration: const InputDecoration(labelText: 'ملاحظات', isDense: true),
+            ),
+            if (_invalid)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Text('تاريخ النهاية لا يسبق البداية.',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.danger)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+        FilledButton(
+          onPressed: _invalid
+              ? null
+              : () => Navigator.pop(context, {
+                    'leaveType': _type,
+                    'fromDate': _from.toIso8601String(),
+                    'toDate': _to.toIso8601String(),
+                    'requiresApproval': _requiresApproval,
+                    'deductFromSalary': _deduct,
+                    'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+                  }),
+          child: const Text('حفظ'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DatePickRow extends StatelessWidget {
+  final String label;
+  final DateTime value;
+  final ValueChanged<DateTime> onChanged;
+  const _DatePickRow({required this.label, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        leading: const Icon(Icons.calendar_today_rounded, size: 17),
+        title: Text('$label: ${DateFormat('yyyy-MM-dd').format(value)}',
+            style: const TextStyle(fontSize: 13.5)),
+        trailing: TextButton(
+          onPressed: () async {
+            final d = await showDatePicker(
+              context: context,
+              initialDate: value,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (d != null) onChanged(d);
+          },
+          child: const Text('تغيير'),
+        ),
+      );
 }
 
 class _CardTitle extends StatelessWidget {

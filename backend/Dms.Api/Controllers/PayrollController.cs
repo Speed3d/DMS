@@ -67,7 +67,8 @@ public sealed class PayrollController(
     {
         var inputs = req.Entries.Select(e => new SaveEntryInput(
             e.EntryId, e.AbsenceDays, e.BonusAmount, e.DeductionAmount,
-            e.ManualAbsenceDeduction, e.EligibleDaysOverride, e.Notes)).ToList();
+            e.ManualAbsenceDeduction, e.EligibleDaysOverride, e.Notes,
+            e.EndOfServiceAmount)).ToList();
 
         var period = await payroll.SaveEntriesAsync(year, month, inputs, req.RowVersion, ct);
         return await MapAsync(period, ct);
@@ -111,6 +112,16 @@ public sealed class PayrollController(
         await payroll.ConfirmExternalPaymentAsync(entryId, ct);
         return NoContent();
     }
+
+    /// <summary>مكافآت نهاية الخدمة **المقترَحة** لمن انتهت خدمتهم هذا الشهر (الدفعة ٢).</summary>
+    /// <remarks>اقتراحٌ لا تطبيق — تُضاف بحفظ السطر بقيمة يقرّرها المستخدم.</remarks>
+    [HttpGet("periods/{year:int}/{month:int}/end-of-service")]
+    public async Task<ActionResult<List<EndOfServiceResponse>>> EndOfService(
+        int year, int month, CancellationToken ct)
+        => (await payroll.SuggestEndOfServiceAsync(year, month, ct))
+            .Select(s => new EndOfServiceResponse(
+                s.EntryId, s.EmployeeName, s.Amount, s.Currency, s.YearsServed, s.DaysPerYear))
+            .ToList();
 
     // ─────────────────────────── مخرجات ───────────────────────────
 
@@ -234,7 +245,7 @@ public sealed class PayrollController(
             employeeByLink.TryGetValue(e.EmployeeCompanyId, out var empId) ? empId : 0,
             e.DisplayOrder, e.SnapshotName, e.SnapshotPosition, e.SnapshotCurrency, e.SnapshotBaseSalary,
             e.EligibleDays, e.AbsenceDays, e.BonusAmount, e.DeductionAmount,
-            e.AbsenceDeduction, e.AbsenceDeductionIsManual,
+            e.AbsenceDeduction, e.AbsenceDeductionIsManual, e.EndOfServiceAmount,
             e.NetSalary, e.NetSalaryIqd,
             e.PaymentStatus, e.PaidByCompanyId, e.PaidByCompanyName,
             e.IsNewHire, e.IsTerminated, e.Notes)).ToList();

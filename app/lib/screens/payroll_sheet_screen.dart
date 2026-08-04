@@ -26,6 +26,7 @@ class PayrollSheetScreen extends ConsumerStatefulWidget {
 class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
   PayrollPeriodModel? _period;
   List<ExternalPaymentHint> _external = const [];
+  List<EndOfServiceSuggestion> _endOfService = const [];
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -62,17 +63,24 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
       final api = ref.read(apiClientProvider);
       final p = await api.payrollPeriod(widget.year, widget.month);
       List<ExternalPaymentHint> ext = const [];
+      List<EndOfServiceSuggestion> eos = const [];
       if (p != null && !p.isPaid) {
         try {
           ext = await api.externalPayments(widget.year, widget.month);
         } catch (_) {
           // الكشف عبر الشركات مساعِدٌ لا حاسم — فشلُه لا يُعطّل الشاشة.
         }
+        try {
+          eos = await api.endOfServiceSuggestions(widget.year, widget.month);
+        } catch (_) {
+          // اقتراح المكافأة كذلك — مطفأٌ افتراضياً في الإعدادات.
+        }
       }
       if (!mounted) return;
       _applyPeriod(p);
       setState(() {
         _external = ext;
+        _endOfService = eos;
         _loading = false;
       });
     } catch (e) {
@@ -215,6 +223,30 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
     }
   }
 
+  /// يضع المكافأة المقترَحة في السطر ثم يحفظ — **بضغطة المستخدم لا تلقائياً**.
+  Future<void> _applyEndOfService(EndOfServiceSuggestion s) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('مكافأة نهاية الخدمة'),
+        content: Text(
+            '«${s.employeeName}» خدم ${s.yearsServed.toStringAsFixed(2)} سنة، '
+            'وبنسبة ${s.daysPerYear} يوماً عن كل سنة تكون المكافأة المقترَحة:\n\n'
+            '${NumberFormat('#,##0.##').format(s.amount)} ${s.currency == 'USD' ? '\$' : 'د.ع'}\n\n'
+            'ستُضاف إلى صافي راتبه هذا الشهر، ويمكنك تعديل الرقم بعدها قبل التسديد.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تطبيق')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    _edits[s.entryId]?.endOfServiceAmount = s.amount;
+    await _saveEntries();
+    await _load();
+  }
+
   Future<void> _export(String kind, String ext, String mime) async {
     setState(() => _busy = true);
     try {
@@ -296,6 +328,10 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
         if (_external.isNotEmpty && editable)
           _ExternalBanner(hints: _external, onConfirm: _confirmExternal),
 
+        // مكافآت نهاية الخدمة المقترَحة (الدفعة ٢)
+        if (_endOfService.isNotEmpty && editable)
+          _EndOfServiceBanner(items: _endOfService, onApply: _applyEndOfService),
+
         if (p.needsExchangeRate)
           const _WarnBanner(
             message: 'الكشف فيه رواتب بالدولار بلا سعر صرف — '
@@ -326,12 +362,16 @@ class _EntryEdit {
   /// خصم غياب عدّله المستخدم يدوياً — `null` يعني «اترك الخادم يقترحه».
   double? manualAbsenceDeduction;
 
+  /// مكافأة نهاية الخدمة — تُرسل فقط لمن انتهت خدمته، وبقرار المستخدم.
+  double? endOfServiceAmount;
+
   _EntryEdit({
     required this.absenceDays,
     required this.bonus,
     required this.deduction,
     required this.notes,
     this.manualAbsenceDeduction,
+    this.endOfServiceAmount,
   });
 
   factory _EntryEdit.from(PayrollEntryModel e) => _EntryEdit(
@@ -340,6 +380,7 @@ class _EntryEdit {
         deduction: TextEditingController(text: e.deductionAmount?.toStringAsFixed(0) ?? ''),
         notes: TextEditingController(text: e.notes ?? ''),
         manualAbsenceDeduction: e.absenceDeductionIsManual ? e.absenceDeduction : null,
+        endOfServiceAmount: e.endOfServiceAmount,
       );
 
   Map<String, dynamic> toJson(int entryId) => {
@@ -350,6 +391,7 @@ class _EntryEdit {
         'manualAbsenceDeduction': manualAbsenceDeduction,
         'eligibleDaysOverride': null,
         'notes': notes.text.trim().isEmpty ? null : notes.text.trim(),
+        'endOfServiceAmount': endOfServiceAmount,
       };
 
   void dispose() {
@@ -570,6 +612,54 @@ class _ExternalBanner extends StatelessWidget {
   }
 }
 
+/// مكافآت نهاية الخدمة المقترَحة — **اقتراحٌ لا تطبيق**، والتفعيل من إعدادات الوحدة.
+class _EndOfServiceBanner extends StatelessWidget {
+  final List<EndOfServiceSuggestion> items;
+  final ValueChanged<EndOfServiceSuggestion> onApply;
+  const _EndOfServiceBanner({required this.items, required this.onApply});
+
+  @override
+  Widget build(BuildContext context) {
+    final money = NumberFormat('#,##0.##');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.gold.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.45)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(children: [
+              Icon(Icons.workspace_premium_rounded, color: AppColors.gold, size: 20),
+              SizedBox(width: 10),
+              Text('مكافآت نهاية خدمة مقترَحة',
+                  style: TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.gold)),
+            ]),
+            ...items.map((s) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(
+                        '${s.employeeName} — ${s.yearsServed.toStringAsFixed(2)} سنة خدمة '
+                        '⇐ ${money.format(s.amount)} ${s.currency == 'USD' ? '\$' : 'د.ع'}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    TextButton(onPressed: () => onApply(s), child: const Text('تطبيق')),
+                  ]),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _WarnBanner extends StatelessWidget {
   final String message;
   const _WarnBanner({required this.message});
@@ -614,7 +704,7 @@ class _EntriesTable extends StatelessWidget {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: SizedBox(
-            width: 1360,
+            width: 1476,
             child: Column(
               children: [
                 Container(
@@ -634,6 +724,7 @@ class _EntriesTable extends StatelessWidget {
                       SizedBox(width: 82, child: _H('غياب')),
                       SizedBox(width: 116, child: _H('خصم الغياب')),
                       SizedBox(width: 116, child: _H('مكافأة')),
+                      SizedBox(width: 116, child: _H('نهاية الخدمة')),
                       SizedBox(width: 116, child: _H('خصم')),
                       SizedBox(width: 122, child: _H('الصافي')),
                       SizedBox(width: 130, child: _H('بالدينار')),
@@ -754,6 +845,20 @@ class _EntryRow extends StatelessWidget {
                           entry.absenceDeductionIsManual ? FontWeight.w900 : FontWeight.normal,
                       color: entry.absenceDeduction > 0 ? AppColors.danger : null))),
           SizedBox(width: 116, child: _Cell(controller: edit?.bonus, editable: editable)),
+          SizedBox(
+            width: 116,
+            // تُعرض للمنتهية خدمته وحده — الخادم يرفضها لغيره على أي حال.
+            child: entry.isTerminated
+                ? Text(
+                    entry.endOfServiceAmount == null
+                        ? '—'
+                        : money.format(entry.endOfServiceAmount),
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: entry.endOfServiceAmount != null ? AppColors.gold : null))
+                : const Text('—', style: TextStyle(fontSize: 12.5)),
+          ),
           SizedBox(width: 116, child: _Cell(controller: edit?.deduction, editable: editable)),
           SizedBox(
               width: 122,

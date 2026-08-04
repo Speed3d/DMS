@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dms_app/core/archive_providers.dart';
+import 'package:dms_app/core/hr_providers.dart';
 import 'package:dms_app/core/incoming_providers.dart';
 import 'package:dms_app/core/outgoing_providers.dart';
 import 'package:dms_app/core/session.dart';
@@ -44,6 +45,9 @@ void main() {
           outgoingListProvider.overrideWith((ref) async => <OutgoingListItem>[]),
           incomingListProvider.overrideWith((ref) async => <IncomingListItem>[]),
           archiveLensProvider.overrideWith((ref) async => <ArchiveLensItem>[]),
+          // بلا هذا التجاوز يحاول المزوّد بلوغ الشبكة في الاختبار (لا خادم) —
+          // فيُخفق صامتاً ويُظهر «…» بدل الأرقام، وهو ما يُخفي عطباً حقيقياً لو وقع.
+          hrSummaryProvider.overrideWith((ref) async => HrSummary(7, 5000000, 60000000, 2, 3)),
         ],
         child: const MaterialApp(
           home: Directionality(textDirection: TextDirection.rtl, child: DashboardScreen()),
@@ -152,6 +156,33 @@ void main() {
 
     expect(find.text('إجمالي الصادر'), findsOneWidget);
     expect(find.text('إجمالي الوارد'), findsNothing);
+  });
+
+  // ─────────────────── بطاقات الموظفين والرواتب (ADR-023) ───────────────────
+
+  testWidgets('مدير بقسم HR: تظهر بطاقات الموظفين والرواتب', (tester) async {
+    await pumpDashboard(tester, sessionWith(['Outgoing', 'HR'], role: 'Manager'));
+
+    expect(find.text('الموظفون الفعّالون'), findsOneWidget);
+    expect(find.text('رواتب هذا الشهر'), findsOneWidget);
+    // التنبيهان يظهران لأن الملخّص المُجاوَز فيه شهران غير مُسدَّدين وثلاث إجازات معلّقة.
+    expect(find.text('أشهر غير مُسدَّدة'), findsOneWidget);
+    expect(find.text('إجازات بانتظار الموافقة'), findsOneWidget);
+  });
+
+  testWidgets('موظف بقسم HR: **لا** بطاقات رواتب — الدور يحجبها', (tester) async {
+    // 🔐 الحارس الأهمّ في اللوحة: قسمٌ مُنح خطأً لا يكفي لكشف الرواتب،
+    //    لأن الباك-إند يردّ 403 وبطاقةٌ تقود إلى 403 أسوأ من بطاقة غائبة.
+    await pumpDashboard(tester, sessionWith(['Outgoing', 'HR'], role: 'Employee'));
+
+    expect(find.text('إجمالي الصادر'), findsOneWidget);
+    expect(find.text('الموظفون الفعّالون'), findsNothing);
+    expect(find.text('رواتب هذا الشهر'), findsNothing);
+  });
+
+  testWidgets('مدير بلا قسم HR: لا بطاقات رواتب', (tester) async {
+    await pumpDashboard(tester, sessionWith(['Outgoing'], role: 'Manager'));
+    expect(find.text('الموظفون الفعّالون'), findsNothing);
   });
 }
 

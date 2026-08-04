@@ -118,6 +118,12 @@ public class PayrollEntry
     /// <summary>لقطةُ اسم تلك الشركة — فتغيير اسمها لاحقاً لا يغيّر سجلّاً مُسدَّداً.</summary>
     public string? PaidByCompanyName { get; set; }
 
+    /// <summary>
+    /// مكافأة نهاية الخدمة — تُضاف في شهر الإنهاء وحده، **بقرار المستخدم لا تلقائياً**.
+    /// </summary>
+    /// <remarks>بعملة الموظف كسائر المبالغ، وتدخل في الصافي كمكافأة إضافية.</remarks>
+    public decimal? EndOfServiceAmount { get; set; }
+
     // ── حالات تُلوَّن في الكشف ──
     public bool IsNewHire { get; set; }
     public bool IsTerminated { get; set; }
@@ -144,6 +150,16 @@ public class HrSettings
     public WorkingDaysMode DefaultWorkingDaysMode { get; set; }
 
     public int DefaultWorkingDays { get; set; } = PayrollCalculator.DefaultWorkingDays;
+
+    // ── مكافأة نهاية الخدمة (الدفعة ٢) ──
+
+    /// <summary>مطفأة افتراضياً — الشركة تُفعّلها بقرار.</summary>
+    public bool EndOfServiceEnabled { get; set; }
+
+    public EndOfServiceRatio EndOfServiceRatio { get; set; }
+
+    /// <summary>أيام مستحقّة عن كل سنة خدمة حين تكون النسبة <c>CustomDays</c>.</summary>
+    public int? EndOfServiceCustomDays { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

@@ -1,6 +1,7 @@
 using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
+using Dms.Infrastructure.Hr;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,8 @@ namespace Dms.Api.Controllers;
 [Authorize]
 [RequireHrModule]
 [Route("api/hr")]
-public sealed class HrController(AppDbContext db, ICurrentUser current, IAuditService audit) : ControllerBase
+public sealed class HrController(
+    AppDbContext db, ICurrentUser current, IAuditService audit, ILeaveService leaves) : ControllerBase
 {
     [HttpGet("settings")]
     public async Task<ActionResult<HrSettingsResponse>> Settings(CancellationToken ct)
@@ -22,7 +24,10 @@ public sealed class HrController(AppDbContext db, ICurrentUser current, IAuditSe
         var s = await db.HrSettings.FirstOrDefaultAsync(ct);
         return new HrSettingsResponse(
             s?.DefaultWorkingDaysMode ?? WorkingDaysMode.Fixed,
-            s?.DefaultWorkingDays ?? PayrollCalculator.DefaultWorkingDays);
+            s?.DefaultWorkingDays ?? PayrollCalculator.DefaultWorkingDays,
+            s?.EndOfServiceEnabled ?? false,
+            s?.EndOfServiceRatio ?? EndOfServiceRatio.MonthPerYear,
+            s?.EndOfServiceCustomDays);
     }
 
     [HttpPut("settings")]
@@ -41,12 +46,22 @@ public sealed class HrController(AppDbContext db, ICurrentUser current, IAuditSe
         }
         else s.UpdatedAt = DateTime.UtcNow;
 
+        if (req.EndOfServiceEnabled && req.EndOfServiceRatio == EndOfServiceRatio.CustomDays
+            && req.EndOfServiceCustomDays is null or <= 0)
+            throw new ValidationException("حدّد عدد الأيام المستحقّة عن كل سنة خدمة.");
+
         s.DefaultWorkingDaysMode = req.DefaultWorkingDaysMode;
         s.DefaultWorkingDays = req.DefaultWorkingDays;
+        s.EndOfServiceEnabled = req.EndOfServiceEnabled;
+        s.EndOfServiceRatio = req.EndOfServiceRatio;
+        s.EndOfServiceCustomDays =
+            req.EndOfServiceRatio == EndOfServiceRatio.CustomDays ? req.EndOfServiceCustomDays : null;
 
         audit.Add("Update", nameof(HrSettings), companyId.ToString(), null, companyId);
         await db.SaveChangesAsync(ct);
-        return new HrSettingsResponse(s.DefaultWorkingDaysMode, s.DefaultWorkingDays);
+        return new HrSettingsResponse(
+            s.DefaultWorkingDaysMode, s.DefaultWorkingDays,
+            s.EndOfServiceEnabled, s.EndOfServiceRatio, s.EndOfServiceCustomDays);
     }
 
     /// <summary>ملخّص للوحة التحكم — كل الأرقام مفلترة على الشركة الفعّالة تلقائياً.</summary>
@@ -69,7 +84,10 @@ public sealed class HrController(AppDbContext db, ICurrentUser current, IAuditSe
         var unpaidMonths = await db.PayrollPeriods
             .CountAsync(p => p.Status == PayrollStatus.Draft, ct);
 
-        return new HrSummaryResponse(activeEmployees, thisMonth, thisYear, unpaidMonths);
+        var pendingLeaves = await leaves.PendingCountAsync(ct);
+
+        return new HrSummaryResponse(
+            activeEmployees, thisMonth, thisYear, unpaidMonths, pendingLeaves);
     }
 
     private void RequireWrite()

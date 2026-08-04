@@ -108,7 +108,7 @@ public sealed record PayrollEntryResponse(
     int EntryId, int EmployeeCompanyId, int EmployeeId, int DisplayOrder,
     string Name, string Position, Currency Currency, decimal BaseSalary,
     int EligibleDays, int AbsenceDays, decimal? BonusAmount, decimal? DeductionAmount,
-    decimal AbsenceDeduction, bool AbsenceDeductionIsManual,
+    decimal AbsenceDeduction, bool AbsenceDeductionIsManual, decimal? EndOfServiceAmount,
     decimal NetSalary, decimal NetSalaryIqd,
     PayrollPaymentStatus PaymentStatus, int? PaidByCompanyId, string? PaidByCompanyName,
     bool IsNewHire, bool IsTerminated, string? Notes);
@@ -122,7 +122,8 @@ public sealed record PayrollPeriodResponse(
 /// <summary>مدخلات سطر واحد. **بلا صافٍ عمداً** — الخادم يحسبه ولا يقبله من العميل.</summary>
 public sealed record SaveEntryRequest(
     int EntryId, int AbsenceDays, decimal? BonusAmount, decimal? DeductionAmount,
-    decimal? ManualAbsenceDeduction, int? EligibleDaysOverride, string? Notes);
+    decimal? ManualAbsenceDeduction, int? EligibleDaysOverride, string? Notes,
+    decimal? EndOfServiceAmount = null);
 
 public sealed record SaveEntriesRequest(byte[] RowVersion, List<SaveEntryRequest> Entries);
 
@@ -138,11 +139,39 @@ public sealed record GenerateResponse(int Added, int Existing, int Skipped);
 public sealed record ExternalPaymentResponse(
     int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName);
 
-public sealed record HrSettingsRequest(WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays);
-public sealed record HrSettingsResponse(WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays);
+public sealed record HrSettingsRequest(
+    WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays,
+    bool EndOfServiceEnabled = false,
+    EndOfServiceRatio EndOfServiceRatio = EndOfServiceRatio.MonthPerYear,
+    int? EndOfServiceCustomDays = null);
+
+public sealed record HrSettingsResponse(
+    WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays,
+    bool EndOfServiceEnabled, EndOfServiceRatio EndOfServiceRatio, int? EndOfServiceCustomDays);
 
 public sealed record HrSummaryResponse(
-    int ActiveEmployees, decimal ThisMonthTotalIqd, decimal ThisYearTotalIqd, int UnpaidMonths);
+    int ActiveEmployees, decimal ThisMonthTotalIqd, decimal ThisYearTotalIqd,
+    int UnpaidMonths, int PendingLeaves);
+
+// ── الإجازات وسجلّ التغييرات (الدفعة ٢) ──
+public sealed record LeaveRequest(
+    LeaveType LeaveType, DateTime FromDate, DateTime ToDate,
+    bool RequiresApproval, bool DeductFromSalary, string? Notes);
+
+public sealed record ReviewLeaveRequest(bool Approve, string? Notes);
+
+public sealed record LeaveResponse(
+    int LeaveId, LeaveType LeaveType, string LeaveTypeLabel, DateTime FromDate, DateTime ToDate,
+    int DurationDays, bool RequiresApproval, LeaveStatus Status, bool DeductFromSalary,
+    string? Notes, DateTime CreatedAt, DateTime? ReviewedAt, string? ReviewNotes);
+
+public sealed record EmployeeLogResponse(
+    int LogId, EmployeeChangeType ChangeType, string Description,
+    string? OldValue, string? NewValue, DateTime ChangedAt);
+
+public sealed record EndOfServiceResponse(
+    int EntryId, string EmployeeName, decimal Amount, string Currency,
+    decimal YearsServed, int DaysPerYear);
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);

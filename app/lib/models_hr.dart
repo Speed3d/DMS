@@ -223,6 +223,10 @@ class PayrollEntryModel {
   final double? deductionAmount;
   final double absenceDeduction;
   final bool absenceDeductionIsManual;
+
+  /// مكافأة نهاية الخدمة — تُضاف في شهر الإنهاء وحده وبقرار المستخدم.
+  final double? endOfServiceAmount;
+
   final double netSalary;
   final double netSalaryIqd;
   final String paymentStatus;
@@ -238,6 +242,7 @@ class PayrollEntryModel {
     required this.currency, required this.baseSalary, required this.eligibleDays,
     required this.absenceDays, this.bonusAmount, this.deductionAmount,
     required this.absenceDeduction, required this.absenceDeductionIsManual,
+    this.endOfServiceAmount,
     required this.netSalary, required this.netSalaryIqd,
     required this.paymentStatus, this.paidByCompanyId, this.paidByCompanyName,
     required this.isNewHire, required this.isTerminated, this.notes,
@@ -262,6 +267,7 @@ class PayrollEntryModel {
         deductionAmount: (j['deductionAmount'] as num?)?.toDouble(),
         absenceDeduction: (j['absenceDeduction'] as num?)?.toDouble() ?? 0,
         absenceDeductionIsManual: j['absenceDeductionIsManual'] ?? false,
+        endOfServiceAmount: (j['endOfServiceAmount'] as num?)?.toDouble(),
         netSalary: (j['netSalary'] as num?)?.toDouble() ?? 0,
         netSalaryIqd: (j['netSalaryIqd'] as num?)?.toDouble() ?? 0,
         paymentStatus: j['paymentStatus'] ?? 'Unpaid',
@@ -341,9 +347,25 @@ class ExternalPaymentHint {
 class HrSettingsModel {
   final String defaultWorkingDaysMode;
   final int defaultWorkingDays;
-  HrSettingsModel(this.defaultWorkingDaysMode, this.defaultWorkingDays);
-  factory HrSettingsModel.fromJson(Map<String, dynamic> j) =>
-      HrSettingsModel(j['defaultWorkingDaysMode'] ?? 'Fixed', j['defaultWorkingDays'] ?? 30);
+  final bool endOfServiceEnabled;
+  final String endOfServiceRatio;
+  final int? endOfServiceCustomDays;
+
+  HrSettingsModel(
+    this.defaultWorkingDaysMode,
+    this.defaultWorkingDays, {
+    this.endOfServiceEnabled = false,
+    this.endOfServiceRatio = 'MonthPerYear',
+    this.endOfServiceCustomDays,
+  });
+
+  factory HrSettingsModel.fromJson(Map<String, dynamic> j) => HrSettingsModel(
+        j['defaultWorkingDaysMode'] ?? 'Fixed',
+        j['defaultWorkingDays'] ?? 30,
+        endOfServiceEnabled: j['endOfServiceEnabled'] ?? false,
+        endOfServiceRatio: j['endOfServiceRatio'] ?? 'MonthPerYear',
+        endOfServiceCustomDays: j['endOfServiceCustomDays'],
+      );
 }
 
 class HrSummary {
@@ -351,10 +373,113 @@ class HrSummary {
   final double thisMonthTotalIqd;
   final double thisYearTotalIqd;
   final int unpaidMonths;
-  HrSummary(this.activeEmployees, this.thisMonthTotalIqd, this.thisYearTotalIqd, this.unpaidMonths);
+  final int pendingLeaves;
+  HrSummary(this.activeEmployees, this.thisMonthTotalIqd, this.thisYearTotalIqd,
+      this.unpaidMonths, this.pendingLeaves);
   factory HrSummary.fromJson(Map<String, dynamic> j) => HrSummary(
       j['activeEmployees'] ?? 0,
       (j['thisMonthTotalIqd'] as num?)?.toDouble() ?? 0,
       (j['thisYearTotalIqd'] as num?)?.toDouble() ?? 0,
-      j['unpaidMonths'] ?? 0);
+      j['unpaidMonths'] ?? 0,
+      j['pendingLeaves'] ?? 0);
+}
+
+// ═══════════ الإجازات وسجلّ التغييرات ونهاية الخدمة (الدفعة ٢) ═══════════
+
+/// أنواع الإجازات — مرآةٌ لـ`LeaveType` في الباك-إند.
+const Map<String, String> kLeaveTypes = {
+  'Annual': 'اعتيادية',
+  'Sick': 'مرضية',
+  'Administrative': 'إدارية',
+  'Unpaid': 'بلا راتب',
+  'Other': 'أخرى',
+};
+
+class LeaveModel {
+  final int leaveId;
+  final String leaveType;
+  final String leaveTypeLabel;
+  final DateTime fromDate;
+  final DateTime toDate;
+  final int durationDays;
+  final bool requiresApproval;
+  final String status;
+  final bool deductFromSalary;
+  final String? notes;
+  final DateTime createdAt;
+  final DateTime? reviewedAt;
+  final String? reviewNotes;
+
+  LeaveModel({
+    required this.leaveId, required this.leaveType, required this.leaveTypeLabel,
+    required this.fromDate, required this.toDate, required this.durationDays,
+    required this.requiresApproval, required this.status, required this.deductFromSalary,
+    this.notes, required this.createdAt, this.reviewedAt, this.reviewNotes,
+  });
+
+  bool get isPending => status == 'Pending';
+  bool get isApproved => status == 'Approved';
+  bool get isRejected => status == 'Rejected';
+
+  factory LeaveModel.fromJson(Map<String, dynamic> j) => LeaveModel(
+        leaveId: j['leaveId'],
+        leaveType: j['leaveType'] ?? 'Other',
+        leaveTypeLabel: j['leaveTypeLabel'] ?? '',
+        fromDate: DateTime.tryParse(j['fromDate'] ?? '') ?? DateTime.now(),
+        toDate: DateTime.tryParse(j['toDate'] ?? '') ?? DateTime.now(),
+        durationDays: j['durationDays'] ?? 0,
+        requiresApproval: j['requiresApproval'] ?? false,
+        status: j['status'] ?? 'Approved',
+        deductFromSalary: j['deductFromSalary'] ?? false,
+        notes: j['notes'],
+        createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
+        reviewedAt: DateTime.tryParse(j['reviewedAt'] ?? ''),
+        reviewNotes: j['reviewNotes'],
+      );
+}
+
+/// سطر في سجلّ تغييرات الموظف — الوصف نصٌّ عربي جاهز من الخادم.
+class EmployeeLogItem {
+  final int logId;
+  final String changeType;
+  final String description;
+  final String? oldValue;
+  final String? newValue;
+  final DateTime changedAt;
+
+  EmployeeLogItem({
+    required this.logId, required this.changeType, required this.description,
+    this.oldValue, this.newValue, required this.changedAt,
+  });
+
+  factory EmployeeLogItem.fromJson(Map<String, dynamic> j) => EmployeeLogItem(
+        logId: j['logId'],
+        changeType: j['changeType'] ?? 'Other',
+        description: j['description'] ?? '',
+        oldValue: j['oldValue'],
+        newValue: j['newValue'],
+        changedAt: DateTime.tryParse(j['changedAt'] ?? '') ?? DateTime.now(),
+      );
+}
+
+/// مكافأة نهاية خدمة **مقترَحة** — لا تُطبَّق حتى يحفظها المستخدم.
+class EndOfServiceSuggestion {
+  final int entryId;
+  final String employeeName;
+  final double amount;
+  final String currency;
+  final double yearsServed;
+  final int daysPerYear;
+
+  EndOfServiceSuggestion(this.entryId, this.employeeName, this.amount, this.currency,
+      this.yearsServed, this.daysPerYear);
+
+  factory EndOfServiceSuggestion.fromJson(Map<String, dynamic> j) => EndOfServiceSuggestion(
+        j['entryId'],
+        j['employeeName'] ?? '',
+        (j['amount'] as num?)?.toDouble() ?? 0,
+        j['currency'] ?? 'IQD',
+        (j['yearsServed'] as num?)?.toDouble() ?? 0,
+        j['daysPerYear'] ?? 0,
+      );
 }

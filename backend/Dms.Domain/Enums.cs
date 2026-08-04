@@ -91,6 +91,44 @@ public enum WorkingDaysMode
     Calendar = 1,
 }
 
+/// <summary>نوع الإجازة.</summary>
+public enum LeaveType
+{
+    Annual         = 0,   // اعتيادية
+    Sick           = 1,   // مرضية
+    Administrative = 2,   // إدارية
+    Unpaid         = 3,   // بلا راتب
+    Other          = 4,   // أخرى
+}
+
+/// <summary>حالة طلب الإجازة.</summary>
+public enum LeaveStatus
+{
+    Pending  = 0,   // بانتظار الموافقة
+    Approved = 1,   // موافَق عليها
+    Rejected = 2,   // مرفوضة
+}
+
+/// <summary>نوع التغيير في سجلّ الموظف.</summary>
+public enum EmployeeChangeType
+{
+    SalaryChange        = 0,   // تغيير الراتب
+    PositionChange      = 1,   // تغيير الصفة
+    HireStatusChange    = 2,   // تفعيل/إيقاف
+    TerminationRecorded = 3,   // إنهاء خدمة
+    LeaveRecorded       = 4,   // إجازة
+    Created             = 5,   // إنشاء الملفّ
+    Other               = 6,
+}
+
+/// <summary>نسبة مكافأة نهاية الخدمة عن كل سنة خدمة.</summary>
+public enum EndOfServiceRatio
+{
+    MonthPerYear     = 0,   // راتب شهر عن كل سنة
+    HalfMonthPerYear = 1,   // نصف شهر عن كل سنة
+    CustomDays       = 2,   // عدد أيام يحدّده المالك
+}
+
 /// <summary>حالة كشف رواتب الشهر.</summary>
 public enum PayrollStatus
 {

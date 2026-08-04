@@ -155,10 +155,36 @@ public sealed class EmployeeService(
             .FirstOrDefaultAsync(x => x.EmployeeId == employeeId && x.CompanyId == companyId, ct);
 
         var isNew = link is null;
+
+        // لقطة ما قبل التعديل — منها يُكتب سجلّ التغييرات بنصٍّ يقرأه المحاسب لا بحقول خام.
+        var oldSalary = link?.BaseSalary;
+        var oldPosition = link?.Position;
+        var oldActive = link?.IsActive;
+
         link = BuildEmployment(link ?? new EmployeeCompany { EmployeeId = employeeId, CompanyId = companyId },
             employment, isNew);
 
-        if (isNew) db.EmployeeCompanies.Add(link);
+        if (isNew)
+        {
+            db.EmployeeCompanies.Add(link);
+            AddLog(link, EmployeeChangeType.Created,
+                $"إسناد للشركة بصفة «{link.Position}» وراتب {Money(link.BaseSalary)} {CurrencyName(link.SalaryCurrency)}");
+        }
+        else
+        {
+            if (oldSalary is { } os && os != link.BaseSalary)
+                AddLog(link, EmployeeChangeType.SalaryChange,
+                    $"تغيّر الراتب من {Money(os)} إلى {Money(link.BaseSalary)} {CurrencyName(link.SalaryCurrency)}",
+                    Money(os), Money(link.BaseSalary));
+
+            if (oldPosition is { } op && op != link.Position)
+                AddLog(link, EmployeeChangeType.PositionChange,
+                    $"تغيّرت الصفة من «{op}» إلى «{link.Position}»", op, link.Position);
+
+            if (oldActive is { } oa && oa != link.IsActive)
+                AddLog(link, EmployeeChangeType.HireStatusChange,
+                    link.IsActive ? "أُعيد إلى رأس العمل" : "أُوقف مؤقتاً");
+        }
 
         audit.Add(isNew ? "AssignEmployee" : "UpdateEmployment", nameof(EmployeeCompany),
             employeeId.ToString(), $"{link.Position} — {link.BaseSalary} {link.SalaryCurrency}", companyId);
@@ -183,6 +209,9 @@ public sealed class EmployeeService(
         link.TerminationNotes = Clean(input.Notes);
         link.IsActive = false;
         link.UpdatedAt = DateTime.UtcNow;
+
+        AddLog(link, EmployeeChangeType.TerminationRecorded,
+            $"إنهاء الخدمة بتاريخ {input.TerminationDate:yyyy-MM-dd} ({ArabicReason(input.Reason)})");
 
         audit.Add("Terminate", nameof(EmployeeCompany), employeeId.ToString(),
             $"إنهاء خدمة بتاريخ {input.TerminationDate:yyyy-MM-dd} ({input.Reason})", companyId);
@@ -345,4 +374,35 @@ public sealed class EmployeeService(
         current.ActiveCompanyId ?? throw new ValidationException("تعذّر تحديد الشركة الفعّالة.");
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>سطر في سجلّ الموظف — نصٌّ عربي جاهز للعرض لا حقولٌ تُركَّب عند القراءة.</summary>
+    private void AddLog(EmployeeCompany link, EmployeeChangeType type, string description,
+        string? oldValue = null, string? newValue = null)
+    {
+        db.EmployeeLogs.Add(new EmployeeLog
+        {
+            EmployeeCompany = link,          // الإسناد قد يكون جديداً بلا مفتاح بعد
+            EmployeeCompanyId = link.EmployeeCompanyId,
+            CompanyId = link.CompanyId,
+            ChangeType = type,
+            Description = description,
+            OldValue = oldValue,
+            NewValue = newValue,
+            ChangedByUserId = current.UserId ?? 0,
+            ChangedAt = DateTime.UtcNow,
+        });
+    }
+
+    private static string Money(decimal v) => v.ToString("#,0.##");
+
+    private static string CurrencyName(Currency c) => c == Currency.USD ? "دولار" : "دينار";
+
+    internal static string ArabicReason(TerminationReason r) => r switch
+    {
+        TerminationReason.Resignation => "استقالة",
+        TerminationReason.Termination => "فصل",
+        TerminationReason.Retirement => "تقاعد",
+        TerminationReason.Death => "وفاة",
+        _ => "أخرى",
+    };
 }

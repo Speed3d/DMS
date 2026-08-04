@@ -68,13 +68,55 @@ public static class PayrollCalculator
     /// </remarks>
     public static decimal NetSalary(
         decimal baseSalary, int eligibleDays, int workingDays,
-        decimal? bonus, decimal? deduction, decimal absenceDeduction)
+        decimal? bonus, decimal? deduction, decimal absenceDeduction,
+        decimal? endOfService = null)
     {
         if (workingDays <= 0)
             throw new ValidationException("أيام العمل في الشهر يجب أن تكون أكبر من صفر.");
 
         var earned = decimal.Round(baseSalary * eligibleDays / workingDays, 2);
-        return decimal.Round(earned + (bonus ?? 0m) - (deduction ?? 0m) - absenceDeduction, 2);
+        return decimal.Round(
+            earned + (bonus ?? 0m) + (endOfService ?? 0m) - (deduction ?? 0m) - absenceDeduction, 2);
+    }
+
+    // ─────────────────────── مكافأة نهاية الخدمة (الدفعة ٢) ───────────────────────
+
+    /// <summary>القاسم الثابت لحساب أجر اليوم في مكافأة نهاية الخدمة.</summary>
+    /// <remarks>
+    /// ⚠️ **ثلاثون دائماً، لا <c>WorkingDays</c>** — وهذا مقصود: المكافأة عرفٌ تعاقديّ يُحسب
+    /// على «راتب شهر» لا على طول شهر الإنهاء التقويمي. لو تبع أيام العمل لاختلفت مكافأة
+    /// موظفَين متطابقَين لأن أحدهما ترك العمل في شباط والآخر في آذار.
+    /// </remarks>
+    public const int EndOfServiceDivisor = 30;
+
+    /// <summary>الأيام المستحقّة عن كل سنة خدمة بحسب النسبة المختارة.</summary>
+    public static int DaysPerYear(EndOfServiceRatio ratio, int? customDays) => ratio switch
+    {
+        EndOfServiceRatio.MonthPerYear => 30,
+        EndOfServiceRatio.HalfMonthPerYear => 15,
+        EndOfServiceRatio.CustomDays => customDays is > 0 ? customDays.Value : 0,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// مكافأة نهاية الخدمة **المقترحة** = (الراتب ÷ 30) × أيام السنة × سنوات الخدمة.
+    /// </summary>
+    /// <remarks>
+    /// سنوات الخدمة كسريّة (365.25 يوماً للسنة لمراعاة الكبيسة)، فمن خدم سنةً ونصفاً يأخذ
+    /// مكافأة سنة ونصف لا سنة. والنتيجة **اقتراحٌ يعدّله المستخدم** — لا تُطبَّق تلقائياً.
+    /// </remarks>
+    public static decimal SuggestEndOfService(
+        decimal baseSalary, DateTime hireDate, DateTime terminationDate,
+        EndOfServiceRatio ratio, int? customDays)
+    {
+        var days = DaysPerYear(ratio, customDays);
+        if (days <= 0 || baseSalary <= 0) return 0m;
+
+        var served = (terminationDate.Date - hireDate.Date).TotalDays;
+        if (served <= 0) return 0m;
+
+        var years = (decimal)(served / 365.25);
+        return decimal.Round(baseSalary / EndOfServiceDivisor * days * years, 2);
     }
 
     /// <summary>
@@ -86,13 +128,13 @@ public static class PayrollCalculator
         decimal baseSalary, Currency currency, decimal? exchangeRate,
         DateTime hireDate, DateTime? terminationDate,
         int absenceDays, decimal? bonus, decimal? deduction,
-        decimal? manualAbsenceDeduction)
+        decimal? manualAbsenceDeduction, decimal? endOfService = null)
     {
         var eligible = EligibleDays(year, month, workingDays, hireDate, terminationDate);
         var absence = manualAbsenceDeduction
                       ?? SuggestAbsenceDeduction(baseSalary, absenceDays, workingDays);
 
-        var net = NetSalary(baseSalary, eligible, workingDays, bonus, deduction, absence);
+        var net = NetSalary(baseSalary, eligible, workingDays, bonus, deduction, absence, endOfService);
         return new PayrollAmounts(eligible, absence, net, ToIqd(net, currency, exchangeRate));
     }
 
