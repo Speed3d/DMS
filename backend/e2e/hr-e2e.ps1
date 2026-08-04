@@ -45,6 +45,18 @@ $e1=GetOrMakeEmployee '19900101' 'سنان الجبوري' 'Sinan' 'مهندس' 
 $e2=GetOrMakeEmployee '19950505' 'جون سميث' 'John Smith' 'سائق' 'USD' 700 2 "$Year-$($Month.ToString('00'))-16T00:00:00" 'English'
 if($e1 -and $e2){ Ok "موظفان: دينار=$e1 · دولار(عُيِّن منتصف الشهر)=$e2" } else { Bad "تعذّر إنشاء الموظفين"; exit 1 }
 
+Write-Host "`n=== عقد «لا يوجد كشف بعد» ===" -ForegroundColor Cyan
+# ⚠️ `Ok(null)` يُنتج **204 بجسمٍ فارغ** لا 200 بـ`null`، فيسلّمه Dio نصّاً فارغاً `''`.
+#    بلاغ المالك 2026-08-04: سقطت شاشة الكشف بـTypeError **قبل ظهور زرّ التوليد**، فبدا
+#    أول شهر يُفتح في نظامٍ جديد معطوباً. الحارس في العميل: `jsonObjectOrNull`.
+$hRaw=@{Authorization="Bearer $admin";"X-Company-Id"="$cid"}
+$empty=Invoke-WebRequest -Uri "$Base/payroll/periods/$Year/$Month" -Headers $hRaw -UseBasicParsing
+if($empty.StatusCode -eq 204){ Ok "الشهر غير المنشأ يردّ 204 بجسم فارغ (عقدٌ يجب أن يحتمله العميل)" }
+else { Bad "ردّ $($empty.StatusCode) بدل 204" }
+$lookupNone=Invoke-WebRequest -Uri "$Base/employees/lookup?nationalId=00000000" -Headers $hRaw -UseBasicParsing
+if($lookupNone.StatusCode -eq 204){ Ok "البحث بهوية غير موجودة يردّ 204 كذلك" }
+else { Bad "البحث ردّ $($lookupNone.StatusCode) بدل 204" }
+
 Write-Host "`n=== التوليد والتناسب الجزئي ===" -ForegroundColor Cyan
 $g=(Api POST "/payroll/periods/$Year/$Month" $null $admin $cid).B
 if($g.added -ge 2){ Ok "تولّد الكشف: أُضيف $($g.added)" } else { Bad "التوليد أضاف $($g.added) بدل 2+" }

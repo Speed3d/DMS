@@ -99,6 +99,45 @@ void main() {
     });
   });
 
+  group('«لا شيء» من الخادم لا يُسقط الشاشة', () {
+    // ⚠️ عيبٌ حقيقي أبلغ عنه المالك (2026-08-04): `Ok(null)` في ASP.NET Core يُنتج
+    //    **204 بجسمٍ فارغ**، فيسلّم Dio نصّاً فارغاً `''` لا `null`. وفحصُ `data == null`
+    //    كان يمرّ فوقه ثم ينهار التحويل، فتسقط شاشة كشف الرواتب **قبل أن يظهر زرّ
+    //    «توليد كشف الشهر»** — أي أن أول شهر يفتحه المستخدم في نظام جديد يبدو معطوباً.
+
+    test('نصّ فارغ (204) يعني «لا شيء» لا انهياراً', () {
+      expect(jsonObjectOrNull(''), isNull);
+    });
+
+    test('null يعني «لا شيء» كذلك', () {
+      expect(jsonObjectOrNull(null), isNull);
+    });
+
+    test('أيّ جسمٍ ليس كائناً يُعامَل «لا شيء» بدل أن يُرمى', () {
+      expect(jsonObjectOrNull('نصّ'), isNull);
+      expect(jsonObjectOrNull(<dynamic>[]), isNull);
+      expect(jsonObjectOrNull(42), isNull);
+    });
+
+    test('الكائن الحقيقي يمرّ كما هو', () {
+      final map = <String, dynamic>{'periodId': 1, 'year': 2026, 'month': 1};
+      expect(jsonObjectOrNull(map), same(map));
+    });
+
+    test('كشفٌ حقيقي يُحوَّل بلا خسارة بعد المرور بالحارس', () {
+      final json = jsonObjectOrNull(<String, dynamic>{
+        'periodId': 3, 'year': 2026, 'month': 1, 'monthName': 'كانون الثاني',
+        'status': 'Draft', 'workingDaysMode': 'Fixed', 'workingDays': 30,
+        'rowVersion': [1, 2, 3], 'totalIqd': 1200000, 'entries': <dynamic>[],
+      });
+      final p = PayrollPeriodModel.fromJson(json!);
+      expect(p.year, 2026);
+      expect(p.month, 1);
+      expect(p.isPaid, isFalse);
+      expect(p.rowVersion, [1, 2, 3]);
+    });
+  });
+
   group('قائمة الأقسام مرآةٌ للباك-إند', () {
     test('HR مدرَجة في kAllModules — وإلا لم يظهر مربّعها ولم تُحفظ الصلاحية أبداً', () {
       // نمط «ميزة بلا مدخل» الذي كلّف المشروع ثلاث فجوات (G7 · G8 · G10).

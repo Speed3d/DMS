@@ -657,7 +657,7 @@ class ApiClient {
 
   /// البحث عن موظف قائم قبل إنشاء ملفّ ثانٍ له — يعيد `null` إن لم يوجد.
   Future<ExistingEmployeeHint?> lookupEmployee(String nationalId) async {
-    final data = await _get('/employees/lookup', query: {'nationalId': nationalId});
+    final data = jsonObjectOrNull(await _get('/employees/lookup', query: {'nationalId': nationalId}));
     return data == null ? null : ExistingEmployeeHint.fromJson(data);
   }
 
@@ -697,7 +697,7 @@ class ApiClient {
 
   /// الكشف، أو `null` إن لم يُنشأ بعد.
   Future<PayrollPeriodModel?> payrollPeriod(int year, int month) async {
-    final data = await _get('/payroll/periods/$year/$month');
+    final data = jsonObjectOrNull(await _get('/payroll/periods/$year/$month'));
     return data == null ? null : PayrollPeriodModel.fromJson(data);
   }
 
