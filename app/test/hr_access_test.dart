@@ -128,13 +128,14 @@ void main() {
       final json = jsonObjectOrNull(<String, dynamic>{
         'periodId': 3, 'year': 2026, 'month': 1, 'monthName': 'كانون الثاني',
         'status': 'Draft', 'workingDaysMode': 'Fixed', 'workingDays': 30,
-        'rowVersion': [1, 2, 3], 'totalIqd': 1200000, 'entries': <dynamic>[],
+        // base64 كما يرسله الخادم فعلاً — `byte[]` لا يصل مصفوفةَ أرقام.
+        'rowVersion': 'AAAAAAAApBE=', 'totalIqd': 1200000, 'entries': <dynamic>[],
       });
       final p = PayrollPeriodModel.fromJson(json!);
       expect(p.year, 2026);
       expect(p.month, 1);
       expect(p.isPaid, isFalse);
-      expect(p.rowVersion, [1, 2, 3]);
+      expect(p.rowVersion, 'AAAAAAAApBE=');
     });
   });
 

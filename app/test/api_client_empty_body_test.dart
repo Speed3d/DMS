@@ -1,9 +1,38 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dms_app/core/api_client.dart';
+
+/// ⚠️ **استجابة حقيقية مُلتقَطة من الخادم حرفياً** (`GET /api/payroll/periods/2026/9`)،
+/// لا نصّاً كتبتُه من فهمي للعقد.
+///
+/// سببُ الإصرار على ذلك: أول نسخة من هذا الاختبار كانت تصنع الجسم يدوياً بـ
+/// `'rowVersion': [9, 9]` — فصادقت **افتراضي** لا **الخادم**، ومرّت خضراء بينما
+/// التطبيق ينهار عند المالك بـ
+/// `type 'String' is not a subtype of type 'Iterable<dynamic>'`،
+/// لأن `byte[]` في ASP.NET Core يُسلسَل **نصّاً بـbase64** لا مصفوفةَ أرقام.
+/// **العيّنة تأتي من الخادم أو لا تأتي.**
+const String kRealPeriodJson = '''
+{"periodId":9,"year":2026,"month":9,"monthName":"أيلول","status":"Draft",
+"exchangeRate":null,"workingDaysMode":"Fixed","workingDays":30,"paidAt":null,
+"outgoingBookId":null,"manualBookNumber":null,"notes":null,
+"rowVersion":"AAAAAAAApBE=","totalIqd":1200000.00,
+"entries":[{"entryId":17,"employeeCompanyId":1,"employeeId":1,"displayOrder":1,
+"name":"سنان الجبوري","position":"مهندس","currency":"IQD","baseSalary":1200000.00,
+"eligibleDays":30,"absenceDays":0,"bonusAmount":null,"deductionAmount":null,
+"absenceDeduction":0.00,"absenceDeductionIsManual":false,"endOfServiceAmount":null,
+"netSalary":1200000.00,"netSalaryIqd":1200000.00,"paymentStatus":"Unpaid",
+"paidByCompanyId":null,"paidByCompanyName":null,"isNewHire":false,
+"isTerminated":false,"notes":null},
+{"entryId":18,"employeeCompanyId":2,"employeeId":2,"displayOrder":2,
+"name":"جون سميث","position":"سائق","currency":"USD","baseSalary":700.00,
+"eligibleDays":30,"absenceDays":0,"bonusAmount":null,"deductionAmount":null,
+"absenceDeduction":0.00,"absenceDeductionIsManual":false,"endOfServiceAmount":null,
+"netSalary":700.00,"netSalaryIqd":0.00,"paymentStatus":"Unpaid",
+"paidByCompanyId":null,"paidByCompanyName":null,"isNewHire":false,
+"isTerminated":false,"notes":null}]}
+''';
 
 /// اختبار تكامل حقيقي لـ[ApiClient] أمام خادم يردّ **204 No Content** — وهو ما يفعله
 /// ASP.NET Core عند `Ok(null)`.
@@ -31,16 +60,11 @@ void main() {
         return;
       }
 
-      // الشهر 2 منشأ ⇒ كشف حقيقي.
+      // الشهر 2 منشأ ⇒ **الاستجابة الحقيقية المُلتقَطة من الخادم حرفياً** (لا مصنوعة يدوياً).
       req.response
         ..statusCode = HttpStatus.ok
         ..headers.contentType = ContentType.json
-        ..write(jsonEncode({
-          'periodId': 7, 'year': 2026, 'month': 2, 'monthName': 'شباط',
-          'status': 'Draft', 'exchangeRate': 1310, 'workingDaysMode': 'Fixed',
-          'workingDays': 30, 'rowVersion': [9, 9], 'totalIqd': 1200000,
-          'entries': const <dynamic>[],
-        }));
+        ..write(kRealPeriodJson);
       await req.response.close();
     });
 
@@ -58,13 +82,24 @@ void main() {
     expect(period, isNull);
   });
 
-  test('شهر منشأ: يُحوَّل كاملاً', () async {
-    final period = await api.payrollPeriod(2026, 2);
-    expect(period, isNotNull);
-    expect(period!.year, 2026);
-    expect(period.month, 2);
-    expect(period.workingDays, 30);
-    expect(period.rowVersion, [9, 9]);
+  test('استجابة الخادم الحقيقية تُحوَّل كاملةً بلا خسارة', () async {
+    final p = await api.payrollPeriod(2026, 2);
+    expect(p, isNotNull);
+    expect(p!.year, 2026);
+    expect(p.month, 9);
+    expect(p.workingDays, 30);
+    expect(p.entries.length, 2);
+    expect(p.totalIqd, 1200000);
+
+    // 🔴 الحقل الذي أسقط الشاشة: `byte[]` يصل **نصّاً بـbase64** لا مصفوفةَ أرقام.
+    expect(p.rowVersion, 'AAAAAAAApBE=');
+    expect(p.rowVersion, isA<String>());
+
+    // وسطرٌ بالدولار بلا سعر صرف: الصافي بعملته صحيح والمعادل صفرٌ مؤقّت.
+    final usd = p.entries.firstWhere((e) => e.isUsd);
+    expect(usd.netSalary, 700);
+    expect(usd.netSalaryIqd, 0);
+    expect(p.needsExchangeRate, isTrue);
   });
 
   test('بحث بهوية غير موجودة (204): يعود null ولا يرمي', () async {

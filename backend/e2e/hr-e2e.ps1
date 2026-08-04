@@ -116,6 +116,13 @@ if($g2.added -eq 0 -and $g2.existing -ge 2){ Ok "إعادة التوليد: أُ
 if([math]::Abs($still.bonusAmount - 100000) -lt 0.01){ Ok "المكافأة اليدوية **باقية** بعد إعادة التوليد ✔ لا يمحو عمل ساعة بضغطة" } else { Bad "المكافأة صارت $($still.bonusAmount) — التوليد محا المدخلات" }
 
 Write-Host "`n=== الإجازات وسجلّ التغييرات (الدفعة ٢) ===" -ForegroundColor Cyan
+# ⚠️ **تنظيف إجازات الموظف أولاً.** حارس التداخل (409) يجعل السكربت رهينةَ ما تركه غيره:
+#    إجازةٌ سابقة على الأيام نفسها تُفشل ثلاثة تحقّقات **بلا عيبٍ في المنتج** (وقع فعلاً حين
+#    أُنشئت إجازة يدوياً لالتقاط عيّنات الاختبار). السكربت يملك بياناته أو لا يُوثَق به.
+foreach($old in @(Api GET "/employees/$e1/leaves" $null $admin $cid).B){
+  $null=Api DELETE "/employees/leaves/$($old.leaveId)" $null $admin $cid
+}
+
 # إجازة بلا موافقة ⇒ تُسجَّل مقبولةً مباشرةً (حالة معلّقة بلا مراجعٍ تبقى معلّقة للأبد).
 $lv1=(Api POST "/employees/$e1/leaves" @{leaveType='Annual';fromDate="$Year-$($Month.ToString('00'))-05T00:00:00";toDate="$Year-$($Month.ToString('00'))-07T00:00:00";requiresApproval=$false;deductFromSalary=$false;notes='اختبار'} $admin $cid).B
 if($lv1.durationDays -eq 3){ Ok "الإجازة 3 أيام (الطرفان محسوبان)" } else { Bad "المدّة $($lv1.durationDays) بدل 3" }

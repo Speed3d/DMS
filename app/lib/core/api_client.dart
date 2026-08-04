@@ -707,7 +707,7 @@ class ApiClient {
 
   Future<PayrollPeriodModel> updatePayrollSettings(
     int year, int month, {
-    required List<int> rowVersion,
+    required String rowVersion,
     double? exchangeRate,
     required String workingDaysMode,
     required int workingDays,
@@ -723,7 +723,7 @@ class ApiClient {
 
   /// حفظ السطور دفعةً. ⚠️ **بلا صافٍ** — الخادم يحسبه ويتجاهل ما يرسله العميل.
   Future<PayrollPeriodModel> savePayrollEntries(
-          int year, int month, List<int> rowVersion, List<Map<String, dynamic>> entries) async =>
+          int year, int month, String rowVersion, List<Map<String, dynamic>> entries) async =>
       PayrollPeriodModel.fromJson(await _put('/payroll/periods/$year/$month/entries', {
         'rowVersion': rowVersion,
         'entries': entries,
@@ -731,7 +731,7 @@ class ApiClient {
 
   Future<void> payPayroll(
     int year, int month, {
-    required List<int> rowVersion,
+    required String rowVersion,
     required DateTime paidAt,
     int? outgoingBookId,
     String? manualBookNumber,

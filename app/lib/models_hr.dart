@@ -307,7 +307,16 @@ class PayrollPeriodModel {
   final int? outgoingBookId;
   final String? manualBookNumber;
   final String? notes;
-  final List<int> rowVersion;
+
+  /// بصمة التزامن المتفائل — **نصٌّ مبهم يُعاد كما جاء**.
+  ///
+  /// ⚠️ **`byte[]` في ASP.NET Core يُسلسَل نصّاً بـbase64 لا مصفوفةَ أرقام** (مثل
+  /// `"AAAAAAAApBE="`). كانت هنا `List<int>` فانهار التحويل بـ
+  /// `type 'String' is not a subtype of type 'Iterable<dynamic>'` وسقطت الشاشة.
+  /// ولا تُفكَّك ولا تُفسَّر: تُقرأ وتُعاد كما هي، و`System.Text.Json` يفكّها إلى
+  /// `byte[]` على الخادم. (بلاغ المالك 2026-08-04.)
+  final String rowVersion;
+
   final double totalIqd;
   final List<PayrollEntryModel> entries;
 
@@ -337,7 +346,7 @@ class PayrollPeriodModel {
         outgoingBookId: j['outgoingBookId'],
         manualBookNumber: j['manualBookNumber'],
         notes: j['notes'],
-        rowVersion: j['rowVersion'] != null ? List<int>.from(j['rowVersion']) : const [],
+        rowVersion: j['rowVersion'] as String? ?? '',
         totalIqd: (j['totalIqd'] as num?)?.toDouble() ?? 0,
         entries: (j['entries'] as List? ?? [])
             .map((e) => PayrollEntryModel.fromJson(e)).toList(),
