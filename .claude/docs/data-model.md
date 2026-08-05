@@ -51,8 +51,13 @@
 - `PayrollEntry` += `EndOfServiceAmount?(18,2)` — تُقبل **لمن انتهت خدمته في هذا الشهر وحده** (وإلا 400)، وتدخل الصافي كمكافأة.
 
 ### تعديلات على كيانات قائمة (ADR-023)
-- `UserCompany` += `CanManageHR bit NOT NULL DEFAULT 0`.
-- `AppModule` += `HR = 128`؛ و**`All` تبقى 127 بلا HR عمداً**، و`AllWithHr = 255` للمعفَين.
+- `UserCompany` += **`CanManageEmployees`** و**`CanManagePayroll`** (`bit NOT NULL DEFAULT 0`).
+  🔄 كانا علَماً واحداً `CanManageHR` حتى ADR-025 — فُصلا بمهاجرة `SplitHrPermissions`
+  **مرتّبة يدوياً** (إنشاء ← نقل ← إسقاط)، لأن سقالة EF اقترحت إعادة تسميةٍ تُفقد
+  صاحبَ الصلاحية القديمة نصفَها صامتاً.
+- `AppModule` += **`Employees = 128`** (كانت `HR`، **والقيمة محفوظة** فلا تحتاج نقلاً)
+  و**`Payroll = 256`** (بتٌّ جديد تمنحه المهاجرة لمن كان يملك 128).
+  و**`All` تبقى 127 بلا القسمين عمداً**، و`AllWithHr = 511` للمعفَين.
 - `OwnerType` += `Employee = 3` (مستمسكات الموظف).
 
 ### ApprovalDelegation
