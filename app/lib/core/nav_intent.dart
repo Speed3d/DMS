@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// **نيّة التنقّل** — ما يريده الضاغطُ من الشاشة الوجهة، لا مجرّد أيِّ شاشة يفتح.
@@ -38,21 +39,46 @@ class NavIntentNotifier extends Notifier<NavIntent?> {
 
   void set(NavIntent intent) => state = intent;
 
-  /// يقرأ النيّة إن كانت من النوع المطلوب **ويمسحها**، وإلا يُعيد `null` ولا يمسّ شيئاً.
+  /// يقرأ النيّة إن كانت من النوع المطلوب **بلا أن يمسّ الحالة** — آمنٌ داخل `initState`.
   ///
-  /// ⚠️ **لا يمسح نيّةً لغيره:** لو فُتحت شاشةٌ أخرى قبل الوجهة المقصودة لضاعت النيّة
+  /// ⚠️ **لا يقرأ نيّةً لغيره:** لو فُتحت شاشةٌ أخرى قبل الوجهة المقصودة لضاعت النيّة
   /// في الطريق، فتظهر الوجهة بلا فلترٍ ويبدو الزرّ معطوباً.
-  T? take<T extends NavIntent>() {
+  T? peek<T extends NavIntent>() {
     final current = state;
-    if (current is! T) return null;
-    state = null;
-    return current;
+    return current is T ? current : null;
+  }
+
+  /// يمسح النيّة **إن كانت ما تزال هي بعينها**.
+  ///
+  /// ⚠️ الشرط ليس احتياطاً زائداً: المسح مؤجَّلٌ إلى ما بعد الإطار، وقد يكتب المستخدم
+  /// في تلك الأثناء نيّةً جديدة — فمسحٌ غير مشروط كان **يبتلع النيّة التالية**.
+  void clearIf(NavIntent intent) {
+    if (identical(state, intent)) state = null;
   }
 }
 
 final navIntentProvider =
     NotifierProvider<NavIntentNotifier, NavIntent?>(NavIntentNotifier.new);
 
-/// اختصارٌ للوجهة: اقرأ نيّتك وامسحها في `initState`.
-T? takeNavIntent<T extends NavIntent>(WidgetRef ref) =>
-    ref.read(navIntentProvider.notifier).take<T>();
+/// اختصارٌ للوجهة: اقرأ نيّتك في `initState`، وتُمسَح **بعد اكتمال الإطار**.
+///
+/// 🔴 **لماذا التأجيل؟** كان المسح يقع فوراً داخل `initState`، فيرمي Riverpod
+/// «Tried to modify a provider while the widget tree was building» — تعديلُ مزوّدٍ أثناء
+/// البناء ممنوع لأنه قد يجعل ودجتَين تقرآن الحالة نفسها فتريان قيمتين مختلفتين.
+/// (بلاغ المالك 2026-08-06 عند فتح «إجازات بانتظار الموافقة».)
+///
+/// 🔴 **ولماذا لم يكشفه اختباري؟** لأنه كان يستدعي `NavIntentNotifier` على
+/// `ProviderContainer` مجرَّد **بلا شجرة ودجات**، فلا طورَ بناءٍ أصلاً ولا تأكيد.
+/// اختبرتُ المنطق ولم أختبر **المكان الذي يُستدعى منه** — والحارس البديل في
+/// `nav_intent_test.dart` صار يبني شجرةً حقيقية.
+///
+/// والقراءة تبقى **متزامنة** عمداً: الشاشة تحتاج الفلتر في أول بناء، ولو أُجّلت
+/// القراءة أيضاً لظهرت القائمة كاملةً ثم قفزت — ووميضٌ كهذا يبدو عطلاً.
+T? takeNavIntent<T extends NavIntent>(WidgetRef ref) {
+  final notifier = ref.read(navIntentProvider.notifier);
+  final intent = notifier.peek<T>();
+  if (intent == null) return null;
+
+  WidgetsBinding.instance.addPostFrameCallback((_) => notifier.clearIf(intent));
+  return intent;
+}

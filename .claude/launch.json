@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "-d", "web-server", "--web-port", "5173", "--web-hostname", "127.0.0.1"],
       "port": 5173,
       "cwd": "app"
+    },
+    {
+      "name": "dms-web-built",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5174", "--bind", "127.0.0.1", "--directory", "build/web"],
+      "port": 5174,
+      "cwd": "app"
     }
   ]
 }
