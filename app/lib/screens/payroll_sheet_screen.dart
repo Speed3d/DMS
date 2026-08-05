@@ -685,6 +685,41 @@ class _WarnBanner extends StatelessWidget {
       );
 }
 
+/// الحشو الأفقي داخل صفوف الجدول وترويسته — يدخل في حساب العرض الكلّي.
+const double _kRowHPadding = 16;
+
+/// أعمدة كشف الرواتب — **العنوان والعرض في مصدر واحد**.
+///
+/// ⚠️ **لماذا تعداد لا أرقام متناثرة؟** كان عرض الجدول رقماً أكتبه بيدي (`1476`) بينما
+/// مجموع الأعمدة 1538، فتجاوزَه بـ**94 بكسل** وظهر شريط «RIGHT OVERFLOWED» فوق عمود
+/// الاسم فحجب أسماء الموظفين. وأخطأتُ فيه **مرّتين**: مرّةً عند البناء الأول ومرّةً حين
+/// أضفتُ عمود «نهاية الخدمة» وزدتُ الرقمين بمقدارٍ واحد فبقي الفارق كما هو.
+/// الآن **العرض يُحسب من هذه القائمة لا يُكتب**، فإضافة عمود لا تحتاج تذكّر رقمٍ في مكان آخر.
+enum _Col {
+  seq('#', 34),
+  employee('الاسم', 190),
+  position('الصفة', 130),
+  currency('العملة', 60),
+  base('الأساسي', 120),
+  days('الأيام', 66),
+  absence('غياب', 82),
+  absenceDed('خصم الغياب', 116),
+  bonus('مكافأة', 116),
+  endOfService('نهاية الخدمة', 116),
+  deduction('خصم', 116),
+  net('الصافي', 122),
+  netIqd('بالدينار', 130),
+  notes('ملاحظات', 140);
+
+  const _Col(this.label, this.width);
+  final String label;
+  final double width;
+
+  /// العرض الكلّي — مجموع الأعمدة زائد الحشو على الجانبين.
+  static double get tableWidth =>
+      values.fold<double>(0, (sum, c) => sum + c.width) + _kRowHPadding * 2;
+}
+
 class _EntriesTable extends StatelessWidget {
   final PayrollPeriodModel period;
   final Map<int, _EntryEdit> edits;
@@ -704,31 +739,21 @@ class _EntriesTable extends StatelessWidget {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: SizedBox(
-            width: 1476,
+            width: _Col.tableWidth,
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: _kRowHPadding, vertical: 12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   ),
+                  // الترويسة تُبنى من التعداد نفسه — فلا تتباعد عن أعرض الصفوف.
                   child: Row(
-                    children: const [
-                      SizedBox(width: 34, child: _H('#')),
-                      SizedBox(width: 190, child: _H('الاسم')),
-                      SizedBox(width: 130, child: _H('الصفة')),
-                      SizedBox(width: 60, child: _H('العملة')),
-                      SizedBox(width: 120, child: _H('الأساسي')),
-                      SizedBox(width: 66, child: _H('الأيام')),
-                      SizedBox(width: 82, child: _H('غياب')),
-                      SizedBox(width: 116, child: _H('خصم الغياب')),
-                      SizedBox(width: 116, child: _H('مكافأة')),
-                      SizedBox(width: 116, child: _H('نهاية الخدمة')),
-                      SizedBox(width: 116, child: _H('خصم')),
-                      SizedBox(width: 122, child: _H('الصافي')),
-                      SizedBox(width: 130, child: _H('بالدينار')),
-                      SizedBox(width: 140, child: _H('ملاحظات')),
+                    children: [
+                      for (final c in _Col.values)
+                        SizedBox(width: c.width, child: _H(c.label)),
                     ],
                   ),
                 ),
@@ -782,12 +807,12 @@ class _EntryRow extends StatelessWidget {
 
     return Container(
       color: bg,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: _kRowHPadding, vertical: 8),
       child: Row(
         children: [
-          SizedBox(width: 34, child: Text('$index', style: const TextStyle(fontSize: 12.5))),
+          SizedBox(width: _Col.seq.width, child: Text('$index', style: const TextStyle(fontSize: 12.5))),
           SizedBox(
-            width: 190,
+            width: _Col.employee.width,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -815,38 +840,38 @@ class _EntryRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-              width: 130,
+              width: _Col.position.width,
               child: Text(entry.position,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12.5))),
           SizedBox(
-              width: 60,
+              width: _Col.currency.width,
               child: Text(entry.isUsd ? '\$' : 'د.ع',
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
           SizedBox(
-              width: 120,
+              width: _Col.base.width,
               child: Text(money.format(entry.baseSalary),
                   style: const TextStyle(fontSize: 12.5))),
           SizedBox(
-              width: 66,
+              width: _Col.days.width,
               child: Text('${entry.eligibleDays}',
                   style: const TextStyle(fontSize: 12.5))),
           SizedBox(
-            width: 82,
+            width: _Col.absence.width,
             child: _Cell(controller: edit?.absenceDays, editable: editable, digitsOnly: true),
           ),
           SizedBox(
-              width: 116,
+              width: _Col.absenceDed.width,
               child: Text(money.format(entry.absenceDeduction),
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight:
                           entry.absenceDeductionIsManual ? FontWeight.w900 : FontWeight.normal,
                       color: entry.absenceDeduction > 0 ? AppColors.danger : null))),
-          SizedBox(width: 116, child: _Cell(controller: edit?.bonus, editable: editable)),
+          SizedBox(width: _Col.bonus.width, child: _Cell(controller: edit?.bonus, editable: editable)),
           SizedBox(
-            width: 116,
+            width: _Col.endOfService.width,
             // تُعرض للمنتهية خدمته وحده — الخادم يرفضها لغيره على أي حال.
             child: entry.isTerminated
                 ? Text(
@@ -859,13 +884,13 @@ class _EntryRow extends StatelessWidget {
                         color: entry.endOfServiceAmount != null ? AppColors.gold : null))
                 : const Text('—', style: TextStyle(fontSize: 12.5)),
           ),
-          SizedBox(width: 116, child: _Cell(controller: edit?.deduction, editable: editable)),
+          SizedBox(width: _Col.deduction.width, child: _Cell(controller: edit?.deduction, editable: editable)),
           SizedBox(
-              width: 122,
+              width: _Col.net.width,
               child: Text(money.format(entry.netSalary),
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900))),
           SizedBox(
-            width: 130,
+            width: _Col.netIqd.width,
             child: Text(money.format(entry.netSalaryIqd),
                 style: TextStyle(
                     fontSize: 13,
@@ -873,7 +898,7 @@ class _EntryRow extends StatelessWidget {
                     color: isDark ? AppColors.goldBrightDark : AppColors.gold)),
           ),
           SizedBox(
-              width: 140,
+              width: _Col.notes.width,
               child: _Cell(controller: edit?.notes, editable: editable, numeric: false)),
         ],
       ),

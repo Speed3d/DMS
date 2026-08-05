@@ -254,16 +254,21 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       ),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: _isActive,
-                        onChanged: (v) => setState(() => _isActive = v),
-                        title: const Text('على رأس العمل', style: TextStyle(fontSize: 14)),
-                        subtitle: Text('غير الفعّال لا يُدرَج في كشوف الشهور الجديدة',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: theme.textTheme.bodyMedium?.color
-                                    ?.withValues(alpha: 0.6))),
+                      // `Material` شفّافة: `ListTile` داخل `CustomCard` يرسم خلفيته وأثر
+                      // النقر على أقرب `Material` فوقه، وبطاقةُ `DecoratedBox` تحجبهما.
+                      Material(
+                        type: MaterialType.transparency,
+                        child: SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _isActive,
+                          onChanged: (v) => setState(() => _isActive = v),
+                          title: const Text('على رأس العمل', style: TextStyle(fontSize: 14)),
+                          subtitle: Text('غير الفعّال لا يُدرَج في كشوف الشهور الجديدة',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: theme.textTheme.bodyMedium?.color
+                                      ?.withValues(alpha: 0.6))),
+                        ),
                       ),
                     ],
                   ),

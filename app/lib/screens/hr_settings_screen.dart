@@ -173,12 +173,20 @@ class _HrSettingsScreenState extends ConsumerState<HrSettingsScreen> {
                       height: 1.7,
                       color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
               const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _eosEnabled,
-                title: const Text('تفعيل مكافأة نهاية الخدمة',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                onChanged: canManage ? (v) => setState(() => _eosEnabled = v) : null,
+              // ⚠️ **`Material` شفّافة حول `SwitchListTile` داخل `CustomCard`:** البطاقة
+              //    `DecoratedBox` ذات خلفية، و`ListTile` يرسم خلفيته وأثر النقر على أقرب
+              //    `Material` **فوقه** — فتحجبهما البطاقة، ويرمي Flutter تأكيداً:
+              //    «ListTile background color or ink splashes may be invisible».
+              //    الشفافة لا تغيّر المظهر وتُعطي الأثر سطحاً يرتسم عليه (بلاغ المالك).
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _eosEnabled,
+                  title: const Text('تفعيل مكافأة نهاية الخدمة',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  onChanged: canManage ? (v) => setState(() => _eosEnabled = v) : null,
+                ),
               ),
               if (_eosEnabled) ...[
                 const SizedBox(height: 6),
