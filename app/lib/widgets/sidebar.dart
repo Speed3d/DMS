@@ -13,8 +13,11 @@ class Sidebar extends ConsumerWidget {
   final bool isSuperAdmin;
   final List<String> modules;
 
-  /// وحدة الموظفين والرواتب — **القسم مع الدور** (مدير فأعلى)، مرآةُ `[RequireHrModule]`.
-  final bool canSeeHr;
+  /// قسم الموظفين — **القسم مع الدور** (فوق القارئ)، مرآةُ `[RequireHrModule]` (ADR-025).
+  final bool canSeeEmployees;
+
+  /// قسم الرواتب — **مستقلٌّ عن الموظفين**: يُمنح أحدهما بلا الآخر.
+  final bool canSeePayroll;
 
   const Sidebar({
     super.key,
@@ -23,7 +26,8 @@ class Sidebar extends ConsumerWidget {
     required this.canManageUsers,
     required this.isSuperAdmin,
     required this.modules,
-    this.canSeeHr = false,
+    this.canSeeEmployees = false,
+    this.canSeePayroll = false,
   });
 
   bool get _showSettings => canManageUsers && modules.contains('Settings');
@@ -108,8 +112,9 @@ class Sidebar extends ConsumerWidget {
 
           // ⚠️ **المؤشران 9 و10 لا 6 و7** — البندان مُلحقان في آخر قائمة الشاشات وموضعُهما
           //    البصري هنا. الترتيب الظاهر يحدّده هذا الملف، لا ترتيب `pages` في `HomeShell`.
-          if (canSeeHr) ...[
-            _buildItem(9, Icons.groups_2_rounded, 'الموظفون'),
+          // ⚠️ **بندٌ لكلٍّ بحارسه** (ADR-025): مَن يملك الموظفين وحدهم يرى بندَهم فقط.
+          if (canSeeEmployees) _buildItem(9, Icons.groups_2_rounded, 'الموظفون'),
+          if (canSeePayroll)
             Consumer(
               builder: (context, ref, child) {
                 final countAsync = ref.watch(unpaidMonthsProvider);
@@ -118,7 +123,6 @@ class Sidebar extends ConsumerWidget {
                 return _buildItem(10, Icons.payments_rounded, 'الرواتب', badge: badge);
               },
             ),
-          ],
 
           const SizedBox(height: 18),
 

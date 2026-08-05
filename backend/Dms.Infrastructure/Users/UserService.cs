@@ -10,7 +10,7 @@ namespace Dms.Infrastructure.Users;
 public sealed record UserCompanyInput(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
     bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
-    bool CanManageHR = false);
+    bool CanManageEmployees = false, bool CanManagePayroll = false);
 
 public sealed record CreateUserInput(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyInput>? Companies);
@@ -190,7 +190,8 @@ public sealed class UserService(
                 // ⚠️ **لا `byRole` هنا** خلافاً لأخواتها الثلاث: الوحدة كلها للمدير فأعلى،
                 //    لكن ذلك يفتح **الرؤية** لا **الكتابة**. كونُه مديراً لا يعني تلقائياً أنه
                 //    مَن يحرّر الرواتب — وهذا كل معنى فصل العلَم عن القسم.
-                CanManageHR = wish?.CanManageHR ?? false,
+                CanManageEmployees = wish?.CanManageEmployees ?? false,
+                CanManagePayroll = wish?.CanManagePayroll ?? false,
             });
         }
         return links;
@@ -239,7 +240,10 @@ public sealed class UserService(
             ? AppModuleExtensions.FromNames(requested)
             : AppModule.All; // توافق خلفي: المدير لا يقيّد الأقسام (وAll لا تشمل HR)
 
-        if (!RoleHierarchy.IsManagerOrAbove(targetRole)) modules &= ~AppModule.HR;
+        // ⚠️ **يُجرَّد القارئ وحده** (ADR-025 — كان «مَن دون المدير» في ADR-023).
+        //    حارسٌ في الواجهة وحدها يُلتَفّ عليه بطلب HTTP مباشر، فالتجريد يقع هنا.
+        if (!RoleHierarchy.IsEmployeeOrAbove(targetRole))
+            modules &= ~(AppModule.Employees | AppModule.Payroll);
         return modules;
     }
 }

@@ -211,7 +211,7 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canManage = ref.watch(sessionProvider).canManageHr;
+    final canManage = ref.watch(sessionProvider).canManageEmployees;
 
     return Scaffold(
       appBar: AppBar(

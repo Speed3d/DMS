@@ -14,7 +14,7 @@ namespace Dms.Api.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
-[RequireHrModule]
+[RequireHrModule(AppModule.Employees)]
 [Route("api/employees")]
 public sealed class EmployeesController(
     IEmployeeService employees, ILeaveService leaves,

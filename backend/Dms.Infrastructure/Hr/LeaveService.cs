@@ -201,10 +201,15 @@ public sealed class LeaveService(
                ?? throw new NotFoundException("الموظف غير مُسنَد لهذه الشركة.");
     }
 
+    /// <remarks>
+    /// ⚠️ **الإجازات تتبع «الموظفين» لا «الرواتب»** رغم أن بعضها يُحسم من الراتب: مَن يمنح
+    /// الإجازة هو مَن يدير شؤون الموظف، والحسمُ أثرٌ لاحق يقرّره كشفُ الشهر. ولو تبعت
+    /// الرواتب لاحتاج كاتبُ الشؤون صلاحيةَ التسديد ليسجّل إجازةَ يوم.
+    /// </remarks>
     private void RequireWrite()
     {
-        if (!current.CanManageHR)
-            throw new ForbiddenException("لا تملك صلاحية إدارة الموظفين والرواتب.");
+        if (!current.CanManageEmployees)
+            throw new ForbiddenException("لا تملك صلاحية إدارة بطاقات الموظفين.");
     }
 
     internal static string ArabicLeave(LeaveType t) => t switch

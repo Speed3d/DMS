@@ -49,7 +49,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final showOutgoing = session.hasModule('Outgoing');
     final showIncoming = session.hasModule('Incoming');
     final showArchive = session.hasModule('Archive');
-    final showHr = session.canSeeHr;
+    final showEmployees = session.canSeeEmployees;
+    final showPayroll = session.canSeePayroll;
 
     // ⚠️ قبل الحكم بـ«لا صلاحيات» نتأكّد أن الجلسة حُمّلت فعلاً: `hasModule` يردّ false
     //    حين تكون `auth` فارغة، فلولا هذا الفحص لومضت رسالة «لا أقسام متاحة» لحظةَ
@@ -58,7 +59,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.gold)));
     }
 
-    if (!showOutgoing && !showIncoming && !showArchive && !showHr) return const _NoModulesView();
+    if (!showOutgoing && !showIncoming && !showArchive && !showEmployees && !showPayroll) {
+      return const _NoModulesView();
+    }
 
     return Scaffold(
       body: outgoingAsync.when(
@@ -145,29 +148,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 ];
                               })(),
 
-                            // ── الموظفون والرواتب (ADR-023) ──
-                            // ⚠️ `canSeeHr` لا `hasModule('HR')`: الوحدة تتطلّب القسم **والدور**،
-                            //    وبطاقةٌ تقود إلى شاشة تردّ 403 أسوأ من بطاقة غائبة.
-                            if (showHr)
+                            // ── الموظفون والرواتب (ADR-023 + ADR-025) ──
+                            // ⚠️ `canSeeEmployees`/`canSeePayroll` لا `hasModule`: القسم **مع
+                            //    الدور**، وبطاقةٌ تقود إلى شاشة تردّ 403 أسوأ من بطاقة غائبة.
+                            // 🔐 **وكلُّ بطاقةٍ تتبع قسمها**: صاحب «الموظفين» وحده لا يرى
+                            //    أرقام الرواتب — والخادم يُرسلها `null` له أصلاً.
+                            if (showEmployees || showPayroll)
                               ...(() {
                                 final hr = ref.watch(hrSummaryProvider).whenOrNull(data: (s) => s);
                                 return [
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildStatCard(
-                                        'الموظفون الفعّالون', hr?.activeEmployees.toString() ?? '…',
-                                        Icons.groups_2_rounded, const Color(0xFF0EA5E9),
-                                        onTap: () => widget.onNavigate?.call(9)),
-                                  ),
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildStatCard(
-                                        'رواتب هذا الشهر',
-                                        hr == null ? '…' : '${_fmt(hr.thisMonthTotalIqd)} د.ع',
-                                        Icons.payments_rounded, AppColors.gold,
-                                        onTap: () => widget.onNavigate?.call(10)),
-                                  ),
-                                  if ((hr?.unpaidMonths ?? 0) > 0)
+                                  if (showEmployees)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard(
+                                          'الموظفون الفعّالون',
+                                          hr?.activeEmployees?.toString() ?? '…',
+                                          Icons.groups_2_rounded, const Color(0xFF0EA5E9),
+                                          onTap: () => widget.onNavigate?.call(9)),
+                                    ),
+                                  if (showPayroll)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard(
+                                          'رواتب هذا الشهر',
+                                          hr?.thisMonthTotalIqd == null
+                                              ? '…'
+                                              : '${_fmt(hr!.thisMonthTotalIqd!)} د.ع',
+                                          Icons.payments_rounded, AppColors.gold,
+                                          onTap: () => widget.onNavigate?.call(10)),
+                                    ),
+                                  if (showPayroll && (hr?.unpaidMonths ?? 0) > 0)
                                     SizedBox(
                                       width: cardWidth,
                                       child: _buildStatCard(
@@ -175,7 +185,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                           Icons.report_gmailerrorred_rounded, AppColors.danger,
                                           onTap: () => widget.onNavigate?.call(10)),
                                     ),
-                                  if ((hr?.pendingLeaves ?? 0) > 0)
+                                  if (showEmployees && (hr?.pendingLeaves ?? 0) > 0)
                                     SizedBox(
                                       width: cardWidth,
                                       child: _buildStatCard(

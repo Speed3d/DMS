@@ -266,17 +266,11 @@ if($delPaid.S -eq 409){ Ok "الحذف بعد التسديد مرفوض (409)" }
 $delEmp=Api DELETE "/employees/$e1" $null $admin $cid
 if($delEmp.S -eq 409){ Ok "حذف موظف له رواتب مُسدَّدة مرفوض (409) ✔ السجل المالي محميّ" } else { Bad "حذف الموظف ردّ $($delEmp.S) بدل 409" }
 
-Write-Host "`n=== 🔐 العزل: الموظف العادي محجوب كلياً ===" -ForegroundColor Cyan
-# نطلب له **كل** الأقسام بما فيها HR صراحةً — والباك-إند يجب أن يجرّدها منه.
-$empUser='emp_hr'
-$ex=(Api GET "/users" $null $admin $cid).B | Where-Object { $_.username -eq $empUser } | Select-Object -First 1
-$ubody=@{fullName='موظف اختبار الرواتب';role='Employee';isActive=$true;companies=@(
-  @{companyId=$cid;modules=@('Outgoing','Incoming','Archive','Reports','Users','Settings','Backup','HR');departmentId=$null;canApprove=$false;canManageIncoming=$false;canViewAllIncoming=$false;canManageHR=$true})}
-if($ex){ $null=Api PUT "/users/$($ex.userId)" $ubody $admin $cid; $created=$ex }
-else { $ubody.username=$empUser; $ubody.password='Emp@12345'; $created=(Api POST "/users" $ubody $admin $cid).B }
-
-$granted=(Api GET "/users" $null $admin $cid).B | Where-Object { $_.username -eq $empUser } | Select-Object -First 1
-if($granted.companies[0].modules -notcontains 'HR'){ Ok "HR **جُرِّدت** من الموظف رغم طلبها صراحةً ✔ الحارس في الخدمة لا في الواجهة" } else { Bad "تسرّب: الموظف احتفظ بقسم HR" }
+Write-Host "`n=== 🔐 فصل الصلاحيات: قسمٌ لا يفتح الآخر (ADR-025) ===" -ForegroundColor Cyan
+# 🔄 **تغيّر جوهريّ عن ADR-023:** كان الاختبار يُثبت أن الموظف **يُجرَّد** من الوحدة. الآن
+#    الوحدة مفتوحة لكل دورٍ فوق القارئ، فالحارس انتقل إلى موضعين آخرين:
+#      ١) **القارئ** يُجرَّد ويُحجب.
+#      ٢) **قسمٌ واحد لا يمنح الآخر** — وهو جوهر الفصل.
 
 function EmpLogin($user){
   $r=Api POST "/auth/login" @{username=$user;password='Emp@12345new'} $null $null
@@ -286,18 +280,73 @@ function EmpLogin($user){
     $r=Api POST "/auth/login" @{username=$user;password='Emp@12345new'} $null $null }
   return $r.B.accessToken
 }
-$tokEmp=EmpLogin $empUser
-if($tokEmp){ Ok "دخول الموظف" } else { Bad "فشل دخول الموظف" }
 
-# ⚠️ **كل نقطةٍ جديدة تُضاف هنا.** الحارس على الوحدة كلّها (`[RequireHrModule]`)، لكن
-#    قائمةً لا تُحدَّث تترك النقطة الجديدة **بلا إثباتٍ** أنها محروسة فعلاً — وهو فرقٌ
-#    بين «يجب أن تكون محجوبة» و«أُثبت أنها محجوبة».
-foreach($ep in @("/employees","/payroll/years","/payroll/periods/$Year/$Month","/hr/settings","/hr/summary","/hr/leaves/pending","/payroll/periods/$Year/$Month/excel","/employees/$e1/leaves","/employees/$e1/log","/employees/$e1/attachments")){
-  $r=Api GET $ep $null $tokEmp $cid
-  if($r.S -eq 403){ Ok "الموظف محجوب عن $ep (403)" } else { Bad "تسرّب: $ep ردّ $($r.S) للموظف" }
+function UpsertUser($username, $displayName, $role, $modules, $canEmp, $canPay){
+  $ex=(Api GET "/users" $null $admin $cid).B | Where-Object { $_.username -eq $username } | Select-Object -First 1
+  $body=@{fullName=$displayName;role=$role;isActive=$true;companies=@(
+    @{companyId=$cid;modules=$modules;departmentId=$null;canApprove=$false;canManageIncoming=$false;
+      canViewAllIncoming=$false;canManageEmployees=$canEmp;canManagePayroll=$canPay})}
+  if($ex){ $null=Api PUT "/users/$($ex.userId)" $body $admin $cid }
+  else { $body.username=$username; $body.password='Emp@12345'; $null=Api POST "/users" $body $admin $cid }
+  return (Api GET "/users" $null $admin $cid).B | Where-Object { $_.username -eq $username } | Select-Object -First 1
 }
-$rw=Api POST "/employees" @{profile=@{fullName='مخترق';receiptLanguage='Arabic'};employment=@{position='x';hireDate='2026-01-01T00:00:00';salaryCurrency='IQD';baseSalary=1;displayOrder=0;isActive=$true}} $tokEmp $cid
-if($rw.S -eq 403){ Ok "الموظف محجوب عن **إنشاء** موظف (403)" } else { Bad "تسرّب: إنشاء موظف ردّ $($rw.S)" }
+
+# ── ١) القارئ يُجرَّد من القسمين ولو طُلبا صراحةً ──
+$rdr=UpsertUser 'rdr_hr' 'قارئ اختبار الرواتب' 'Reader' @('Outgoing','Employees','Payroll') $true $true
+$rdrMods=$rdr.companies[0].modules
+if($rdrMods -notcontains 'Employees' -and $rdrMods -notcontains 'Payroll'){
+  Ok "القسمان **جُرِّدا** من القارئ رغم طلبهما صراحةً ✔ الحارس في الخدمة لا في الواجهة"
+} else { Bad "تسرّب: القارئ احتفظ بـ$($rdrMods -join ',')" }
+$tokRdr=EmpLogin 'rdr_hr'
+foreach($ep in @("/employees","/payroll/years","/hr/summary","/hr/leaves/pending")){
+  $r=Api GET $ep $null $tokRdr $cid
+  if($r.S -eq 403){ Ok "القارئ محجوب عن $ep (403)" } else { Bad "تسرّب: $ep ردّ $($r.S) للقارئ" }
+}
+
+# ── ٢) موظف بقسم «الموظفين» وحده: يعمل عليه ويُحجب عن الرواتب ──
+# 🔄 كان هذا الدور محجوباً كلياً قبل ADR-025.
+$empOnly=UpsertUser 'emp_hr' 'كاتب شؤون الموظفين' 'Employee' @('Outgoing','Employees') $true $false
+if($empOnly.companies[0].modules -contains 'Employees'){
+  Ok "🔄 الموظف **احتفظ** بقسم الموظفين — الوحدة فُتحت لمن دون المدير"
+} else { Bad "الموظف جُرِّد من الموظفين رغم ADR-025" }
+$tokEmp=EmpLogin 'emp_hr'
+if($tokEmp){ Ok "دخول كاتب شؤون الموظفين" } else { Bad "فشل دخوله" }
+
+foreach($ep in @("/employees","/hr/leaves/pending","/employees/$e1/leaves","/employees/$e1/log","/employees/$e1/attachments")){
+  $r=Api GET $ep $null $tokEmp $cid
+  if($r.S -eq 200){ Ok "يصل إلى $ep (200)" } else { Bad "منعٌ خاطئ: $ep ردّ $($r.S) لصاحب القسم" }
+}
+# ⚠️ **وهنا جوهر الفصل**: كل نقاط الرواتب محجوبة عنه.
+foreach($ep in @("/payroll/years","/payroll/periods/$Year/$Month","/hr/settings","/payroll/periods/$Year/$Month/excel")){
+  $r=Api GET $ep $null $tokEmp $cid
+  if($r.S -eq 403){ Ok "🔐 محجوب عن $ep (403) — قسم الموظفين لا يفتح الرواتب" } else { Bad "تسرّب: $ep ردّ $($r.S)" }
+}
+# والملخّص يصله **بلا أرقام الرواتب** لا بأصفارٍ كاذبة.
+$sumEmp=(Api GET "/hr/summary" $null $tokEmp $cid).B
+if($null -ne $sumEmp.activeEmployees){ Ok "الملخّص يحمل عدد الموظفين لصاحب قسمهم" } else { Bad "الملخّص بلا عدد الموظفين" }
+if($null -eq $sumEmp.thisMonthTotalIqd -and $null -eq $sumEmp.unpaidMonths){
+  Ok "🔐 وأرقام الرواتب تصله **null** لا صفراً كاذباً"
+} else { Bad "تسرّب: أرقام الرواتب وصلت لمن لا يملك قسمها" }
+# ويكتب في الموظفين لأنه يملك علَمه.
+$newEmp=Api POST "/employees" @{profile=@{fullName='موظف أنشأه الكاتب';receiptLanguage='Arabic'};employment=@{position='فنّي';hireDate="$Year-01-01T00:00:00";salaryCurrency='IQD';baseSalary=500000;displayOrder=9;isActive=$true}} $tokEmp $cid
+if($newEmp.S -eq 200){ Ok "ويكتب: أنشأ موظفاً بعلَم CanManageEmployees" } else { Bad "منعٌ خاطئ: الإنشاء ردّ $($newEmp.S)" }
+if($newEmp.B.employeeId){ $null=Api DELETE "/employees/$($newEmp.B.employeeId)" $null $admin $cid }
+
+# ── ٣) موظف بقسم «الرواتب» وحدها: العكس تماماً ──
+$payOnly=UpsertUser 'pay_hr' 'محاسب الرواتب' 'Employee' @('Outgoing','Payroll') $false $true
+$tokPay=EmpLogin 'pay_hr'
+if($tokPay){ Ok "دخول محاسب الرواتب" } else { Bad "فشل دخوله" }
+foreach($ep in @("/payroll/years","/hr/settings")){
+  $r=Api GET $ep $null $tokPay $cid
+  if($r.S -eq 200){ Ok "المحاسب يصل إلى $ep (200)" } else { Bad "منعٌ خاطئ: $ep ردّ $($r.S)" }
+}
+foreach($ep in @("/employees","/hr/leaves/pending","/employees/$e1/attachments")){
+  $r=Api GET $ep $null $tokPay $cid
+  if($r.S -eq 403){ Ok "🔐 المحاسب محجوب عن $ep (403) — الرواتب لا تفتح الموظفين" } else { Bad "تسرّب: $ep ردّ $($r.S)" }
+}
+# ولا يكتب في الموظفين: علَمه للرواتب وحدها.
+$rw=Api POST "/employees" @{profile=@{fullName='مخترق';receiptLanguage='Arabic'};employment=@{position='x';hireDate="$Year-01-01T00:00:00";salaryCurrency='IQD';baseSalary=1;displayOrder=0;isActive=$true}} $tokPay $cid
+if($rw.S -eq 403){ Ok "🔐 والمحاسب محجوب عن **إنشاء** موظف (403)" } else { Bad "تسرّب: إنشاء موظف ردّ $($rw.S)" }
 
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green

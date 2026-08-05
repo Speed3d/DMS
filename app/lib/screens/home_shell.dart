@@ -107,7 +107,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   canManageUsers: canManageUsers,
                   isSuperAdmin: isSuper,
                   modules: session.modules,
-                  canSeeHr: session.canSeeHr,
+                  canSeeEmployees: session.canSeeEmployees,
+                  canSeePayroll: session.canSeePayroll,
                 ),
               ),
             ),
@@ -216,8 +217,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         6 => canManageUsers && session.hasModule('Settings'),
         7 => canManageUsers && session.hasModule('Users'),
         8 => isSuper && session.hasModule('Backup'),
-        // الوحدة كلها للمدير فأعلى — `canSeeHr` يجمع القسم مع الدور (مرآة `[RequireHrModule]`).
-        9 || 10 => session.canSeeHr,
+        // ⚠️ **كل مؤشّر بحارسه** (ADR-025): فتحُ قسمٍ لا يفتح الآخر، ولو جُمعا هنا
+        //    لفتح قسمُ الموظفين شاشةَ الرواتب — وهو ما جاء الفصل ليمنعه.
+        9 => session.canSeeEmployees,
+        10 => session.canSeePayroll,
         _ => false,
       };
 

@@ -15,7 +15,7 @@ namespace Dms.Api.Controllers;
 /// <summary>كشوف الرواتب (ADR-023). السنوات مشتقّة من الفترات — لا كيان «سنة».</summary>
 [ApiController]
 [Authorize]
-[RequireHrModule]
+[RequireHrModule(AppModule.Payroll)]
 [Route("api/payroll")]
 public sealed class PayrollController(
     IPayrollService payroll, AppDbContext db, ICurrentUser current) : ControllerBase
@@ -104,7 +104,8 @@ public sealed class PayrollController(
         int year, int month, CancellationToken ct)
         => (await payroll.DetectExternalPaymentsAsync(year, month, ct))
             .Select(h => new ExternalPaymentResponse(
-                h.EntryId, h.EmployeeName, h.PaidByCompanyId, h.PaidByCompanyName)).ToList();
+                h.EntryId, h.EmployeeName, h.PaidByCompanyId, h.PaidByCompanyName,
+                h.PaidAt)).ToList();
 
     [HttpPost("entries/{entryId:int}/confirm-external")]
     public async Task<IActionResult> ConfirmExternal(int entryId, CancellationToken ct)

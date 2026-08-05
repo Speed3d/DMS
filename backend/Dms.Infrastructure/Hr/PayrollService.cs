@@ -632,8 +632,8 @@ public sealed class PayrollService(
 
     private void RequireWrite()
     {
-        if (!current.CanManageHR)
-            throw new ForbiddenException("لا تملك صلاحية إدارة الموظفين والرواتب.");
+        if (!current.CanManagePayroll)
+            throw new ForbiddenException("لا تملك صلاحية إدارة كشوف الرواتب.");
     }
 
     private int RequireCompany() =>

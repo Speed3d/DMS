@@ -505,11 +505,13 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   /// (المدير فأعلى يدير الوارد بحكم دوره، ولا معنى لإسناده لقسم واحد).
   bool get _isSubordinate => _role == 'Employee' || _role == 'Reader';
 
-  /// هل يجوز منح هذا الدور وحدة الموظفين والرواتب أصلاً؟ (ADR-023)
+  /// هل يجوز منح هذا الدور قسمَي الموظفين والرواتب أصلاً؟ (ADR-025)
   ///
-  /// ⚠️ الوحدة **للمدير فأعلى بلا استثناء** — والباك-إند يجرّد HR ممّن دونه في
-  /// `ResolveModules` ولو طُلبت صراحةً. إخفاؤها هنا يمنع المانح من ظنّ أنه منحها.
-  bool get _roleMayHaveHr => !_isSubordinate;
+  /// 🔄 **كان «المدير فأعلى» (ADR-023) فصار «فوق القارئ»** بقرار المالك 2026-08-05:
+  /// محاسبٌ أو كاتب شؤون موظفين بدور «موظف» يحتاجهما يومياً.
+  /// ⚠️ والقارئ يبقى محجوباً — والباك-إند يجرّدهما منه في `ResolveModules` ولو طُلبا
+  /// صراحةً. إخفاؤهما هنا يمنع المانح من ظنّ أنه منحهما.
+  bool get _roleMayHaveHr => _role != 'Reader';
 
   @override
   void initState() {
@@ -579,9 +581,10 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
         'canManageIncoming': _isSubordinate && a.canManageIncoming,
         // كالتي قبلها: تخصّ المرؤوس وحده — المدير فأعلى يرى الكل بحكم دوره أصلاً.
         'canViewAllIncoming': _isSubordinate && a.canViewAllIncoming,
-        // ⚠️ **بخلاف أخواتها**: هذه تخصّ **المدير** لا المرؤوس — الوحدة للمدير فأعلى،
-        //    والعلَم يفصل مَن يقرأ الرواتب عمّن يحرّرها. والمعفَون يملكونها بدورهم.
-        'canManageHR': _roleMayHaveHr && a.canManageHR,
+        // ⚠️ **بخلاف أخواتها**: هاتان لا تخصّان المرؤوس وحده — أيُّ دورٍ فوق القارئ
+        //    يملكهما. والعلَم يفصل مَن يقرأ عمّن يحرّر، وهما **مستقلّان** (ADR-025).
+        'canManageEmployees': _roleMayHaveHr && a.canManageEmployees,
+        'canManagePayroll': _roleMayHaveHr && a.canManagePayroll,
       };
     }).toList();
 
@@ -635,9 +638,11 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                       children: kAllModules.expand((m) {
                         final enabled = access.modules.contains(m);
 
-                        // ⚠️ الموظفون والرواتب **لا تُعرَض لمن دون المدير**: الباك-إند يجرّدها
-                        //    منه على أي حال، فعرضُ مربّعٍ يُمنح ثم يُسقَط صامتاً يخدع المانح.
-                        if (m == 'HR' && !_roleMayHaveHr) return const <Widget>[];
+                        // ⚠️ القسمان **لا يُعرَضان للقارئ**: الباك-إند يجرّدهما منه على أي
+                        //    حال، فعرضُ مربّعٍ يُمنح ثم يُسقَط صامتاً يخدع المانح.
+                        if ((m == 'Employees' || m == 'Payroll') && !_roleMayHaveHr) {
+                          return const <Widget>[];
+                        }
 
                         return [
                           CheckboxListTile(
@@ -661,8 +666,10 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                                     modules: next,
                                     canManageIncoming: false,
                                     canViewAllIncoming: false),
-                                ('HR', != true) =>
-                                  access.copyWith(modules: next, canManageHR: false),
+                                ('Employees', != true) =>
+                                  access.copyWith(modules: next, canManageEmployees: false),
+                                ('Payroll', != true) =>
+                                  access.copyWith(modules: next, canManagePayroll: false),
                                 _ => access.copyWith(modules: next),
                               });
                             },
@@ -707,24 +714,42 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                               ),
                             ),
 
-                          // ── الصلاحية الفرعية للموظفين والرواتب ──
-                          // القسم يفتح **الرؤية**، وهذا العلَم يفتح **الكتابة** — فيرى مديرٌ
-                          // رواتبَ شركته دون أن يملك تحريرها أو تسديدها.
-                          if (m == 'HR' && enabled && _roleMayHaveHr)
+                          // ── الصلاحية الفرعية للموظفين ──
+                          // القسم يفتح **الرؤية**، والعلَم يفتح **الكتابة**.
+                          if (m == 'Employees' && enabled && _roleMayHaveHr)
                             Padding(
                               padding: const EdgeInsetsDirectional.only(start: 28),
                               child: SwitchListTile(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
-                                value: access.canManageHR,
+                                value: access.canManageEmployees,
                                 activeThumbColor: AppColors.warn,
-                                title: const Text('إدارة الموظفين والرواتب',
+                                title: const Text('إدارة بطاقات الموظفين',
                                     style:
                                         TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                 subtitle: const Text(
-                                    '⚠️ يضيف الموظفين ويحرّر كشوف الرواتب ويسدّدها — بدونها قراءة فقط',
+                                    '⚠️ يضيف الموظفين ويعدّل عقودهم وإجازاتهم — بدونها قراءة فقط',
                                     style: TextStyle(fontSize: 11, color: AppColors.warn)),
-                                onChanged: (v) => update(access.copyWith(canManageHR: v)),
+                                onChanged: (v) => update(access.copyWith(canManageEmployees: v)),
+                              ),
+                            ),
+
+                          // ── الصلاحية الفرعية للرواتب — **مستقلّة** (ADR-025) ──
+                          if (m == 'Payroll' && enabled && _roleMayHaveHr)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 28),
+                              child: SwitchListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                value: access.canManagePayroll,
+                                activeThumbColor: AppColors.warn,
+                                title: const Text('إدارة كشوف الرواتب',
+                                    style:
+                                        TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                subtitle: const Text(
+                                    '⚠️ يولّد الكشوف ويحرّرها ويسدّدها — بدونها قراءة فقط',
+                                    style: TextStyle(fontSize: 11, color: AppColors.warn)),
+                                onChanged: (v) => update(access.copyWith(canManagePayroll: v)),
                               ),
                             ),
                         ];

@@ -55,4 +55,13 @@ public static class RoleHierarchy
 
     /// <summary>رئيس الشركة فأعلى (لإدارة الشركات/الترقيم).</summary>
     public static bool IsPresidentOrAbove(UserRole role) => (int)role <= (int)UserRole.President;
+
+    /// <summary>الموظف فأعلى — أي دورٍ عدا **القارئ** (ADR-025).</summary>
+    /// <remarks>
+    /// حدُّ وحدتَي الموظفين والرواتب بعد فتحهما لمن دون المدير (قرار المالك 2026-08-05).
+    /// ⚠️ **والقارئ يبقى محجوباً بالدور لا بالإعداد:** دورُه اطّلاعٌ لا معالجة
+    /// (<c>rules/security.md</c>)، والرواتب أحسّ بيانات في النظام — فمنحُها له سهواً من
+    /// شاشة المستخدمين كان يكشف رواتب الشركة كلها لمن لا يملك حتى الإحالة.
+    /// </remarks>
+    public static bool IsEmployeeOrAbove(UserRole role) => role != UserRole.Reader;
 }

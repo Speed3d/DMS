@@ -59,12 +59,16 @@ class AuthResult {
   /// صلاحية اعتماد الصادر في الشركة الفعّالة.
   bool canApproveIn(int? companyId) => _isExempt || (accessIn(companyId)?.canApprove ?? false);
 
-  /// صلاحية إدارة الموظفين والرواتب في الشركة الفعّالة (ADR-023).
+  /// صلاحية **كتابة** بطاقات الموظفين في الشركة الفعّالة (ADR-025).
   ///
   /// المعفَون (سوبر أدمن/رئيس) يملكونها بحكم دورهم — نظير ما يفعله `HttpCurrentUser`
   /// في الباك-إند، فالسوبر أدمن قد يكون بلا إسناد لأي شركة أصلاً.
-  bool canManageHrIn(int? companyId) =>
-      _isExempt || (accessIn(companyId)?.canManageHR ?? false);
+  bool canManageEmployeesIn(int? companyId) =>
+      _isExempt || (accessIn(companyId)?.canManageEmployees ?? false);
+
+  /// صلاحية **كتابة** كشوف الرواتب — علَمٌ مستقلّ (ADR-025).
+  bool canManagePayrollIn(int? companyId) =>
+      _isExempt || (accessIn(companyId)?.canManagePayroll ?? false);
 
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(
         accessToken: j['accessToken'],
@@ -100,7 +104,8 @@ class AuthResult {
 /// ⚠️ **مرآةٌ لمصفوفة `AppModuleExtensions.Individual` في الباك-إند** — قسمٌ ناقص هنا لا يظهر
 /// مربّعه في شاشة المستخدمين، فتموت صلاحيته بصمت (نمط «ميزة بلا مدخل»).
 const List<String> kAllModules = [
-  'Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup', 'HR',
+  'Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup',
+  'Employees', 'Payroll',
 ];
 
 const Map<String, String> kModuleLabels = {
@@ -111,7 +116,8 @@ const Map<String, String> kModuleLabels = {
   'Users': 'المستخدمون',
   'Settings': 'الإعدادات',
   'Backup': 'النسخ الاحتياطي',
-  'HR': 'الموظفون والرواتب',
+  'Employees': 'الموظفون',
+  'Payroll': 'الرواتب',
 };
 
 class Company {
@@ -296,11 +302,16 @@ class CompanyAccess {
   /// — الإحالة وتغيير الحالة تبقيان محكومتين بـ[canManageIncoming].
   final bool canViewAllIncoming;
 
-  /// **يدير الموظفين والرواتب في هذه الشركة** (ADR-023).
+  /// **يدير بطاقات الموظفين في هذه الشركة** (ADR-025).
   ///
-  /// قسم `HR` يفتح **الرؤية**، وهذا العلَم يفتح **الكتابة** — فيرى مديرٌ رواتبَ شركته
-  /// دون أن يملك تحريرها. والوحدة كلها **للمدير فأعلى** مهما مُنح غيره من أقسام.
-  final bool canManageHR;
+  /// قسم `Employees` يفتح **الرؤية**، وهذا العلَم يفتح **الكتابة**.
+  final bool canManageEmployees;
+
+  /// **يدير كشوف الرواتب في هذه الشركة** — علَمٌ مستقلّ (ADR-025).
+  ///
+  /// ⚠️ مفصولٌ عن [canManageEmployees] عمداً: مَن يُدخل بيانات الموظفين ليس بالضرورة
+  /// مَن يصرف رواتبهم.
+  final bool canManagePayroll;
 
   const CompanyAccess({
     required this.companyId,
@@ -309,7 +320,8 @@ class CompanyAccess {
     this.canApprove = false,
     this.canManageIncoming = false,
     this.canViewAllIncoming = false,
-    this.canManageHR = false,
+    this.canManageEmployees = false,
+    this.canManagePayroll = false,
   });
 
   factory CompanyAccess.fromJson(Map<String, dynamic> j) => CompanyAccess(
@@ -319,7 +331,8 @@ class CompanyAccess {
         canApprove: j['canApprove'] ?? false,
         canManageIncoming: j['canManageIncoming'] ?? false,
         canViewAllIncoming: j['canViewAllIncoming'] ?? false,
-        canManageHR: j['canManageHR'] ?? false,
+        canManageEmployees: j['canManageEmployees'] ?? false,
+        canManagePayroll: j['canManagePayroll'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -329,7 +342,8 @@ class CompanyAccess {
         'canApprove': canApprove,
         'canManageIncoming': canManageIncoming,
         'canViewAllIncoming': canViewAllIncoming,
-        'canManageHR': canManageHR,
+        'canManageEmployees': canManageEmployees,
+        'canManagePayroll': canManagePayroll,
       };
 
   CompanyAccess copyWith({
@@ -339,7 +353,8 @@ class CompanyAccess {
     bool? canApprove,
     bool? canManageIncoming,
     bool? canViewAllIncoming,
-    bool? canManageHR,
+    bool? canManageEmployees,
+    bool? canManagePayroll,
   }) =>
       CompanyAccess(
         companyId: companyId,
@@ -348,7 +363,8 @@ class CompanyAccess {
         canApprove: canApprove ?? this.canApprove,
         canManageIncoming: canManageIncoming ?? this.canManageIncoming,
         canViewAllIncoming: canViewAllIncoming ?? this.canViewAllIncoming,
-        canManageHR: canManageHR ?? this.canManageHR,
+        canManageEmployees: canManageEmployees ?? this.canManageEmployees,
+        canManagePayroll: canManagePayroll ?? this.canManagePayroll,
       );
 }
 

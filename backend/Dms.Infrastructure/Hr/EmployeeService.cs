@@ -366,8 +366,8 @@ public sealed class EmployeeService(
 
     private void RequireWrite()
     {
-        if (!current.CanManageHR)
-            throw new ForbiddenException("لا تملك صلاحية إدارة الموظفين والرواتب.");
+        if (!current.CanManageEmployees)
+            throw new ForbiddenException("لا تملك صلاحية إدارة بطاقات الموظفين.");
     }
 
     private int RequireCompany() =>

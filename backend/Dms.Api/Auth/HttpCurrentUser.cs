@@ -46,21 +46,24 @@ public sealed class HttpCurrentUser : ICurrentUser
 
     public bool CanViewAllIncoming => PerCompany(DmsClaims.CanViewAllIncoming) == 1;
 
-    /// <summary>
-    /// إدارة الموظفين والرواتب: **السوبر أدمن ورئيس الشركة دائماً**، وغيرهما بالعلَم.
-    /// </summary>
+    /// <summary>كتابة بطاقات الموظفين: **السوبر أدمن ورئيس الشركة دائماً**، وغيرهما بالعلَم.</summary>
     /// <remarks>
     /// ⚠️ الإعفاء بالدور **داخل الخاصية نفسها** (كما في <see cref="AllowedModules"/> أدناه)
     /// لا في كل خدمة على حدة: السوبر أدمن قد يكون **بلا إسناد لأي شركة**، فلا يحمل توكنه
-    /// خريطةَ `hr_mng` أصلاً وتعود القراءة `null` ⇒ يُحجب عن وحدةٍ يملكها بحكم دوره.
+    /// خريطةَ العلَم أصلاً وتعود القراءة `null` ⇒ يُحجب عن وحدةٍ يملكها بحكم دوره.
     /// (وهذا ما جعل `/me` يُرجع `canManageHR=false` لحساب الأدمن في أول تشغيل حيّ.)
     ///
     /// و**رئيس الشركة فأعلى** لا «المدير فأعلى» — خلافاً لنمط <c>EffectiveCanApprove</c>:
-    /// لو أُعفي المدير بدوره لما بقي لـ<c>CanManageHR</c> معنى، وهو الفرق بين مديرٍ **يرى**
-    /// الرواتب ومديرٍ **يحرّرها** (قرار المالك 2026-08-03).
+    /// لو أُعفي المدير بدوره لما بقي للعلَم معنى، وهو الفرق بين مَن **يرى** ومَن **يحرّر**.
     /// </remarks>
-    public bool CanManageHR =>
-        Role is UserRole.SuperAdmin or UserRole.President || PerCompany(DmsClaims.CanManageHR) == 1;
+    public bool CanManageEmployees =>
+        Role is UserRole.SuperAdmin or UserRole.President
+        || PerCompany(DmsClaims.CanManageEmployees) == 1;
+
+    /// <summary>كتابة كشوف الرواتب — علَمٌ مستقلّ (ADR-025)، والإعفاء بالدور نفسه.</summary>
+    public bool CanManagePayroll =>
+        Role is UserRole.SuperAdmin or UserRole.President
+        || PerCompany(DmsClaims.CanManagePayroll) == 1;
 
     public int? DepartmentId => PerCompany(DmsClaims.DepartmentId);
 

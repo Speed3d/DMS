@@ -10,14 +10,20 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Api.Controllers;
 
-/// <summary>إعدادات وحدة الموظفين وملخّصها (ADR-023).</summary>
+/// <summary>إعدادات وحدة الرواتب وملخّص الوحدتين (ADR-023 + ADR-025).</summary>
+/// <remarks>
+/// ⚠️ **الحارس هنا على مستوى النقطة لا الصنف** — خلافاً لـ`EmployeesController`
+/// و`PayrollController`. لأن هذا المسار **يخلط القسمين**: الإعدادات قواعدُ حسابٍ ماليّ
+/// (رواتب)، والإجازات المعلّقة شأنُ موظفين، والملخّص يخدم الاثنين. وحارسٌ صنفيّ واحد كان
+/// إمّا يمنع صاحبَ قسمٍ من نقطته، أو يفتح له نقطة القسم الآخر.
+/// </remarks>
 [ApiController]
 [Authorize]
-[RequireHrModule]
 [Route("api/hr")]
 public sealed class HrController(
     AppDbContext db, ICurrentUser current, IAuditService audit, ILeaveService leaves) : ControllerBase
 {
+    [RequireHrModule(AppModule.Payroll)]
     [HttpGet("settings")]
     public async Task<ActionResult<HrSettingsResponse>> Settings(CancellationToken ct)
     {
@@ -30,6 +36,7 @@ public sealed class HrController(
             s?.EndOfServiceCustomDays);
     }
 
+    [RequireHrModule(AppModule.Payroll)]
     [HttpPut("settings")]
     public async Task<ActionResult<HrSettingsResponse>> UpdateSettings(HrSettingsRequest req, CancellationToken ct)
     {
@@ -71,6 +78,7 @@ public sealed class HrController(
     /// (بلاغ المالك 2026-08-05). و<c>/employees/{id}/leaves</c> لا تجيب لأنها تسأل عن موظفٍ
     /// بعينه، والسؤال هنا معكوس: **مَن ينتظر؟**
     /// </remarks>
+    [RequireHrModule(AppModule.Employees)]
     [HttpGet("leaves/pending")]
     public async Task<ActionResult<List<PendingLeaveResponse>>> PendingLeaves(CancellationToken ct)
         => (await leaves.PendingAsync(ct))
@@ -81,34 +89,55 @@ public sealed class HrController(
             .ToList();
 
     /// <summary>ملخّص للوحة التحكم — كل الأرقام مفلترة على الشركة الفعّالة تلقائياً.</summary>
+    /// <remarks>
+    /// 🔐 **يخدم القسمين، فيُخفي عن كلٍّ ما لا يخصّه** (ADR-025): صاحبُ «الموظفين» وحده
+    /// يأخذ عدد الفعّالين والإجازات المعلّقة **و`null` في الأرقام المالية**، والعكس بالعكس.
+    ///
+    /// ⚠️ **و`null` لا صفر:** الصفر يُقرأ «الشركة بلا رواتب هذا الشهر» وهي معلومة **كاذبة**،
+    /// و`null` يُقرأ «لا تراه» فتُخفي الواجهة البطاقة. وهذا الدرس نفسه سبق أن كلّف لوحةَ
+    /// التحكم بطاقاتٍ بصفرٍ كاذب قبل ADR-017 — **معلومة ناقصة أهون من معلومة كاذبة**.
+    /// </remarks>
+    [RequireHrModule(AppModule.Employees, AppModule.Payroll)]
     [HttpGet("summary")]
     public async Task<ActionResult<HrSummaryResponse>> Summary(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
+        var seesEmployees = current.HasModule(AppModule.Employees);
+        var seesPayroll = current.HasModule(AppModule.Payroll);
 
-        var activeEmployees = await db.EmployeeCompanies
-            .CountAsync(x => x.IsActive && x.TerminationDate == null, ct);
+        int? activeEmployees = seesEmployees
+            ? await db.EmployeeCompanies.CountAsync(x => x.IsActive && x.TerminationDate == null, ct)
+            : null;
 
-        var thisMonth = await db.PayrollEntries
-            .Where(e => e.Period!.Year == now.Year && e.Period.Month == now.Month)
-            .SumAsync(e => (decimal?)e.NetSalaryIqd, ct) ?? 0m;
+        int? pendingLeaves = seesEmployees ? await leaves.PendingCountAsync(ct) : null;
 
-        var thisYear = await db.PayrollEntries
-            .Where(e => e.Period!.Year == now.Year)
-            .SumAsync(e => (decimal?)e.NetSalaryIqd, ct) ?? 0m;
+        decimal? thisMonth = seesPayroll
+            ? await db.PayrollEntries
+                .Where(e => e.Period!.Year == now.Year && e.Period.Month == now.Month)
+                .SumAsync(e => (decimal?)e.NetSalaryIqd, ct) ?? 0m
+            : null;
 
-        var unpaidMonths = await db.PayrollPeriods
-            .CountAsync(p => p.Status == PayrollStatus.Draft, ct);
+        decimal? thisYear = seesPayroll
+            ? await db.PayrollEntries
+                .Where(e => e.Period!.Year == now.Year)
+                .SumAsync(e => (decimal?)e.NetSalaryIqd, ct) ?? 0m
+            : null;
 
-        var pendingLeaves = await leaves.PendingCountAsync(ct);
+        int? unpaidMonths = seesPayroll
+            ? await db.PayrollPeriods.CountAsync(p => p.Status == PayrollStatus.Draft, ct)
+            : null;
 
         return new HrSummaryResponse(
             activeEmployees, thisMonth, thisYear, unpaidMonths, pendingLeaves);
     }
 
+    /// <remarks>
+    /// ⚠️ **إعدادات الوحدة تتبع «الرواتب»**: محتواها كلّه أيامُ عمل ومكافأةُ نهاية خدمة —
+    /// أي قواعدُ حسابٍ ماليّ. فلا يغيّرها مَن يملك بطاقات الموظفين وحدها.
+    /// </remarks>
     private void RequireWrite()
     {
-        if (!current.CanManageHR)
-            throw new ForbiddenException("لا تملك صلاحية إدارة الموظفين والرواتب.");
+        if (!current.CanManagePayroll)
+            throw new ForbiddenException("لا تملك صلاحية إدارة كشوف الرواتب.");
     }
 }

@@ -82,7 +82,7 @@ class _PayrollYearsScreenState extends ConsumerState<PayrollYearsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canManage = ref.watch(sessionProvider).canManageHr;
+    final canManage = ref.watch(sessionProvider).canManagePayroll;
 
     return Scaffold(
       body: Padding(

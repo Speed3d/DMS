@@ -73,7 +73,7 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canManage = ref.watch(sessionProvider).canManageHr;
+    final canManage = ref.watch(sessionProvider).canManageEmployees;
 
     return Scaffold(
       body: Padding(

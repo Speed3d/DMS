@@ -12,14 +12,15 @@ import 'session.dart';
 final employeesProvider = FutureProvider.autoDispose<List<EmployeeListItem>>((ref) async {
   final session = ref.watch(sessionProvider);
   // ⚠️ الحدّان معاً (القسم **والدور**) — مرآةٌ لـ`[RequireHrModule]`؛ الطلب بلا أحدهما يردّ 403.
-  if (!session.canSeeHr) return <EmployeeListItem>[];
+  if (!session.canSeeEmployees) return <EmployeeListItem>[];
   return ref.read(apiClientProvider).employees(activeOnly: true);
 });
 
 /// ملخّص الوحدة (بطاقة لوحة التحكم).
 final hrSummaryProvider = FutureProvider.autoDispose<HrSummary?>((ref) async {
   final session = ref.watch(sessionProvider);
-  if (!session.canSeeHr) return null;
+  // الملخّص يخدم القسمين، والخادم يُفرغ ما لا يخصّ الطالب — فيكفي أيُّهما.
+  if (!session.canSeeAnyHr) return null;
   return ref.read(apiClientProvider).hrSummary();
 });
 

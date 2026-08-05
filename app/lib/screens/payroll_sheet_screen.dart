@@ -268,7 +268,7 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canManage = ref.watch(sessionProvider).canManageHr;
+    final canManage = ref.watch(sessionProvider).canManagePayroll;
     final p = _period;
 
     return Scaffold(

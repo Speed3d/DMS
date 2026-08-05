@@ -158,10 +158,11 @@ void main() {
     expect(find.text('إجمالي الوارد'), findsNothing);
   });
 
-  // ─────────────────── بطاقات الموظفين والرواتب (ADR-023) ───────────────────
+  // ─────────────── بطاقات الموظفين والرواتب (ADR-023 ← **ADR-025**) ───────────────
 
-  testWidgets('مدير بقسم HR: تظهر بطاقات الموظفين والرواتب', (tester) async {
-    await pumpDashboard(tester, sessionWith(['Outgoing', 'HR'], role: 'Manager'));
+  testWidgets('صاحب القسمين: تظهر بطاقاتهما كلها', (tester) async {
+    await pumpDashboard(
+        tester, sessionWith(['Outgoing', 'Employees', 'Payroll'], role: 'Manager'));
 
     expect(find.text('الموظفون الفعّالون'), findsOneWidget);
     expect(find.text('رواتب هذا الشهر'), findsOneWidget);
@@ -170,19 +171,48 @@ void main() {
     expect(find.text('إجازات بانتظار الموافقة'), findsOneWidget);
   });
 
-  testWidgets('موظف بقسم HR: **لا** بطاقات رواتب — الدور يحجبها', (tester) async {
-    // 🔐 الحارس الأهمّ في اللوحة: قسمٌ مُنح خطأً لا يكفي لكشف الرواتب،
-    //    لأن الباك-إند يردّ 403 وبطاقةٌ تقود إلى 403 أسوأ من بطاقة غائبة.
-    await pumpDashboard(tester, sessionWith(['Outgoing', 'HR'], role: 'Employee'));
+  testWidgets('🔐 صاحب «الموظفين» وحدهم: لا بطاقات رواتب', (tester) async {
+    // جوهر ADR-025 في اللوحة: فتحُ قسمٍ لا يكشف أرقام الآخر.
+    await pumpDashboard(tester, sessionWith(['Outgoing', 'Employees'], role: 'Manager'));
+
+    expect(find.text('الموظفون الفعّالون'), findsOneWidget);
+    expect(find.text('إجازات بانتظار الموافقة'), findsOneWidget);
+    expect(find.text('رواتب هذا الشهر'), findsNothing);
+    expect(find.text('أشهر غير مُسدَّدة'), findsNothing);
+  });
+
+  testWidgets('🔐 صاحب «الرواتب» وحدها: لا بطاقات موظفين', (tester) async {
+    await pumpDashboard(tester, sessionWith(['Outgoing', 'Payroll'], role: 'Manager'));
+
+    expect(find.text('رواتب هذا الشهر'), findsOneWidget);
+    expect(find.text('الموظفون الفعّالون'), findsNothing);
+    expect(find.text('إجازات بانتظار الموافقة'), findsNothing);
+  });
+
+  testWidgets('🔄 موظف بالقسمين: **يراهما الآن** — كان محجوباً قبل ADR-025', (tester) async {
+    // قرار المالك 2026-08-05: الوحدة فُتحت لدور «موظف»، والحارس الباقي هو أن القسم
+    // لا يُمنح تلقائياً (`AppModule.All` تستثنيهما).
+    await pumpDashboard(
+        tester, sessionWith(['Outgoing', 'Employees', 'Payroll'], role: 'Employee'));
+
+    expect(find.text('الموظفون الفعّالون'), findsOneWidget);
+    expect(find.text('رواتب هذا الشهر'), findsOneWidget);
+  });
+
+  testWidgets('🔐 قارئ بالقسمين: لا بطاقات إطلاقاً — الدور يحجبه', (tester) async {
+    // الحارس الأهمّ الباقي بعد فتح الوحدة: بطاقةٌ تقود إلى 403 أسوأ من بطاقة غائبة.
+    await pumpDashboard(
+        tester, sessionWith(['Outgoing', 'Employees', 'Payroll'], role: 'Reader'));
 
     expect(find.text('إجمالي الصادر'), findsOneWidget);
     expect(find.text('الموظفون الفعّالون'), findsNothing);
     expect(find.text('رواتب هذا الشهر'), findsNothing);
   });
 
-  testWidgets('مدير بلا قسم HR: لا بطاقات رواتب', (tester) async {
+  testWidgets('مدير بلا القسمين: لا بطاقات', (tester) async {
     await pumpDashboard(tester, sessionWith(['Outgoing'], role: 'Manager'));
     expect(find.text('الموظفون الفعّالون'), findsNothing);
+    expect(find.text('رواتب هذا الشهر'), findsNothing);
   });
 }
 

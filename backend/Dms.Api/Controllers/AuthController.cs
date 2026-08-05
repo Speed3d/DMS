@@ -41,7 +41,7 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
         => new MeResponse(current.UserId!.Value, User.Identity!.Name ?? "",
             User.Identity!.Name ?? "", current.Role!.Value, current.AllowedCompanyIds, current.CanApprove,
             current.AllowedModules.ToNames(), current.DepartmentId, current.CanManageIncoming,
-            current.CanViewAllIncoming, current.CanManageHR);
+            current.CanViewAllIncoming, current.CanManageEmployees, current.CanManagePayroll);
 
     [Authorize]
     [HttpPost("change-password")]

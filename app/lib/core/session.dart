@@ -52,15 +52,26 @@ class SessionState {
   /// صلاحية **إدارة** الموظفين والرواتب في الشركة الفعّالة (ADR-023).
   ///
   /// قسم `HR` يفتح الرؤية وهذا يفتح الكتابة — فمن يراه بلا هذا العلَم يقرأ ولا يحرّر.
-  bool get canManageHr => auth?.canManageHrIn(effectiveCompanyId) ?? false;
+  /// صلاحية **كتابة** بطاقات الموظفين في الشركة الفعّالة (ADR-025).
+  bool get canManageEmployees => auth?.canManageEmployeesIn(effectiveCompanyId) ?? false;
 
-  /// هل تظهر وحدة الموظفين والرواتب أصلاً؟ (القسم **مع** الدور — مرآةٌ لـ`[RequireHrModule]`)
+  /// صلاحية **كتابة** كشوف الرواتب — علَمٌ مستقلّ (ADR-025).
+  bool get canManagePayroll => auth?.canManagePayrollIn(effectiveCompanyId) ?? false;
+
+  /// هل يظهر قسم الموظفين؟ (القسم **مع** الدور — مرآةٌ لـ`[RequireHrModule]`)
   ///
-  /// ⚠️ الحدّان معاً لا أحدهما: الباك-إند يرفض بـ403 من كان دونه المدير مهما مُنح من أقسام،
+  /// ⚠️ الحدّان معاً لا أحدهما: الباك-إند يرفض بـ403 **القارئَ** مهما مُنح من أقسام،
   /// وإظهار بندٍ في الشريط يقود إلى شاشة تردّ 403 أسوأ من إخفائه.
-  bool get canSeeHr =>
-      hasModule('HR') &&
-      const ['SuperAdmin', 'President', 'Manager'].contains(auth?.role);
+  bool get canSeeEmployees => hasModule('Employees') && _aboveReader;
+
+  /// هل يظهر قسم الرواتب؟ **مستقلٌّ عن الموظفين** (ADR-025).
+  bool get canSeePayroll => hasModule('Payroll') && _aboveReader;
+
+  /// أيُّ قسمٍ منهما — لِما يخدم الاثنين (مثل ملخّص لوحة التحكم).
+  bool get canSeeAnyHr => canSeeEmployees || canSeePayroll;
+
+  /// 🔄 **كان الحدّ «المدير فأعلى» (ADR-023) فصار «فوق القارئ» (ADR-025).**
+  bool get _aboveReader => auth?.role != 'Reader';
 
   SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool? bypassCompanySelection, bool clearAuth = false, bool clearCompany = false}) =>
       SessionState(

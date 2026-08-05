@@ -179,23 +179,38 @@ public enum AppModule
     Backup = 32,
     Incoming = 64,
 
-    /// <summary>الموظفون والرواتب (ADR-023). **خارج <see cref="All"/> عمداً** — انظر تعليقها.</summary>
-    HR = 128,
+    /// <summary>بطاقات الموظفين ومستمسكاتهم وإجازاتهم (ADR-025). **خارج <see cref="All"/> عمداً**.</summary>
+    /// <remarks>
+    /// ⚠️ **كان اسمه <c>HR = 128</c>** وكان يفتح الموظفين والرواتب معاً. فُصل بقرار المالك
+    /// (2026-08-05) لأن مَن يُدخل بيانات الموظفين ليس بالضرورة مَن يرى رواتبهم.
+    /// **القيمة 128 محفوظة** فيبقى كل من مُنح HR سابقاً مالكاً لقسم الموظفين بلا مهاجرة بيانات.
+    /// </remarks>
+    Employees = 128,
+
+    /// <summary>كشوف الرواتب والإيصالات (ADR-025). **خارج <see cref="All"/> عمداً**.</summary>
+    /// <remarks>
+    /// ⚠️ بتٌّ **جديد**، فلا يملكه أحدٌ تلقائياً. والمهاجرة تمنحه لمن كان يملك `HR` من قبل
+    /// وحدَه — وإلّا فقد أصحابُ الصلاحية القديمة نصفَها صامتاً.
+    /// </remarks>
+    Payroll = 256,
 
     /// <summary>
-    /// الأقسام الافتراضية لأي إسناد جديد — **بلا HR عمداً (127 لا 255)**.
+    /// الأقسام الافتراضية لأي إسناد جديد — **بلا الموظفين ولا الرواتب عمداً (127)**.
     /// </summary>
     /// <remarks>
-    /// ⚠️ لماذا لا تشمل HR؟ لأن هذه القيمة هي **الافتراض** في ثلاثة مواضع صامتة:
+    /// ⚠️ لماذا لا تشملهما؟ لأن هذه القيمة هي **الافتراض** في ثلاثة مواضع صامتة:
     /// <c>UserCompany.Modules</c> المُهيَّأة، و<c>UserService.ResolveModules</c> حين ينشئ مديرٌ
-    /// مستخدماً بلا تحديد أقسام، والمهاجرة على الصفوف القائمة. لو ضُمّت HR إليها لحصل **كل
+    /// مستخدماً بلا تحديد أقسام، والمهاجرة على الصفوف القائمة. لو ضُمّا إليها لحصل **كل
     /// مستخدم جديد** على رؤية رواتب الشركة كلها بلا أن يمنحه أحدٌ ذلك — والرواتب أحسّ بيانات
-    /// في النظام. الوصول لـHR **يُمنح صراحةً أو لا يُمنح**.
+    /// في النظام. الوصول إليهما **يُمنح صراحةً أو لا يُمنح**.
+    ///
+    /// 🔴 **وهذه الخاصية أهمّ بعد ADR-025 لا أقلّ:** فتحُ الوحدة لدور «موظف» يعني أن غياب
+    /// حدّ الدور لم يعد يحمي — فالحارس الوحيد الباقي هو أن القسم **لا يُمنح تلقائياً**.
     /// </remarks>
     All = Outgoing | Archive | Reports | Users | Settings | Backup | Incoming, // 127
 
-    /// <summary>كل شيء بلا استثناء (255) — للأدوار المعفاة وحدها: السوبر أدمن ورئيس الشركة.</summary>
-    AllWithHr = All | HR, // 255
+    /// <summary>كل شيء بلا استثناء (511) — للأدوار المعفاة وحدها: السوبر أدمن ورئيس الشركة.</summary>
+    AllWithHr = All | Employees | Payroll, // 511
 }
 
 /// <summary>تحويل bitmask الأقسام إلى/من قائمة أسماء (لعقود الـ API).</summary>
@@ -208,7 +223,8 @@ public static class AppModuleExtensions
     private static readonly AppModule[] Individual =
     {
         AppModule.Outgoing, AppModule.Archive, AppModule.Reports, AppModule.Users,
-        AppModule.Settings, AppModule.Backup, AppModule.Incoming, AppModule.HR,
+        AppModule.Settings, AppModule.Backup, AppModule.Incoming,
+        AppModule.Employees, AppModule.Payroll,
     };
 
     public static List<string> ToNames(this AppModule m) =>

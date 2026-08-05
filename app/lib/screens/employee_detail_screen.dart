@@ -278,7 +278,7 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canManage = ref.watch(sessionProvider).canManageHr;
+    final canManage = ref.watch(sessionProvider).canManageEmployees;
     final e = _employee;
 
     return PopScope(

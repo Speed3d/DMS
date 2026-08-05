@@ -436,20 +436,26 @@ class HrSettingsModel {
       );
 }
 
+/// ملخّص الوحدتين للوحة التحكم — **كل حقلٍ قد يكون `null`** (ADR-025).
+///
+/// ⚠️ `null` تعني «**لا تملك هذا القسم**» لا «صفر»، والخادم يُفرغ ما لا يخصّ الطالب.
+/// و`?? 0` هنا كانت ستُعيد إنتاج **الصفر الكاذب** الذي تفاداه الخادمُ عمداً: يقرأ صاحبُ
+/// قسم الموظفين «رواتب هذا الشهر: 0» فيفهم أن الشركة لم تصرف شيئاً، والحقيقة أنه لا يراها.
+/// **معلومة ناقصة أهون من معلومة كاذبة** — وهو الدرس نفسه الذي كلّف لوحة التحكم قبل ADR-017.
 class HrSummary {
-  final int activeEmployees;
-  final double thisMonthTotalIqd;
-  final double thisYearTotalIqd;
-  final int unpaidMonths;
-  final int pendingLeaves;
+  final int? activeEmployees;
+  final double? thisMonthTotalIqd;
+  final double? thisYearTotalIqd;
+  final int? unpaidMonths;
+  final int? pendingLeaves;
   HrSummary(this.activeEmployees, this.thisMonthTotalIqd, this.thisYearTotalIqd,
       this.unpaidMonths, this.pendingLeaves);
   factory HrSummary.fromJson(Map<String, dynamic> j) => HrSummary(
-      j['activeEmployees'] ?? 0,
-      (j['thisMonthTotalIqd'] as num?)?.toDouble() ?? 0,
-      (j['thisYearTotalIqd'] as num?)?.toDouble() ?? 0,
-      j['unpaidMonths'] ?? 0,
-      j['pendingLeaves'] ?? 0);
+      j['activeEmployees'],
+      (j['thisMonthTotalIqd'] as num?)?.toDouble(),
+      (j['thisYearTotalIqd'] as num?)?.toDouble(),
+      j['unpaidMonths'],
+      j['pendingLeaves']);
 }
 
 // ═══════════ الإجازات وسجلّ التغييرات ونهاية الخدمة (الدفعة ٢) ═══════════

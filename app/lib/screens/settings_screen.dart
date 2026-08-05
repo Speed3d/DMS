@@ -46,8 +46,9 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider);
     final isSuper = session.auth?.isSuperAdmin ?? false;
-    // تبويب الموظفين يظهر لمن يرى الوحدة وحده (القسم مع الدور) — مرآةُ `[RequireHrModule]`.
-    final showHr = session.canSeeHr;
+    // ⚠️ تبويب الإعدادات يتبع **الرواتب**: محتواه أيامُ عمل ومكافأةُ نهاية خدمة — أي
+    //    قواعدُ حسابٍ ماليّ، ونقطتُه `[RequireHrModule(Payroll)]`.
+    final showHr = session.canSeePayroll;
 
     return DefaultTabController(
       length: showHr ? 7 : 6,

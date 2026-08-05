@@ -90,7 +90,7 @@ public sealed class AttachmentService(
             OwnerType.Outgoing => AppModule.Outgoing,
             OwnerType.Archive => AppModule.Archive,
             OwnerType.Incoming => AppModule.Incoming,
-            OwnerType.Employee => AppModule.HR,
+            OwnerType.Employee => AppModule.Employees,
             _ => throw new ValidationException("نوع غير معروف")
         };
         if (!current.HasModule(requiredModule))
@@ -99,11 +99,12 @@ public sealed class AttachmentService(
         // ── مستمسكات الموظف: الرؤية بالإسناد لا بالمُنشئ ──
         // ⚠️ Employee **بلا CreatedByUserId يُقاس عليه** (كيان عابر للشركات)، فقاعدة «عنصر
         //    غيرك» أدناه لا تنطبق. والحدّ الحقيقي هو الفلتر العام: موظفٌ غير مُسنَد للشركة
-        //    الفعّالة لا يُرى أصلاً. ونضيف حدّ الدور لأن الوحدة كلها للمدير فأعلى (ADR-023).
+        //    الفعّالة لا يُرى أصلاً. ونضيف حدّ الدور **مرآةً لـ`[RequireHrModule]`** (ADR-025):
+        //    القارئ محجوبٌ بدوره، فلا يبلغ المستمسكات من باب المرفقات بعد أن حُجب عن الوحدة.
         if (type == OwnerType.Employee)
         {
-            if (current.Role is not { } hrRole || !RoleHierarchy.IsManagerOrAbove(hrRole))
-                throw new ForbiddenException("مستمسكات الموظفين متاحة للمدير فأعلى فقط.");
+            if (current.Role is not { } hrRole || !RoleHierarchy.IsEmployeeOrAbove(hrRole))
+                throw new ForbiddenException("مستمسكات الموظفين غير متاحة لدور القارئ.");
 
             var visible = await db.Employees.AnyAsync(e => e.EmployeeId == ownerId, ct);
             if (!visible)

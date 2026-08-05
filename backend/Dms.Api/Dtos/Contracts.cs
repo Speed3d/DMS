@@ -15,7 +15,8 @@ public sealed record AuthResponse(
 public sealed record MeResponse(
     int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
     bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming,
-    bool CanViewAllIncoming = false, bool CanManageHR = false);
+    bool CanViewAllIncoming = false,
+    bool CanManageEmployees = false, bool CanManagePayroll = false);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -50,7 +51,7 @@ public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency,
 public sealed record UserCompanyDto(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
     bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
-    bool CanManageHR = false);
+    bool CanManageEmployees = false, bool CanManagePayroll = false);
 
 public sealed record CreateUserRequest(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyDto>? Companies);
@@ -137,8 +138,16 @@ public sealed record PayRequest(
 
 public sealed record GenerateResponse(int Added, int Existing, int Skipped);
 
+/// <summary>تنبيه «مدفوع من شركة أخرى» (ADR-024) — مع **تاريخ صرف تلك الشركة**.</summary>
+/// <remarks>
+/// ⚠️ **`PaidAt` كان يُحسب في الخدمة ولا يُمرَّر هنا** فيصل العميلَ فارغاً دائماً ولا يُعرض
+/// التاريخ أبداً — رغم أن الخدمة والنموذج والواجهة كلها جاهزة له. (اكتُشف 2026-08-05 أثناء
+/// قراءة الملف لعملٍ آخر، لا ببلاغٍ ولا باختبار.) **نمط «ميزة بلا مدخل» في أضيق صوره:
+/// حلقةٌ واحدة ناقصة في سلسلةٍ كاملة** — ولهذا تُتبَّع الحقول من المصدر إلى الشاشة.
+/// </remarks>
 public sealed record ExternalPaymentResponse(
-    int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName);
+    int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName,
+    DateTime? PaidAt);
 
 public sealed record HrSettingsRequest(
     WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays,
@@ -150,9 +159,15 @@ public sealed record HrSettingsResponse(
     WorkingDaysMode DefaultWorkingDaysMode, int DefaultWorkingDays,
     bool EndOfServiceEnabled, EndOfServiceRatio EndOfServiceRatio, int? EndOfServiceCustomDays);
 
+/// <summary>ملخّص الوحدتين للوحة التحكم — **الحقول اختيارية عمداً** (ADR-025).</summary>
+/// <remarks>
+/// ⚠️ `null` تعني «**لا تملك هذا القسم**» لا «صفر». الصفر يُقرأ معلومةً كاذبة («لا رواتب
+/// هذا الشهر»)، و`null` تجعل الواجهة **تُخفي البطاقة** بدل أن تكذب. حقولُ الموظفين تصل
+/// لصاحب قسم «الموظفين»، والمالية لصاحب «الرواتب»، والمعفَون يرون الكل.
+/// </remarks>
 public sealed record HrSummaryResponse(
-    int ActiveEmployees, decimal ThisMonthTotalIqd, decimal ThisYearTotalIqd,
-    int UnpaidMonths, int PendingLeaves);
+    int? ActiveEmployees, decimal? ThisMonthTotalIqd, decimal? ThisYearTotalIqd,
+    int? UnpaidMonths, int? PendingLeaves);
 
 // ── الإجازات وسجلّ التغييرات (الدفعة ٢) ──
 public sealed record LeaveRequest(
