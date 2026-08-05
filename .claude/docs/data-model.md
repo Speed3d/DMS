@@ -95,7 +95,10 @@
 `ArchiveId, CompanyId, ArchiveNumber, Title, BookNumber?, BookDate?, FromEntityId?, ToEntityId?, DocumentTypeId?, Amount?, Currency?, ExchangeRate?, AmountInIqd?, Keywords?, Notes?, CreatedByUserId, CreatedAt, IsDeleted, DeletedBy/At?`.
 
 ### Attachment / DocumentVersion
-- `Attachment`: `AttachmentId, OwnerType(Outgoing/Archive/Incoming), OwnerId, FileName, BlobKey, FileType, FileSize, UploadedByUserId, UploadedAt`. الحد 50 ميغابايت، والصيغ: PDF/JPG/JPEG/PNG/DOCX/XLSX/ZIP/DWG.
+- `Attachment`: `AttachmentId, OwnerType(Outgoing/Archive/Incoming/**Employee**), OwnerId, FileName, BlobKey, FileType, FileSize, UploadedByUserId, UploadedAt`. الحد 50 ميغابايت، والصيغ: PDF/JPG/JPEG/PNG/DOCX/XLSX/ZIP/DWG.
+  - ⚠️ **`OwnerType` عمودٌ رقميّ بلا قيدٍ في القاعدة** ⇒ نوعٌ جديد **لا يحتاج مهاجرة** لهذا الجدول.
+    وأُضيف `Employee = 3` مع بناء الوحدة، لكن **نقطتَي القائمة والرفع لم تُبنيا إلا في 2026-08-05**
+    (بلاغ المالك ٧) — فبقيت الميزة ميتةً صامتةً رغم جهوز الكيان والحارس.
 - `DocumentVersion`: `VersionId, DocType, DocId, VersionNo, SnapshotJson, ChangedByUserId, ChangedAt, ChangeNote?`.
 
 ### BackupRecord / BackupSchedule (نظامي — بلا عزل شركة)
