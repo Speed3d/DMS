@@ -95,6 +95,19 @@ public class UserCompany
     /// </remarks>
     public bool CanManagePayroll { get; set; }
 
+    /// <summary>
+    /// **يعدّل شهراً مُسدَّداً** — تصحيحُ سعر صرف أو راتبٍ أو إضافةُ موظفٍ فاته الكشف (ADR-026).
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **علَمٌ فوق `CanManagePayroll` لا بديلٌ عنه**: التسديد قرارٌ نهائيّ يُقفل الشهر،
+    /// وفتحُه ثانيةً صلاحيةٌ أخطر من تحرير مسودّة. والسوبر أدمن ورئيس الشركة يملكانها
+    /// **بدورهما** (نمط <see cref="CanApprove"/>) — «خياران» بطلب المالك: طريقٌ بالدور
+    /// وطريقٌ بالمنح.
+    /// ⚠️ **ولا تُغني عن السبب الإلزاميّ**: مَن يملكها يعدّل، ولا يعدّل بلا تعليل يُحفظ
+    /// في الإصدار (سابقة فكّ الأرشفة — ADR-021).
+    /// </remarks>
+    public bool CanAmendPaidPayroll { get; set; }
+
     public User? User { get; set; }
     public Department? Department { get; set; }
 }

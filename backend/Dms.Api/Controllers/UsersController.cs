@@ -43,7 +43,8 @@ public sealed class UsersController(IUserService users) : ControllerBase
     private static List<UserCompanyInput>? ToInputs(List<UserCompanyDto>? dtos) =>
         dtos?.Select(c => new UserCompanyInput(
             c.CompanyId, c.Modules, c.DepartmentId, c.CanApprove, c.CanManageIncoming,
-            c.CanViewAllIncoming, c.CanManageEmployees, c.CanManagePayroll)).ToList();
+            c.CanViewAllIncoming, c.CanManageEmployees, c.CanManagePayroll,
+            c.CanAmendPaidPayroll)).ToList();
 
     private static UserResponse Map(User u) =>
         new(u.UserId, u.FullName, u.Username, u.Role,
@@ -51,5 +52,6 @@ public sealed class UsersController(IUserService users) : ControllerBase
             u.IsActive, u.MustChangePassword,
             u.AssignedCompanies.Select(c => new UserCompanyDto(
                 c.CompanyId, c.Modules.ToNames(), c.DepartmentId, c.CanApprove, c.CanManageIncoming,
-                c.CanViewAllIncoming, c.CanManageEmployees, c.CanManagePayroll)).ToList());
+                c.CanViewAllIncoming, c.CanManageEmployees, c.CanManagePayroll,
+                c.CanAmendPaidPayroll)).ToList());
 }

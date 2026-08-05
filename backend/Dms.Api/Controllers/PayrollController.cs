@@ -3,6 +3,7 @@ using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Documents.Reports;
 using Dms.Domain;
+using Dms.Infrastructure.Attachments;
 using Dms.Infrastructure.Hr;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
@@ -18,7 +19,8 @@ namespace Dms.Api.Controllers;
 [RequireHrModule(AppModule.Payroll)]
 [Route("api/payroll")]
 public sealed class PayrollController(
-    IPayrollService payroll, AppDbContext db, ICurrentUser current) : ControllerBase
+    IPayrollService payroll, AppDbContext db, ICurrentUser current,
+    IAttachmentService attachments) : ControllerBase
 {
     // ─────────────────────────── تصفّح ───────────────────────────
 
@@ -45,9 +47,10 @@ public sealed class PayrollController(
 
     /// <summary>توليد/تحديث الكشف — **تراكميّ**: يضيف الناقص ولا يمسّ ما أُدخل يدوياً.</summary>
     [HttpPost("periods/{year:int}/{month:int}")]
-    public async Task<ActionResult<GenerateResponse>> Generate(int year, int month, CancellationToken ct)
+    public async Task<ActionResult<GenerateResponse>> Generate(
+        int year, int month, [FromBody] GenerateRequest? req, CancellationToken ct)
     {
-        var r = await payroll.GenerateAsync(year, month, ct);
+        var r = await payroll.GenerateAsync(year, month, req?.AmendmentReason, ct);
         return new GenerateResponse(r.Added, r.Existing, r.Skipped);
     }
 
@@ -57,7 +60,7 @@ public sealed class PayrollController(
     {
         var period = await payroll.UpdateSettingsAsync(year, month,
             new PeriodSettingsInput(req.ExchangeRate, req.WorkingDaysMode, req.WorkingDays, req.Notes),
-            req.RowVersion, ct);
+            req.RowVersion, req.AmendmentReason, ct);
         return await MapAsync(period, ct);
     }
 
@@ -70,7 +73,8 @@ public sealed class PayrollController(
             e.ManualAbsenceDeduction, e.EligibleDaysOverride, e.Notes,
             e.EndOfServiceAmount)).ToList();
 
-        var period = await payroll.SaveEntriesAsync(year, month, inputs, req.RowVersion, ct);
+        var period = await payroll.SaveEntriesAsync(
+            year, month, inputs, req.RowVersion, req.AmendmentReason, ct);
         return await MapAsync(period, ct);
     }
 
@@ -82,6 +86,71 @@ public sealed class PayrollController(
             req.RowVersion, ct);
         return NoContent();
     }
+
+    // ─────────── إيصال الاستلام الموقَّع (بلاغ المالك ٦ + ADR-026) ───────────
+
+    /// <summary>إيصالات موظفٍ بعينه في هذا الشهر — الموقَّعة المرفوعة.</summary>
+    [HttpGet("entries/{entryId:int}/receipts")]
+    public async Task<ActionResult<List<SignedReceiptResponse>>> SignedReceipts(
+        int entryId, CancellationToken ct)
+        => (await attachments.ListAsync(OwnerType.PayrollEntry, entryId, ct))
+            .Select(a => new SignedReceiptResponse(
+                a.AttachmentId, a.FileName, a.FileType, a.FileSize, a.UploadedAt))
+            .ToList();
+
+    /// <summary>رفع الإيصال بعد توقيع الموظف — مرجعٌ كامل بأنه استلم ووقّع.</summary>
+    /// <remarks>
+    /// ⚠️ **يُقبل على شهرٍ مُسدَّد عمداً** — بل هو موضعه الطبيعي: الموظف يوقّع **بعد**
+    /// الصرف لا قبله. ولهذا لا يمرّ من حارس التعديل.
+    /// </remarks>
+    [HttpPost("entries/{entryId:int}/receipts")]
+    public async Task<ActionResult<SignedReceiptResponse>> UploadSignedReceipt(
+        int entryId, IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0) throw new ValidationException("الملف مطلوب.");
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        var att = await attachments.AddAsync(
+            OwnerType.PayrollEntry, entryId, file.FileName, ms.ToArray(), ct);
+
+        // ⚠️ **الرفع بتٌّ في التقادم كذلك**: مَن رفع إيصالاً جديداً بعد التعديل فقد أجاب
+        //    السؤال بـ«قبول» فعلاً — فسؤالُه ثانيةً بعد ذلك عبث.
+        await payroll.AcknowledgeReceiptAsync(entryId, ct);
+
+        return new SignedReceiptResponse(
+            att.AttachmentId, att.FileName, att.FileType, att.FileSize, att.UploadedAt);
+    }
+
+    /// <summary>
+    /// **«رفض»**: تعديلُ الشهر لا يمسّ هذا الموظف، وإيصاله الموقَّع باقٍ صحيحاً (ADR-026).
+    /// </summary>
+    /// <remarks>
+    /// القرار للإنسان لا للنظام: النظام لا يعرف أيَّ موظفٍ تأثّر بتعديلٍ ما، والمحاسب يعرف.
+    /// </remarks>
+    [HttpPost("entries/{entryId:int}/receipts/acknowledge")]
+    public async Task<IActionResult> AcknowledgeReceipt(int entryId, CancellationToken ct)
+    {
+        await payroll.AcknowledgeReceiptAsync(entryId, ct);
+        return NoContent();
+    }
+
+    [HttpGet("entries/{entryId:int}/receipts/{attachmentId:int}/download")]
+    public async Task<IActionResult> DownloadSignedReceipt(
+        int entryId, int attachmentId, bool inline, CancellationToken ct)
+    {
+        var (meta, content) = await attachments.GetAsync(attachmentId, ct);
+        if (inline) return File(content, MimeTypes.For(meta.FileName));
+        return File(content, "application/octet-stream", meta.FileName);
+    }
+
+    /// <summary>سجلّ تعديلات الشهر بعد التسديد (ADR-026) — الأحدث أولاً.</summary>
+    [HttpGet("periods/{year:int}/{month:int}/amendments")]
+    public async Task<ActionResult<List<PayrollAmendmentResponse>>> Amendments(
+        int year, int month, CancellationToken ct)
+        => (await payroll.AmendmentsAsync(year, month, ct))
+            .Select(a => new PayrollAmendmentResponse(
+                a.VersionNo, a.Reason, a.ChangedBy, a.ChangedAt, a.SnapshotJson))
+            .ToList();
 
     [HttpDelete("periods/{year:int}/{month:int}")]
     public async Task<IActionResult> DeletePeriod(int year, int month, CancellationToken ct)
@@ -241,6 +310,25 @@ public sealed class PayrollController(
             .Where(x => linkIds.Contains(x.EmployeeCompanyId))
             .ToDictionaryAsync(x => x.EmployeeCompanyId, x => x.EmployeeId, ct);
 
+        // ── إيصالات الاستلام الموقَّعة وتقادمها (ADR-026) ──
+        // ⚠️ **استعلامٌ واحد لكل السطور** لا واحدٌ لكل سطر: كشفُ مئة موظف كان يُنتج مئة
+        //    رحلة إلى القاعدة عند كل فتحٍ للشاشة.
+        var entryIds = p.Entries.Select(e => e.EntryId).ToList();
+        var receiptTimes = await db.Attachments
+            .Where(a => a.OwnerType == OwnerType.PayrollEntry && entryIds.Contains(a.OwnerId))
+            .GroupBy(a => a.OwnerId)
+            .Select(g => new { EntryId = g.Key, Count = g.Count(), Latest = g.Max(x => x.UploadedAt) })
+            .ToDictionaryAsync(x => x.EntryId, x => x, ct);
+
+        // إيصالٌ «متقادم» = رُفع **قبل** آخر تعديلٍ للشهر، ولم يُبَتّ فيه بعده.
+        bool IsStale(PayrollEntry e)
+        {
+            if (p.LastAmendedAt is not { } amended) return false;
+            if (!receiptTimes.TryGetValue(e.EntryId, out var r)) return false;
+            if (r.Latest >= amended) return false;
+            return e.ReceiptAcknowledgedAt is not { } ack || ack < amended;
+        }
+
         var entries = p.Entries.OrderBy(e => e.DisplayOrder).Select(e => new PayrollEntryResponse(
             e.EntryId, e.EmployeeCompanyId,
             employeeByLink.TryGetValue(e.EmployeeCompanyId, out var empId) ? empId : 0,
@@ -249,13 +337,16 @@ public sealed class PayrollController(
             e.AbsenceDeduction, e.AbsenceDeductionIsManual, e.EndOfServiceAmount,
             e.NetSalary, e.NetSalaryIqd,
             e.PaymentStatus, e.PaidByCompanyId, e.PaidByCompanyName,
-            e.IsNewHire, e.IsTerminated, e.Notes)).ToList();
+            e.IsNewHire, e.IsTerminated, e.Notes,
+            receiptTimes.TryGetValue(e.EntryId, out var rc) ? rc.Count : 0,
+            IsStale(e))).ToList();
 
         return new PayrollPeriodResponse(
             p.PeriodId, p.Year, p.Month, PayrollCalculator.ArabicMonth(p.Month), p.Status,
             p.ExchangeRate, p.WorkingDaysMode, p.WorkingDays,
             p.PaidAt, p.OutgoingBookId, p.ManualBookNumber, p.Notes,
-            p.RowVersion ?? [], entries.Sum(e => e.NetSalaryIqd), entries);
+            p.RowVersion ?? [], entries.Sum(e => e.NetSalaryIqd), entries,
+            p.LastAmendedAt, p.AmendmentCount, current.CanAmendPaidPayroll);
     }
 
     private async Task<string> CompanyNameAsync(CancellationToken ct)

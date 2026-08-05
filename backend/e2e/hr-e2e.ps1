@@ -263,6 +263,69 @@ if($editPaid.S -eq 409){ Ok "التعديل بعد التسديد مرفوض (40
 $delPaid=Api DELETE "/payroll/periods/$Year/$Month" $null $admin $cid
 if($delPaid.S -eq 409){ Ok "الحذف بعد التسديد مرفوض (409)" } else { Bad "الحذف بعد التسديد ردّ $($delPaid.S)" }
 
+Write-Host "`n=== 🔐 تعديل الشهر المُسدَّد بإصدارات (ADR-026) ===" -ForegroundColor Cyan
+# 🔴 **جراحيّ لا إعادةَ فتح**: الشهر يبقى `Paid` طوال التعديل، وإلا تعطّل كشف «مدفوع من
+#    شركة أخرى» (يشترط هذه الحالة) فانفتحت نافذةُ صرفٍ مزدوج.
+
+$pAmend=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$oldRate=$pAmend.exchangeRate
+$oldTotal=$pAmend.totalIqd
+
+# ١) بلا سبب ⇒ 409 (وهو التحقّق أعلاه أصلاً) · ٢) بسببٍ قصير ⇒ 400
+$shortReason=Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$pAmend.rowVersion;exchangeRate=1400;workingDaysMode='Fixed';workingDays=30;notes=$null;amendmentReason='خطأ'} $admin $cid
+if($shortReason.S -eq 400){ Ok "سبب تعديلٍ قصير مرفوض (400)" } else { Bad "السبب القصير ردّ $($shortReason.S) بدل 400" }
+
+# ٣) بسببٍ صحيح ⇒ 200، **والشهر يبقى مُسدَّداً**
+$amended=Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$pAmend.rowVersion;exchangeRate=1400;workingDaysMode='Fixed';workingDays=30;notes=$null;amendmentReason='تصحيح سعر الصرف بعد التسديد — اختبار'} $admin $cid
+if($amended.S -eq 200){ Ok "التعديل بسببٍ صحيح نجح (200)" } else { Bad "التعديل ردّ $($amended.S) بدل 200" }
+if($amended.B.status -eq 'Paid'){ Ok "🔐 الشهر **بقي مُسدَّداً** أثناء التعديل ✔ لا نافذة صرفٍ مزدوج" } else { Bad "الحالة صارت $($amended.B.status)" }
+if($amended.B.exchangeRate -eq 1400){ Ok "سعر الصرف تغيّر إلى 1400" } else { Bad "السعر $($amended.B.exchangeRate)" }
+if($amended.B.totalIqd -ne $oldTotal){ Ok "الإجمالي أُعيد حسابه ($oldTotal ⇐ $($amended.B.totalIqd))" } else { Bad "الإجمالي لم يتغيّر" }
+if($amended.B.amendmentCount -eq 1){ Ok "عدّاد التعديلات = 1" } else { Bad "العدّاد $($amended.B.amendmentCount)" }
+
+# ٤) سجلّ الإصدارات يحفظ **ما كان** لا ما صار
+# ⚠️ `@(Api ...).B` تُفكّك المصفوفة فتضيع `.Count` — التغليف يقع **حول `.B`** لا حولها.
+$log=@((Api GET "/payroll/periods/$Year/$Month/amendments" $null $admin $cid).B)
+if($log.Count -eq 1){ Ok "سجلّ التعديلات فيه إصدار واحد" } else { Bad "السجلّ فيه $($log.Count)" }
+if($log[0].snapshotJson -match "`"ExchangeRate`":$oldRate"){ Ok "🔐 اللقطة تحفظ سعر الصرف **القديم** ($oldRate) ✔ الماضي محفوظ" } else { Bad "اللقطة لا تحمل السعر القديم" }
+if(-not [string]::IsNullOrWhiteSpace($log[0].reason)){ Ok "السبب محفوظ في السجلّ" } else { Bad "السبب فارغ" }
+if(-not [string]::IsNullOrWhiteSpace($log[0].changedBy)){ Ok "ومَن عدّل محفوظ" } else { Bad "المعدِّل فارغ" }
+
+# ٥) كشف «مدفوع من شركة أخرى» **يبقى عاملاً** — السبب الذي اختير له الجراحيّ
+$extAfter=Api GET "/payroll/periods/$Year/$Month/external-payments" $null $admin $cid
+if($extAfter.S -eq 200){ Ok "🔐 كشف «مدفوع من شركة أخرى» يعمل بعد التعديل ✔ (ADR-024 سليمة)" } else { Bad "الكشف ردّ $($extAfter.S)" }
+
+Write-Host "`n=== دورة إيصال الاستلام الموقَّع (بلاغ المالك ٦) ===" -ForegroundColor Cyan
+$row=$amended.B.entries[0]
+$rcBoundary=[Guid]::NewGuid().ToString()
+$rcBytes=[Text.Encoding]::UTF8.GetBytes('%PDF-1.4 signed')
+$rcBody=[Text.Encoding]::UTF8.GetBytes(
+  "--$rcBoundary`r`nContent-Disposition: form-data; name=`"file`"; filename=`"ايصال موقع.pdf`"`r`nContent-Type: application/pdf`r`n`r`n" +
+  [Text.Encoding]::UTF8.GetString($rcBytes) + "`r`n--$rcBoundary--`r`n")
+try{
+  $up=Invoke-WebRequest -Uri "$Base/payroll/entries/$($row.entryId)/receipts" -Method Post -Headers @{Authorization="Bearer $admin";'X-Company-Id'="$cid"} -ContentType "multipart/form-data; boundary=$rcBoundary" -Body $rcBody -UseBasicParsing
+  Ok "رُفع الإيصال الموقَّع على شهرٍ **مُسدَّد** ✔ (وهو موضعه الطبيعي)"
+}catch{ Bad "رفع الإيصال فشل: $($_.Exception.Message)" }
+
+$pR=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$rowR=$pR.entries | Where-Object { $_.entryId -eq $row.entryId } | Select-Object -First 1
+if($rowR.signedReceiptCount -ge 1){ Ok "عدّاد الإيصالات = $($rowR.signedReceiptCount)" } else { Bad "العدّاد صفر بعد الرفع" }
+if(-not $rowR.receiptIsStale){ Ok "وليس متقادماً (رُفع بعد آخر تعديل)" } else { Bad "عُدّ متقادماً خطأً" }
+
+# تعديلٌ ثانٍ ⇒ الإيصال يتقادم
+Start-Sleep -Milliseconds 1200
+$amend2=Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$pR.rowVersion;exchangeRate=1450;workingDaysMode='Fixed';workingDays=30;notes=$null;amendmentReason='تعديل ثانٍ لاختبار تقادم الإيصال'} $admin $cid
+$pS=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$rowS=$pS.entries | Where-Object { $_.entryId -eq $row.entryId } | Select-Object -First 1
+if($rowS.receiptIsStale){ Ok "🔐 بعد التعديل: الإيصال **متقادم** ✔ التنبيه يعمل" } else { Bad "الإيصال لم يُعدّ متقادماً" }
+
+# «رفض» ⇒ يزول التنبيه
+$ack=Api POST "/payroll/entries/$($row.entryId)/receipts/acknowledge" $null $admin $cid
+if($ack.S -eq 204){ Ok "«رفض — لا يمسّه التعديل» قُبل (204)" } else { Bad "البتّ ردّ $($ack.S)" }
+$pT=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$rowT=$pT.entries | Where-Object { $_.entryId -eq $row.entryId } | Select-Object -First 1
+if(-not $rowT.receiptIsStale){ Ok "وزال التنبيه ✔ دورة كاملة" } else { Bad "التنبيه باقٍ بعد البتّ" }
+
 $delEmp=Api DELETE "/employees/$e1" $null $admin $cid
 if($delEmp.S -eq 409){ Ok "حذف موظف له رواتب مُسدَّدة مرفوض (409) ✔ السجل المالي محميّ" } else { Bad "حذف الموظف ردّ $($delEmp.S) بدل 409" }
 

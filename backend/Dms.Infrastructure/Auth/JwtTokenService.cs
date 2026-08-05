@@ -26,6 +26,9 @@ public static class DmsClaims
     public const string CanManageEmployees = "emp_mng";
     public const string CanManagePayroll = "pay_mng";
 
+    /// <summary>تعديل شهرٍ مُسدَّد (ADR-026).</summary>
+    public const string CanAmendPaidPayroll = "pay_amend";
+
     public const string DepartmentId = "dept";
 }
 
@@ -72,6 +75,8 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
                 PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanManageEmployees ? 1 : 0))));
             claims.Add(new Claim(DmsClaims.CanManagePayroll,
                 PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanManagePayroll ? 1 : 0))));
+            claims.Add(new Claim(DmsClaims.CanAmendPaidPayroll,
+                PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanAmendPaidPayroll ? 1 : 0))));
 
             // القسم اختياري — تُدرَج الشركات التي له فيها قسم فقط.
             var depts = links.Where(c => c.DepartmentId is not null)

@@ -65,6 +65,16 @@ public sealed class HttpCurrentUser : ICurrentUser
         Role is UserRole.SuperAdmin or UserRole.President
         || PerCompany(DmsClaims.CanManagePayroll) == 1;
 
+    /// <summary>**تعديل شهرٍ مُسدَّد** — بالدور (سوبر أدمن/رئيس) أو بالعلَم (ADR-026).</summary>
+    /// <remarks>
+    /// ⚠️ **«خياران» بقرار المالك**: طريقٌ بالدور لا يحتاج منحاً، وطريقٌ بالمنح لمديرٍ
+    /// يحتاجها. ولولا الأول لاحتاج السوبر أدمن نفسه منحاً — وهو قد يكون بلا إسنادٍ لأي
+    /// شركة فلا يحمل توكنه الخريطة أصلاً (العيب الذي انكشف حيّاً في `canManageHR`).
+    /// </remarks>
+    public bool CanAmendPaidPayroll =>
+        Role is UserRole.SuperAdmin or UserRole.President
+        || PerCompany(DmsClaims.CanAmendPaidPayroll) == 1;
+
     public int? DepartmentId => PerCompany(DmsClaims.DepartmentId);
 
     public AppModule AllowedModules

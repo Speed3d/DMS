@@ -313,6 +313,11 @@ class CompanyAccess {
   /// مَن يصرف رواتبهم.
   final bool canManagePayroll;
 
+  /// **يعدّل شهراً مُسدَّداً** — علَمٌ **فوق** [canManagePayroll] لا بديلٌ عنه (ADR-026).
+  ///
+  /// ⚠️ التسديد قرارٌ نهائيّ يُقفل الشهر، وفتحُه ثانيةً أخطر من تحرير مسودّة.
+  final bool canAmendPaidPayroll;
+
   const CompanyAccess({
     required this.companyId,
     required this.modules,
@@ -322,6 +327,7 @@ class CompanyAccess {
     this.canViewAllIncoming = false,
     this.canManageEmployees = false,
     this.canManagePayroll = false,
+    this.canAmendPaidPayroll = false,
   });
 
   factory CompanyAccess.fromJson(Map<String, dynamic> j) => CompanyAccess(
@@ -333,6 +339,7 @@ class CompanyAccess {
         canViewAllIncoming: j['canViewAllIncoming'] ?? false,
         canManageEmployees: j['canManageEmployees'] ?? false,
         canManagePayroll: j['canManagePayroll'] ?? false,
+        canAmendPaidPayroll: j['canAmendPaidPayroll'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -344,6 +351,7 @@ class CompanyAccess {
         'canViewAllIncoming': canViewAllIncoming,
         'canManageEmployees': canManageEmployees,
         'canManagePayroll': canManagePayroll,
+        'canAmendPaidPayroll': canAmendPaidPayroll,
       };
 
   CompanyAccess copyWith({
@@ -355,6 +363,7 @@ class CompanyAccess {
     bool? canViewAllIncoming,
     bool? canManageEmployees,
     bool? canManagePayroll,
+    bool? canAmendPaidPayroll,
   }) =>
       CompanyAccess(
         companyId: companyId,
@@ -365,6 +374,7 @@ class CompanyAccess {
         canViewAllIncoming: canViewAllIncoming ?? this.canViewAllIncoming,
         canManageEmployees: canManageEmployees ?? this.canManageEmployees,
         canManagePayroll: canManagePayroll ?? this.canManagePayroll,
+        canAmendPaidPayroll: canAmendPaidPayroll ?? this.canAmendPaidPayroll,
       );
 }
 

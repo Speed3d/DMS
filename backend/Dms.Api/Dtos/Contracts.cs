@@ -16,7 +16,8 @@ public sealed record MeResponse(
     int UserId, string FullName, string Username, UserRole Role, List<int> CompanyIds,
     bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming,
     bool CanViewAllIncoming = false,
-    bool CanManageEmployees = false, bool CanManagePayroll = false);
+    bool CanManageEmployees = false, bool CanManagePayroll = false,
+    bool CanAmendPaidPayroll = false);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -51,7 +52,8 @@ public sealed record ExchangeRateResponse(int ExchangeRateId, Currency Currency,
 public sealed record UserCompanyDto(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
     bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
-    bool CanManageEmployees = false, bool CanManagePayroll = false);
+    bool CanManageEmployees = false, bool CanManagePayroll = false,
+    bool CanAmendPaidPayroll = false);
 
 public sealed record CreateUserRequest(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyDto>? Companies);
@@ -92,9 +94,14 @@ public sealed record EmployeeDetailResponse(
     string? Address, string? Notes, ReceiptLanguage ReceiptLanguage, bool HasPhoto,
     List<EmploymentResponse> Companies);
 
+/// <remarks>
+/// ⚠️ <c>EntryId</c> **لازمٌ لا زينة**: بدونه لا يستطيع صفُّ الشهر في ملفّ الموظف أن يرفع
+/// إيصالاً موقَّعاً ولا أن يعرضه — والإيصال يخصّ **سطراً** لا موظفاً. (بلاغ المالك ٦.)
+/// </remarks>
 public sealed record SalaryHistoryItem(
-    int Year, int Month, string MonthName, decimal NetSalary, Currency Currency,
-    decimal NetSalaryIqd, PayrollStatus PeriodStatus, PayrollPaymentStatus PaymentStatus);
+    int EntryId, int Year, int Month, string MonthName, decimal NetSalary, Currency Currency,
+    decimal NetSalaryIqd, PayrollStatus PeriodStatus, PayrollPaymentStatus PaymentStatus,
+    int SignedReceiptCount = 0);
 
 public sealed record ExistingEmployeeResponse(int EmployeeId, string FullName, bool AlreadyInThisCompany);
 
@@ -113,13 +120,21 @@ public sealed record PayrollEntryResponse(
     decimal AbsenceDeduction, bool AbsenceDeductionIsManual, decimal? EndOfServiceAmount,
     decimal NetSalary, decimal NetSalaryIqd,
     PayrollPaymentStatus PaymentStatus, int? PaidByCompanyId, string? PaidByCompanyName,
-    bool IsNewHire, bool IsTerminated, string? Notes);
+    bool IsNewHire, bool IsTerminated, string? Notes,
+    // ── إيصال الاستلام الموقَّع (ADR-026) ──
+    int SignedReceiptCount = 0,
+    /// <summary>إيصالٌ رُفع **قبل** آخر تعديلٍ للشهر ولم يُبَتَّ فيه بعد.</summary>
+    bool ReceiptIsStale = false);
 
 public sealed record PayrollPeriodResponse(
     int PeriodId, int Year, int Month, string MonthName, PayrollStatus Status,
     decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode, int WorkingDays,
     DateTime? PaidAt, int? OutgoingBookId, string? ManualBookNumber, string? Notes,
-    byte[] RowVersion, decimal TotalIqd, List<PayrollEntryResponse> Entries);
+    byte[] RowVersion, decimal TotalIqd, List<PayrollEntryResponse> Entries,
+    // ── تعديل الشهر المُسدَّد (ADR-026) ──
+    DateTime? LastAmendedAt = null, int AmendmentCount = 0,
+    /// <summary>هل يملك الطالبُ تعديلَ هذا الشهر بعد تسديده؟ (لإظهار الزرّ أو إخفائه)</summary>
+    bool CanAmend = false);
 
 /// <summary>مدخلات سطر واحد. **بلا صافٍ عمداً** — الخادم يحسبه ولا يقبله من العميل.</summary>
 public sealed record SaveEntryRequest(
@@ -127,11 +142,27 @@ public sealed record SaveEntryRequest(
     decimal? ManualAbsenceDeduction, int? EligibleDaysOverride, string? Notes,
     decimal? EndOfServiceAmount = null);
 
-public sealed record SaveEntriesRequest(byte[] RowVersion, List<SaveEntryRequest> Entries);
+/// <remarks>
+/// ⚠️ <c>AmendmentReason</c> **إلزاميّ حين يكون الشهر مُسدَّداً** ومُهمَلٌ فيما عداه (ADR-026).
+/// وجودُه في الحمولة هو ما يُميّز «تعديلاً مقصوداً» عن حفظٍ اعتياديّ وصل شهراً مُقفَلاً.
+/// </remarks>
+public sealed record SaveEntriesRequest(
+    byte[] RowVersion, List<SaveEntryRequest> Entries, string? AmendmentReason = null);
 
 public sealed record PeriodSettingsRequest(
     byte[] RowVersion, decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode,
-    int WorkingDays, string? Notes);
+    int WorkingDays, string? Notes, string? AmendmentReason = null);
+
+/// <summary>طلب توليد — بسببٍ إن كان الشهر مُسدَّداً (إضافة موظفٍ فاته الكشف).</summary>
+public sealed record GenerateRequest(string? AmendmentReason = null);
+
+/// <summary>إيصال استلامٍ موقَّع مرفوع لسطر راتب (بلاغ المالك ٦).</summary>
+public sealed record SignedReceiptResponse(
+    int AttachmentId, string FileName, string FileType, long FileSize, DateTime UploadedAt);
+
+/// <summary>قيدٌ في سجلّ تعديلات الشهر (ADR-026) — يُعرض ولا يُعدَّل.</summary>
+public sealed record PayrollAmendmentResponse(
+    int VersionNo, string Reason, string ChangedBy, DateTime ChangedAt, string SnapshotJson);
 
 public sealed record PayRequest(
     byte[] RowVersion, DateTime PaidAt, int? OutgoingBookId, string? ManualBookNumber, string? Notes);

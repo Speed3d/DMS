@@ -40,6 +40,13 @@ public interface ICurrentUser
     /// </remarks>
     bool CanManagePayroll { get; }
 
+    /// <summary>هل يملك **تعديل شهرٍ مُسدَّد** في الشركة الفعّالة؟ (ADR-026)</summary>
+    /// <remarks>
+    /// علَمٌ **فوق** <see cref="CanManagePayroll"/> لا بديلٌ عنه — التسديد قرارٌ نهائيّ،
+    /// وفتحُه ثانيةً أخطر من تحرير مسودّة. السوبر أدمن ورئيس الشركة يملكانه بدورهما.
+    /// </remarks>
+    bool CanAmendPaidPayroll { get; }
+
     /// <summary>قسم المستخدم (من الـ JWT) — يحدّد أي كتب واردة محالة يراها. null إن لم يُسنَد لقسم.</summary>
     int? DepartmentId { get; }
 
@@ -66,6 +73,7 @@ public sealed class SystemUser : ICurrentUser
     public bool CanViewAllIncoming => true;   // النظام يرى الكل (لا فلترة)
     public bool CanManageEmployees => true;
     public bool CanManagePayroll => true;
+    public bool CanAmendPaidPayroll => true;
     public int? DepartmentId => null;
     public List<int> AllowedCompanyIds => new();
     public AppModule AllowedModules => AppModule.AllWithHr;

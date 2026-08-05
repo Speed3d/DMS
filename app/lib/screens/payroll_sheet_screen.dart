@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +38,12 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
   final _rate = TextEditingController();
   final _workingDays = TextEditingController();
   String _mode = 'Fixed';
+
+  /// سبب تعديل الشهر المُسدَّد — **غير فارغ يعني أن وضع التعديل مفتوح** (ADR-026).
+  ///
+  /// ⚠️ لا يُفتح إلا بسؤالٍ صريح: شهرٌ مُسدَّد يبدو قابلاً للتحرير بلا استئذان **يدعو
+  /// إلى تعديلٍ عرَضيّ** على أرقامٍ وُقّع عليها.
+  String? _amendReason;
 
   @override
   void initState() {
@@ -134,6 +141,7 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
             workingDaysMode: _mode,
             workingDays: int.tryParse(_workingDays.text.trim()) ?? p.workingDays,
             notes: p.notes,
+            amendmentReason: _amendReason,
           );
       if (!mounted) return;
       setState(() => _applyPeriod(updated));
@@ -152,7 +160,8 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
       final body = _edits.entries.map((e) => e.value.toJson(e.key)).toList();
       final updated = await ref
           .read(apiClientProvider)
-          .savePayrollEntries(widget.year, widget.month, p.rowVersion, body);
+          .savePayrollEntries(widget.year, widget.month, p.rowVersion, body,
+              amendmentReason: _amendReason);
       if (!mounted) return;
       setState(() => _applyPeriod(updated));
       _snack('حُفظ الكشف.');
@@ -160,6 +169,140 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
       if (mounted) _snack('$e', error: true);
     }
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// يسأل عن سبب التعديل ثم يفتح وضع التحرير — **السؤال قبل الفتح لا بعده**.
+  /// السطور التي إيصالُها الموقَّع أقدمُ من آخر تعديل — تنتظر «قبول» أو «رفض».
+  List<PayrollEntryModel> get _staleReceipts =>
+      _period?.entries.where((e) => e.receiptIsStale).toList() ?? const [];
+
+  /// **«قبول»**: يفتح منتقي ملفٍّ لإيصالٍ جديد يحلّ محلّ المتقادم.
+  Future<void> _replaceReceipt(PayrollEntryModel e) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await FilePicker.pickFiles(withData: true);
+    if (res == null || res.files.single.bytes == null) return;
+    final f = res.files.single;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).uploadSignedReceipt(e.entryId, f.name, f.bytes!);
+      await _load();
+      if (mounted) _snack('رُفع إيصال ${e.name} الجديد.');
+    } catch (err) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('تعذّر الرفع: $err'), backgroundColor: Colors.red));
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  /// **«رفض»**: تعديل الشهر لا يمسّ هذا الموظف، وإيصاله باقٍ صحيحاً.
+  Future<void> _keepReceipt(PayrollEntryModel e) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).acknowledgeReceipt(e.entryId);
+      await _load();
+      if (mounted) _snack('أُبقي إيصال ${e.name} كما هو.');
+    } catch (err) {
+      if (mounted) _snack('$err', error: true);
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _startAmending() async {
+    final p = _period;
+    if (p == null) return;
+
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تعديل شهر مُسدَّد'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'الشهر مُسدَّد. التعديل يُحفَظ في سجلّ الإصدارات باسمك وسببك، '
+              'ويجعل إيصالات الاستلام الموقَّعة سابقاً بحاجةٍ إلى مراجعة.',
+              style: TextStyle(fontSize: 13, height: 1.6),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'سبب التعديل *',
+                hintText: 'مثال: تصحيح سعر الصرف — كان 1310 والصحيح 1450',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('فتح للتعديل'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (reason == null) return;
+    if (reason.length < 5) {
+      _snack('اكتب سبباً مفهوماً (خمسة أحرف على الأقل).', error: true);
+      return;
+    }
+    setState(() => _amendReason = reason);
+  }
+
+  /// يعرض سجلّ تعديلات الشهر — مَن ومتى ولماذا.
+  Future<void> _showAmendments() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final items =
+          await ref.read(apiClientProvider).payrollAmendments(widget.year, widget.month);
+      if (!mounted) return;
+      final d = DateFormat('yyyy-MM-dd HH:mm');
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('سجلّ تعديلات الشهر'),
+          content: SizedBox(
+            width: 460,
+            child: items.isEmpty
+                ? const Text('لم يُعدَّل هذا الشهر بعد تسديده.')
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const Divider(height: 18),
+                    itemBuilder: (_, i) {
+                      final a = items[i];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('إصدار ${a.versionNo} — ${a.changedBy}',
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w800)),
+                          Text(d.format(a.changedAt),
+                              style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
+                          const SizedBox(height: 4),
+                          Text(a.reason, style: const TextStyle(fontSize: 13)),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق')),
+          ],
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('تعذّر جلب السجلّ: $e')));
+    }
   }
 
   Future<void> _pay() async {
@@ -303,7 +446,9 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
   }
 
   Widget _buildSheet(PayrollPeriodModel p, bool canManage) {
-    final editable = canManage && !p.isPaid;
+    // مسودّةٌ تُحرَّر كالمعتاد، أو **شهرٌ مُسدَّد فُتح للتعديل بسببٍ صريح** (ADR-026).
+    final amending = p.isPaid && _amendReason != null;
+    final editable = canManage && (!p.isPaid || amending);
 
     return Column(
       children: [
@@ -323,6 +468,29 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
           onApply: _saveSettings,
           onRegenerate: _generate,
         ),
+
+        // شريط تعديل الشهر المُسدَّد (ADR-026)
+        if (p.isPaid && canManage)
+          _AmendBar(
+            period: p,
+            amending: amending,
+            reason: _amendReason,
+            busy: _busy,
+            onStart: _startAmending,
+            onCancel: () => setState(() => _amendReason = null),
+            onShowLog: _showAmendments,
+          ),
+
+        // ── إيصالات موقَّعة تقادمت بتعديل الشهر (ADR-026) ──
+        // ⚠️ **يظهر للمُسدَّد المعدَّل لا لوضع التحرير**: المحاسب يبتّ فيها متى فتح الشاشة،
+        //    ولو رُبط بوضع التعديل لاختفى التنبيه بمجرّد إنهائه فبقيت الإيصالات معلّقة.
+        if (_staleReceipts.isNotEmpty && canManage)
+          _StaleReceiptsBanner(
+            entries: _staleReceipts,
+            busy: _busy,
+            onAccept: _replaceReceipt,
+            onReject: _keepReceipt,
+          ),
 
         // تنبيهات «مدفوع من شركة أخرى» (ADR-024)
         if (_external.isNotEmpty && editable)
@@ -612,6 +780,152 @@ class _ExternalBanner extends StatelessWidget {
                 )),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// تنبيه الإيصالات الموقَّعة المتقادمة بعد تعديل الشهر (ADR-026 — طلب المالك في بلاغ ٣).
+///
+/// ⚠️ **زرّان لا زرّ واحد، والقرار للإنسان**: النظام لا يعرف أيَّ موظفٍ تأثّر بتعديلٍ ما،
+/// والمحاسب يعرف. فـ«قبول» يرفع بديلاً، و«رفض» يعني «هذا الموظف لم يمسّه التعديل».
+class _StaleReceiptsBanner extends StatelessWidget {
+  final List<PayrollEntryModel> entries;
+  final bool busy;
+  final ValueChanged<PayrollEntryModel> onAccept;
+  final ValueChanged<PayrollEntryModel> onReject;
+
+  const _StaleReceiptsBanner({
+    required this.entries, required this.busy,
+    required this.onAccept, required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.danger.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.danger.withValues(alpha: 0.45)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(children: [
+              Icon(Icons.assignment_late_rounded, color: AppColors.danger, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    'إيصالات موقَّعة رُفعت قبل تعديل الشهر — راجِعها',
+                    style: TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.danger)),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            const Text(
+              'المبلغ في الإيصال الموقَّع قد لا يطابق المخزَّن بعد التعديل. '
+              'ارفع إيصالاً جديداً، أو أكّد أن التعديل لا يمسّ هذا الموظف.',
+              style: TextStyle(fontSize: 12, height: 1.6),
+            ),
+            ...entries.map((e) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Expanded(child: Text(e.name, style: const TextStyle(fontSize: 13))),
+                    TextButton(
+                      onPressed: busy ? null : () => onAccept(e),
+                      child: const Text('قبول — رفع إيصال جديد'),
+                    ),
+                    TextButton(
+                      onPressed: busy ? null : () => onReject(e),
+                      style: TextButton.styleFrom(foregroundColor: Colors.grey),
+                      child: const Text('رفض — لا يمسّه التعديل'),
+                    ),
+                  ]),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// شريط تعديل الشهر المُسدَّد (ADR-026) — يفتح التحرير بسببٍ ويعرض أثر التعديلات.
+class _AmendBar extends StatelessWidget {
+  final PayrollPeriodModel period;
+  final bool amending;
+  final String? reason;
+  final bool busy;
+  final VoidCallback onStart;
+  final VoidCallback onCancel;
+  final VoidCallback onShowLog;
+
+  const _AmendBar({
+    required this.period, required this.amending, required this.reason,
+    required this.busy, required this.onStart, required this.onCancel,
+    required this.onShowLog,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = amending
+        ? AppColors.danger
+        : (isDark ? AppColors.successDark : AppColors.success);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.45)),
+        ),
+        child: Row(children: [
+          Icon(amending ? Icons.edit_note_rounded : Icons.lock_rounded, size: 20, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  amending ? 'وضع التعديل مفتوح — الشهر مُسدَّد' : 'الشهر مُسدَّد ومقفل',
+                  style: TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w800, color: color),
+                ),
+                if (amending && reason != null)
+                  Text('السبب: $reason',
+                      style: const TextStyle(fontSize: 12, height: 1.5))
+                else if (period.isAmended)
+                  Text('عُدِّل ${period.amendmentCount} مرّة بعد التسديد',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: theme.textTheme.bodyMedium?.color
+                              ?.withValues(alpha: 0.7))),
+              ],
+            ),
+          ),
+          if (period.isAmended)
+            TextButton.icon(
+              onPressed: onShowLog,
+              icon: const Icon(Icons.history_rounded, size: 16),
+              label: const Text('سجلّ التعديلات'),
+            ),
+          const SizedBox(width: 6),
+          if (amending)
+            OutlinedButton(onPressed: busy ? null : onCancel, child: const Text('إنهاء التعديل'))
+          else if (period.canAmend)
+            OutlinedButton.icon(
+              onPressed: busy ? null : onStart,
+              icon: const Icon(Icons.lock_open_rounded, size: 16),
+              label: const Text('تعديل بعد التسديد'),
+              style: OutlinedButton.styleFrom(foregroundColor: color),
+            ),
+        ]),
       ),
     );
   }

@@ -732,8 +732,11 @@ class ApiClient {
   }
 
   /// توليد **تراكميّ**: يضيف الناقص ولا يمسّ سطراً قائماً → `{added, existing, skipped}`.
-  Future<Map<String, dynamic>> generatePayroll(int year, int month) async =>
-      Map<String, dynamic>.from(await _post('/payroll/periods/$year/$month', null));
+  /// توليد/إضافة موظفين — و[amendmentReason] إلزاميّ إن كان الشهر مُسدَّداً (ADR-026).
+  Future<Map<String, dynamic>> generatePayroll(int year, int month,
+          {String? amendmentReason}) async =>
+      Map<String, dynamic>.from(await _post('/payroll/periods/$year/$month',
+          {'amendmentReason': amendmentReason}));
 
   Future<PayrollPeriodModel> updatePayrollSettings(
     int year, int month, {
@@ -742,21 +745,25 @@ class ApiClient {
     required String workingDaysMode,
     required int workingDays,
     String? notes,
+    String? amendmentReason,
   }) async =>
       PayrollPeriodModel.fromJson(await _put('/payroll/periods/$year/$month', {
         'rowVersion': rowVersion,
         'exchangeRate': exchangeRate,
         'workingDaysMode': workingDaysMode,
         'workingDays': workingDays,
+        'amendmentReason': amendmentReason,
         'notes': notes,
       }));
 
   /// حفظ السطور دفعةً. ⚠️ **بلا صافٍ** — الخادم يحسبه ويتجاهل ما يرسله العميل.
   Future<PayrollPeriodModel> savePayrollEntries(
-          int year, int month, String rowVersion, List<Map<String, dynamic>> entries) async =>
+          int year, int month, String rowVersion, List<Map<String, dynamic>> entries,
+          {String? amendmentReason}) async =>
       PayrollPeriodModel.fromJson(await _put('/payroll/periods/$year/$month/entries', {
         'rowVersion': rowVersion,
         'entries': entries,
+        'amendmentReason': amendmentReason,
       }));
 
   Future<void> payPayroll(
@@ -847,6 +854,45 @@ class ApiClient {
   Future<HrSummary> hrSummary() async => HrSummary.fromJson(await _get('/hr/summary'));
 
   /// الإجازات المعلّقة في الشركة الفعّالة **مع أصحابها** — تجيب «مَن ينتظر؟».
+  // ── تعديل الشهر المُسدَّد وإيصالاته الموقَّعة (ADR-026) ──
+
+  /// سجلّ تعديلات الشهر بعد التسديد — الأحدث أولاً.
+  Future<List<PayrollAmendment>> payrollAmendments(int year, int month) async =>
+      (await _get('/payroll/periods/$year/$month/amendments') as List)
+          .map((e) => PayrollAmendment.fromJson(e)).toList();
+
+  Future<List<SignedReceipt>> signedReceipts(int entryId) async =>
+      (await _get('/payroll/entries/$entryId/receipts') as List)
+          .map((e) => SignedReceipt.fromJson(e)).toList();
+
+  Future<void> uploadSignedReceipt(int entryId, String fileName, List<int> bytes) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+    });
+    try {
+      await _dio.post('/payroll/entries/$entryId/receipts', data: form);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  /// «رفض»: تعديل الشهر لا يمسّ هذا الموظف، وإيصاله باقٍ صحيحاً.
+  Future<void> acknowledgeReceipt(int entryId) =>
+      _post('/payroll/entries/$entryId/receipts/acknowledge', null);
+
+  Future<Uint8List> signedReceiptBytes(int entryId, int attachmentId) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        '/payroll/entries/$entryId/receipts/$attachmentId/download',
+        queryParameters: {'inline': true},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<List<PendingLeave>> pendingLeaves() async =>
       (await _get('/hr/leaves/pending') as List)
           .map((e) => PendingLeave.fromJson(e)).toList();

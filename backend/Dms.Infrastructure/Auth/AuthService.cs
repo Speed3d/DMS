@@ -9,7 +9,8 @@ namespace Dms.Infrastructure.Auth;
 public sealed record CompanyAccess(
     int CompanyId, List<string> Modules, int? DepartmentId, bool CanApprove, bool CanManageIncoming,
     bool CanViewAllIncoming = false,
-    bool CanManageEmployees = false, bool CanManagePayroll = false);
+    bool CanManageEmployees = false, bool CanManagePayroll = false,
+    bool CanAmendPaidPayroll = false);
 
 public sealed record AuthResult(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
@@ -138,7 +139,8 @@ public sealed class AuthService(
                 // حتى لا تُظهر الواجهة علَماً مطفأً لمن هو في الواقع مُطلَق الرؤية.
                 exempt || c.CanViewAllIncoming,
                 exempt || c.CanManageEmployees,
-                exempt || c.CanManagePayroll))
+                exempt || c.CanManagePayroll,
+                exempt || c.CanAmendPaidPayroll))
             .ToList();
 
         return new AuthResult(pair.AccessToken, pair.AccessExpires, pair.RefreshToken,

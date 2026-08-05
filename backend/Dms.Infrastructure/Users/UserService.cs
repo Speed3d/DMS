@@ -10,7 +10,8 @@ namespace Dms.Infrastructure.Users;
 public sealed record UserCompanyInput(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
     bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
-    bool CanManageEmployees = false, bool CanManagePayroll = false);
+    bool CanManageEmployees = false, bool CanManagePayroll = false,
+    bool CanAmendPaidPayroll = false);
 
 public sealed record CreateUserInput(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyInput>? Companies);
@@ -192,6 +193,9 @@ public sealed class UserService(
                 //    مَن يحرّر الرواتب — وهذا كل معنى فصل العلَم عن القسم.
                 CanManageEmployees = wish?.CanManageEmployees ?? false,
                 CanManagePayroll = wish?.CanManagePayroll ?? false,
+                // ⚠️ **بلا `byRole`**: الإعفاء يقع في `HttpCurrentUser` بالدور، وإدراجه هنا
+                //    كان يُخزّن `true` لكل مدير فيبدو في الشاشة ممنوحاً وهو ليس كذلك.
+                CanAmendPaidPayroll = wish?.CanAmendPaidPayroll ?? false,
             });
         }
         return links;

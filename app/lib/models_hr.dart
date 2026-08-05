@@ -147,6 +147,9 @@ class EmployeeDetail {
 }
 
 class SalaryHistoryItem {
+  /// معرّف سطر الراتب — **لازمٌ لرفع إيصال الاستلام الموقَّع** وعرضه (بلاغ المالك ٦).
+  final int entryId;
+
   final int year;
   final int month;
   final String monthName;
@@ -156,13 +159,20 @@ class SalaryHistoryItem {
   final String periodStatus;
   final String paymentStatus;
 
+  /// عدد الإيصالات الموقَّعة المرفوعة لهذا الشهر.
+  final int signedReceiptCount;
+
   SalaryHistoryItem({
+    required this.entryId,
     required this.year, required this.month, required this.monthName,
     required this.netSalary, required this.currency, required this.netSalaryIqd,
     required this.periodStatus, required this.paymentStatus,
+    this.signedReceiptCount = 0,
   });
 
   factory SalaryHistoryItem.fromJson(Map<String, dynamic> j) => SalaryHistoryItem(
+        entryId: j['entryId'] ?? 0,
+        signedReceiptCount: j['signedReceiptCount'] ?? 0,
         year: j['year'], month: j['month'], monthName: j['monthName'] ?? '',
         netSalary: (j['netSalary'] as num?)?.toDouble() ?? 0,
         currency: j['currency'] ?? 'IQD',
@@ -252,6 +262,12 @@ class PayrollEntryModel {
   final bool isTerminated;
   final String? notes;
 
+  /// عدد إيصالات الاستلام **الموقَّعة المرفوعة** لهذا السطر (بلاغ المالك ٦).
+  final int signedReceiptCount;
+
+  /// إيصالٌ رُفع **قبل** آخر تعديلٍ للشهر ولم يُبَتّ فيه — يحتاج «قبول» أو «رفض» (ADR-026).
+  final bool receiptIsStale;
+
   PayrollEntryModel({
     required this.entryId, required this.employeeCompanyId, required this.employeeId,
     required this.displayOrder, required this.name, required this.position,
@@ -263,6 +279,7 @@ class PayrollEntryModel {
     required this.netSalary, required this.netSalaryIqd,
     required this.paymentStatus, this.paidByCompanyId, this.paidByCompanyName,
     required this.isNewHire, required this.isTerminated, this.notes,
+    this.signedReceiptCount = 0, this.receiptIsStale = false,
   });
 
   bool get isUsd => currency == 'USD';
@@ -291,6 +308,8 @@ class PayrollEntryModel {
         paymentStatus: j['paymentStatus'] ?? 'Unpaid',
         paidByCompanyId: j['paidByCompanyId'],
         paidByCompanyName: j['paidByCompanyName'],
+        signedReceiptCount: j['signedReceiptCount'] ?? 0,
+        receiptIsStale: j['receiptIsStale'] ?? false,
         isNewHire: j['isNewHire'] ?? false,
         isTerminated: j['isTerminated'] ?? false,
         notes: j['notes'],
@@ -326,11 +345,24 @@ class PayrollPeriodModel {
   final double totalIqd;
   final List<PayrollEntryModel> entries;
 
+  /// وقت آخر تعديلٍ **بعد التسديد** — `null` إن لم يُعدَّل قطّ (ADR-026).
+  final DateTime? lastAmendedAt;
+
+  /// عدد التعديلات بعد التسديد.
+  final int amendmentCount;
+
+  /// هل يملك المستخدمُ الحاليّ تعديلَ هذا الشهر بعد تسديده؟ (لإظهار الزرّ أو إخفائه)
+  final bool canAmend;
+
+  /// هل عُدِّل الشهر بعد تسديده؟
+  bool get isAmended => amendmentCount > 0;
+
   PayrollPeriodModel({
     required this.periodId, required this.year, required this.month,
     required this.monthName, required this.status, this.exchangeRate,
     required this.workingDaysMode, required this.workingDays, this.paidAt,
     this.outgoingBookId, this.manualBookNumber, this.notes,
+    this.lastAmendedAt, this.amendmentCount = 0, this.canAmend = false,
     required this.rowVersion, required this.totalIqd, required this.entries,
   });
 
@@ -356,6 +388,37 @@ class PayrollPeriodModel {
         totalIqd: (j['totalIqd'] as num?)?.toDouble() ?? 0,
         entries: (j['entries'] as List? ?? [])
             .map((e) => PayrollEntryModel.fromJson(e)).toList(),
+        lastAmendedAt: DateTime.tryParse(j['lastAmendedAt'] ?? ''),
+        amendmentCount: j['amendmentCount'] ?? 0,
+        canAmend: j['canAmend'] ?? false,
+      );
+}
+
+/// قيدٌ في سجلّ تعديلات شهرٍ مُسدَّد (ADR-026) — يُعرض ولا يُعدَّل.
+class PayrollAmendment {
+  final int versionNo;
+  final String reason;
+  final String changedBy;
+  final DateTime changedAt;
+  PayrollAmendment(this.versionNo, this.reason, this.changedBy, this.changedAt);
+  factory PayrollAmendment.fromJson(Map<String, dynamic> j) => PayrollAmendment(
+        j['versionNo'] ?? 0,
+        j['reason'] ?? '',
+        j['changedBy'] ?? '',
+        DateTime.tryParse(j['changedAt'] ?? '') ?? DateTime.now(),
+      );
+}
+
+/// إيصال استلامٍ موقَّع مرفوع لسطر راتب (بلاغ المالك ٦).
+class SignedReceipt {
+  final int attachmentId;
+  final String fileName;
+  final int fileSize;
+  final DateTime uploadedAt;
+  SignedReceipt(this.attachmentId, this.fileName, this.fileSize, this.uploadedAt);
+  factory SignedReceipt.fromJson(Map<String, dynamic> j) => SignedReceipt(
+        j['attachmentId'], j['fileName'] ?? '', j['fileSize'] ?? 0,
+        DateTime.tryParse(j['uploadedAt'] ?? '') ?? DateTime.now(),
       );
 }
 

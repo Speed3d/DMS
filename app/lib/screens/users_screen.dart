@@ -585,6 +585,8 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
         //    يملكهما. والعلَم يفصل مَن يقرأ عمّن يحرّر، وهما **مستقلّان** (ADR-025).
         'canManageEmployees': _roleMayHaveHr && a.canManageEmployees,
         'canManagePayroll': _roleMayHaveHr && a.canManagePayroll,
+        // ⚠️ **يُشترط معها قسمُ الرواتب**: علَمُ تعديلٍ بلا قسمٍ يراه لا معنى له.
+        'canAmendPaidPayroll': _roleMayHaveHr && a.canAmendPaidPayroll,
       };
     }).toList();
 
@@ -668,8 +670,10 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                                     canViewAllIncoming: false),
                                 ('Employees', != true) =>
                                   access.copyWith(modules: next, canManageEmployees: false),
-                                ('Payroll', != true) =>
-                                  access.copyWith(modules: next, canManagePayroll: false),
+                                ('Payroll', != true) => access.copyWith(
+                                    modules: next,
+                                    canManagePayroll: false,
+                                    canAmendPaidPayroll: false),
                                 _ => access.copyWith(modules: next),
                               });
                             },
@@ -749,7 +753,32 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                                 subtitle: const Text(
                                     '⚠️ يولّد الكشوف ويحرّرها ويسدّدها — بدونها قراءة فقط',
                                     style: TextStyle(fontSize: 11, color: AppColors.warn)),
-                                onChanged: (v) => update(access.copyWith(canManagePayroll: v)),
+                                onChanged: (v) => update(access.copyWith(
+                                    canManagePayroll: v,
+                                    // إغلاق الكتابة يُسقط التعديل بعد التسديد — وهو فرعٌ عنها.
+                                    canAmendPaidPayroll: v ? null : false)),
+                              ),
+                            ),
+
+                          // ── تعديل الشهر المُسدَّد — **فرعٌ عن الكتابة لا بديلٌ عنها** (ADR-026) ──
+                          if (m == 'Payroll' && enabled && _roleMayHaveHr &&
+                              access.canManagePayroll)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 46),
+                              child: SwitchListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                value: access.canAmendPaidPayroll,
+                                activeThumbColor: AppColors.danger,
+                                title: const Text('تعديل شهر مُسدَّد',
+                                    style:
+                                        TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                subtitle: const Text(
+                                    '⚠️ يفتح شهراً مُقفلاً بسببٍ يُحفظ في سجلّ الإصدارات — '
+                                    'السوبر أدمن والرئيس يملكانها بدورهما',
+                                    style: TextStyle(fontSize: 11, color: AppColors.danger)),
+                                onChanged: (v) =>
+                                    update(access.copyWith(canAmendPaidPayroll: v)),
                               ),
                             ),
                         ];

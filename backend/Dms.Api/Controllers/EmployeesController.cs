@@ -184,10 +184,17 @@ public sealed class EmployeesController(
         int id, [FromQuery] int take = 12, CancellationToken ct = default)
     {
         var rows = await employees.SalaryHistoryAsync(id, Math.Clamp(take, 1, 60), ct);
+
+        // عدد الإيصالات الموقَّعة لكل سطر — **استعلامٌ واحد** لا واحدٌ لكل شهر.
+        var ids = rows.Select(r => r.EntryId).ToList();
+        var receipts = await attachmentService.CountByOwnersAsync(OwnerType.PayrollEntry, ids, ct);
+
         return rows.Select(e => new SalaryHistoryItem(
+            e.EntryId,
             e.Period!.Year, e.Period.Month, PayrollCalculator.ArabicMonth(e.Period.Month),
             e.NetSalary, e.SnapshotCurrency, e.NetSalaryIqd,
-            e.Period.Status, e.PaymentStatus)).ToList();
+            e.Period.Status, e.PaymentStatus,
+            receipts.TryGetValue(e.EntryId, out var n) ? n : 0)).ToList();
     }
 
     // ─────────────────────────── تحويلات ───────────────────────────

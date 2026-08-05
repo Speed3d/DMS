@@ -44,14 +44,30 @@ public sealed record ExternalPaymentHint(
     int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName,
     DateTime? PaidAt);
 
+/// <summary>قيدٌ في سجلّ تعديلات شهرٍ مُسدَّد (ADR-026).</summary>
+/// <remarks>
+/// ⚠️ **يُعرض ولا يُعدَّل ولا يُحذف** — نظير `EmployeeLog`. سجلٌّ يمكن تنقيحه لا يُحتجّ به.
+/// و<see cref="SnapshotJson"/> هو **الشهر كما كان قبل التعديل** لا بعده.
+/// </remarks>
+public sealed record PayrollAmendment(
+    int VersionNo, string Reason, string ChangedBy, DateTime ChangedAt, string SnapshotJson);
+
 public interface IPayrollService
 {
     Task<List<PayrollYearSummary>> YearsAsync(CancellationToken ct = default);
     Task<List<PayrollMonthSummary>> MonthsAsync(int year, CancellationToken ct = default);
     Task<PayrollPeriod?> FindPeriodAsync(int year, int month, CancellationToken ct = default);
-    Task<GenerateResult> GenerateAsync(int year, int month, CancellationToken ct = default);
-    Task<PayrollPeriod> UpdateSettingsAsync(int year, int month, PeriodSettingsInput input, byte[] rowVersion, CancellationToken ct = default);
-    Task<PayrollPeriod> SaveEntriesAsync(int year, int month, List<SaveEntryInput> entries, byte[] rowVersion, CancellationToken ct = default);
+    // ⚠️ `amendmentReason` غير فارغ ⇒ **تعديلٌ لشهرٍ مُسدَّد** (ADR-026): يتطلّب
+    //    `CanAmendPaidPayroll` ويحفظ لقطة إصدار. وفارغاً ⇒ السلوك القديم بلا تغيير.
+    Task<GenerateResult> GenerateAsync(int year, int month, string? amendmentReason = null, CancellationToken ct = default);
+    Task<PayrollPeriod> UpdateSettingsAsync(int year, int month, PeriodSettingsInput input, byte[] rowVersion, string? amendmentReason = null, CancellationToken ct = default);
+    Task<PayrollPeriod> SaveEntriesAsync(int year, int month, List<SaveEntryInput> entries, byte[] rowVersion, string? amendmentReason = null, CancellationToken ct = default);
+
+    /// <summary>سجلّ تعديلات الشهر بعد التسديد — الأحدث أولاً (ADR-026).</summary>
+    Task<List<PayrollAmendment>> AmendmentsAsync(int year, int month, CancellationToken ct = default);
+
+    /// <summary>بتٌّ في تقادم إيصال سطرٍ بعد تعديل الشهر — «رفض» أو رفعُ بديل (ADR-026).</summary>
+    Task AcknowledgeReceiptAsync(int entryId, CancellationToken ct = default);
     Task PayAsync(int year, int month, PaymentInput input, byte[] rowVersion, CancellationToken ct = default);
     Task DeletePeriodAsync(int year, int month, CancellationToken ct = default);
     Task DeleteYearAsync(int year, CancellationToken ct = default);
@@ -135,7 +151,8 @@ public sealed class PayrollService(
     /// **ولا يمسّ سطراً قائماً** — لا مكافأةً ولا خصماً ولا ملاحظةً أدخلها المستخدم بيده.
     /// كان البديل (إعادة التوليد من الصفر) يمحو ساعةَ عملٍ بضغطة زر واحدة بلا إنذار.
     /// </remarks>
-    public async Task<GenerateResult> GenerateAsync(int year, int month, CancellationToken ct = default)
+    public async Task<GenerateResult> GenerateAsync(
+        int year, int month, string? amendmentReason = null, CancellationToken ct = default)
     {
         RequireWrite();
         var companyId = RequireCompany();
@@ -145,8 +162,14 @@ public sealed class PayrollService(
             .Include(p => p.Entries)
             .FirstOrDefaultAsync(p => p.Year == year && p.Month == month, ct);
 
+        // ⚠️ **إضافة موظفٍ فاته الكشف تعديلٌ كغيره** (ADR-026): بلاغ المالك ذكرها صراحةً
+        //    («إضافة موظف جديد ويُحتسب على هذا الشهر»). فتمرّ من الشروط الثلاثة نفسها.
+        string? amendReason = null;
         if (period is { Status: PayrollStatus.Paid })
-            throw new ConflictException("الكشف مُسدَّد — لا يمكن إضافة موظفين إليه.");
+        {
+            (_, amendReason) = await OpenForWriteAsync(year, month, amendmentReason, ct);
+            await SnapshotAsync(period, amendReason!, ct);
+        }
 
         if (period is null)
         {
@@ -232,11 +255,13 @@ public sealed class PayrollService(
     // ─────────────────────────── التعديل ───────────────────────────
 
     public async Task<PayrollPeriod> UpdateSettingsAsync(
-        int year, int month, PeriodSettingsInput input, byte[] rowVersion, CancellationToken ct = default)
+        int year, int month, PeriodSettingsInput input, byte[] rowVersion,
+        string? amendmentReason = null, CancellationToken ct = default)
     {
         RequireWrite();
-        var period = await RequireDraftAsync(year, month, ct);
+        var (period, amendReason) = await OpenForWriteAsync(year, month, amendmentReason, ct);
         Guard(period, rowVersion);
+        if (amendReason is not null) await SnapshotAsync(period, amendReason, ct);
 
         if (input.WorkingDays is < 1 or > 31)
             throw new ValidationException("أيام العمل يجب أن تكون بين 1 و31.");
@@ -261,11 +286,13 @@ public sealed class PayrollService(
 
     /// <summary>حفظ الكشف دفعةً واحدة — والصافي يُعاد حسابه هنا مهما أرسل العميل.</summary>
     public async Task<PayrollPeriod> SaveEntriesAsync(
-        int year, int month, List<SaveEntryInput> entries, byte[] rowVersion, CancellationToken ct = default)
+        int year, int month, List<SaveEntryInput> entries, byte[] rowVersion,
+        string? amendmentReason = null, CancellationToken ct = default)
     {
         RequireWrite();
-        var period = await RequireDraftAsync(year, month, ct);
+        var (period, amendReason) = await OpenForWriteAsync(year, month, amendmentReason, ct);
         Guard(period, rowVersion);
+        if (amendReason is not null) await SnapshotAsync(period, amendReason, ct);
 
         var byId = period.Entries.Where(e => !e.IsDeleted).ToDictionary(e => e.EntryId);
 
@@ -591,6 +618,138 @@ public sealed class PayrollService(
             throw new ConflictException("الكشف مُسدَّد — لا يقبل التعديل.");
         return period;
     }
+
+    // ─────────────────── تعديل الشهر المُسدَّد بإصدارات (ADR-026) ───────────────────
+
+    /// <summary>
+    /// يفتح شهراً للكتابة: مسودّةً كالمعتاد، أو **مُسدَّداً بتعديلٍ جراحيّ** إن سُمّي سببُه.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 🔴 **جراحيّ لا إعادةَ فتح**: الشهر يبقى `Paid` طوال التعديل. إسقاطُ الحالة إلى
+    /// `Draft` كان يبدو أنظف، لكنه **يُعطّل كشف «مدفوع من شركة أخرى»** الذي يشترط
+    /// `Status == Paid` — فتنفتح أثناء التعديل **نافذةُ صرفٍ مزدوج** هي بالضبط ما بُنيت
+    /// ADR-024 لمنعه.
+    /// </para>
+    /// <para>
+    /// ⚠️ **ثلاثة شروط معاً، وأولها السبب**: بلا سببٍ صريح لا يقع التعديل أصلاً مهما ملك
+    /// الطالبُ من صلاحيات — فلا يُعدَّل شهرٌ مُسدَّد **بالخطأ** من عميلٍ يرسل الحمولة
+    /// المعتادة. (سابقة السبب الإلزاميّ: فكّ الأرشفة — ADR-021.)
+    /// </para>
+    /// </remarks>
+    private async Task<(PayrollPeriod Period, string? Reason)> OpenForWriteAsync(
+        int year, int month, string? amendmentReason, CancellationToken ct)
+    {
+        ValidateYearMonth(year, month);
+        var period = await db.PayrollPeriods
+                         .Include(p => p.Entries.Where(e => !e.IsDeleted))
+                            .ThenInclude(e => e.EmployeeCompany)
+                         .FirstOrDefaultAsync(p => p.Year == year && p.Month == month, ct)
+                     ?? throw new NotFoundException("كشف هذا الشهر غير موجود.");
+
+        if (period.Status != PayrollStatus.Paid) return (period, null);
+
+        var reason = amendmentReason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ConflictException(
+                "الكشف مُسدَّد — التعديل بعد التسديد يحتاج سبباً صريحاً يُحفظ في سجلّ الإصدارات.");
+        if (reason.Length < 5)
+            throw new ValidationException("سبب التعديل قصيرٌ جداً — اكتب سبباً مفهوماً.");
+        if (!current.CanAmendPaidPayroll)
+            throw new ForbiddenException("لا تملك صلاحية تعديل شهرٍ مُسدَّد.");
+
+        return (period, reason);
+    }
+
+    /// <summary>يحفظ لقطة الشهر **قبل** تغييره، ويرقّم الإصدار.</summary>
+    /// <remarks>
+    /// يتبع سابقة الصادر حرفياً (<c>OutgoingService.EditApprovedAsync</c>): كيان
+    /// <see cref="DocumentVersion"/> العامّ نفسه، وترقيمٌ متسلسل، و<c>ChangeNote</c> هو
+    /// السبب. **يُستدعى قبل أي تغيير** — لقطةٌ بعد التغيير تُوثّق الحاضر لا الماضي.
+    /// </remarks>
+    private async Task SnapshotAsync(PayrollPeriod period, string reason, CancellationToken ct)
+    {
+        var last = await db.DocumentVersions
+            .Where(v => v.DocType == OwnerType.PayrollPeriod && v.DocId == period.PeriodId)
+            .MaxAsync(v => (int?)v.VersionNo, ct) ?? 0;
+
+        db.DocumentVersions.Add(new DocumentVersion
+        {
+            DocType = OwnerType.PayrollPeriod,
+            DocId = period.PeriodId,
+            VersionNo = last + 1,
+            SnapshotJson = SnapshotOf(period),
+            ChangedByUserId = current.UserId ?? 0,
+            ChangedAt = DateTime.UtcNow,
+            ChangeNote = reason,
+        });
+
+        period.LastAmendedAt = DateTime.UtcNow;
+        period.AmendmentCount = last + 1;
+
+        audit.Add("AmendPaidPayroll", nameof(PayrollPeriod), $"{period.Year}-{period.Month:D2}",
+            $"تعديل بعد التسديد (إصدار {last + 1}): {reason}", period.CompanyId);
+    }
+
+    /// <summary>
+    /// يُعلّم إيصال السطر **مبتوتاً** بعد تعديل الشهر — بقبولٍ (رفعُ بديل) أو رفض.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **يتطلّب `CanManagePayroll` لا `CanAmendPaidPayroll`**: البتّ في صحّة إيصالٍ عملُ
+    /// محاسبٍ يوميّ، لا صلاحيةُ فتح شهرٍ مُقفَل. حصرُه في المعدِّلين كان يُبقي التنبيه معلّقاً
+    /// على شاشة مَن لا يستطيع إزالته.
+    /// </remarks>
+    public async Task AcknowledgeReceiptAsync(int entryId, CancellationToken ct = default)
+    {
+        RequireWrite();
+        var entry = await db.PayrollEntries.Include(e => e.Period)
+                        .FirstOrDefaultAsync(e => e.EntryId == entryId && !e.IsDeleted, ct)
+                    ?? throw new NotFoundException("سطر الراتب غير موجود.");
+
+        entry.ReceiptAcknowledgedAt = DateTime.UtcNow;
+        entry.UpdatedAt = DateTime.UtcNow;
+        audit.Add("AcknowledgeReceipt", nameof(PayrollEntry), entryId.ToString(),
+            $"{entry.SnapshotName} — بُتّ في تقادم الإيصال", entry.CompanyId);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>سجلّ تعديلات الشهر — الأحدث أولاً، مع اسم مَن عدّل.</summary>
+    /// <remarks>
+    /// ⚠️ **قراءةٌ لمن يملك قسم الرواتب، لا لمن يملك التعديل وحده**: مَن يرى الكشف يحقّ له
+    /// أن يعرف **لماذا اختلف عمّا وقّع عليه**. حصرُ السجلّ في المعدِّلين كان يجعل الأثر
+    /// مرئياً لمن أحدثه وحده — وهو نقيض غرض السجلّ.
+    /// </remarks>
+    public async Task<List<PayrollAmendment>> AmendmentsAsync(
+        int year, int month, CancellationToken ct = default)
+    {
+        ValidateYearMonth(year, month);
+        var period = await db.PayrollPeriods
+                         .FirstOrDefaultAsync(p => p.Year == year && p.Month == month, ct)
+                     ?? throw new NotFoundException("كشف هذا الشهر غير موجود.");
+
+        // ⚠️ الوصول محكومٌ بالفلتر العام على `PayrollPeriods` أعلاه: شهرُ شركةٍ أخرى لا
+        //    يُعثر عليه أصلاً، فلا يُقرأ سجلّ تعديلاته.
+        return await db.DocumentVersions
+            .Where(v => v.DocType == OwnerType.PayrollPeriod && v.DocId == period.PeriodId)
+            .OrderByDescending(v => v.VersionNo)
+            .Join(db.Users, v => v.ChangedByUserId, u => u.UserId,
+                (v, u) => new PayrollAmendment(
+                    v.VersionNo, v.ChangeNote ?? "", u.FullName, v.ChangedAt, v.SnapshotJson))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>لقطة الشهر بسطوره — ما يكفي لمعرفة **مَن كان يستحقّ كم** قبل التعديل.</summary>
+    private static string SnapshotOf(PayrollPeriod p) => System.Text.Json.JsonSerializer.Serialize(new
+    {
+        p.Year, p.Month, p.ExchangeRate, p.WorkingDaysMode, p.WorkingDays,
+        p.Status, p.PaidAt, p.ManualBookNumber, p.Notes,
+        Entries = p.Entries.Where(e => !e.IsDeleted).OrderBy(e => e.DisplayOrder).Select(e => new
+        {
+            e.EntryId, e.SnapshotName, e.SnapshotPosition, e.SnapshotCurrency, e.SnapshotBaseSalary,
+            e.EligibleDays, e.AbsenceDays, e.AbsenceDeduction, e.BonusAmount, e.DeductionAmount,
+            e.EndOfServiceAmount, e.NetSalary, e.NetSalaryIqd, e.PaymentStatus, e.Notes,
+        }),
+    });
 
     private void Guard(PayrollPeriod period, byte[] rowVersion) =>
         db.Entry(period).Property(p => p.RowVersion).OriginalValue = rowVersion;

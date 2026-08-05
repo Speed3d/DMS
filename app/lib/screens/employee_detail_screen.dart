@@ -176,6 +176,28 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
     }
   }
 
+  /// يرفع إيصال الاستلام **بعد توقيع الموظف** (بلاغ المالك ٦).
+  Future<void> _uploadSignedReceipt(SalaryHistoryItem h) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await FilePicker.pickFiles(withData: true);
+    if (res == null || res.files.single.bytes == null) return;
+    final f = res.files.single;
+
+    try {
+      await ref
+          .read(apiClientProvider)
+          .uploadSignedReceipt(h.entryId, f.name, f.bytes!);
+      final fresh = await ref.read(apiClientProvider).salaryHistory(widget.employeeId);
+      if (!mounted) return;
+      setState(() => _history = fresh);
+      messenger.showSnackBar(
+          SnackBar(content: Text('رُفع إيصال ${h.monthName} ${h.year} الموقَّع.')));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('تعذّر الرفع: $e'), backgroundColor: Colors.red));
+    }
+  }
+
   Future<void> _edit() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EmployeeFormScreen(employeeId: widget.employeeId)),
@@ -334,7 +356,13 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
                         onDelete: _deleteLeave,
                       ),
                       const SizedBox(height: 20),
-                      _SalaryHistoryCard(items: _history, onPrint: _printReceipt),
+                      _SalaryHistoryCard(
+                        items: _history,
+                        onPrint: _printReceipt,
+                        onUploadReceipt: _uploadSignedReceipt,
+                        // ⚠️ **صلاحية الرواتب لا الموظفين**: الإيصال وثيقةُ صرفٍ ماليّ.
+                        canManage: ref.watch(sessionProvider).canManagePayroll,
+                      ),
                       const SizedBox(height: 20),
                       _ChangeLogCard(items: _log),
                     ],
@@ -489,7 +517,12 @@ class _InfoCard extends StatelessWidget {
 class _SalaryHistoryCard extends StatelessWidget {
   final List<SalaryHistoryItem> items;
   final ValueChanged<SalaryHistoryItem> onPrint;
-  const _SalaryHistoryCard({required this.items, required this.onPrint});
+  final ValueChanged<SalaryHistoryItem> onUploadReceipt;
+  final bool canManage;
+  const _SalaryHistoryCard({
+    required this.items, required this.onPrint,
+    required this.onUploadReceipt, required this.canManage,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -550,6 +583,26 @@ class _SalaryHistoryCard extends StatelessWidget {
                       icon: const Icon(Icons.print_rounded, size: 18),
                       tooltip: 'طباعة إيصال الاستلام',
                     ),
+                    // ── رفع الإيصال **بعد توقيع الموظف** (بلاغ المالك ٦) ──
+                    // ⚠️ **للمُسدَّد وحده**: التوقيع يقع بعد الاستلام، ورفعُ «إيصال موقَّع»
+                    //    على مسودّةٍ لم تُصرف بعدُ يوثّق ما لم يحدث.
+                    if (paid && canManage)
+                      IconButton(
+                        onPressed: () => onUploadReceipt(h),
+                        icon: Icon(
+                            h.signedReceiptCount > 0
+                                ? Icons.assignment_turned_in_rounded
+                                : Icons.upload_file_rounded,
+                            size: 18,
+                            color: h.signedReceiptCount > 0
+                                ? (theme.brightness == Brightness.dark
+                                    ? AppColors.successDark
+                                    : AppColors.success)
+                                : null),
+                        tooltip: h.signedReceiptCount > 0
+                            ? 'الإيصال الموقَّع مرفوع (${h.signedReceiptCount}) — إضافة نسخة'
+                            : 'رفع الإيصال بعد توقيعه',
+                      ),
                   ],
                 ),
               );
