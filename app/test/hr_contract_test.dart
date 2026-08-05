@@ -27,7 +27,11 @@ void main() {
   test('كشف شهر كامل — بما فيه rowVersion بـbase64', () {
     final p = PayrollPeriodModel.fromJson(fixture('payroll_period'));
 
-    expect(p.year, 2026);
+    // ⚠️ **لا تُثبَّت السنة برقم**: أيُّ شهرٍ التُقطت منه العيّنة تفصيلٌ عارض لا عقد،
+    //    وتثبيتُه يُفشل الاختبار عند أول إعادة التقاطٍ من شهرٍ آخر — فشلاً **بلا عيبٍ في
+    //    المنتج** يُغري بتعطيل الاختبار بدل إصلاحه. (حدث فعلاً عند تحديث العيّنات في
+    //    الدفعة ٢.) الشرط الحقيقي: سنةٌ معقولة.
+    expect(p.year, greaterThan(2000));
     expect(p.monthName, isNotEmpty);
     expect(p.workingDays, greaterThan(0));
     expect(p.entries, isNotEmpty);
@@ -119,10 +123,52 @@ void main() {
     expect(s.endOfServiceRatio, isNotEmpty);
   });
 
+  // ─────────────────── الدفعة ٢ من بلاغات fix03.md (2026-08-05) ───────────────────
+
+  test('علَم «الأيام يدوية» جزءٌ من عقد السطر', () {
+    // 🔴 وُلد من عيبٍ ماليّ: كانت الخدمة تستنتج «يدويّ» من `EligibleDays > 0` فتتجمّد
+    //    الأيام بعد أول حساب. العلَم صريحٌ الآن، والعميل يقرؤه ليعرف أيَّ سطرٍ مثبَّت.
+    final p = PayrollPeriodModel.fromJson(fixture('payroll_period'));
+    final e = p.entries.first;
+    expect(e.eligibleDaysIsManual, isA<bool>());
+    expect(e.eligibleDaysIsManual, isFalse,
+        reason: 'سطرٌ لم يثبّته أحد يجب أن يبقى محسوباً');
+    expect(e.eligibleDays, greaterThan(0));
+  });
+
+  test('الإجازات المعلّقة تصل بأصحابها', () {
+    // بلاغ المالك ٨: البطاقة كانت تعرض العدد وتنقل بلا دلالةٍ على **مَن** طلب.
+    final list = (fixture('pending_leaves') as List)
+        .map((e) => PendingLeave.fromJson(e))
+        .toList();
+    expect(list, isNotEmpty);
+
+    final l = list.first;
+    expect(l.employeeId, greaterThan(0), reason: 'بلا معرّف لا يمكن فتح ملفّ صاحبها');
+    expect(l.employeeName, isNotEmpty);
+    expect(l.leaveTypeLabel, isNotEmpty, reason: 'التسمية عربيةٌ جاهزة من الخادم');
+    expect(l.durationDays, greaterThan(0));
+    expect(l.toDate.isBefore(l.fromDate), isFalse);
+  });
+
+  test('مستمسكات الموظف — بأسماء ملفّات عربية', () {
+    // بلاغ المالك ٧: النقطة كانت غائبة أصلاً رغم جهوز `OwnerType.Employee`.
+    final list = (fixture('employee_attachments') as List)
+        .map((e) => AttachmentModel.fromJson(e))
+        .toList();
+    expect(list, isNotEmpty);
+    expect(list.any((a) => RegExp(r'[؀-ۿ]').hasMatch(a.fileName)), isTrue,
+        reason: 'الاسم العربي هو الحالة الفعلية عند المالك، فيجب أن تُثبته العيّنة');
+    expect(list.first.fileSize, greaterThan(0));
+  });
+
   test('العربية في العيّنات سليمة — لا «????»', () {
     // حارسٌ على العيّنات نفسها: التقاطُها بطريقة تفكّ الترميز يشوّه العربية،
     // فتصير العيّنة توثيقاً كاذباً للعقد.
-    for (final name in ['payroll_period', 'employees', 'employee_log']) {
+    for (final name in [
+      'payroll_period', 'employees', 'employee_log',
+      'pending_leaves', 'employee_attachments',
+    ]) {
       final raw = File('test/fixtures/$name.json').readAsStringSync();
       expect(raw.contains('????'), isFalse, reason: 'العيّنة $name مشوّهة الترميز');
     }

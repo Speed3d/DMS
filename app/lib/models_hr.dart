@@ -365,10 +365,51 @@ class ExternalPaymentHint {
   final String employeeName;
   final int paidByCompanyId;
   final String paidByCompanyName;
+
+  /// تاريخ صرف **الشركة الأخرى** — لا تاريخ الاطّلاع. قد يغيب لو سُدِّد هناك بلا تاريخ.
+  final DateTime? paidAt;
+
   ExternalPaymentHint(
-      this.entryId, this.employeeName, this.paidByCompanyId, this.paidByCompanyName);
+      this.entryId, this.employeeName, this.paidByCompanyId, this.paidByCompanyName,
+      {this.paidAt});
+
   factory ExternalPaymentHint.fromJson(Map<String, dynamic> j) => ExternalPaymentHint(
-      j['entryId'], j['employeeName'] ?? '', j['paidByCompanyId'], j['paidByCompanyName'] ?? '');
+      j['entryId'], j['employeeName'] ?? '', j['paidByCompanyId'], j['paidByCompanyName'] ?? '',
+      paidAt: DateTime.tryParse(j['paidAt'] ?? ''));
+}
+
+/// إجازةٌ معلّقة مع صاحبها — تجيب «مَن ينتظر؟» بدل «كم ينتظر؟».
+class PendingLeave {
+  final int leaveId;
+  final int employeeId;
+  final String employeeName;
+  final String position;
+  final String leaveTypeLabel;
+  final DateTime fromDate;
+  final DateTime toDate;
+  final int durationDays;
+  final bool deductFromSalary;
+  final String? notes;
+
+  PendingLeave({
+    required this.leaveId, required this.employeeId, required this.employeeName,
+    required this.position, required this.leaveTypeLabel,
+    required this.fromDate, required this.toDate, required this.durationDays,
+    required this.deductFromSalary, this.notes,
+  });
+
+  factory PendingLeave.fromJson(Map<String, dynamic> j) => PendingLeave(
+        leaveId: j['leaveId'],
+        employeeId: j['employeeId'] ?? 0,
+        employeeName: j['employeeName'] ?? '',
+        position: j['position'] ?? '',
+        leaveTypeLabel: j['leaveTypeLabel'] ?? '',
+        fromDate: DateTime.tryParse(j['fromDate'] ?? '') ?? DateTime.now(),
+        toDate: DateTime.tryParse(j['toDate'] ?? '') ?? DateTime.now(),
+        durationDays: j['durationDays'] ?? 0,
+        deductFromSalary: j['deductFromSalary'] ?? false,
+        notes: j['notes'],
+      );
 }
 
 class HrSettingsModel {

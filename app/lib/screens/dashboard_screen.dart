@@ -5,6 +5,7 @@ import '../core/archive_providers.dart';
 import '../core/hr_providers.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
+import '../core/nav_intent.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -20,6 +21,15 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  /// ينتقل إلى شاشةٍ **حاملاً ما يريده منها** لا مجرّد رقمها.
+  ///
+  /// ⚠️ تُكتب النيّة **قبل** `onNavigate` لأن الوجهة تقرؤها في `initState` — وهو يجري
+  /// ضمن إعادة البناء التي يُطلقها التنقّل نفسه. عكسُ الترتيب يجعلها تصل متأخّرة.
+  void _goWithIntent(int index, NavIntent intent) {
+    ref.read(navIntentProvider.notifier).set(intent);
+    widget.onNavigate?.call(index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final outgoingAsync = ref.watch(outgoingListProvider);
@@ -97,7 +107,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           children: [
                             if (showOutgoing) ...[
                               SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${outItems.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
-                              SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$outDrafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => widget.onNavigate?.call(2))),
+                              // G11: تفتح القائمة **على المسودّات وحدها**؛ كانت تفتحها بلا فلتر
+                              //      فيضغط المستخدم رقم المسودّات ويرى كل الصادر.
+                              SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$outDrafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => _goWithIntent(2, const OutgoingStatusIntent('Draft')))),
                               SizedBox(width: cardWidth, child: _buildStatCard('صادر معتمد', '$outFinals', Icons.verified_rounded, AppColors.success)),
                               SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الصادر', '${_fmt(outTotalIqd)} د.ع', Icons.payments_rounded, const Color(0xFF3B82F6))),
                             ],
@@ -169,7 +181,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                       child: _buildStatCard(
                                           'إجازات بانتظار الموافقة', '${hr!.pendingLeaves}',
                                           Icons.beach_access_rounded, AppColors.warn,
-                                          onTap: () => widget.onNavigate?.call(9)),
+                                          // تنقل **بنيّة**: مَن ينتظر، لا «افتح الموظفين».
+                                          onTap: () => _goWithIntent(
+                                              9, const PendingLeavesIntent())),
                                     ),
                                 ];
                               })(),

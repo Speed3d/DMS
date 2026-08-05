@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/hr_providers.dart';
+import '../core/nav_intent.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -23,9 +24,15 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   /// `null` = الكل · `true` = على رأس العمل · `false` = منتهو الخدمة.
   bool? _activeOnly = true;
 
+  /// وضع «مَن ينتظر بتّ إجازته» — يحلّ محلّ الجدول العادي، ولا يُخفي بقية الشاشة.
+  bool _pendingLeavesOnly = false;
+
   @override
   void initState() {
     super.initState();
+    // نيّة التنقّل: بطاقة «إجازات بانتظار الموافقة» تفتح الشاشة **على أصحاب الطلبات**.
+    // كانت تفتح القائمة كاملةً بلا دلالة، فمع مئة موظف لا سبيل لمعرفة مَن طلب.
+    _pendingLeavesOnly = takeNavIntent<PendingLeavesIntent>(ref) != null;
     _reload();
   }
 
@@ -77,7 +84,20 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
             // Hint: شريط الأدوات (بحث · فلتر الحالة · إضافة)
             LayoutBuilder(
               builder: (context, constraints) {
-                final isSmall = constraints.maxWidth < 620;
+                // مِرشَّح «مَن ينتظر بتّ إجازته» — يظهر **متى وُجد طلبٌ معلّق** فقط، فلا
+                // يزحم الشريط بزرٍّ لا يفعل شيئاً في الأيام العادية.
+                final pending = ref.watch(hrSummaryProvider)
+                        .whenOrNull(data: (s) => s?.pendingLeaves) ??
+                    0;
+                final showLeavesChip = pending > 0 || _pendingLeavesOnly;
+
+                // ⚠️ **العتبة ترتفع حين يظهر المِرشَّح**: الشريط الأفقيّ يسع بحثاً وفلتراً
+                //    وزرّ إضافة، وإقحامُ عنصرٍ رابع عرضه ~240 بكسل عند 620 يُنتج
+                //    «RIGHT OVERFLOWED» — وهو صنف العطل الذي بلّغ عنه المالك في جدول
+                //    الرواتب. العرض المطلوب **يُحسب من المحتوى** لا يُخمَّن.
+                // 🔴 و**920 لا 880**: خمّنتُ 880 أولاً فأبلغ حارس الرسم في
+                //    `hr_render_test.dart` أنها تفيض عند 880 بالضبط. الرقم مُثبَتٌ بالرسم.
+                final isSmall = constraints.maxWidth < (showLeavesChip ? 920 : 620);
 
                 final searchWidget = Container(
                   height: 48,
@@ -136,6 +156,14 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                   ),
                 );
 
+                final leavesWidget = !showLeavesChip
+                    ? null
+                    : _PendingLeavesChip(
+                        count: pending,
+                        active: _pendingLeavesOnly,
+                        onTap: () => setState(() => _pendingLeavesOnly = !_pendingLeavesOnly),
+                      );
+
                 if (isSmall) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,11 +175,19 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                         const SizedBox(width: 12),
                         addWidget,
                       ]),
+                      if (leavesWidget != null) ...[
+                        const SizedBox(height: 12),
+                        Align(alignment: AlignmentDirectional.centerStart, child: leavesWidget),
+                      ],
                     ],
                   );
                 }
                 return Row(children: [
                   Expanded(child: searchWidget),
+                  if (leavesWidget != null) ...[
+                    const SizedBox(width: 12),
+                    leavesWidget,
+                  ],
                   const SizedBox(width: 12),
                   filterWidget,
                   const SizedBox(width: 12),
@@ -161,6 +197,14 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
             ),
             const SizedBox(height: 24),
 
+            if (_pendingLeavesOnly)
+              Expanded(
+                child: _PendingLeavesList(
+                  onOpen: (employeeId) => _openDetail(employeeId),
+                  onExit: () => setState(() => _pendingLeavesOnly = false),
+                ),
+              )
+            else
             Expanded(
               child: FutureBuilder<List<EmployeeListItem>>(
                 future: _future,
@@ -199,6 +243,180 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
 }
 
 /// فلتر الحالة الثلاثي (الكل · على رأس العمل · منتهو الخدمة).
+/// مِرشَّح «إجازات بانتظار الموافقة» — بشارة عدد، ويُبرز نفسه حين يكون فعّالاً.
+class _PendingLeavesChip extends StatelessWidget {
+  final int count;
+  final bool active;
+  final VoidCallback onTap;
+  const _PendingLeavesChip({required this.count, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = isDark ? AppColors.warnDark : AppColors.warn;
+
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(Icons.beach_access_rounded, size: 18, color: active ? Colors.white : color),
+        label: Text(
+          count > 0 ? 'إجازات بانتظار الموافقة ($count)' : 'إجازات بانتظار الموافقة',
+          style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: active ? Colors.white : color),
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: active ? color : Colors.transparent,
+          side: BorderSide(color: color, width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+      ),
+    );
+  }
+}
+
+/// قائمة مَن ينتظر بتّ إجازته — **الإجازة هي السطر لا الموظف**، لأن السؤال «ما الذي
+/// ينتظر قراري؟» لا «مَن من الموظفين له طلب».
+class _PendingLeavesList extends ConsumerStatefulWidget {
+  final ValueChanged<int> onOpen;
+  final VoidCallback onExit;
+  const _PendingLeavesList({required this.onOpen, required this.onExit});
+  @override
+  ConsumerState<_PendingLeavesList> createState() => _PendingLeavesListState();
+}
+
+class _PendingLeavesListState extends ConsumerState<_PendingLeavesList> {
+  late Future<List<PendingLeave>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(apiClientProvider).pendingLeaves();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final warn = isDark ? AppColors.warnDark : AppColors.warn;
+    final d = DateFormat('yyyy-MM-dd');
+
+    return FutureBuilder<List<PendingLeave>>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return _Message(
+              icon: Icons.error_outline_rounded,
+              title: 'تعذّر جلب الإجازات',
+              subtitle: '${snap.error}',
+              color: AppColors.danger);
+        }
+        final items = snap.data ?? const <PendingLeave>[];
+        if (items.isEmpty) {
+          return const _Message(
+              icon: Icons.check_circle_outline_rounded,
+              title: 'لا توجد إجازات بانتظار الموافقة',
+              subtitle: 'كل الطلبات مبتوتة.');
+        }
+
+        return CustomCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(children: [
+                  Icon(Icons.beach_access_rounded, size: 18, color: warn),
+                  const SizedBox(width: 8),
+                  Text('${items.length} إجازة بانتظار الموافقة',
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: widget.onExit,
+                    icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                    label: const Text('كل الموظفين'),
+                  ),
+                ]),
+              ),
+              const Divider(height: 20),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 18),
+                  itemBuilder: (context, i) {
+                    final l = items[i];
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      // فتحُ ملفّ الموظف هو موضع البتّ (الموافقة/الرفض) — لا نُكرّر
+                      // إجراءَ المراجعة هنا فيصير له مساران يتباعدان.
+                      onTap: () => widget.onOpen(l.employeeId),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                        child: Row(children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l.employeeName,
+                                    style: const TextStyle(
+                                        fontSize: 14, fontWeight: FontWeight.w800)),
+                                if (l.position.isNotEmpty)
+                                  Text(l.position,
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: theme.textTheme.bodyMedium?.color
+                                              ?.withValues(alpha: 0.6))),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(l.leaveTypeLabel, style: const TextStyle(fontSize: 13)),
+                          ),
+                          Expanded(
+                            flex: 3,
+                            child: Text('${d.format(l.fromDate)} ← ${d.format(l.toDate)}',
+                                style: const TextStyle(fontSize: 12.5)),
+                          ),
+                          SizedBox(
+                            width: 70,
+                            child: Text('${l.durationDays} يوم',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w700)),
+                          ),
+                          if (l.deductFromSalary)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 6),
+                              child: Tooltip(
+                                message: 'تُحسم من الراتب',
+                                child: Icon(Icons.money_off_rounded,
+                                    size: 16, color: AppColors.danger),
+                              ),
+                            ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.chevron_left_rounded, size: 18),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _StatusFilter extends StatelessWidget {
   final bool? value;
   final ValueChanged<bool?> onChanged;

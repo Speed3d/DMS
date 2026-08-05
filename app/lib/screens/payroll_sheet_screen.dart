@@ -596,7 +596,12 @@ class _ExternalBanner extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Row(children: [
                     Expanded(
-                      child: Text('${h.employeeName} — صُرف من «${h.paidByCompanyName}»',
+                      // ⚠️ **التاريخ جزءٌ من التنبيه لا زينة** — المحاسب يحتاج أن يعرف
+                      //    *متى* صُرف ليطابقه بسجلّه (بلاغ المالك ٢). ويُحذف إن غاب بدل
+                      //    عرض «بتاريخ —» التي توهم أن الصرف بلا تاريخ.
+                      child: Text(
+                          '${h.employeeName} — صُرف من «${h.paidByCompanyName}»'
+                          '${h.paidAt != null ? ' بتاريخ ${DateFormat('yyyy-MM-dd').format(h.paidAt!)}' : ''}',
                           style: const TextStyle(fontSize: 13)),
                     ),
                     TextButton(

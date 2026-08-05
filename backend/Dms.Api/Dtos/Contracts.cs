@@ -166,6 +166,13 @@ public sealed record LeaveResponse(
     int DurationDays, bool RequiresApproval, LeaveStatus Status, bool DeductFromSalary,
     string? Notes, DateTime CreatedAt, DateTime? ReviewedAt, string? ReviewNotes);
 
+/// <summary>إجازةٌ معلّقة مع صاحبها — لقائمةٍ واحدة تجيب «مَن ينتظر؟».</summary>
+public sealed record PendingLeaveResponse(
+    int LeaveId, int EmployeeId, string EmployeeName, string Position,
+    LeaveType LeaveType, string LeaveTypeLabel,
+    DateTime FromDate, DateTime ToDate, int DurationDays,
+    bool DeductFromSalary, string? Notes, DateTime CreatedAt);
+
 public sealed record EmployeeLogResponse(
     int LogId, EmployeeChangeType ChangeType, string Description,
     string? OldValue, string? NewValue, DateTime ChangedAt);

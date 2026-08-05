@@ -35,8 +35,14 @@ public sealed record PaymentInput(
 public sealed record GenerateResult(int Added, int Existing, int Skipped);
 
 /// <summary>تنبيه «مدفوع من شركة أخرى» (ADR-024).</summary>
+/// <remarks>
+/// <paramref name="PaidAt"/> هو **تاريخ صرف الشركة الأخرى** لا تاريخ الاطّلاع — بلاغ المالك
+/// 2026-08-05: «يكون هناك إشعار بأن هذا الموظف سبق واستلم راتبه من شركة كذا **بهذا التاريخ**».
+/// وقد يكون فارغاً لو سُدِّد الشهر هناك بلا تسجيل تاريخ.
+/// </remarks>
 public sealed record ExternalPaymentHint(
-    int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName);
+    int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName,
+    DateTime? PaidAt);
 
 public interface IPayrollService
 {
@@ -409,14 +415,14 @@ public sealed class PayrollService(
             .ToDictionaryAsync(x => x.EmployeeCompanyId, x => x.EmployeeId, ct);
         var employeeIds = employeeByLink.Values.Distinct().ToList();
 
-        // الشركات الأخرى التي صرفت لهؤلاء في هذا الشهر.
+        // الشركات الأخرى التي صرفت لهؤلاء في هذا الشهر — **وتاريخ صرفها** (بلاغ المالك).
         var elsewhere = await db.PayrollEntries.IgnoreQueryFilters()
             .Where(e => !e.IsDeleted
                      && e.CompanyId != companyId
                      && e.Period!.Year == year && e.Period.Month == month
                      && e.Period.Status == PayrollStatus.Paid
                      && employeeIds.Contains(e.EmployeeCompany!.EmployeeId))
-            .Select(e => new { e.CompanyId, EmployeeId = e.EmployeeCompany!.EmployeeId })
+            .Select(e => new { e.CompanyId, EmployeeId = e.EmployeeCompany!.EmployeeId, e.Period!.PaidAt })
             .ToListAsync(ct);
         if (elsewhere.Count == 0) return [];
 
@@ -434,7 +440,8 @@ public sealed class PayrollService(
 
             hints.Add(new ExternalPaymentHint(
                 entry.EntryId, entry.SnapshotName, payer.CompanyId,
-                payerNames.TryGetValue(payer.CompanyId, out var n) ? n : "شركة أخرى"));
+                payerNames.TryGetValue(payer.CompanyId, out var n) ? n : "شركة أخرى",
+                payer.PaidAt));
         }
         return hints;
     }
@@ -458,11 +465,37 @@ public sealed class PayrollService(
         entry.PaymentStatus = PayrollPaymentStatus.PaidByOtherCompany;
         entry.PaidByCompanyId = hint.PaidByCompanyId;
         entry.PaidByCompanyName = hint.PaidByCompanyName; // لقطة: تغيّر اسم الشركة لاحقاً لا يغيّر السجل
+        entry.Notes = AppendExternalNote(entry.Notes, hint);
         entry.UpdatedAt = DateTime.UtcNow;
 
         audit.Add("ConfirmExternalPayment", nameof(PayrollEntry), entryId.ToString(),
             $"{entry.SnapshotName} — مدفوع من {hint.PaidByCompanyName}", entry.CompanyId);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>الصدر الثابت لملاحظة الدفع الخارجي — به يُكشف وجودها فلا تتكرّر.</summary>
+    private const string ExternalNotePrefix = "مدفوع من ";
+
+    /// <summary>
+    /// يُلحق بملاحظات السطر جملةً عربية تذكر الشركة الدافعة **وتاريخ صرفها**.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **إلحاقٌ لا استبدال:** الملاحظة حقلٌ يكتب فيه المحاسب، فمحوُه لإدراج جملة النظام
+    /// يُضيع كلامه. و⚠️ **محميّة من التكرار**: إعادة التأكيد على السطر نفسه لا تُضيف سطراً
+    /// ثانياً (يُكشف بالصدر الثابت).
+    ///
+    /// ولماذا في الملاحظات أصلاً وحالة الدفع عمودٌ قائم؟ لأن **العمود لا يظهر في الكشف
+    /// المطبوع ولا في Excel** — وهما موضع نظر المحاسب. (بلاغ المالك 2026-08-05: «ويكون هذا
+    /// مذكور في الملاحظات».)
+    /// </remarks>
+    private static string AppendExternalNote(string? existing, ExternalPaymentHint hint)
+    {
+        var date = hint.PaidAt is { } d ? $" بتاريخ {d:yyyy-MM-dd}" : string.Empty;
+        var note = $"{ExternalNotePrefix}{hint.PaidByCompanyName}{date}";
+
+        if (string.IsNullOrWhiteSpace(existing)) return note;
+        if (existing.Contains(ExternalNotePrefix, StringComparison.Ordinal)) return existing;
+        return $"{existing.TrimEnd()} — {note}";
     }
 
     // ─────────────────────── مكافأة نهاية الخدمة (الدفعة ٢) ───────────────────────

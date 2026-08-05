@@ -17,7 +17,20 @@ public interface ILeaveService
     Task DeleteAsync(int leaveId, CancellationToken ct = default);
     Task<List<EmployeeLog>> LogAsync(int employeeId, CancellationToken ct = default);
     Task<int> PendingCountAsync(CancellationToken ct = default);
+    Task<List<PendingLeaveItem>> PendingAsync(CancellationToken ct = default);
 }
+
+/// <summary>إجازةٌ معلّقة **مع صاحبها** — لتُعرض في قائمةٍ واحدة بلا فتح كل موظف.</summary>
+/// <remarks>
+/// ⚠️ **لماذا كيانٌ خاصّ ولدينا `ListAsync` لكل موظف؟** لأن بطاقة لوحة التحكم كانت تعرض
+/// **العدد** وتنقل إلى قائمة الموظفين بلا دلالة على **مَن** طلب — فمع مئة موظف لا سبيل
+/// لمعرفة صاحب الطلب إلا بفتحهم واحداً واحداً (بلاغ المالك 2026-08-05).
+/// </remarks>
+public sealed record PendingLeaveItem(
+    int LeaveId, int EmployeeId, string EmployeeName, string Position,
+    LeaveType LeaveType, string LeaveTypeLabel,
+    DateTime FromDate, DateTime ToDate, int DurationDays,
+    bool DeductFromSalary, string? Notes, DateTime CreatedAt);
 
 /// <summary>الإجازات وسجلّ التغييرات (الدفعة ٢ من ADR-023).</summary>
 public sealed class LeaveService(
@@ -132,6 +145,27 @@ public sealed class LeaveService(
 
     public Task<int> PendingCountAsync(CancellationToken ct = default) =>
         db.EmployeeLeaves.CountAsync(l => l.Status == LeaveStatus.Pending, ct);
+
+    /// <summary>الإجازات المعلّقة في الشركة الفعّالة **مع أصحابها**، الأقدم طلباً أولاً.</summary>
+    /// <remarks>
+    /// ⚠️ **بلا `IgnoreQueryFilters`**: العزل يأتي من الفلتر العام على `EmployeeLeaves` نفسه
+    /// كبقية الوحدة، فلا تُكشف إجازةُ موظفٍ في شركة أخرى. ولا حاجة لـ<c>RequireWrite</c> —
+    /// هذه **قراءة**، ومن يرى الوحدة يرى ما ينتظر بتّه فيها.
+    /// </remarks>
+    public Task<List<PendingLeaveItem>> PendingAsync(CancellationToken ct = default) =>
+        db.EmployeeLeaves
+            .Where(l => l.Status == LeaveStatus.Pending)
+            .OrderBy(l => l.CreatedAt)
+            .Select(l => new PendingLeaveItem(
+                l.LeaveId,
+                l.EmployeeCompany!.EmployeeId,
+                l.EmployeeCompany.Employee!.FullName,
+                l.EmployeeCompany.Position,
+                l.LeaveType,
+                l.LeaveType.ArabicLabel(),
+                l.FromDate, l.ToDate, l.DurationDays,
+                l.DeductFromSalary, l.Notes, l.CreatedAt))
+            .ToListAsync(ct);
 
     // ─────────────────────────── مساعدات ───────────────────────────
 

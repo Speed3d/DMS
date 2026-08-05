@@ -687,6 +687,36 @@ class ApiClient {
     }
   }
 
+  /// مستمسكات الموظف (هوية · عقد · شهادات) — `OwnerType.Employee`.
+  Future<List<AttachmentModel>> employeeAttachments(int id) async =>
+      (await _get('/employees/$id/attachments') as List)
+          .map((e) => AttachmentModel.fromJson(e)).toList();
+
+  Future<void> uploadEmployeeAttachment(int id, String fileName, List<int> bytes) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+    });
+    try {
+      await _dio.post('/employees/$id/attachments', data: form);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  /// بايتات مستمسكٍ للعرض داخل البرنامج — `inline` بالنوع الحقيقي (مبدأ ADR-019).
+  Future<Uint8List> employeeAttachmentBytes(int id, int attachmentId) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        '/employees/$id/attachments/$attachmentId/download',
+        queryParameters: {'inline': true},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   // ---------- الرواتب ----------
   Future<List<PayrollYear>> payrollYears() async =>
       (await _get('/payroll/years') as List).map((e) => PayrollYear.fromJson(e)).toList();
@@ -815,6 +845,11 @@ class ApiClient {
       }));
 
   Future<HrSummary> hrSummary() async => HrSummary.fromJson(await _get('/hr/summary'));
+
+  /// الإجازات المعلّقة في الشركة الفعّالة **مع أصحابها** — تجيب «مَن ينتظر؟».
+  Future<List<PendingLeave>> pendingLeaves() async =>
+      (await _get('/hr/leaves/pending') as List)
+          .map((e) => PendingLeave.fromJson(e)).toList();
 
   // ---------- مساعدات ----------
   Future<dynamic> _get(String path, {Map<String, dynamic>? query}) async {

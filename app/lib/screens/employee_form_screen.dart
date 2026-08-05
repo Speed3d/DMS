@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,6 +46,17 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   /// تنبيه «هذا الشخص مسجَّل أصلاً» بعد البحث برقم الهوية.
   ExistingEmployeeHint? _existing;
 
+  // ── الصورة الشخصية ──
+  //
+  // ⚠️ **تُحتفظ في الذاكرة وتُرفع بعد الحفظ**: نقطة الرفع تحتاج `employeeId`، وهو لا يوجد
+  //    قبل الإنشاء. ورفعُها بعد `createEmployee` (التي تُعيد الملفّ بمعرّفه) يجعل مسار
+  //    «موظف جديد بصورة» يعمل في خطوةٍ واحدة عند المستخدم وإن كان طلبَين تحت السطح.
+  Uint8List? _photoBytes;
+  String? _photoName;
+
+  /// صورةٌ محفوظة على الخادم (وضع التعديل) — تُعرض حتى يختار المستخدم بديلاً.
+  Uint8List? _serverPhoto;
+
   bool get _isEdit => widget.employeeId != null;
 
   @override
@@ -86,10 +98,35 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
         _hireDate = job.hireDate;
         _isActive = job.isActive;
       }
+
+      if (e.hasPhoto) {
+        try {
+          _serverPhoto = await ref.read(apiClientProvider).employeePhoto(widget.employeeId!);
+        } catch (_) {
+          // غياب الصورة لا يمنع تحرير الملفّ.
+        }
+      }
     } catch (e) {
       _error = '$e';
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// يختار صورةً ويُبقيها في الذاكرة — الرفع يقع عند الحفظ (انظر [_photoBytes]).
+  Future<void> _pickPhoto() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await FilePicker.pickFiles(type: FileType.image, withData: true);
+    if (res == null || res.files.single.bytes == null) return;
+    final f = res.files.single;
+    if (f.size > 2 * 1024 * 1024) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('حجم الصورة يتجاوز 2 م.ب'), backgroundColor: Colors.red));
+      return;
+    }
+    setState(() {
+      _photoBytes = f.bytes;
+      _photoName = f.name;
+    });
   }
 
   /// يبحث عن ملفّ قائم بنفس رقم الهوية — يمنع ملفّين لشخص واحد (ADR-023).
@@ -132,15 +169,34 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     });
     try {
       final api = ref.read(apiClientProvider);
+      int employeeId;
       if (_isEdit) {
         await api.updateEmployee(widget.employeeId!, _profileBody);
         await api.saveEmployment(widget.employeeId!, _employmentBody);
+        employeeId = widget.employeeId!;
       } else if (_existing != null && !_existing!.alreadyInThisCompany) {
         // الشخص مسجَّل في شركة أخرى ⇒ نُسنده لشركتنا بدل إنشاء ملفّ ثانٍ له.
         await api.saveEmployment(_existing!.employeeId, _employmentBody);
+        employeeId = _existing!.employeeId;
       } else {
-        await api.createEmployee(_profileBody, _employmentBody);
+        employeeId = (await api.createEmployee(_profileBody, _employmentBody)).employeeId;
       }
+
+      // ⚠️ **الصورة بعد الحفظ لا قبله** — نقطتُها تحتاج معرّفاً لا يوجد قبل الإنشاء.
+      //    وفشلُ رفعها **لا يُسقط الحفظ**: الملفّ محفوظٌ فعلاً، وإسقاطُه هنا كان يُوهم
+      //    المستخدم أن بياناته ضاعت فيُعيد الإدخال ويُنشئ ملفّاً ثانياً.
+      if (_photoBytes != null) {
+        try {
+          await api.uploadEmployeePhoto(employeeId, _photoName ?? 'photo.jpg', _photoBytes!);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('حُفظ الموظف، وتعذّر رفع الصورة: $e'),
+                backgroundColor: Colors.orange));
+          }
+        }
+      }
+
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -183,6 +239,19 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     title: 'البيانات الشخصية',
                     icon: Icons.badge_outlined,
                     children: [
+                      _PhotoPicker(
+                        bytes: _photoBytes ?? _serverPhoto,
+                        isNew: _photoBytes != null,
+                        enabled: canManage && !_saving,
+                        onPick: _pickPhoto,
+                        onClear: _photoBytes == null
+                            ? null
+                            : () => setState(() {
+                                  _photoBytes = null;
+                                  _photoName = null;
+                                }),
+                      ),
+                      const SizedBox(height: 14),
                       _Field(
                         controller: _name,
                         label: 'الاسم الكامل بالعربية *',
@@ -400,6 +469,80 @@ class _Section extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// منتقي الصورة الشخصية — معاينةٌ دائرية وزرّ اختيار.
+///
+/// ⚠️ **الصورة المختارة لم تُرفع بعد** ولذلك تُعلَّم «ستُرفع عند الحفظ»: لولا ذلك لظنّ
+/// المستخدم أنها حُفظت فأغلق النموذج بلا حفظٍ فضاعت.
+class _PhotoPicker extends StatelessWidget {
+  final Uint8List? bytes;
+  final bool isNew;
+  final bool enabled;
+  final VoidCallback onPick;
+  final VoidCallback? onClear;
+
+  const _PhotoPicker({
+    required this.bytes, required this.isNew, required this.enabled,
+    required this.onPick, this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(children: [
+      CircleAvatar(
+        radius: 34,
+        backgroundColor: AppColors.navyDeep.withValues(alpha: 0.10),
+        backgroundImage: bytes != null ? MemoryImage(bytes!) : null,
+        child: bytes == null
+            ? Icon(Icons.person_rounded,
+                size: 34, color: AppColors.navyDeep.withValues(alpha: 0.45))
+            : null,
+      ),
+      const SizedBox(width: 16),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('الصورة الشخصية',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            Text(
+              isNew
+                  ? 'صورة جديدة — تُرفع عند الحفظ'
+                  : (bytes != null ? 'صورة محفوظة' : 'بلا صورة — PNG أو JPEG حتى 2 م.ب'),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: isNew
+                      ? AppColors.gold
+                      : theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: enabled ? onPick : null,
+                icon: const Icon(Icons.image_outlined, size: 16),
+                label: Text(bytes == null ? 'اختيار صورة' : 'تغيير',
+                    style: const TextStyle(fontSize: 12.5)),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+              ),
+              if (onClear != null) ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: enabled ? onClear : null,
+                  child: const Text('تراجع', style: TextStyle(fontSize: 12.5)),
+                ),
+              ],
+            ]),
+          ],
+        ),
+      ),
+    ]);
   }
 }
 

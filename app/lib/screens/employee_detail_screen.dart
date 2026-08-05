@@ -2,10 +2,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 import '../core/downloader.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import 'employee_form_screen.dart';
 
@@ -23,8 +25,10 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
   List<SalaryHistoryItem> _history = const [];
   List<LeaveModel> _leaves = const [];
   List<EmployeeLogItem> _log = const [];
+  List<AttachmentModel> _docs = const [];
   Uint8List? _photo;
   bool _loading = true;
+  bool _docsBusy = false;
   String? _error;
 
   /// هل تغيّر شيء يستوجب إعادة تحميل القائمة عند الرجوع؟
@@ -47,6 +51,11 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       final h = await api.salaryHistory(widget.employeeId);
       final lv = await api.leaves(widget.employeeId);
       final lg = await api.employeeLog(widget.employeeId);
+      // المستمسكات مساعِدةٌ لا حاسمة — فشلُ جلبها لا يُسقط الملفّ كلّه.
+      List<AttachmentModel> docs = const [];
+      try {
+        docs = await api.employeeAttachments(widget.employeeId);
+      } catch (_) {}
       Uint8List? photo;
       if (e.hasPhoto) {
         try {
@@ -61,6 +70,7 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
         _history = h;
         _leaves = lv;
         _log = lg;
+        _docs = docs;
         _photo = photo;
         _loading = false;
       });
@@ -70,6 +80,99 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
         _error = '$e';
         _loading = false;
       });
+    }
+  }
+
+  // ─────────────────────── المستمسكات ───────────────────────
+
+  Future<void> _reloadDocs() async {
+    try {
+      final docs = await ref.read(apiClientProvider).employeeAttachments(widget.employeeId);
+      if (mounted) setState(() => _docs = docs);
+    } catch (_) {}
+  }
+
+  Future<void> _addDoc() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await FilePicker.pickFiles(withData: true, allowMultiple: true);
+    if (res == null) return;
+
+    setState(() => _docsBusy = true);
+    var failed = 0;
+    for (final f in res.files) {
+      if (f.bytes == null) continue;
+      try {
+        await ref
+            .read(apiClientProvider)
+            .uploadEmployeeAttachment(widget.employeeId, f.name, f.bytes!);
+      } catch (_) {
+        failed++;
+      }
+    }
+    await _reloadDocs();
+    if (!mounted) return;
+    setState(() => _docsBusy = false);
+    // ⚠️ يُعلَن الفشل الجزئي صراحةً: رفعُ ٣ من ٥ بصمتٍ يجعل المستخدم يظنّ الخمسة رُفعت.
+    if (failed > 0) {
+      messenger.showSnackBar(SnackBar(
+          content: Text('تعذّر رفع $failed من ${res.files.length} ملفاً'),
+          backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _viewDoc(AttachmentModel a) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await ref
+          .read(apiClientProvider)
+          .employeeAttachmentBytes(widget.employeeId, a.attachmentId);
+      if (!mounted) return;
+      await AttachmentViewer.show(context, bytes: bytes, fileName: a.fileName);
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('تعذّر العرض: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _downloadDoc(AttachmentModel a) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      // inline حتى هنا: نجلب البايتات ونحفظها بأنفسنا، فترويسة «تنزيل» من الخادم
+      // ضررُها فقط — يختطف مديرُ التحميل الطلب فلا يصل ردّ (مبدأ ADR-019).
+      final bytes = await ref
+          .read(apiClientProvider)
+          .employeeAttachmentBytes(widget.employeeId, a.attachmentId);
+      await downloadBytes(bytes, a.fileName, 'application/octet-stream');
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('تعذّر التنزيل: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _deleteDoc(AttachmentModel a) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حذف المستمسك'),
+        content: Text('حذف «${a.fileName}»؟ لا يمكن التراجع.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await ref.read(apiClientProvider).deleteAttachment(a.attachmentId);
+      await _reloadDocs();
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('تعذّر الحذف: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -212,6 +315,16 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
                       _Header(employee: e!, photo: _photo),
                       const SizedBox(height: 20),
                       _InfoCard(employee: e),
+                      const SizedBox(height: 20),
+                      _DocumentsCard(
+                        items: _docs,
+                        canManage: canManage,
+                        busy: _docsBusy,
+                        onAdd: _addDoc,
+                        onView: _viewDoc,
+                        onDownload: _downloadDoc,
+                        onDelete: _deleteDoc,
+                      ),
                       const SizedBox(height: 20),
                       _LeavesCard(
                         leaves: _leaves,
@@ -441,6 +554,120 @@ class _SalaryHistoryCard extends StatelessWidget {
                 ),
               );
             }),
+        ],
+      ),
+    );
+  }
+}
+
+/// مستمسكات الموظف (هوية · عقد · شهادات).
+///
+/// ⚠️ الباك-إند كان جاهزاً منذ الدفعة ١ — `OwnerType.Employee` وحارسُ صلاحيةٍ مكتوب —
+/// **ولم يكن له مدخلٌ في الواجهة قطّ**، فماتت الميزة صامتةً حتى بلّغ عنها المالك.
+class _DocumentsCard extends StatelessWidget {
+  final List<AttachmentModel> items;
+  final bool canManage;
+  final bool busy;
+  final VoidCallback onAdd;
+  final ValueChanged<AttachmentModel> onView;
+  final ValueChanged<AttachmentModel> onDownload;
+  final ValueChanged<AttachmentModel> onDelete;
+
+  const _DocumentsCard({
+    required this.items, required this.canManage, required this.busy,
+    required this.onAdd, required this.onView,
+    required this.onDownload, required this.onDelete,
+  });
+
+  static String _size(int bytes) {
+    if (bytes >= 1024 * 1024) return '${(bytes / 1048576).toStringAsFixed(1)} م.ب';
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} ك.ب';
+    return '$bytes بايت';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final date = DateFormat('yyyy-MM-dd');
+
+    return CustomCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            const Expanded(
+                child: _CardTitle(icon: Icons.folder_copy_outlined, title: 'المستمسكات')),
+            if (canManage)
+              TextButton.icon(
+                onPressed: busy ? null : onAdd,
+                icon: busy
+                    ? const SizedBox(
+                        width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.upload_file_rounded, size: 17),
+                label: Text(busy ? 'جارٍ الرفع...' : 'رفع مستمسك'),
+              ),
+          ]),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: Text(
+                  canManage
+                      ? 'لا مستمسكات — ارفع الهوية أو العقد أو الشهادات.'
+                      : 'لا مستمسكات مرفوعة.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+            )
+          else
+            ...items.map((a) => Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(children: [
+                    Icon(
+                        AttachmentViewer.canView(a.fileName)
+                            ? Icons.description_outlined
+                            : Icons.insert_drive_file_outlined,
+                        size: 18,
+                        color: AppColors.gold),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(a.fileName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13.5, fontWeight: FontWeight.w700)),
+                          Text('${_size(a.fileSize)} · ${date.format(a.uploadedAt)}',
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: theme.textTheme.bodyMedium?.color
+                                      ?.withValues(alpha: 0.6))),
+                        ],
+                      ),
+                    ),
+                    // زرّ العرض يظهر لما يُعرض داخلياً فقط — وعده بالعرض ثم تنزيلُه خُلفٌ.
+                    if (AttachmentViewer.canView(a.fileName))
+                      IconButton(
+                        onPressed: () => onView(a),
+                        icon: const Icon(Icons.visibility_outlined, size: 18),
+                        tooltip: 'عرض',
+                      ),
+                    IconButton(
+                      onPressed: () => onDownload(a),
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      tooltip: 'تنزيل',
+                    ),
+                    if (canManage)
+                      IconButton(
+                        onPressed: () => onDelete(a),
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            size: 18, color: AppColors.danger),
+                        tooltip: 'حذف',
+                      ),
+                  ]),
+                )),
         ],
       ),
     );

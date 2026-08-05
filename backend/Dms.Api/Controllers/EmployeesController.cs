@@ -1,6 +1,7 @@
 using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
+using Dms.Infrastructure.Attachments;
 using Dms.Infrastructure.Hr;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,7 +17,8 @@ namespace Dms.Api.Controllers;
 [RequireHrModule]
 [Route("api/employees")]
 public sealed class EmployeesController(
-    IEmployeeService employees, ILeaveService leaves) : ControllerBase
+    IEmployeeService employees, ILeaveService leaves,
+    IAttachmentService attachmentService) : ControllerBase
 {
     // ─────────────────────── الإجازات وسجلّ التغييرات (الدفعة ٢) ───────────────────────
 
@@ -51,18 +53,9 @@ public sealed class EmployeesController(
             .ToList();
 
     private static LeaveResponse MapLeave(EmployeeLeave l) => new(
-        l.LeaveId, l.LeaveType, ArabicLeaveLabel(l.LeaveType), l.FromDate, l.ToDate,
+        l.LeaveId, l.LeaveType, l.LeaveType.ArabicLabel(), l.FromDate, l.ToDate,
         l.DurationDays, l.RequiresApproval, l.Status, l.DeductFromSalary,
         l.Notes, l.CreatedAt, l.ReviewedAt, l.ReviewNotes);
-
-    private static string ArabicLeaveLabel(LeaveType t) => t switch
-    {
-        LeaveType.Annual => "اعتيادية",
-        LeaveType.Sick => "مرضية",
-        LeaveType.Administrative => "إدارية",
-        LeaveType.Unpaid => "بلا راتب",
-        _ => "أخرى",
-    };
 
     [HttpGet]
     public async Task<ActionResult<List<EmployeeListItem>>> List(
@@ -144,6 +137,46 @@ public sealed class EmployeesController(
     {
         var (content, fileName) = await employees.GetPhotoAsync(id, ct);
         return File(content, MimeTypes.For(fileName));
+    }
+
+    // ─────────────────────── المستمسكات (هوية · عقد · شهادات) ───────────────────────
+    //
+    // ⚠️ **`OwnerType.Employee` كان موجوداً منذ الدفعة ١ وحارسُه مكتوبٌ بعناية في
+    //    `AttachmentService`، ولم تكن له نقطتا رفعٍ وقائمة قطّ** — فماتت الميزة صامتةً
+    //    (بلاغ المالك ٧، وهو رابع تكرارٍ لنمط «ميزة بلا مدخل» بعد G7 وG8 وG10).
+    //    الوصول والصلاحية يُفحصان داخل `AttachmentService` كبقية الأنواع.
+
+    [HttpGet("{id:int}/attachments")]
+    public async Task<ActionResult<List<AttachmentResponse>>> Attachments(
+        int id, CancellationToken ct)
+        => (await attachmentService.ListAsync(OwnerType.Employee, id, ct))
+            .Select(a => new AttachmentResponse(
+                a.AttachmentId, a.FileName, a.FileType, a.FileSize, a.UploadedAt))
+            .ToList();
+
+    [HttpPost("{id:int}/attachments")]
+    public async Task<ActionResult<AttachmentResponse>> UploadAttachment(
+        int id, IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0) throw new ValidationException("الملف مطلوب.");
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        var att = await attachmentService.AddAsync(
+            OwnerType.Employee, id, file.FileName, ms.ToArray(), ct);
+        return new AttachmentResponse(
+            att.AttachmentId, att.FileName, att.FileType, att.FileSize, att.UploadedAt);
+    }
+
+    [HttpGet("{id:int}/attachments/{attachmentId:int}/download")]
+    public async Task<IActionResult> DownloadAttachment(
+        int id, int attachmentId, bool inline, CancellationToken ct)
+    {
+        var (meta, content) = await attachmentService.GetAsync(attachmentId, ct);
+
+        // ⚠️ `inline=true` ⇒ النوع الحقيقي وبلا اسم ملف، وإلا صارت الاستجابة «تنزيلاً»
+        //    فيختطفها مدير التحميل ولا تُعرض (مبدأ ADR-019).
+        if (inline) return File(content, MimeTypes.For(meta.FileName));
+        return File(content, "application/octet-stream", meta.FileName);
     }
 
     [HttpGet("{id:int}/salary-history")]

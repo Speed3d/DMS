@@ -101,6 +101,25 @@ public enum LeaveType
     Other          = 4,   // أخرى
 }
 
+/// <summary>التسمية العربية لنوع الإجازة — **مصدرٌ واحد** يقرأ منه كل من يعرضها.</summary>
+/// <remarks>
+/// ⚠️ كانت في `EmployeesController` وحده، فلمّا احتاجتها `LeaveService` كان أسهلَ نسخُها —
+/// و**نسختان تتباعدان عند أول تعديل**. (وقع هذا في قاعدة رؤية الوارد فكلّف عيباً حقيقياً.)
+/// وموضعها في المجال يتبع سابقة <c>PayrollCalculator.ArabicMonth</c>: النصّ العربي المعروض
+/// يأتي **جاهزاً من الخادم** لا يُركَّب في العميل (ADR-023).
+/// </remarks>
+public static class LeaveTypeExtensions
+{
+    public static string ArabicLabel(this LeaveType t) => t switch
+    {
+        LeaveType.Annual => "اعتيادية",
+        LeaveType.Sick => "مرضية",
+        LeaveType.Administrative => "إدارية",
+        LeaveType.Unpaid => "بلا راتب",
+        _ => "أخرى",
+    };
+}
+
 /// <summary>حالة طلب الإجازة.</summary>
 public enum LeaveStatus
 {

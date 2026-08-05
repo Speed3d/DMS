@@ -159,10 +159,48 @@ if($dup.S -eq 409){ Ok "الإجازة المتداخلة مرفوضة (409)" } 
 # إجازة بموافقة ⇒ معلّقة ثم تُراجَع مرّةً واحدة
 $lv2=(Api POST "/employees/$e1/leaves" @{leaveType='Administrative';fromDate="$Year-$($Month.ToString('00'))-20T00:00:00";toDate="$Year-$($Month.ToString('00'))-21T00:00:00";requiresApproval=$true;deductFromSalary=$true;notes=$null} $admin $cid).B
 if($lv2.status -eq 'Pending'){ Ok "إجازة بموافقة تبدأ معلّقة" } else { Bad "الحالة $($lv2.status)" }
+
+# قائمة «مَن ينتظر» (بلاغ المالك ٨) — البطاقة كانت تعرض العدد وتنقل بلا دلالةٍ على صاحب الطلب.
+$pend=@(Api GET "/hr/leaves/pending" $null $admin $cid).B
+$mine=$pend | Where-Object { $_.leaveId -eq $lv2.leaveId } | Select-Object -First 1
+if($mine){ Ok "الإجازة المعلّقة تظهر في /hr/leaves/pending" } else { Bad "الإجازة المعلّقة غائبة عن القائمة" }
+# ⚠️ المطابقة بالمعرّف لا بالاسم العربي (PS 5.1 يشوّهه فتفشل المطابقة صامتةً).
+if($mine.employeeId -eq $e1){ Ok "القائمة تحمل معرّف صاحبها فيمكن فتح ملفّه" } else { Bad "employeeId $($mine.employeeId) بدل $e1" }
+if($mine.durationDays -eq 2){ Ok "مدّة الإجازة المعلّقة صحيحة (يومان)" } else { Bad "المدّة $($mine.durationDays) بدل 2" }
+if(-not [string]::IsNullOrWhiteSpace($mine.leaveTypeLabel)){ Ok "التسمية العربية جاهزة من الخادم" } else { Bad "leaveTypeLabel فارغة" }
+
 $rev=(Api PATCH "/employees/leaves/$($lv2.leaveId)" @{approve=$true;notes='موافق'} $admin $cid).B
 if($rev.status -eq 'Approved'){ Ok "الموافقة على الإجازة" } else { Bad "المراجعة ردّت $($rev.status)" }
 $rev2=Api PATCH "/employees/leaves/$($lv2.leaveId)" @{approve=$false;notes=$null} $admin $cid
 if($rev2.S -eq 409){ Ok "إعادة مراجعة إجازة محسومة مرفوضة (409)" } else { Bad "إعادة المراجعة ردّت $($rev2.S)" }
+
+# وبعد البتّ تخرج من قائمة المنتظِرين — وإلا بقيت البطاقة تُنادي على عملٍ منجَز.
+$pend2=@(Api GET "/hr/leaves/pending" $null $admin $cid).B
+if(-not ($pend2 | Where-Object { $_.leaveId -eq $lv2.leaveId })){ Ok "الإجازة المبتوتة تخرج من قائمة الانتظار" } else { Bad "الإجازة المبتوتة ما زالت معلّقة في القائمة" }
+
+Write-Host "`n=== مستمسكات الموظف (بلاغ المالك ٧) ===" -ForegroundColor Cyan
+# ⚠️ `OwnerType.Employee` وحارسُه كانا جاهزَين منذ الدفعة ١ **بلا نقطتَي رفعٍ وقائمة** —
+#    رابع تكرارٍ لنمط «ميزة بلا مدخل». الحارس هنا يمنع موتها صامتةً مرّةً أخرى.
+$docBytes=[Text.Encoding]::UTF8.GetBytes('%PDF-1.4 test')
+$docPath=Join-Path $env:TEMP 'dms-e2e-doc.pdf'
+[IO.File]::WriteAllBytes($docPath,$docBytes)
+$fBoundary=[Guid]::NewGuid().ToString()
+$fBody=[Text.Encoding]::UTF8.GetBytes(
+  "--$fBoundary`r`nContent-Disposition: form-data; name=`"file`"; filename=`"عقد العمل.pdf`"`r`nContent-Type: application/pdf`r`n`r`n" +
+  [Text.Encoding]::UTF8.GetString($docBytes) + "`r`n--$fBoundary--`r`n")
+try{
+  $up=Invoke-WebRequest -Uri "$Base/employees/$e1/attachments" -Method Post -Headers @{Authorization="Bearer $admin";'X-Company-Id'="$cid"} -ContentType "multipart/form-data; boundary=$fBoundary" -Body $fBody -UseBasicParsing
+  $upJson=$up.Content|ConvertFrom-Json
+  Ok "رُفع مستمسك ($($upJson.fileSize) بايت)"
+}catch{ Bad "رفع المستمسك فشل: $($_.Exception.Message)"; $upJson=$null }
+$docs=@(Api GET "/employees/$e1/attachments" $null $admin $cid).B
+if($docs.Count -ge 1){ Ok "قائمة المستمسكات فيها $($docs.Count)" } else { Bad "القائمة فارغة بعد الرفع" }
+if($upJson -and $upJson.attachmentId){
+  $dl=Api GET "/employees/$e1/attachments/$($upJson.attachmentId)/download?inline=true" $null $admin $cid
+  if($dl.S -eq 200){ Ok "تنزيل/عرض المستمسك يعمل (200)" } else { Bad "التنزيل ردّ $($dl.S)" }
+  $del=Api DELETE "/attachments/$($upJson.attachmentId)" $null $admin $cid
+  if($del.S -eq 204){ Ok "حذف المستمسك (204)" } else { Bad "الحذف ردّ $($del.S)" }
+}
 
 # سجلّ التغييرات: يُكتب تلقائياً عند تغيير الراتب
 $null=Api PUT "/employees/$e1/employment" @{position='مهندس أول';positionEn='Senior';hireDate='2020-01-01T00:00:00';salaryCurrency='IQD';baseSalary=1350000;displayOrder=1;isActive=$true} $admin $cid
@@ -251,7 +289,10 @@ function EmpLogin($user){
 $tokEmp=EmpLogin $empUser
 if($tokEmp){ Ok "دخول الموظف" } else { Bad "فشل دخول الموظف" }
 
-foreach($ep in @("/employees","/payroll/years","/payroll/periods/$Year/$Month","/hr/settings","/hr/summary","/payroll/periods/$Year/$Month/excel","/employees/$e1/leaves","/employees/$e1/log")){
+# ⚠️ **كل نقطةٍ جديدة تُضاف هنا.** الحارس على الوحدة كلّها (`[RequireHrModule]`)، لكن
+#    قائمةً لا تُحدَّث تترك النقطة الجديدة **بلا إثباتٍ** أنها محروسة فعلاً — وهو فرقٌ
+#    بين «يجب أن تكون محجوبة» و«أُثبت أنها محجوبة».
+foreach($ep in @("/employees","/payroll/years","/payroll/periods/$Year/$Month","/hr/settings","/hr/summary","/hr/leaves/pending","/payroll/periods/$Year/$Month/excel","/employees/$e1/leaves","/employees/$e1/log","/employees/$e1/attachments")){
   $r=Api GET $ep $null $tokEmp $cid
   if($r.S -eq 403){ Ok "الموظف محجوب عن $ep (403)" } else { Bad "تسرّب: $ep ردّ $($r.S) للموظف" }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../core/nav_intent.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -24,6 +25,9 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
   @override
   void initState() {
     super.initState();
+    // نيّة التنقّل (G11): بطاقة «بانتظار الاعتماد» تطلب المسودّات وحدها، فتفتح الشاشة
+    // **بفلترها** بدل أن تعرض كل الصادر وتُكذّب الرقم الذي ضُغط عليه.
+    _status = takeNavIntent<OutgoingStatusIntent>(ref)?.status;
     _reload();
   }
 

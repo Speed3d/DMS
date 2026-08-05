@@ -64,6 +64,22 @@ public sealed class HrController(
             s.EndOfServiceEnabled, s.EndOfServiceRatio, s.EndOfServiceCustomDays);
     }
 
+    /// <summary>الإجازات المعلّقة في الشركة الفعّالة **مع أصحابها**.</summary>
+    /// <remarks>
+    /// ⚠️ بطاقة لوحة التحكم كانت تعرض **العدد** وتنقل إلى قائمة الموظفين بلا دلالةٍ على
+    /// **مَن** طلب — فمع مئة موظف لا سبيل لمعرفة صاحب الطلب إلا بفتحهم واحداً واحداً
+    /// (بلاغ المالك 2026-08-05). و<c>/employees/{id}/leaves</c> لا تجيب لأنها تسأل عن موظفٍ
+    /// بعينه، والسؤال هنا معكوس: **مَن ينتظر؟**
+    /// </remarks>
+    [HttpGet("leaves/pending")]
+    public async Task<ActionResult<List<PendingLeaveResponse>>> PendingLeaves(CancellationToken ct)
+        => (await leaves.PendingAsync(ct))
+            .Select(l => new PendingLeaveResponse(
+                l.LeaveId, l.EmployeeId, l.EmployeeName, l.Position,
+                l.LeaveType, l.LeaveTypeLabel, l.FromDate, l.ToDate, l.DurationDays,
+                l.DeductFromSalary, l.Notes, l.CreatedAt))
+            .ToList();
+
     /// <summary>ملخّص للوحة التحكم — كل الأرقام مفلترة على الشركة الفعّالة تلقائياً.</summary>
     [HttpGet("summary")]
     public async Task<ActionResult<HrSummaryResponse>> Summary(CancellationToken ct)
