@@ -107,7 +107,8 @@ public sealed record PayrollMonthResponse(
 public sealed record PayrollEntryResponse(
     int EntryId, int EmployeeCompanyId, int EmployeeId, int DisplayOrder,
     string Name, string Position, Currency Currency, decimal BaseSalary,
-    int EligibleDays, int AbsenceDays, decimal? BonusAmount, decimal? DeductionAmount,
+    int EligibleDays, bool EligibleDaysIsManual, int AbsenceDays,
+    decimal? BonusAmount, decimal? DeductionAmount,
     decimal AbsenceDeduction, bool AbsenceDeductionIsManual, decimal? EndOfServiceAmount,
     decimal NetSalary, decimal NetSalaryIqd,
     PayrollPaymentStatus PaymentStatus, int? PaidByCompanyId, string? PaidByCompanyName,

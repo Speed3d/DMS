@@ -48,9 +48,10 @@ public class PayrollCalculatorTests
     [Fact]
     public void HiredMidMonth_GetsRemainingDaysOnly()
     {
-        // عُيِّن 16 تموز ⇒ من 16 إلى 31 = 16 يوماً.
+        // عُيِّن 16 تموز ⇒ من اليوم 16 إلى اليوم 30 = 15 يوماً.
+        // (لا 16: الشهر مدى مرقّم 1..30 لا عدّ أيامٍ تقويمية — انظر شباط أدناه.)
         var days = PayrollCalculator.EligibleDays(2026, 7, 30, new DateTime(2026, 7, 16), null);
-        Assert.Equal(16, days);
+        Assert.Equal(15, days);
     }
 
     [Fact]
@@ -102,6 +103,62 @@ public class PayrollCalculatorTests
         // شباط 2026 = 28 يوماً، عُيِّن يوم 15 ⇒ 14 يوماً من 28.
         var days = PayrollCalculator.EligibleDays(2026, 2, 28, new DateTime(2026, 2, 15), null);
         Assert.Equal(14, days);
+    }
+
+    // ───────────── شباط: الحالة التي كشفها المالك ولم تكن مغطّاة (2026-08-05) ─────────────
+    //
+    // 🔴 الحارس الصحيح كان موجوداً في `hr-e2e.ps1` («المستقرّ يأخذ 30») لكنه **لم يمرّ على
+    //    شباط قطّ**، لأن السكربت يختار أول شهرٍ غير مُسدَّد فوقع على 3 و4 و5 و7.
+    //    واختبارات الوحدة كلها كانت على تموز. **حالةٌ حدّية بلا اختبار = حالةٌ بلا حارس.**
+
+    [Theory]
+    [InlineData(2026, 2)]   // شباط عادي — 28 يوماً
+    [InlineData(2024, 2)]   // شباط كبيس — 29 يوماً
+    public void ShortMonth_SettledEmployee_StillGetsFullWorkingDays(int year, int month)
+    {
+        // العيب المُبلَّغ عنه: كان يعود 28 فيُصرف 28/30 من الراتب لمن داوم الشهر كلّه.
+        var days = PayrollCalculator.EligibleDays(year, month, 30, new DateTime(2020, 1, 1), null);
+        Assert.Equal(30, days);
+    }
+
+    [Fact]
+    public void ShortMonth_SettledEmployee_GetsFullNetSalary()
+    {
+        // الرقم الحرفيّ من بلاغ المالك: 2000$ كان يظهر 1,866.67.
+        var r = PayrollCalculator.Compute(
+            2026, 2, workingDays: 30, baseSalary: 2000m, currency: Currency.USD, exchangeRate: null,
+            hireDate: new DateTime(2020, 1, 1), terminationDate: null,
+            absenceDays: 0, bonus: null, deduction: null, manualAbsenceDeduction: null);
+
+        Assert.Equal(30, r.EligibleDays);
+        Assert.Equal(2000m, r.NetSalary);
+    }
+
+    [Fact]
+    public void SameHireDay_YieldsSameDays_AcrossMonthsOfDifferentLength()
+    {
+        // جوهر عرف 30/360: الجهد نفسه ⇒ الاستحقاق نفسه. العدّ كان يعطي 13 في شباط و16 في تموز.
+        var feb = PayrollCalculator.EligibleDays(2026, 2, 30, new DateTime(2026, 2, 16), null);
+        var jul = PayrollCalculator.EligibleDays(2026, 7, 30, new DateTime(2026, 7, 16), null);
+
+        Assert.Equal(15, feb);
+        Assert.Equal(15, jul);
+    }
+
+    [Fact]
+    public void ShortMonth_TerminatedOnLastCalendarDay_GetsFullMonth()
+    {
+        // أُنهيت خدمته 28 شباط — وهو آخر الشهر، فقد داومه كلّه ⇒ 30 لا 28.
+        var days = PayrollCalculator.EligibleDays(2026, 2, 30, new DateTime(2020, 1, 1), new DateTime(2026, 2, 28));
+        Assert.Equal(30, days);
+    }
+
+    [Fact]
+    public void DayBeyondWorkingDays_IsClampedNotDropped()
+    {
+        // عُيِّن 31 تموز في شهرٍ من 30 يوم عمل ⇒ يومٌ واحد لا صفر.
+        var days = PayrollCalculator.EligibleDays(2026, 7, 30, new DateTime(2026, 7, 31), null);
+        Assert.Equal(1, days);
     }
 
     // ─────────────────────────── خصم الغياب ───────────────────────────
@@ -277,17 +334,17 @@ public class PayrollCalculatorTests
     [Fact]
     public void Compute_NewHireWithAbsence_ProratesThenDeducts()
     {
-        // عُيِّن 16 تموز (16 يوماً) وغاب يومين من راتب 1,200,000:
-        //   الاستحقاق = 1,200,000 × 16/30 = 640,000
+        // عُيِّن 16 تموز (15 يوماً من مدى 1..30) وغاب يومين من راتب 1,200,000:
+        //   الاستحقاق = 1,200,000 × 15/30 = 600,000
         //   خصم الغياب = 1,200,000 × 2/30  =  80,000
         var r = PayrollCalculator.Compute(
             2026, 7, 30, baseSalary: 1_200_000m, Currency.IQD, exchangeRate: null,
             hireDate: new DateTime(2026, 7, 16), terminationDate: null,
             absenceDays: 2, bonus: null, deduction: null, manualAbsenceDeduction: null);
 
-        Assert.Equal(16, r.EligibleDays);
+        Assert.Equal(15, r.EligibleDays);
         Assert.Equal(80_000m, r.AbsenceDeduction);
-        Assert.Equal(560_000m, r.NetSalary);
+        Assert.Equal(520_000m, r.NetSalary);
     }
 
     // ─────────────────────────── حارس التسديد ───────────────────────────

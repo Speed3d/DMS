@@ -244,7 +244,7 @@ public sealed class PayrollController(
             e.EntryId, e.EmployeeCompanyId,
             employeeByLink.TryGetValue(e.EmployeeCompanyId, out var empId) ? empId : 0,
             e.DisplayOrder, e.SnapshotName, e.SnapshotPosition, e.SnapshotCurrency, e.SnapshotBaseSalary,
-            e.EligibleDays, e.AbsenceDays, e.BonusAmount, e.DeductionAmount,
+            e.EligibleDays, e.EligibleDaysIsManual, e.AbsenceDays, e.BonusAmount, e.DeductionAmount,
             e.AbsenceDeduction, e.AbsenceDeductionIsManual, e.EndOfServiceAmount,
             e.NetSalary, e.NetSalaryIqd,
             e.PaymentStatus, e.PaidByCompanyId, e.PaidByCompanyName,

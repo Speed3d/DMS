@@ -230,6 +230,10 @@ class PayrollEntryModel {
   final String currency;
   final double baseSalary;
   final int eligibleDays;
+
+  /// هل ثُبِّتت الأيام يدوياً؟ إن كانت `false` فالخادم يُعيد حسابها في كل حفظ.
+  final bool eligibleDaysIsManual;
+
   final int absenceDays;
   final double? bonusAmount;
   final double? deductionAmount;
@@ -252,6 +256,7 @@ class PayrollEntryModel {
     required this.entryId, required this.employeeCompanyId, required this.employeeId,
     required this.displayOrder, required this.name, required this.position,
     required this.currency, required this.baseSalary, required this.eligibleDays,
+    this.eligibleDaysIsManual = false,
     required this.absenceDays, this.bonusAmount, this.deductionAmount,
     required this.absenceDeduction, required this.absenceDeductionIsManual,
     this.endOfServiceAmount,
@@ -274,6 +279,7 @@ class PayrollEntryModel {
         currency: j['currency'] ?? 'IQD',
         baseSalary: (j['baseSalary'] as num?)?.toDouble() ?? 0,
         eligibleDays: j['eligibleDays'] ?? 0,
+        eligibleDaysIsManual: j['eligibleDaysIsManual'] ?? false,
         absenceDays: j['absenceDays'] ?? 0,
         bonusAmount: (j['bonusAmount'] as num?)?.toDouble(),
         deductionAmount: (j['deductionAmount'] as num?)?.toDouble(),

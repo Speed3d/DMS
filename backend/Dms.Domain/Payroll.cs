@@ -90,6 +90,20 @@ public class PayrollEntry
     /// </summary>
     public int EligibleDays { get; set; }
 
+    /// <summary>
+    /// هل عدّل المستخدم الأيام المستحقّة يدوياً؟ نظير <see cref="AbsenceDeductionIsManual"/>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **بدون هذا العلَم كانت الأيام تتجمّد بعد أول حساب.** كانت الخدمة تستنتج «يدويّ» من
+    /// <c>EligibleDays &gt; 0</c> — وهو صحيحٌ لكل سطرٍ حُسِب مرّةً واحدة، فصار **كل** سطر
+    /// محميّاً من إعادة الحساب. أثرُ ذلك أن تغيير أيام العمل أو تاريخ التعيين يُعيد حساب
+    /// **الصافي** بمقامٍ جديد وبَسطٍ قديم: شباط بأيامٍ مجمّدة عند 28 ومقامٍ 30 ⇒ 28/30 من
+    /// الراتب (بلاغ المالك 2026-08-05 — وهو السبب الثاني للعطل، ولم تكشفه اختبارات الوحدة
+    /// لأنها تختبر <c>PayrollCalculator</c> مباشرةً ولا تمرّ من هنا).
+    /// **«قيمةٌ موجودة» ليست «قيمةً اختارها إنسان» — والفرق يحتاج علَماً لا استنتاجاً.**
+    /// </remarks>
+    public bool EligibleDaysIsManual { get; set; }
+
     public int AbsenceDays { get; set; }
     public decimal? BonusAmount { get; set; }
     public decimal? DeductionAmount { get; set; }

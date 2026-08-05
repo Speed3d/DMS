@@ -27,8 +27,28 @@ public static class PayrollCalculator
     /// وجزءٌ منها لمن عُيِّن أو أُنهيت خدمته داخل الشهر، وصفرٌ لمن لم يكن على رأس عمله فيه.
     /// </summary>
     /// <remarks>
-    /// السقف عند <paramref name="workingDays"/> مقصود: في وضع «30 ثابت» يُنتج شهرٌ من 31 يوماً
-    /// حضوراً كاملاً قدره 31، وصرفُ 31/30 من الراتب زيادةٌ لا يريدها أحد.
+    /// <para>
+    /// **الشهر أيامٌ مرقّمة 1..<paramref name="workingDays"/> لا أيامٌ تُعدّ** (عرف 30/360).
+    /// يُسقَط يوم الشهر التقويمي على هذا المدى بـ<see cref="PayrollDay"/>، ثم يكون الاستحقاق
+    /// طولَ المدى بين يوم البدء ويوم الانتهاء.
+    /// </para>
+    /// <para>
+    /// ⚠️ **لماذا لا تُعدّ الأيام؟** لأن العدّ يجعل طولَ الشهر التقويمي يتسرّب إلى الراتب من
+    /// **الأسفل** حيث لا سقف يحميه: كان الحساب <c>Math.Min(أيام الحضور, workingDays)</c>،
+    /// فيُنتج شباطُ (28 يوماً) حضوراً كاملاً قدره **28** فيُصرف <c>28/30</c> من الراتب —
+    /// أي 1,866.67$ لمن راتبه 2,000$ وقد داوم الشهر كلّه. (بلاغ المالك 2026-08-05.)
+    /// السقف كان يحمي من الأعلى (31 ⇒ 30) ولا يحمي من الأسفل، والنيّة المعلنة أعلاه
+    /// «الشهر ثلاثون مهما كان طوله» لم تكن تتحقّق إلا في الشهور الطويلة.
+    /// </para>
+    /// <para>
+    /// ⚠️ **ووضع «تقويمي» لا يحتاج استثناءً**: فيه <paramref name="workingDays"/> يساوي طول
+    /// الشهر، فيصير الإسقاط محايداً ويعود الحساب إلى الأيام الحقيقية. **دالّةٌ واحدة تخدم
+    /// الوضعين** — والفرع الثاني كان سيتباعد عن الأول عند أول تعديل.
+    /// </para>
+    /// <para>
+    /// وتساوي المعاملة مقصودة: من عُيِّن في اليوم 16 يأخذ نصف الشهر في شباط وتموز معاً.
+    /// العدُّ كان يعطيه 13 في شباط و16 في تموز عن **الجهد نفسه**.
+    /// </para>
     /// </remarks>
     public static int EligibleDays(
         int year, int month, int workingDays, DateTime hireDate, DateTime? terminationDate)
@@ -38,14 +58,25 @@ public static class PayrollCalculator
         var firstOfMonth = new DateTime(year, month, 1);
         var lastOfMonth = new DateTime(year, month, DateTime.DaysInMonth(year, month));
 
-        var start = hireDate.Date > firstOfMonth ? hireDate.Date : firstOfMonth;
-        var end = terminationDate?.Date is { } t && t < lastOfMonth ? t : lastOfMonth;
-
         // عُيِّن بعد الشهر، أو انتهت خدمته قبله ⇒ لا استحقاق أصلاً.
-        if (start > end) return 0;
+        if (hireDate.Date > lastOfMonth) return 0;
+        if (terminationDate?.Date is { } end && end < firstOfMonth) return 0;
 
-        return Math.Min((end - start).Days + 1, workingDays);
+        var startDay = hireDate.Date <= firstOfMonth
+            ? 1
+            : PayrollDay(hireDate.Date.Day, workingDays);
+
+        // الإنهاء في آخر يوم تقويمي (أو بعده) = شهرٌ كامل — ولو كان الشهر أقصر من أيام العمل.
+        var endDay = terminationDate?.Date is { } t && t < lastOfMonth
+            ? PayrollDay(t.Day, workingDays)
+            : workingDays;
+
+        return Math.Clamp(endDay - startDay + 1, 0, workingDays);
     }
+
+    /// <summary>إسقاط يومٍ من الشهر التقويمي على مدى أيام العمل (اليوم 31 في شهرٍ من 30 هو 30).</summary>
+    private static int PayrollDay(int dayOfMonth, int workingDays) =>
+        Math.Clamp(dayOfMonth, 1, workingDays);
 
     /// <summary>
     /// خصم الغياب المقترح = (أيام الغياب ÷ أيام العمل) × الراتب الأساسي.

@@ -293,6 +293,7 @@ public sealed class PayrollService(
                 if (days < 0 || days > period.WorkingDays)
                     throw new ValidationException($"الأيام المستحقّة يجب أن تكون بين 0 و{period.WorkingDays}.");
                 entry.EligibleDays = days;
+                entry.EligibleDaysIsManual = true;
             }
 
             Recompute(period, entry, input.ManualAbsenceDeduction);
@@ -530,7 +531,10 @@ public sealed class PayrollService(
             entry.EndOfServiceAmount);
 
         // الأيام المستحقّة قد يكون المستخدم عدّلها يدوياً ⇒ لا نفرض المحسوبة فوقها.
-        var eligible = entry.EligibleDays > 0 ? entry.EligibleDays : amounts.EligibleDays;
+        // ⚠️ **بالعلَم الصريح لا بـ`EligibleDays > 0`**: الشرط القديم كان يصدق على كل سطرٍ
+        //    حُسِب مرّةً، فيتجمّد عند أول قيمة ولا يتبع تغيّرَ أيام العمل ولا تاريخ التعيين
+        //    ولا الإنهاء. (بلاغ المالك 2026-08-05: شباط بأيام 28 مجمّدة ومقام 30 ⇒ 28/30.)
+        var eligible = entry.EligibleDaysIsManual ? entry.EligibleDays : amounts.EligibleDays;
         entry.EligibleDays = eligible;
         entry.AbsenceDeduction = amounts.AbsenceDeduction;
         entry.NetSalary = PayrollCalculator.NetSalary(

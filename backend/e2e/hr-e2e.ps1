@@ -64,20 +64,26 @@ if($g.added -ge 2){ Ok "تولّد الكشف: أُضيف $($g.added)" } else { 
 $p=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
 if($p.entries.Count -ge 2){ Ok "الكشف فيه $($p.entries.Count) سطراً" } else { Bad "عدد السطور $($p.entries.Count)" }
 
-# سطر الدينار: شهر كامل ⇒ 30 يوماً وصافٍ = الأساسي
+# سطر الدينار: شهر كامل ⇒ **كل أيام العمل** وصافٍ = الأساسي.
+# ⚠️ يُقارَن بـ`workingDays` لا بالرقم 30: هذا هو الثابت الحقيقي — «المستقرّ يأخذ الشهر كاملاً
+#    مهما كان طول الشهر التقويمي». والمقارنة بـ30 كانت ستكشف عيب شباط **لو وقع السكربت عليه**،
+#    لكنه يختار أول شهر غير مُسدَّد فوقع على 3 و4 و5 و7 ولم يزره قطّ (بلاغ المالك 2026-08-05).
 $rIqd=$p.entries | Where-Object { $_.currency -eq 'IQD' } | Select-Object -First 1
-if($rIqd.eligibleDays -eq 30){ Ok "الموظف المستقرّ: 30 يوماً مستحقّاً" } else { Bad "أيام المستقرّ $($rIqd.eligibleDays) بدل 30" }
+if($rIqd.eligibleDays -eq $p.workingDays){ Ok "الموظف المستقرّ: $($p.workingDays) يوماً مستحقّاً (الشهر التقويمي $([DateTime]::DaysInMonth($Year,$Month)))" } else { Bad "أيام المستقرّ $($rIqd.eligibleDays) بدل $($p.workingDays)" }
 if([math]::Abs($rIqd.netSalary - 1200000) -lt 0.01){ Ok "صافي المستقرّ = 1,200,000" } else { Bad "صافي المستقرّ $($rIqd.netSalary)" }
 
-# سطر الدولار: عُيِّن يوم 16 ⇒ من 16 إلى آخر الشهر، بسقف أيام العمل.
-# ⚠️ **التوقّع يُحسب من القاعدة لا يُكتب رقماً ثابتاً**: السكربت يختار شهراً مختلفاً كل تشغيل،
-#    و«16 يوماً» صحيحةٌ في شهرٍ من 31 وخاطئةٌ في شباط (13). رقمٌ ثابت كان سيجعل الاختبار
-#    يفشل بحسب الشهر لا بحسب صحة الكود — وهو أسوأ من ألّا يوجد اختبار.
+# سطر الدولار: عُيِّن اليوم 16 ⇒ من اليوم 16 إلى آخر يوم عمل في المدى.
+# ⚠️ **التوقّع يُحسب من القاعدة لا يُكتب رقماً ثابتاً** — السكربت يختار شهراً مختلفاً كل تشغيل.
+#    والقاعدة **عرف 30/360** (2026-08-05): الشهر مدى مرقّم 1..workingDays، فالاستحقاق
+#    `workingDays - 16 + 1` **في كل شهر**، ولا يتبع طول الشهر التقويمي.
+#    ⚠️ وكان يُحسب هنا من `daysInMonth` فيعطي 16 في شهرٍ من 31 و13 في شباط — وهو **العدّ**
+#    الذي أنتج عيب شباط نفسه (بلاغ المالك). التوقّع يتبع القاعدة الجديدة الآن.
 $daysInMonth=[DateTime]::DaysInMonth($Year,$Month)
-$expDays=[math]::Min($daysInMonth-15, 30)
-$expNet=[math]::Round(700 * $expDays / 30, 2)
+$wd=$p.workingDays
+$expDays=$wd - 16 + 1
+$expNet=[math]::Round(700 * $expDays / $wd, 2)
 $rUsd=$p.entries | Where-Object { $_.currency -eq 'USD' } | Select-Object -First 1
-if($rUsd.eligibleDays -eq $expDays){ Ok "التعيين منتصف الشهر: $expDays يوماً من $daysInMonth ✔ التناسب الجزئي" } else { Bad "أيام الجديد $($rUsd.eligibleDays) بدل $expDays" }
+if($rUsd.eligibleDays -eq $expDays){ Ok "التعيين منتصف الشهر: $expDays يوماً من $wd (الشهر التقويمي $daysInMonth) ✔ التناسب الجزئي" } else { Bad "أيام الجديد $($rUsd.eligibleDays) بدل $expDays" }
 if([math]::Abs($rUsd.netSalary - $expNet) -lt 0.02){ Ok "صافي الجديد = $expNet دولار (700 × $expDays/30)" } else { Bad "صافي الجديد $($rUsd.netSalary) بدل $expNet" }
 if($rUsd.isNewHire){ Ok "الموظف الجديد مُعلَّم isNewHire" } else { Bad "isNewHire غير مضبوط" }
 
@@ -94,6 +100,24 @@ $p2=(Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$p.rowVersion;exchange
 $rUsd2=$p2.entries | Where-Object { $_.currency -eq 'USD' } | Select-Object -First 1
 $expIqd=[math]::Round($expNet * 1310, 2)
 if([math]::Abs($rUsd2.netSalaryIqd - $expIqd) -lt 1){ Ok "بعد السعر: $expNet × 1310 = $($rUsd2.netSalaryIqd) د.ع" } else { Bad "المعادل $($rUsd2.netSalaryIqd) بدل $expIqd" }
+
+Write-Host "`n=== الأيام المستحقّة تتبع أيام العمل ولا تتجمّد ===" -ForegroundColor Cyan
+# 🔴 **حارسٌ وُلد من بلاغ المالك (2026-08-05).** كان `Recompute` يستنتج «يدويّ» من
+#    `EligibleDays > 0`، وهو صادقٌ على **كل** سطرٍ حُسِب مرّةً — فتتجمّد الأيام عند أول قيمة
+#    ويُعاد حساب الصافي بمقامٍ جديد وبَسطٍ قديم (شباط: 28 مجمّدة ÷ 30 ⇒ 28/30 من الراتب).
+#    ⚠️ **اختبارات الوحدة لا تكشفه** لأنها تنادي `PayrollCalculator` مباشرةً ولا تمرّ من الخدمة.
+#    الفحص: نُنزل أيام العمل إلى 26 ثم نعيدها إلى 30، ويجب أن يتبعها المستقرّ في الاتجاهين.
+$pA=(Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$p2.rowVersion;exchangeRate=1310;workingDaysMode='Fixed';workingDays=26;notes=$null} $admin $cid).B
+$sA=$pA.entries | Where-Object { $_.entryId -eq $rIqd.entryId } | Select-Object -First 1
+if($sA.eligibleDays -eq 26){ Ok "خفض أيام العمل إلى 26 ⇒ المستقرّ 26 يوماً" } else { Bad "الأيام $($sA.eligibleDays) بدل 26 — الأيام متجمّدة" }
+if([math]::Abs($sA.netSalary - 1200000) -lt 0.01){ Ok "وصافيه كامل (26/26) لا منقوصاً" } else { Bad "الصافي $($sA.netSalary) بدل 1,200,000" }
+
+$pB=(Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$pA.rowVersion;exchangeRate=1310;workingDaysMode='Fixed';workingDays=30;notes=$null} $admin $cid).B
+$sB=$pB.entries | Where-Object { $_.entryId -eq $rIqd.entryId } | Select-Object -First 1
+if($sB.eligibleDays -eq 30){ Ok "رفعها إلى 30 ⇒ المستقرّ 30 يوماً (لا تتجمّد في الاتجاه الآخر)" } else { Bad "الأيام $($sB.eligibleDays) بدل 30 — تجمّدت عند 26" }
+if([math]::Abs($sB.netSalary - 1200000) -lt 0.01){ Ok "وصافيه كامل بعد العودة" } else { Bad "الصافي $($sB.netSalary) بدل 1,200,000" }
+if(-not $sB.eligibleDaysIsManual){ Ok "eligibleDaysIsManual=false ⇒ الأيام محسوبة لا مثبّتة" } else { Bad "الأيام مُعلَّمة يدوية بلا أن يطلبها أحد" }
+$p2=$pB
 
 Write-Host "`n=== التحرير وإعادة الحساب على الخادم ===" -ForegroundColor Cyan
 $rIqd2=$p2.entries | Where-Object { $_.entryId -eq $rIqd.entryId } | Select-Object -First 1
