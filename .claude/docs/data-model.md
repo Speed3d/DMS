@@ -30,10 +30,14 @@
   - **لا كيان «سنة»** — السنوات تُشتق بـ`GROUP BY Year`.
   - `RowVersion` لأن الكشف يُحفَظ **دفعةً واحدة**: مستخدمان على الشهر نفسه بلا حارس ⇒ الأخير يمحو عمل الأول صامتاً.
   - `ExchangeRate` **مجمَّد على الفترة** (نفس مبدأ `OutgoingBook.AmountInIqd`)، يُملأ افتراضاً من `ExchangeRate` المركزي.
-- `PayrollEntry`: `EntryId, PeriodId→PayrollPeriod (Cascade), EmployeeCompanyId→EmployeeCompany (**Restrict**), CompanyId (منسوخ للفلترة), DisplayOrder, SnapshotName, SnapshotPosition, SnapshotCurrency, SnapshotBaseSalary(18,2), EligibleDays, AbsenceDays, BonusAmount?(18,2), DeductionAmount?(18,2), AbsenceDeduction(18,2), AbsenceDeductionIsManual, Notes?, NetSalary(18,2), NetSalaryIqd(18,2), PaymentStatus(enum), PaidByCompanyId?, PaidByCompanyName?, IsNewHire, IsTerminated, TerminationDate?, CreatedAt, UpdatedAt?, + الحذف الناعم`. فريد على `(PeriodId, EmployeeCompanyId)` مفلتراً.
+- `PayrollEntry`: `EntryId, PeriodId→PayrollPeriod (Cascade), EmployeeCompanyId→EmployeeCompany (**Restrict**), CompanyId (منسوخ للفلترة), DisplayOrder, SnapshotName, SnapshotPosition, SnapshotCurrency, SnapshotBaseSalary(18,2), EligibleDays, **EligibleDaysIsManual**, AbsenceDays, BonusAmount?(18,2), DeductionAmount?(18,2), AbsenceDeduction(18,2), AbsenceDeductionIsManual, Notes?, NetSalary(18,2), NetSalaryIqd(18,2), PaymentStatus(enum), PaidByCompanyId?, PaidByCompanyName?, IsNewHire, IsTerminated, TerminationDate?, CreatedAt, UpdatedAt?, + الحذف الناعم`. فريد على `(PeriodId, EmployeeCompanyId)` مفلتراً.
   - حقول `Snapshot*` **لقطة لحظة التوليد** — تغييرُ راتب في آذار لا يُعيد كتابة كشف شباط المُسدَّد.
   - `Restrict` على الإسناد: حذفُ إسنادٍ لا يجوز أن يمحو سطراً في كشف **مُسدَّد**.
   - `AbsenceDeductionIsManual` يصون تعديل المستخدم من أن تمحوه إعادةُ الحساب.
+  - `EligibleDaysIsManual` (مهاجرة `AddEligibleDaysIsManual`، 2026-08-05) نظيره للأيام.
+    ⚠️ **بلا هذا العلَم كانت الأيام تتجمّد بعد أول حساب**: الخدمة كانت تستنتج «يدويّ» من
+    `EligibleDays > 0` وهو صادقٌ على كل سطرٍ حُسِب مرّةً، فيُعاد حساب الصافي بمقامٍ جديد
+    وبَسطٍ قديم. **افتراضه `false`** ⇒ الصفوف القائمة تُشفى ذاتياً عند أول حفظ.
   - `NetSalary`/`NetSalaryIqd` **يحسبهما الخادم دائماً ولا يقبلهما من العميل**.
 
 ### HrSettings
