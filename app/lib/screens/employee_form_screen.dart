@@ -8,11 +8,29 @@ import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
 
+/// موظفٌ قائم يُسنَد إلى الشركة الفعّالة — الشخص معروف، والمطلوب شروطُ عمله هنا (ADR-027).
+class LinkExistingEmployee {
+  final int employeeId;
+  final String fullName;
+  const LinkExistingEmployee({required this.employeeId, required this.fullName});
+}
+
 /// Hint: نموذج إضافة/تعديل موظف — تبويبان: بيانات شخصية + بيانات الوظيفة في هذه الشركة.
 class EmployeeFormScreen extends ConsumerStatefulWidget {
   /// `null` = موظف جديد.
   final int? employeeId;
-  const EmployeeFormScreen({super.key, this.employeeId});
+
+  /// وضع **الإسناد**: ملفّ الشخص موجود في شركة أخرى، فلا تُطلب بياناته الشخصية.
+  ///
+  /// ⚠️ **لماذا وضعٌ ثالث لا إعادةُ استعمال «موظف جديد»؟** لأن ذلك الوضع كان يطلب الاسم
+  /// ويتحقّق منه ثم **يتجاهله** عند الإسناد — فيملأ المستخدم حقلاً لا أثر له، وقد يكتب
+  /// اسماً مخالفاً للمحفوظ فيظنّه سيُحفظ. والبيانات الشخصية ملكُ الملفّ الواحد، وتعديلها
+  /// من هنا كان سيغيّرها على الشركة الأخرى أيضاً بلا أن يقصد أحد.
+  final LinkExistingEmployee? link;
+
+  const EmployeeFormScreen({super.key, this.employeeId, this.link})
+      : assert(employeeId == null || link == null,
+            'التعديل والإسناد وضعان متنافيان — لا يجتمعان في نموذج واحد.');
 
   @override
   ConsumerState<EmployeeFormScreen> createState() => _EmployeeFormScreenState();
@@ -58,6 +76,9 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   Uint8List? _serverPhoto;
 
   bool get _isEdit => widget.employeeId != null;
+
+  /// وضع الإسناد — الشخص موجود، والمطلوب شروط عمله في هذه الشركة وحدها.
+  bool get _isLink => widget.link != null;
 
   @override
   void initState() {
@@ -170,7 +191,12 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     try {
       final api = ref.read(apiClientProvider);
       int employeeId;
-      if (_isEdit) {
+      if (_isLink) {
+        // إسنادٌ خالص: **شروط العمل وحدها** — البيانات الشخصية ملكُ الملفّ الواحد، وكتابتُها
+        // من هنا كانت ستغيّرها على الشركة الأخرى معه.
+        await api.saveEmployment(widget.link!.employeeId, _employmentBody);
+        employeeId = widget.link!.employeeId;
+      } else if (_isEdit) {
         await api.updateEmployee(widget.employeeId!, _profileBody);
         await api.saveEmployment(widget.employeeId!, _employmentBody);
         employeeId = widget.employeeId!;
@@ -215,7 +241,11 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? 'تعديل موظف' : 'موظف جديد'),
+        title: Text(_isLink
+            ? 'إسناد موظف قائم'
+            : _isEdit
+                ? 'تعديل موظف'
+                : 'موظف جديد'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -235,6 +265,15 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     const SizedBox(height: 16),
                   ],
 
+                  // ── وضع الإسناد: هويّة الشخص للقراءة، لا حقولٌ تُملأ ──
+                  if (_isLink) ...[
+                    _LinkBanner(fullName: widget.link!.fullName),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // البيانات الشخصية تُخفى في وضع الإسناد: ملفُّ الشخص واحدٌ لكل الشركات،
+                  // وتحريرُه من نموذج إسنادٍ كان يعدّله على الشركة الأخرى معه.
+                  if (!_isLink)
                   _Section(
                     title: 'البيانات الشخصية',
                     icon: Icons.badge_outlined,
@@ -279,7 +318,7 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                       _Field(controller: _notes, label: 'ملاحظات', maxLines: 3),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  if (!_isLink) const SizedBox(height: 20),
 
                   _Section(
                     title: 'بيانات الوظيفة في هذه الشركة',
@@ -352,7 +391,12 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                               width: 18, height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.save_rounded),
-                      label: Text(_saving ? 'جارٍ الحفظ...' : 'حفظ',
+                      label: Text(
+                          _saving
+                              ? 'جارٍ الحفظ...'
+                              : _isLink
+                                  ? 'إسناده إلى هذه الشركة'
+                                  : 'حفظ',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.navyDeep,
@@ -376,6 +420,60 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// هويّة الشخص في وضع الإسناد — **للقراءة**، فبياناته الشخصية ملكُ ملفّه الواحد.
+class _LinkBanner extends StatelessWidget {
+  final String fullName;
+  const _LinkBanner({required this.fullName});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = isDark ? AppColors.successDark : AppColors.success;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: color.withValues(alpha: 0.18),
+            child: Text(
+              fullName.trim().isNotEmpty ? fullName.trim().characters.first : '؟',
+              style: TextStyle(
+                  fontSize: 19, fontWeight: FontWeight.w900, color: color),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(fullName,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text(
+                  'ملفّه موجود في النظام من شركة أخرى. حدِّد شروط عمله في هذه الشركة — '
+                  'وبياناته الشخصية تبقى كما هي.',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.6,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.75)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

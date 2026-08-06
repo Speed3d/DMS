@@ -411,6 +411,102 @@ foreach($ep in @("/employees","/hr/leaves/pending","/employees/$e1/attachments")
 $rw=Api POST "/employees" @{profile=@{fullName='مخترق';receiptLanguage='Arabic'};employment=@{position='x';hireDate="$Year-01-01T00:00:00";salaryCurrency='IQD';baseSalary=1;displayOrder=0;isActive=$true}} $tokPay $cid
 if($rw.S -eq 403){ Ok "🔐 والمحاسب محجوب عن **إنشاء** موظف (403)" } else { Bad "تسرّب: إنشاء موظف ردّ $($rw.S)" }
 
+Write-Host "`n=== إسناد موظف قائم إلى شركة ثانية (ADR-027) ===" -ForegroundColor Cyan
+# ⚠️ يحتاج **شركتين**. الشركة الثانية تُستعمل ولا تُنشَأ: إنشاؤها من سكربتٍ اختباريّ يترك
+#    أثراً دائماً في قاعدةٍ قد تكون قاعدةَ عمل. وغيابُها **يُعلَن بصوتٍ عالٍ** لا يُبتلع
+#    صامتاً — قسمٌ لا يعمل ولا أحد يعلم أسوأ من قسمٍ يفشل.
+# ⚠️ **كل عدٍّ هنا مُغلَّف بـ`@()`.** في PS 5.1 نتيجةُ مرشَّحٍ بعنصرٍ واحد **ليست مصفوفة**،
+#    و`.Count` على `PSCustomObject` تُعيد **فراغاً** لا 1 — فيُقرأ النجاحُ فشلاً. وقع هذا
+#    فعلاً في أول تشغيل لهذا القسم: أبلغ «لم يظهر في القائمة» وهو ظاهرٌ فيها.
+#    **درسٌ من عائلة «الاختبار قد يكذب»** — والمنتج كان سليماً.
+$allCo=@((Api GET "/companies" $null $admin $null).B)
+if($allCo.Count -lt 2){
+  Write-Host "  [تخطٍّ] لا توجد شركة ثانية — هذا القسم يحتاج شركتين ولم يُنفَّذ." -ForegroundColor Yellow
+} else {
+  $cid2=$allCo[1].companyId
+  $co1Name=$allCo[0].name; $co2Name=$allCo[1].name
+  Ok "الشركة الثانية: $cid2"
+
+  # ── ١) قبل الإسناد: لا شركات أخرى، والبحث من الثانية يجده «خارجها» ──
+  # ── ١) ما قبل الإسناد ──
+  #
+  # ⚠️ **مشروطةٌ ومُعلَنة، ولا تُنظَّف بالحذف.** `DELETE /employees/{id}` يحذف **الموظف كلّه**
+  #    حذفاً ناعماً لا إسنادَه بشركةٍ بعينها (ولا نقطةَ لفكّ إسنادٍ واحد أصلاً) — فتنظيفُ
+  #    الحال به كان سيمحو بياناته في الشركة الأولى أيضاً. وحين يبقى الإسناد من تشغيلٍ سابق
+  #    **يُعلَن التخطّي بصوتٍ عالٍ** ولا يُحسب نجاحاً كاذباً.
+  $peek=Api GET "/employees/$e1" $null $admin $cid2
+  if($peek.S -eq 200){
+    Write-Host "  [تخطٍّ] الإسناد قائم من تشغيلٍ سابق — تحقّقات «ما قبل الإسناد» الثلاثة لم تُنفَّذ." -ForegroundColor Yellow
+  } else {
+    if($peek.S -eq 404){ Ok "🔐 قبل الإسناد: بطاقته من الشركة الثانية تردّ 404" }
+    else { Bad "تسرّب: بطاقته من شركةٍ ليس فيها ردّت $($peek.S)" }
+
+    $before=Api GET "/employees/$e1" $null $admin $cid
+    if(@($before.B.otherCompanies).Count -eq 0){ Ok "قبل الإسناد: otherCompanies فارغة" }
+    else { Bad "otherCompanies ليست فارغة قبل الإسناد" }
+
+    $look2=Api GET "/employees/lookup?nationalId=19900101" $null $admin $cid2
+    if($look2.B -and $look2.B.employeeId -eq $e1 -and -not $look2.B.alreadyInThisCompany){
+      Ok "البحث بالهوية من الشركة الثانية يجده ويقول «ليس هنا»"
+    } else { Bad "البحث من الشركة الثانية أخفق: $($look2.S)" }
+  }
+
+  # ── ٢) الإسناد **براتبٍ مختلف** — وهذا بيتُ القصيد في اختبار العزل ──
+  # (وهو upsert، فإعادةُ التشغيل تحدّث الإسناد ولا تُنشئ ثانياً — والتحقّقات بعده صالحة
+  #  في الحالين.)
+  $link=Api PUT "/employees/$e1/employment" @{position='مستشار';positionEn='Advisor';
+      hireDate='2023-06-01T00:00:00';salaryCurrency='IQD';baseSalary=750000;displayOrder=1;isActive=$true} $admin $cid2
+  if($link.S -eq 200){ Ok "الإسناد إلى الشركة الثانية نجح (200)" } else { Bad "الإسناد ردّ $($link.S)" }
+
+  # ── ٣) بعد الإسناد: كلٌّ يرى شروطَه هو، ويعلم بوجود الأخرى بالاسم فقط ──
+  $inCo2=Api GET "/employees/$e1" $null $admin $cid2
+  $emp2=@($inCo2.B.companies)
+  if($emp2.Count -eq 1 -and $emp2[0].companyId -eq $cid2 -and $emp2[0].baseSalary -eq 750000){
+    Ok "🔐 في الشركة الثانية: إسنادٌ واحد براتبها هي (750,000)"
+  } else { Bad "تسرّب أو نقص: عدد=$($emp2.Count) راتب=$($emp2[0].baseSalary)" }
+
+  # 🔴 **أخطر تحقّق في القسم:** راتبُ الشركة الأولى (1,200,000) يجب ألّا يظهر هنا إطلاقاً.
+  if(@($emp2 | Where-Object { $_.baseSalary -eq 1200000 }).Count -eq 0){
+    Ok "🔐 راتب الشركة الأولى **لا يتسرّب** إلى بطاقته في الثانية (ADR-017 نافذ)"
+  } else { Bad "🔴 تسرّب راتب الشركة الأولى إلى الثانية" }
+
+  $others2=@($inCo2.B.otherCompanies)
+  if($others2.Count -eq 1 -and $others2[0].companyId -eq $cid){
+    Ok "«يعمل أيضاً في» يظهر من الشركة الثانية ويشير إلى الأولى"
+  } else { Bad "otherCompanies من الثانية: عدد=$($others2.Count)" }
+
+  # وأسماءٌ فقط: لا حقلَ راتبٍ ولا صفة في العنصر.
+  $keys=@($others2[0].PSObject.Properties.Name)
+  if($keys.Count -eq 2 -and ($keys -contains 'companyId') -and ($keys -contains 'name')){
+    Ok "🔐 عنصر «الشركة الأخرى» يحمل المعرّف والاسم **فقط** (لا راتب ولا صفة)"
+  } else { Bad "🔴 العنصر يحمل حقولاً زائدة: $($keys -join ',')" }
+
+  # ── ٤) والاتجاه المعاكس: الأولى تعلم بالثانية ──
+  $inCo1=Api GET "/employees/$e1" $null $admin $cid
+  $others1=@($inCo1.B.otherCompanies)
+  if($others1.Count -eq 1 -and $others1[0].companyId -eq $cid2){
+    Ok "والكشف متبادل: الأولى ترى الثانية"
+  } else { Bad "otherCompanies من الأولى: عدد=$($others1.Count)" }
+  if(@($inCo1.B.companies)[0].baseSalary -eq 1200000){
+    Ok "🔐 وراتبه في الأولى بقي 1,200,000 — الإسناد الثاني لم يمسّه"
+  } else { Bad "🔴 تغيّر راتبه في الأولى بعد الإسناد" }
+
+  # ── ٥) البحث ثانيةً يقول «هنا»، وقائمة الشركة الثانية تضمّه ──
+  $look3=Api GET "/employees/lookup?nationalId=19900101" $null $admin $cid2
+  if($look3.B.alreadyInThisCompany){ Ok "البحث بعد الإسناد يقول «مُسنَدٌ هنا بالفعل»" }
+  else { Bad "البحث ما زال يقول «ليس هنا» بعد الإسناد" }
+
+  $list2=@((Api GET "/employees" $null $admin $cid2).B)
+  if(@($list2 | Where-Object { $_.employeeId -eq $e1 }).Count -eq 1){
+    Ok "وظهر في قائمة موظفي الشركة الثانية"
+  } else { Bad "لم يظهر في قائمة الشركة الثانية" }
+
+  # ── ٦) وموظفٌ لم يُسنَد يبقى محجوباً — فالكشف لا يعمّ ──
+  $hidden=Api GET "/employees/$e2" $null $admin $cid2
+  if($hidden.S -eq 404){ Ok "🔐 وزميلُه غيرُ المُسنَد يبقى 404 من الشركة الثانية" }
+  else { Bad "تسرّب: موظف غير مُسنَد ردّ $($hidden.S)" }
+}
+
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
 Write-Host "فشل: $fail" -ForegroundColor $(if($fail -eq 0){'Green'}else{'Red'})

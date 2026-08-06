@@ -439,6 +439,34 @@ class _Header extends StatelessWidget {
                         : (isDark ? AppColors.successDark : AppColors.success),
                   ),
                 ]),
+
+                // ── «يعمل أيضاً في» (ADR-027) ──
+                //
+                // ⚠️ **هذا السطر هو ما يجعل الإسناد الثاني مرئياً.** بدونه يقع الربط صامتاً:
+                //    يُسنِده المحاسب ثم لا يرى في البطاقة أثراً له، فيظنّه لم يقع فيُعيده.
+                // ⚠️ **وأسماءُ شركاتٍ لا شروطُ عملٍ فيها** — الراتب والصفة هناك يحجبهما
+                //    الفلتر العام عمداً (ADR-017)، والمعروض واقعةُ العمل وحدها.
+                if (employee.otherCompanies.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('يعمل أيضاً في:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: theme.textTheme.bodyMedium?.color
+                                  ?.withValues(alpha: 0.6))),
+                      ...employee.otherCompanies.map((c) => _Chip(
+                            icon: Icons.apartment_rounded,
+                            label: c.name,
+                            color: isDark ? AppColors.goldBright : AppColors.navy,
+                          )),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -464,10 +492,18 @@ class _Chip extends StatelessWidget {
         color: (color ?? theme.dividerColor).withValues(alpha: color != null ? 0.13 : 0.5),
         borderRadius: BorderRadius.circular(99),
       ),
+      // ⚠️ `Flexible` + قصٌّ بثلاث نقاط: البطاقة تعرض الآن **أسماء شركات** (ADR-027)، واسمٌ
+      //    طويل كـ«شركة أرض العرين للتجارة والمقاولات العامة المحدودة» يجعل الرقاقة أعرض من
+      //    حاويتها فتفيض. و`Wrap` يحمي من تعدّد الرقاقات لا من رقاقةٍ واحدة أعرض من السطر.
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 14, color: c),
         const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+        ),
       ]),
     );
   }

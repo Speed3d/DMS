@@ -23,6 +23,14 @@ public sealed record TerminationInput(DateTime TerminationDate, TerminationReaso
 /// <summary>نتيجة البحث برقم الهوية — **الحدّ الأدنى الذي يكفي لاتخاذ القرار، لا أكثر**.</summary>
 public sealed record ExistingEmployeeHint(int EmployeeId, string FullName, bool AlreadyInThisCompany);
 
+/// <summary>شركةٌ أخرى يعمل فيها الموظف — **الاسم فقط** (ADR-027).</summary>
+/// <remarks>
+/// ⚠️ لا راتب ولا صفة ولا تاريخ تعيين: تلك شروطُ عملٍ تخصّ تلك الشركة وحدها، وكشفُها هنا
+/// كان سيُبطل ما بُنيت ADR-017 لحفظه. المكشوف هو **واقعةُ العمل** لا **شروطه** — وهو
+/// الحدّ نفسه الذي التزمه <see cref="ExistingEmployeeHint"/>.
+/// </remarks>
+public sealed record OtherCompanyRef(int CompanyId, string Name);
+
 public interface IEmployeeService
 {
     Task<List<EmployeeCompany>> ListAsync(bool? activeOnly, string? search, CancellationToken ct = default);
@@ -35,6 +43,7 @@ public interface IEmployeeService
     Task SetPhotoAsync(int employeeId, string fileName, byte[] content, CancellationToken ct = default);
     Task<(byte[] content, string fileName)> GetPhotoAsync(int employeeId, CancellationToken ct = default);
     Task<ExistingEmployeeHint?> LookupByNationalIdAsync(string nationalId, CancellationToken ct = default);
+    Task<List<OtherCompanyRef>> OtherCompaniesAsync(int employeeId, CancellationToken ct = default);
     Task<List<PayrollEntry>> SalaryHistoryAsync(int employeeId, int take, CancellationToken ct = default);
 }
 
@@ -305,6 +314,45 @@ public sealed class EmployeeService(
             .AnyAsync(x => x.EmployeeId == emp.EmployeeId && x.CompanyId == companyId && !x.IsDeleted, ct);
 
         return new ExistingEmployeeHint(emp.EmployeeId, emp.FullName, here);
+    }
+
+    /// <summary>
+    /// الشركات **الأخرى** التي يعمل فيها الموظف — أسماؤها فقط (ADR-027، بقرار المالك 2026-08-06).
+    /// </summary>
+    /// <remarks>
+    /// **لماذا تكشف عبر الشركات أصلاً؟** لأن الموظف كيانٌ عابر للشركات (ADR-023)، وبلا هذا
+    /// السطر يقع الإسنادُ الثاني **صامتاً**: يُسنِده المحاسب ثم لا يرى في بطاقته أثراً لذلك،
+    /// فلا يُصدّق أن الربط وقع. **ميزةٌ لا يؤكّدها شيء ميزةٌ لا يثق بها أحد.**
+    ///
+    /// ⚠️ **الحارس أولاً:** <see cref="GetAsync"/> يرمي لمن لا يرى الموظفَ في شركته الفعّالة —
+    /// فلا يستدلّ أحدٌ على شركات موظفٍ لا شأن له به بتخمين معرّفه.
+    ///
+    /// ⚠️ **<c>IgnoreQueryFilters</c> مقصود ومحدود:** الغرض بعينه قراءةُ إسناداتٍ **خارج**
+    /// الشركة الفعّالة، والفلترُ يحجبها. وهو رابع موضعٍ متعمَّد في الوحدة، وسابقتُه ADR-024
+    /// (كشف «مدفوع من شركة أخرى») — وهذا **أضيق منه**: أسماء شركات لا مبالغ.
+    ///
+    /// وقراءةٌ خالصة: لا يكتب حرفاً، ولا يفتح باباً للكتابة في تلك الشركات.
+    /// </remarks>
+    public async Task<List<OtherCompanyRef>> OtherCompaniesAsync(
+        int employeeId, CancellationToken ct = default)
+    {
+        await GetAsync(employeeId, ct); // حارس الرؤية — يرمي NotFound لمن لا يراه هنا
+
+        var q = db.EmployeeCompanies.IgnoreQueryFilters()
+            .Where(x => x.EmployeeId == employeeId && !x.IsDeleted);
+
+        // الشركة الفعّالة معروضةٌ أصلاً في البطاقة، فلا تُكرَّر هنا. وغيابُها (سوبر أدمن بلا
+        // شركة فعّالة) يعني ألّا نستثني شيئاً — لا أن نرمي في مسار قراءة.
+        if (current.ActiveCompanyId is { } activeId) q = q.Where(x => x.CompanyId != activeId);
+
+        var ids = await q.Select(x => x.CompanyId).Distinct().ToListAsync(ct);
+        if (ids.Count == 0) return [];
+
+        return await db.Companies.IgnoreQueryFilters()
+            .Where(c => ids.Contains(c.CompanyId))
+            .OrderBy(c => c.Name)
+            .Select(c => new OtherCompanyRef(c.CompanyId, c.Name))
+            .ToListAsync(ct);
     }
 
     public async Task<List<PayrollEntry>> SalaryHistoryAsync(

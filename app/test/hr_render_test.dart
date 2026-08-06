@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:dms_app/screens/employee_list_screen.dart'
+    show kEmpToolbarNarrow, kEmpToolbarNarrowWithChip;
 import 'package:dms_app/widgets/custom_card.dart';
 
 /// حرّاس رسم شاشات الوحدة.
@@ -13,7 +15,11 @@ import 'package:dms_app/widgets/custom_card.dart';
 ///
 /// > **الدرس:** عطبُ التخطيط لا يُكتشف إلا بالرسم. اختبارٌ يتحقّق من البيانات وحدها
 /// > يترك نصف الواجهة بلا حارس.
-const double kChipBreakpoint = 920;
+///
+/// 🔴 **العتبتان تُستوردان من الشاشة ولا تُكتبان هنا (2026-08-06).** كانت `kChipBreakpoint`
+/// نسخةً محلّية بقيمة 920، فلو تغيّرت الشاشة وحدها لبقي الحارس يُثبت سلامة عتبةٍ **مهجورة**
+/// ويمرّ أخضرَ بينما المستخدم يرى الفيض. النسخة المطابقة للودجات قيدٌ لا مفرّ منه (خاصّة
+/// هي)، أمّا الأرقام فلا عذر في ازدواجها.
 
 void main() {
   Future<void> pump(WidgetTester tester, Widget child) async {
@@ -83,7 +89,7 @@ void main() {
   /// يحرس شيئاً آخر**. وقد وقع ذلك فعلاً أول مرّة: كتبتُ الفلتر `SegmentedButton` بثلاث
   /// تسميات (~450 بكسل) وهو في الواقع **قائمة منسدلة** (~180)، فأبلغ الاختبار عن فيضٍ
   /// في تخطيطٍ سليم. ⇒ **أيُّ تعديلٍ على الشريط يُنسَخ إلى هنا في النَّفَس نفسه.**
-  Widget toolbar({required double width, required bool withChip}) {
+  Widget toolbar({required double width, required bool withChip, bool forceWide = false}) {
     // مطابقٌ لـ`_PendingLeavesChip`.
     final chip = SizedBox(
       height: 48,
@@ -115,6 +121,17 @@ void main() {
         ),
       ),
     );
+    // مطابقٌ لزرّ «إضافة موظف قائم» (ADR-027) — العنصر الخامس في الشريط.
+    final link = SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: () {},
+        icon: const Icon(Icons.person_search_rounded, size: 18),
+        label: const Text('إضافة موظف قائم',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16)),
+      ),
+    );
     final add = SizedBox(
       height: 48,
       child: ElevatedButton.icon(
@@ -125,7 +142,8 @@ void main() {
       ),
     );
 
-    final isSmall = width < (withChip ? kChipBreakpoint : 620);
+    final isSmall = !forceWide &&
+        width < (withChip ? kEmpToolbarNarrowWithChip : kEmpToolbarNarrow);
 
     return SizedBox(
       width: width,
@@ -133,7 +151,9 @@ void main() {
           ? Column(children: [
               Container(height: 48, color: Colors.grey.shade200),
               const SizedBox(height: 12),
-              Row(children: [Expanded(child: filter), const SizedBox(width: 12), add]),
+              // `Wrap` لا `Row`: ثلاثة عناصر ثابتة العرض في صفٍّ تفيض عند الشاشات
+              // الضيّقة جداً، والـ`Wrap` ينزل بها سطراً — فلا عتبةَ ثانية تُقاس وتُصان.
+              Wrap(spacing: 12, runSpacing: 12, children: [filter, link, add]),
               if (withChip) ...[const SizedBox(height: 12), chip],
             ])
           : Row(children: [
@@ -142,12 +162,22 @@ void main() {
               const SizedBox(width: 12),
               filter,
               const SizedBox(width: 12),
+              link,
+              const SizedBox(width: 12),
               add,
             ]),
     );
   }
 
-  for (final w in <double>[620, 700, 880, 900, 920, 1100, 1600]) {
+  // العروض المختبَرة تشمل **العتبتين بالضبط** — وهو أضيق عرضٍ يُرسم فيه الصفّ العريض،
+  // أي أخطر نقطة فيه. و**420** حالةُ الفجوة G12 التي رصدها الحارس ولم يُبلّغ عنها المالك.
+  for (final w in <double>[
+    380, 420, 620, 700, 900,
+    kEmpToolbarNarrow, kEmpToolbarNarrow + 1,
+    1100, 1280,
+    kEmpToolbarNarrowWithChip, kEmpToolbarNarrowWithChip + 1,
+    1600,
+  ]) {
     for (final withChip in [false, true]) {
       testWidgets(
         'شريط أدوات الموظفين لا يفيض عند $w بكسل ${withChip ? "مع" : "بلا"} مِرشَّح الإجازات',
@@ -165,4 +195,60 @@ void main() {
       );
     }
   }
+
+  // ─────────── «يعمل أيضاً في»: اسم شركةٍ طويل لا يفيض ببطاقة الموظف (ADR-027) ───────────
+  //
+  // ⚠️ `Wrap` يحمي من **تعدّد** الرقاقات لا من **رقاقةٍ واحدة** أعرض من السطر. والبطاقة صارت
+  //    تعرض أسماء شركاتٍ يكتبها المستخدم بلا حدّ طول — فالقصّ بثلاث نقاط هو الحارس.
+  testWidgets('اسم شركةٍ طويل في رقاقة «يعمل أيضاً في» يُقصّ ولا يفيض', (tester) async {
+    tester.view.physicalSize = const Size(360, 400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // مطابقٌ لـ`_Chip` بعد إضافة `Flexible` — لو زال القصّ من الشاشة سقط هذا.
+    Widget chipLike(String label) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(99)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.apartment_rounded, size: 14),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        );
+
+    await pump(
+      tester,
+      SizedBox(
+        width: 300,
+        child: Wrap(spacing: 8, runSpacing: 6, children: [
+          const Text('يعمل أيضاً في:'),
+          chipLike('شركة أرض العرين للتجارة والمقاولات العامة المحدودة — فرع بغداد'),
+        ]),
+      ),
+    );
+
+    expect(tester.takeException(), isNull, reason: 'اسم شركة طويل أفاض الرقاقة');
+  });
+
+  // ─────────── حارسٌ للعتبة نفسها: أنها فوق نقطة الفيض المقيسة ───────────
+  //
+  // 🔴 **لماذا هذا الحارس؟** الاختبارات أعلاه تُثبت أن الصفّ سليمٌ **عند العتبة الحالية** —
+  //    ولو رفعها أحدٌ إلى 5000 لبقيت خضراء وهي تُخفي شريطاً لا يظهر أبداً. وهذا يُثبت
+  //    الاتجاه الآخر: أن العتبة **ليست دون** نقطة الفيض، فتبقى مربوطةً بقياسٍ حقيقي.
+  testWidgets('الصفّ العريض يفيض فعلاً دون نقطة الفيض المقيسة — فالعتبة ليست زينة',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // 640 دون النقطة المقيسة (651) — نفرض الصفّ العريض بتجاوز `isSmall`.
+    await pump(tester, toolbar(width: 640, withChip: false, forceWide: true));
+    expect(tester.takeException(), isNotNull,
+        reason: 'لو لم يَعُد يفيض هنا فقد تغيّرت الأحجام ⇒ أعِد قياس العتبتين');
+  });
 }

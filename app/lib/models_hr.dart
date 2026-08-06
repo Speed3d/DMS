@@ -107,10 +107,25 @@ class EmploymentModel {
       );
 }
 
+/// شركة أخرى يعمل فيها الموظف — **الاسم فقط** (ADR-027).
+///
+/// ⚠️ لا راتب ولا صفة: المكشوف **واقعةُ العمل** لا **شروطه**. ولو حملت هذه الفئة راتباً
+/// يوماً فذلك خرقٌ لـADR-017 لا توسعةُ حقل.
+class OtherCompanyRef {
+  final int companyId;
+  final String name;
+  const OtherCompanyRef({required this.companyId, required this.name});
+
+  factory OtherCompanyRef.fromJson(Map<String, dynamic> j) => OtherCompanyRef(
+        companyId: j['companyId'] ?? 0,
+        name: j['name'] ?? '',
+      );
+}
+
 /// ملفّ الموظف الكامل.
 ///
 /// ⚠️ `companies` تحمل **إسنادات الشركة الفعّالة وحدها** — الفلتر العام في الباك-إند يحجب
-/// إسناداته في شركة أخرى، فلا يُكشف راتبه هناك.
+/// إسناداته في شركة أخرى، فلا يُكشف راتبه هناك. و`otherCompanies` **أسماؤها** لا شروطُها.
 class EmployeeDetail {
   final int employeeId;
   final String fullName;
@@ -123,10 +138,14 @@ class EmployeeDetail {
   final bool hasPhoto;
   final List<EmploymentModel> companies;
 
+  /// الشركات الأخرى التي يعمل فيها — تُعرض في بطاقته ليُرى أثرُ الإسناد (ADR-027).
+  final List<OtherCompanyRef> otherCompanies;
+
   EmployeeDetail({
     required this.employeeId, required this.fullName, this.fullNameEn,
     this.nationalId, this.phone, this.address, this.notes,
     required this.receiptLanguage, required this.hasPhoto, required this.companies,
+    this.otherCompanies = const [],
   });
 
   EmploymentModel? get employment => companies.isNotEmpty ? companies.first : null;
@@ -143,6 +162,8 @@ class EmployeeDetail {
         hasPhoto: j['hasPhoto'] ?? false,
         companies: (j['companies'] as List? ?? [])
             .map((e) => EmploymentModel.fromJson(e)).toList(),
+        otherCompanies: (j['otherCompanies'] as List? ?? [])
+            .map((e) => OtherCompanyRef.fromJson(e)).toList(),
       );
 }
 

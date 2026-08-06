@@ -9,6 +9,21 @@ import '../models.dart';
 import '../widgets/custom_card.dart';
 import 'employee_detail_screen.dart';
 import 'employee_form_screen.dart';
+import 'employee_link_dialog.dart';
+
+/// عتبة تضييق شريط الأدوات بلا مِرشَّح الإجازات — **مقيسة بالرسم** في `hr_render_test.dart`.
+///
+/// 🔴 **تُصدَّر ليستوردها الحارس بدل أن يُعيد كتابتها.** الحارس نسخةٌ مطابقة للشريط، وقد
+/// حذّر تعليقُه من أن نسختين تتباعدان — **ورقمان متباعدان أخطر من ودجتين**، لأن الحارس
+/// حينها يُثبت سلامة عتبةٍ لا تستعملها الشاشة.
+/// **مقيسة:** الفيض يبدأ عند **651**، والزيادة إلى 860 تُبقي لحقل البحث ~200 بكسل يظلّ
+/// معها صالحاً للكتابة — وهو الهامش نفسه الذي التزمته العتبة السابقة (426 مقيسة ⇐ 620).
+const double kEmpToolbarNarrow = 860;
+
+/// وعتبتُه حين يظهر مِرشَّح «إجازات بانتظار الموافقة» — العنصر الخامس يرفعها.
+///
+/// **مقيسة:** الفيض يبدأ عند **1101** بالخمسة مجتمعة، وبالهامش نفسه ⇐ 1310.
+const double kEmpToolbarNarrowWithChip = 1310;
 
 /// Hint: قائمة موظفي الشركة الفعّالة — بحث وفلتر حالة وجدول عصري (نمط قائمة الأرشيف).
 class EmployeeListScreen extends ConsumerStatefulWidget {
@@ -70,6 +85,36 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
     }
   }
 
+  /// «إضافة موظف قائم» — بحثٌ بالهوية ثم إسنادٌ إلى الشركة الفعّالة (ADR-027).
+  ///
+  /// ⚠️ **مساران لا مسارٌ واحد:** إن كان مُسنَداً هنا أصلاً فُتحت بطاقتُه، وإلّا فُتح نموذج
+  /// الإسناد. النافذة تُرجع أيّهما، فلا تُقرّر الشاشةُ نيابةً عنها.
+  Future<void> _openLinkExisting() async {
+    final result = await showDialog<EmployeeLinkResult>(
+      context: context,
+      builder: (_) => const EmployeeLinkDialog(),
+    );
+    if (result == null || !mounted) return;
+
+    if (result.alreadyHere) {
+      await _openDetail(result.employeeId);
+      return;
+    }
+
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EmployeeFormScreen(
+          link: LinkExistingEmployee(
+              employeeId: result.employeeId, fullName: result.fullName),
+        ),
+      ),
+    );
+    if (saved == true) {
+      _reload();
+      invalidateHr(ref);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -92,12 +137,13 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                 final showLeavesChip = pending > 0 || _pendingLeavesOnly;
 
                 // ⚠️ **العتبة ترتفع حين يظهر المِرشَّح**: الشريط الأفقيّ يسع بحثاً وفلتراً
-                //    وزرّ إضافة، وإقحامُ عنصرٍ رابع عرضه ~240 بكسل عند 620 يُنتج
+                //    وزرّي إضافة، وإقحامُ عنصرٍ خامس عرضه ~240 بكسل يُنتج
                 //    «RIGHT OVERFLOWED» — وهو صنف العطل الذي بلّغ عنه المالك في جدول
                 //    الرواتب. العرض المطلوب **يُحسب من المحتوى** لا يُخمَّن.
-                // 🔴 و**920 لا 880**: خمّنتُ 880 أولاً فأبلغ حارس الرسم في
-                //    `hr_render_test.dart` أنها تفيض عند 880 بالضبط. الرقم مُثبَتٌ بالرسم.
-                final isSmall = constraints.maxWidth < (showLeavesChip ? 920 : 620);
+                // 🔴 والعتبتان **مقيستان بالرسم** (انظر ثابتَيهما أعلى الملف): خُمّنت
+                //    الأولى 880 يوماً فكشف الحارسُ فيضاً عند 880 بالضبط.
+                final isSmall = constraints.maxWidth <
+                    (showLeavesChip ? kEmpToolbarNarrowWithChip : kEmpToolbarNarrow);
 
                 final searchWidget = Container(
                   height: 48,
@@ -156,6 +202,25 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                   ),
                 );
 
+                // 🔴 **الباب الذي كان مفقوداً (ADR-027):** الربط بين الشركات كان يعمل خلف
+                //    زرّ «موظف جديد» — وهو آخر مكانٍ يُبحَث فيه عن موظفٍ **قائم**. زرٌّ
+                //    باسم فعله يُغني عن أن يعرف المستخدم حيلةً.
+                final linkWidget = SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: canManage ? _openLinkExisting : null,
+                    icon: const Icon(Icons.person_search_rounded, size: 18),
+                    label: const Text('إضافة موظف قائم',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.navyDeep,
+                      side: BorderSide(color: AppColors.navyDeep.withValues(alpha: 0.35), width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                  ),
+                );
+
                 final leavesWidget = !showLeavesChip
                     ? null
                     : _PendingLeavesChip(
@@ -170,11 +235,14 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                     children: [
                       searchWidget,
                       const SizedBox(height: 12),
-                      Row(children: [
-                        Expanded(child: filterWidget),
-                        const SizedBox(width: 12),
-                        addWidget,
-                      ]),
+                      // ⚠️ **`Wrap` لا `Row` بعد إضافة الزرّ الثاني**: صفٌّ بثلاثة عناصر
+                      //    ثابتة العرض يفيض حين تضيق الشاشة، و`Wrap` ينزل بها سطراً بدل
+                      //    أن يرمي. هذا يُلغي عتبةً ثانيةً كان يلزم قياسها وصيانتها.
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [filterWidget, linkWidget, addWidget],
+                      ),
                       if (leavesWidget != null) ...[
                         const SizedBox(height: 12),
                         Align(alignment: AlignmentDirectional.centerStart, child: leavesWidget),
@@ -190,6 +258,8 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                   ],
                   const SizedBox(width: 12),
                   filterWidget,
+                  const SizedBox(width: 12),
+                  linkWidget,
                   const SizedBox(width: 12),
                   addWidget,
                 ]);
@@ -226,9 +296,30 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                       icon: Icons.groups_2_outlined,
                       title: 'لا يوجد موظفون',
                       subtitle: canManage
-                          ? 'ابدأ بإضافة موظف جديد من الزرّ أعلاه.'
+                          ? 'أضِف موظفاً جديداً، أو أسنِد موظفاً يعمل في شركة أخرى '
+                              'إلى هذه الشركة برقم هويته.'
                           : 'لا تملك صلاحية إضافة موظفين.',
                       color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4),
+                      // 🔴 **هنا يقف المالك أول مرّة في شركةٍ جديدة** — شركةٌ بلا موظفين هي
+                      //    بالضبط الحال التي يُراد فيها إسنادُ موظفٍ قائم، فالزرّ في متن
+                      //    الرسالة لا في الشريط وحده.
+                      action: canManage
+                          ? OutlinedButton.icon(
+                              onPressed: _openLinkExisting,
+                              icon: const Icon(Icons.person_search_rounded, size: 18),
+                              label: const Text('إضافة موظف قائم في شركة أخرى',
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.navyDeep,
+                                side: BorderSide(
+                                    color: AppColors.navyDeep.withValues(alpha: 0.35), width: 1.5),
+                                shape:
+                                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                              ),
+                            )
+                          : null,
                     );
                   }
                   return _EmployeeTable(items: items, onTap: (e) => _openDetail(e.employeeId));
@@ -631,8 +722,16 @@ class _Message extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color? color;
+
+  /// إجراءٌ اختياري أسفل الرسالة — رسالةُ «لا يوجد شيء» أنفعُ حين تحمل مخرجاً.
+  final Widget? action;
+
   const _Message(
-      {required this.icon, required this.title, required this.subtitle, this.color});
+      {required this.icon,
+      required this.title,
+      required this.subtitle,
+      this.color,
+      this.action});
 
   @override
   Widget build(BuildContext context) {
@@ -645,11 +744,21 @@ class _Message extends StatelessWidget {
           const SizedBox(height: 14),
           Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
-          Text(subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+          // النصّ محدود العرض: رسالةٌ من سطرين تمتدّ على شاشةٍ عريضة تصير سطراً واحداً
+          // طويلاً يصعب تتبّعه بالعين.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Text(subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13,
+                    height: 1.7,
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+          ),
+          if (action != null) ...[
+            const SizedBox(height: 18),
+            action!,
+          ],
         ],
       ),
     );

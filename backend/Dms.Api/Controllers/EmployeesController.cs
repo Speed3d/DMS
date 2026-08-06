@@ -72,16 +72,20 @@ public sealed class EmployeesController(
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<EmployeeDetailResponse>> Get(int id, CancellationToken ct)
-        => Map(await employees.GetAsync(id, ct));
+        => Map(await employees.GetAsync(id, ct), await employees.OtherCompaniesAsync(id, ct));
 
     [HttpPost]
     public async Task<ActionResult<EmployeeDetailResponse>> Create(CreateEmployeeRequest req, CancellationToken ct)
-        => Map(await employees.CreateAsync(ToProfile(req.Profile), ToEmployment(req.Employment), ct));
+    {
+        var e = await employees.CreateAsync(ToProfile(req.Profile), ToEmployment(req.Employment), ct);
+        return Map(e, await employees.OtherCompaniesAsync(e.EmployeeId, ct));
+    }
 
     [HttpPut("{id:int}")]
     public async Task<ActionResult<EmployeeDetailResponse>> Update(
         int id, EmployeeProfileRequest req, CancellationToken ct)
-        => Map(await employees.UpdateProfileAsync(id, ToProfile(req), ct));
+        => Map(await employees.UpdateProfileAsync(id, ToProfile(req), ct),
+               await employees.OtherCompaniesAsync(id, ct));
 
     /// <summary>
     /// إسناد الموظف للشركة **الفعّالة** أو تحديث شروط عمله فيها.
@@ -205,10 +209,17 @@ public sealed class EmployeesController(
     private static EmploymentInput ToEmployment(EmploymentRequest r) =>
         new(r.Position, r.PositionEn, r.HireDate, r.SalaryCurrency, r.BaseSalary, r.DisplayOrder, r.IsActive);
 
-    private static EmployeeDetailResponse Map(Employee e) =>
+    /// <remarks>
+    /// ⚠️ <c>others</c> **وسيطٌ إلزاميّ لا اختياريّ بقيمة فارغة**: قائمةٌ فارغة افتراضاً كانت
+    /// ستجعل كل مسارٍ نسي تمريرَها يردّ «لا شركات أخرى» — وهي **كذبةٌ صامتة** لا نقصٌ ظاهر،
+    /// ومن صنف «الحلقة الناقصة» الذي كلّف هذه الوحدة عيبَين (<c>PaidAt</c> و<c>EntryId</c>).
+    /// المترجم الآن يمنع النسيان.
+    /// </remarks>
+    private static EmployeeDetailResponse Map(Employee e, List<OtherCompanyRef> others) =>
         new(e.EmployeeId, e.FullName, e.FullNameEn, e.NationalId, e.Phone, e.Address, e.Notes,
             e.ReceiptLanguage, !string.IsNullOrEmpty(e.PhotoBlobKey),
-            e.Companies.Select(MapEmployment).ToList());
+            e.Companies.Select(MapEmployment).ToList(),
+            others.Select(o => new OtherCompanyResponse(o.CompanyId, o.Name)).ToList());
 
     private static EmploymentResponse MapEmployment(EmployeeCompany c) =>
         new(c.EmployeeCompanyId, c.CompanyId, c.Position, c.PositionEn, c.HireDate,

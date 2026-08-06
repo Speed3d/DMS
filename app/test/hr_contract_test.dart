@@ -63,6 +63,34 @@ void main() {
     expect(e.employment!.baseSalary, greaterThan(0));
   });
 
+  // ─────────── «يعمل أيضاً في» (ADR-027) ───────────
+  //
+  // 🔴 **عيّنتان لا واحدة**: الأولى لموظفٍ في شركتين والثانية لمن في واحدة. عيّنةُ الحالة
+  //    المملوءة وحدها كانت ستترك «القائمة الفارغة» بلا حارس — وهي الحال الغالبة، وأولُ ما
+  //    ينكسر لو غاب الحقل عن العقد يوماً.
+  test('ملفّ موظفٍ يعمل في شركتين: otherCompanies تحمل الاسم والمعرّف', () {
+    final e = EmployeeDetail.fromJson(fixture('employee_detail'));
+    expect(e.otherCompanies, hasLength(1));
+    expect(e.otherCompanies.first.companyId, greaterThan(0));
+    expect(e.otherCompanies.first.name, isNotEmpty);
+
+    // 🔐 وشروطُ عمله المعروضة **شركةٌ واحدة**: الأخرى يحجبها الفلتر العام (ADR-017).
+    //    لو صارت `companies` تحمل اثنتين يوماً فذلك تسرّبُ راتبٍ لا توسعةُ حقل.
+    expect(e.companies, hasLength(1));
+  });
+
+  test('وملفّ موظفٍ في شركة واحدة: otherCompanies فارغة لا مفقودة', () {
+    final e = EmployeeDetail.fromJson(fixture('employee_detail_single'));
+    expect(e.otherCompanies, isEmpty);
+    expect(e.companies, hasLength(1));
+  });
+
+  test('وغيابُ الحقل أصلاً لا يُسقط التحويل (توكنٌ/خادمٌ أقدم)', () {
+    final raw = Map<String, dynamic>.from(fixture('employee_detail') as Map)
+      ..remove('otherCompanies');
+    expect(EmployeeDetail.fromJson(raw).otherCompanies, isEmpty);
+  });
+
   test('سجلّ الرواتب', () {
     final list = (fixture('salary_history') as List)
         .map((e) => SalaryHistoryItem.fromJson(e))
@@ -165,12 +193,21 @@ void main() {
   test('العربية في العيّنات سليمة — لا «????»', () {
     // حارسٌ على العيّنات نفسها: التقاطُها بطريقة تفكّ الترميز يشوّه العربية،
     // فتصير العيّنة توثيقاً كاذباً للعقد.
-    for (final name in [
-      'payroll_period', 'employees', 'employee_log',
-      'pending_leaves', 'employee_attachments',
-    ]) {
-      final raw = File('test/fixtures/$name.json').readAsStringSync();
-      expect(raw.contains('????'), isFalse, reason: 'العيّنة $name مشوّهة الترميز');
+    //
+    // 🔴 **يمسح المجلد كلَّه ولا يعدّ أسماءً (2026-08-06).** كانت قائمةً بخمسة أسماء، فكلُّ
+    //    عيّنةٍ جديدة تُلتقَط تدخل **بلا حارس** ما لم يتذكّر كاتبُها إضافتها — وهو تذكُّرٌ
+    //    لا يصحّ الاتّكال عليه. المجلد نفسه هو القائمة.
+    final files = Directory('test/fixtures')
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.json'))
+        .toList();
+    expect(files, isNotEmpty, reason: 'لم يُعثر على عيّنات — تحقّق من مسار التشغيل');
+
+    for (final f in files) {
+      final raw = f.readAsStringSync();
+      expect(raw.contains('????'), isFalse,
+          reason: 'العيّنة ${f.uri.pathSegments.last} مشوّهة الترميز');
     }
   });
 }

@@ -89,10 +89,19 @@ public sealed record EmploymentResponse(
     string? TerminationNotes, Currency SalaryCurrency, decimal BaseSalary,
     int DisplayOrder, bool IsActive);
 
+/// <remarks>
+/// ⚠️ <c>Companies</c> إسنادات **الشركة الفعّالة وحدها** (يحجب الفلترُ العام غيرَها)، و
+/// <c>OtherCompanies</c> **أسماءُ** الشركات الأخرى لا شروطُ العمل فيها (ADR-027).
+/// حقلان لا حقلٌ واحد **عمداً**: الأول تفصيلٌ كامل تملكه، والثاني واقعةٌ تُعلَم ولا تُقرأ
+/// تفاصيلُها. دمجُهما كان سيُغري بعرض راتب الشركة الأخرى في الشاشة نفسها.
+/// </remarks>
 public sealed record EmployeeDetailResponse(
     int EmployeeId, string FullName, string? FullNameEn, string? NationalId, string? Phone,
     string? Address, string? Notes, ReceiptLanguage ReceiptLanguage, bool HasPhoto,
-    List<EmploymentResponse> Companies);
+    List<EmploymentResponse> Companies, List<OtherCompanyResponse> OtherCompanies);
+
+/// <summary>شركة أخرى يعمل فيها الموظف — الاسم فقط (ADR-027).</summary>
+public sealed record OtherCompanyResponse(int CompanyId, string Name);
 
 /// <remarks>
 /// ⚠️ <c>EntryId</c> **لازمٌ لا زينة**: بدونه لا يستطيع صفُّ الشهر في ملفّ الموظف أن يرفع
