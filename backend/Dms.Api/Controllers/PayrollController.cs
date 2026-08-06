@@ -27,7 +27,8 @@ public sealed class PayrollController(
     [HttpGet("years")]
     public async Task<ActionResult<List<PayrollYearResponse>>> Years(CancellationToken ct)
         => (await payroll.YearsAsync(ct))
-            .Select(y => new PayrollYearResponse(y.Year, y.MonthsCreated, y.MonthsPaid, y.TotalIqd)).ToList();
+            .Select(y => new PayrollYearResponse(
+                y.Year, y.MonthsCreated, y.MonthsPaid, y.TotalIqd, y.DraftTotalIqd)).ToList();
 
     [HttpGet("years/{year:int}/months")]
     public async Task<ActionResult<List<PayrollMonthResponse>>> Months(int year, CancellationToken ct)

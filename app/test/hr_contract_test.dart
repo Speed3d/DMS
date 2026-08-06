@@ -63,6 +63,66 @@ void main() {
     expect(e.employment!.baseSalary, greaterThan(0));
   });
 
+  // ─────────── «إجمالي السنة» = المُسدَّد وحده (بلاغ المالك 2026-08-06) ───────────
+  //
+  // 🔴 **الحالة التي بلّغ عنها المالك حرفياً:** كانون الثاني 9,750,000 وشباط 11,762,000
+  //    مُسدَّدان ⇒ المجموع 21,512,000. وكان التذييل يضيف آذار 11,925,000 ونيسان وأيار
+  //    (1,200,000 لكلٍّ) وهي **مسودّات لم تُصرف**، فيَعِد بمبلغٍ لم يقع.
+  group('جمع الأشهر يفصل المُسدَّد عن المسودّة', () {
+    PayrollMonth m(int month, String? status, double total) => PayrollMonth(
+          year: 2026, month: month, monthName: '$month',
+          exists: status != null, status: status, employeeCount: 3, totalIqd: total);
+
+    final months = [
+      m(1, 'Paid', 9750000),
+      m(2, 'Paid', 11762000),
+      m(3, 'Draft', 11925000),
+      m(4, 'Draft', 1200000),
+      m(5, 'Draft', 1200000),
+      m(6, null, 0), // شهرٌ لم يُنشأ أصلاً
+    ];
+
+    test('المُسدَّد = 21,512,000 بالضبط — بلا المسودّات', () {
+      expect(PayrollMonth.paidTotal(months), 21512000);
+    });
+
+    test('والمسودّات رقمٌ مستقلّ = 14,325,000', () {
+      expect(PayrollMonth.draftTotal(months), 14325000);
+    });
+
+    test('🔴 والمجموع الخام ليس أيّاً منهما — وهو ما كان يُعرض', () {
+      final raw = months.fold<double>(0, (s, x) => s + x.totalIqd);
+      expect(raw, 35837000);
+      expect(raw, isNot(PayrollMonth.paidTotal(months)));
+    });
+
+    test('شهرٌ لم يُنشأ لا يدخل في المسودّات', () {
+      expect(PayrollMonth.draftTotal([m(6, null, 0)]), 0);
+    });
+
+    test('وسنةٌ بلا تسديد: المُسدَّد صفر والمسودّات كاملة', () {
+      final allDraft = [m(1, 'Draft', 500000), m(2, 'Draft', 700000)];
+      expect(PayrollMonth.paidTotal(allDraft), 0);
+      expect(PayrollMonth.draftTotal(allDraft), 1200000);
+    });
+  });
+
+  test('بطاقة السنة تحمل المُسدَّد والمسودّة منفصلَين', () {
+    final y = PayrollYear.fromJson({
+      'year': 2026, 'monthsCreated': 5, 'monthsPaid': 2,
+      'totalIqd': 21512000, 'draftTotalIqd': 14325000,
+    });
+    expect(y.totalIqd, 21512000);
+    expect(y.draftTotalIqd, 14325000);
+    expect(y.hasDraft, isTrue);
+
+    // وخادمٌ أقدم بلا الحقل: صفرٌ لا انهيار.
+    final old = PayrollYear.fromJson(
+        {'year': 2025, 'monthsCreated': 1, 'monthsPaid': 1, 'totalIqd': 100});
+    expect(old.draftTotalIqd, 0);
+    expect(old.hasDraft, isFalse);
+  });
+
   // ─────────── استثناء المدفوع خارجياً وبوّابة الحسم (ADR-028) ───────────
   //
   // 🔴 **العيّنتان من خادمٍ حيّ لكشفٍ فيه موظفةٌ صرفت لها شركةٌ أخرى.** والعطل الذي تحرسانه

@@ -214,11 +214,33 @@ class _YearCard extends StatelessWidget {
             ],
           ),
           const Spacer(),
-          Text('${money.format(year.totalIqd)} د.ع',
-              style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? AppColors.goldBrightDark : AppColors.gold)),
+          // 🔴 **الرقم الكبير = المُسدَّد فقط** (بلاغ المالك 2026-08-06): كان يجمع المسودّات
+          //    معه، فتَعِد البطاقةُ بمصروفٍ لم يقع نصفُه.
+          Row(children: [
+            Text('${money.format(year.totalIqd)} د.ع',
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? AppColors.goldBrightDark : AppColors.gold)),
+            const SizedBox(width: 6),
+            Text('مُسدَّد',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+          ]),
+          // والمسودّات سطرٌ ثانٍ — يُعرَف ولا يُخلط.
+          if (year.hasDraft)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text('+ ${money.format(year.draftTotalIqd)} د.ع بانتظار التسديد',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? AppColors.warnDark : AppColors.warn)),
+            ),
           const SizedBox(height: 8),
           Row(children: [
             Icon(Icons.event_note_rounded,

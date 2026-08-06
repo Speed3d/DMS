@@ -217,11 +217,22 @@ class PayrollYear {
   final int year;
   final int monthsCreated;
   final int monthsPaid;
+
+  /// 🔴 **ما صُرف فعلاً** — أشهرٌ مُسدَّدة فقط (بلاغ المالك 2026-08-06).
   final double totalIqd;
-  PayrollYear(this.year, this.monthsCreated, this.monthsPaid, this.totalIqd);
+
+  /// ما ينتظر التسديد في المسودّات — **رقمٌ منفصل لا مطروح ولا مجموع**.
+  final double draftTotalIqd;
+
+  PayrollYear(this.year, this.monthsCreated, this.monthsPaid, this.totalIqd,
+      {this.draftTotalIqd = 0});
+
+  bool get hasDraft => draftTotalIqd > 0;
+
   factory PayrollYear.fromJson(Map<String, dynamic> j) => PayrollYear(
       j['year'], j['monthsCreated'] ?? 0, j['monthsPaid'] ?? 0,
-      (j['totalIqd'] as num?)?.toDouble() ?? 0);
+      (j['totalIqd'] as num?)?.toDouble() ?? 0,
+      draftTotalIqd: (j['draftTotalIqd'] as num?)?.toDouble() ?? 0);
 }
 
 class PayrollMonth {
@@ -239,6 +250,18 @@ class PayrollMonth {
   });
 
   bool get isPaid => status == 'Paid';
+
+  /// 🔴 **قاعدةٌ واحدة لجمع الأشهر** (بلاغ المالك 2026-08-06).
+  ///
+  /// شاشة الأشهر كانت تجمع الاثني عشر شهراً بلا تمييز، فيقول تذييلُها «إجمالي السنة»
+  /// عن مبلغٍ نصفُه مسودّاتٌ لم تُصرف. ووضعُ القاعدة هنا — لا في الشاشة — يجعل أي
+  /// عارضٍ جديد يسأل عنها بدل أن يُعيد اختراعها ناقصةً (درس المواضع الثمانية في ADR-028).
+  static double paidTotal(Iterable<PayrollMonth> months) =>
+      months.where((m) => m.isPaid).fold(0.0, (s, m) => s + m.totalIqd);
+
+  /// ما في المسودّات — ينتظر التسديد.
+  static double draftTotal(Iterable<PayrollMonth> months) =>
+      months.where((m) => m.exists && !m.isPaid).fold(0.0, (s, m) => s + m.totalIqd);
 
   factory PayrollMonth.fromJson(Map<String, dynamic> j) => PayrollMonth(
         year: j['year'], month: j['month'], monthName: j['monthName'] ?? '',

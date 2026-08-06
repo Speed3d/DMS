@@ -165,7 +165,7 @@ void main() {
         tester, sessionWith(['Outgoing', 'Employees', 'Payroll'], role: 'Manager'));
 
     expect(find.text('الموظفون الفعّالون'), findsOneWidget);
-    expect(find.text('رواتب هذا الشهر'), findsOneWidget);
+    expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsOneWidget);
     // التنبيهان يظهران لأن الملخّص المُجاوَز فيه شهران غير مُسدَّدين وثلاث إجازات معلّقة.
     expect(find.text('أشهر غير مُسدَّدة'), findsOneWidget);
     expect(find.text('إجازات بانتظار الموافقة'), findsOneWidget);
@@ -177,14 +177,14 @@ void main() {
 
     expect(find.text('الموظفون الفعّالون'), findsOneWidget);
     expect(find.text('إجازات بانتظار الموافقة'), findsOneWidget);
-    expect(find.text('رواتب هذا الشهر'), findsNothing);
+    expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsNothing);
     expect(find.text('أشهر غير مُسدَّدة'), findsNothing);
   });
 
   testWidgets('🔐 صاحب «الرواتب» وحدها: لا بطاقات موظفين', (tester) async {
     await pumpDashboard(tester, sessionWith(['Outgoing', 'Payroll'], role: 'Manager'));
 
-    expect(find.text('رواتب هذا الشهر'), findsOneWidget);
+    expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsOneWidget);
     expect(find.text('الموظفون الفعّالون'), findsNothing);
     expect(find.text('إجازات بانتظار الموافقة'), findsNothing);
   });
@@ -196,7 +196,7 @@ void main() {
         tester, sessionWith(['Outgoing', 'Employees', 'Payroll'], role: 'Employee'));
 
     expect(find.text('الموظفون الفعّالون'), findsOneWidget);
-    expect(find.text('رواتب هذا الشهر'), findsOneWidget);
+    expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsOneWidget);
   });
 
   testWidgets('🔐 قارئ بالقسمين: لا بطاقات إطلاقاً — الدور يحجبه', (tester) async {
@@ -206,13 +206,13 @@ void main() {
 
     expect(find.text('إجمالي الصادر'), findsOneWidget);
     expect(find.text('الموظفون الفعّالون'), findsNothing);
-    expect(find.text('رواتب هذا الشهر'), findsNothing);
+    expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsNothing);
   });
 
   testWidgets('مدير بلا القسمين: لا بطاقات', (tester) async {
     await pumpDashboard(tester, sessionWith(['Outgoing'], role: 'Manager'));
     expect(find.text('الموظفون الفعّالون'), findsNothing);
-    expect(find.text('رواتب هذا الشهر'), findsNothing);
+    expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsNothing);
   });
 }
 

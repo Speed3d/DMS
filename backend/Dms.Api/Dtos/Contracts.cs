@@ -124,7 +124,10 @@ public sealed record EmploymentTemplateResponse(
     string SourceCompanyName);
 
 // ── الرواتب ──
-public sealed record PayrollYearResponse(int Year, int MonthsCreated, int MonthsPaid, decimal TotalIqd);
+/// <param name="TotalIqd">**ما صُرف فعلاً** — أشهرٌ مُسدَّدة فقط (بلاغ المالك 2026-08-06).</param>
+/// <param name="DraftTotalIqd">ما ينتظر التسديد في المسودّات — رقمٌ منفصل لا مطروح.</param>
+public sealed record PayrollYearResponse(
+    int Year, int MonthsCreated, int MonthsPaid, decimal TotalIqd, decimal DraftTotalIqd = 0);
 
 public sealed record PayrollMonthResponse(
     int Year, int Month, string MonthName, bool Exists, PayrollStatus? Status,

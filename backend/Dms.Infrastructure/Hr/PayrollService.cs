@@ -7,7 +7,17 @@ namespace Dms.Infrastructure.Hr;
 
 // ─────────────────────────── العقود ───────────────────────────
 
-public sealed record PayrollYearSummary(int Year, int MonthsCreated, int MonthsPaid, decimal TotalIqd);
+/// <param name="TotalIqd">
+/// 🔴 **ما صُرف فعلاً — أشهرٌ مُسدَّدة فقط** (بلاغ المالك 2026-08-06).
+/// كان يجمع المسودّات معها، فيقول «صرفنا 25 مليوناً» عن سنةٍ صرفت 21 والباقي أرقامٌ
+/// تحت التحرير قد تتغيّر قبل أن تُصرف.
+/// </param>
+/// <param name="DraftTotalIqd">
+/// ما في المسودّات — **رقمٌ منفصل لا مطروح**: المالك يحتاج أن يعرف ما ينتظره كما يحتاج
+/// أن يعرف ما صرفه. وإخفاؤه كان سيبدّل عيباً بعيب.
+/// </param>
+public sealed record PayrollYearSummary(
+    int Year, int MonthsCreated, int MonthsPaid, decimal TotalIqd, decimal DraftTotalIqd);
 
 public sealed record PayrollMonthSummary(
     int Year, int Month, bool Exists, PayrollStatus? Status, int EmployeeCount, decimal TotalIqd);
@@ -129,11 +139,13 @@ public sealed class PayrollService(
 
         // 🔴 قاعدة `PayrollPayable` (ADR-028): ما صرفته شركةٌ أخرى **ليس ممّا دفعناه**.
         //    بلا هذا الشرط كانت إجماليات السنة تنتفخ بمبالغ لم تخرج من خزينة الشركة.
+        // 🔴 **والتجميع بحالة الشهر أيضاً (بلاغ المالك 2026-08-06):** المسودّة رقمٌ تحت
+        //    التحرير لا مبلغٌ صُرف، وجمعُها مع المُسدَّد يجعل «إجمالي السنة» يعِد بما لم يقع.
         var totals = await db.PayrollEntries
             .Where(PayrollPayable.Predicate)
-            .GroupBy(e => e.Period!.Year)
-            .Select(g => new { Year = g.Key, Total = g.Sum(x => x.NetSalaryIqd) })
-            .ToDictionaryAsync(x => x.Year, x => x.Total, ct);
+            .GroupBy(e => new { e.Period!.Year, e.Period.Status })
+            .Select(g => new { g.Key.Year, g.Key.Status, Total = g.Sum(x => x.NetSalaryIqd) })
+            .ToListAsync(ct);
 
         return periods
             .GroupBy(p => p.Year)
@@ -141,7 +153,10 @@ public sealed class PayrollService(
                 g.Key,
                 g.Count(),
                 g.Count(p => p.Status == PayrollStatus.Paid),
-                totals.TryGetValue(g.Key, out var t) ? t : 0m))
+                totals.Where(t => t.Year == g.Key && t.Status == PayrollStatus.Paid)
+                      .Sum(t => t.Total),
+                totals.Where(t => t.Year == g.Key && t.Status != PayrollStatus.Paid)
+                      .Sum(t => t.Total)))
             .OrderByDescending(y => y.Year)
             .ToList();
     }

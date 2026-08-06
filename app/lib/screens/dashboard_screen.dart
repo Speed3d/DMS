@@ -169,8 +169,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   if (showPayroll)
                                     SizedBox(
                                       width: cardWidth,
+                                      // ⚠️ **«مُسدَّدة» في التسمية لا زينةً**: الرقم صار
+                                      //    يستثني المسودّات (بلاغ المالك 2026-08-06)، وتسميةٌ
+                                      //    عامّة فوق رقمٍ مخصوص هي نصفُ العيب الذي عولج.
                                       child: _buildStatCard(
-                                          'رواتب هذا الشهر',
+                                          'رواتب مُسدَّدة هذا الشهر',
                                           hr?.thisMonthTotalIqd == null
                                               ? '…'
                                               : '${_fmt(hr!.thisMonthTotalIqd!)} د.ع',

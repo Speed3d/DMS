@@ -61,8 +61,12 @@ class _PayrollMonthsScreenState extends ConsumerState<PayrollMonthsScreen> {
                   child:
                       Text('${snap.error}', style: const TextStyle(color: AppColors.danger)));
             }
+            final isDark = theme.brightness == Brightness.dark;
             final months = snap.data ?? const <PayrollMonth>[];
-            final total = months.fold<double>(0, (s, m) => s + m.totalIqd);
+            // 🔴 **المُسدَّد وحده هو «إجمالي السنة»** (بلاغ المالك 2026-08-06): كان الجمع
+            //    يشمل المسودّات، فيَعِد التذييلُ بمبلغٍ لم يُصرف نصفُه.
+            final total = PayrollMonth.paidTotal(months);
+            final draft = PayrollMonth.draftTotal(months);
             final paidCount = months.where((m) => m.isPaid).length;
 
             return Column(
@@ -84,23 +88,46 @@ class _PayrollMonthsScreenState extends ConsumerState<PayrollMonthsScreen> {
                 const SizedBox(height: 18),
                 CustomCard(
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-                  child: Row(
+                  // ⚠️ `Wrap` لا `Row`: صار في التذييل رقمان ووصفان، وصفٌّ واحد يفيض عند
+                  //    الشاشات المتوسّطة — وهو العطل نفسه الذي عولج في شريط كشف الشهر.
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      const Icon(Icons.summarize_rounded, size: 20, color: AppColors.gold),
-                      const SizedBox(width: 10),
-                      Text('إجمالي السنة',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: theme.textTheme.bodyMedium?.color
-                                  ?.withValues(alpha: 0.75))),
-                      const SizedBox(width: 16),
-                      Text('$paidCount من 12 شهراً مُسدَّد',
-                          style: TextStyle(
-                              fontSize: 12.5,
-                              color: theme.textTheme.bodyMedium?.color
-                                  ?.withValues(alpha: 0.6))),
-                      const Spacer(),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.summarize_rounded, size: 20, color: AppColors.gold),
+                        const SizedBox(width: 10),
+                        Text('المُسدَّد من السنة',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: theme.textTheme.bodyMedium?.color
+                                    ?.withValues(alpha: 0.75))),
+                        const SizedBox(width: 12),
+                        Text('($paidCount من 12 شهراً)',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: theme.textTheme.bodyMedium?.color
+                                    ?.withValues(alpha: 0.6))),
+                      ]),
+
+                      // ⚠️ **المسودّات رقمٌ ثانٍ لا يُجمع مع الأول** — المالك يحتاج أن يعرف
+                      //    ما ينتظره كما يحتاج أن يعرف ما صرفه، وخلطُهما هو أصل البلاغ.
+                      if (draft > 0)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.pending_actions_rounded,
+                              size: 17,
+                              color: isDark ? AppColors.warnDark : AppColors.warn),
+                          const SizedBox(width: 7),
+                          Text('بانتظار التسديد: ${money.format(draft)} د.ع',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: isDark ? AppColors.warnDark : AppColors.warn)),
+                        ]),
+
                       Text('${money.format(total)} د.ع',
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                     ],
