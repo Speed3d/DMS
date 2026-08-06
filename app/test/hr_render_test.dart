@@ -235,6 +235,86 @@ void main() {
     expect(tester.takeException(), isNull, reason: 'اسم شركة طويل أفاض الرقاقة');
   });
 
+  // ─────────── شريط إجمالي كشف الرواتب لا يفيض بعد «المستثنى» (ADR-028) ───────────
+  //
+  // 🔴 **قياسٌ مباشر أثبت الفيض قبل العلاج:** 420 بكسل عند عرض 700 · 220 عند 900 ·
+  //    **120 عند 1000** · 20 عند 1100. أي أن نافذةً بعرض 1024 كانت تُظهر الشريط الأحمر.
+  //    العلاج `Wrap` بدل `Row`، وهذا الحارس يُثبت أنه يصمد عند العروض التي كانت تفيض.
+  Widget totalsBar({required double width, required bool withExcluded, bool asWrap = true}) {
+    final numbers = Row(mainAxisSize: MainAxisSize.min, children: const [
+      Text('12 موظفاً', style: TextStyle(fontSize: 13)),
+      SizedBox(width: 20),
+      Text('الإجمالي المستحقّ: ', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+      Text('5,800,000 د.ع', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+    ]);
+    final excluded = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: const Text('(مستثنى — مدفوع من شركة أخرى: 2,400,000 د.ع)',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+    );
+    final buttons = Row(mainAxisSize: MainAxisSize.min, children: [
+      SizedBox(
+        height: 46,
+        child: OutlinedButton.icon(
+          onPressed: () {},
+          icon: const Icon(Icons.save_rounded, size: 18),
+          label: const Text('حفظ المسودة', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ),
+      const SizedBox(width: 12),
+      SizedBox(
+        height: 46,
+        child: ElevatedButton.icon(
+          onPressed: () {},
+          icon: const Icon(Icons.verified_rounded, size: 18),
+          label: const Text('تسديد الرواتب', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ),
+    ]);
+
+    final children = <Widget>[numbers, if (withExcluded) excluded, buttons];
+
+    return SizedBox(
+      width: width,
+      child: asWrap
+          ? Wrap(
+              spacing: 20,
+              runSpacing: 12,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: children,
+            )
+          // التركيب القديم — يبقى في الحارس ليُثبت أن العلاج علاجٌ لا تجميل.
+          : Row(children: [numbers, if (withExcluded) excluded, const Spacer(), buttons]),
+    );
+  }
+
+  for (final w in <double>[700, 900, 1000, 1100, 1280, 1600]) {
+    for (final exc in [false, true]) {
+      testWidgets('شريط الإجمالي لا يفيض عند $w ${exc ? "مع" : "بلا"} سطر المستثنى',
+          (tester) async {
+        tester.view.physicalSize = Size(w, 600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pump(tester, totalsBar(width: w, withExcluded: exc));
+        expect(tester.takeException(), isNull, reason: 'فيض في شريط الإجمالي عند $w');
+      });
+    }
+  }
+
+  testWidgets('🔴 والتركيب القديم يفيض فعلاً عند 1000 — فالعلاج ليس تجميلاً', (tester) async {
+    tester.view.physicalSize = const Size(1000, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pump(tester, totalsBar(width: 1000, withExcluded: true, asWrap: false));
+    expect(tester.takeException(), isNotNull,
+        reason: 'لو لم يَعُد يفيض فقد تغيّرت الأحجام ⇒ أعِد تقييم الحاجة إلى Wrap');
+  });
+
   // ─────────── حارسٌ للعتبة نفسها: أنها فوق نقطة الفيض المقيسة ───────────
   //
   // 🔴 **لماذا هذا الحارس؟** الاختبارات أعلاه تُثبت أن الصفّ سليمٌ **عند العتبة الحالية** —

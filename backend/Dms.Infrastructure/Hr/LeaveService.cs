@@ -133,11 +133,28 @@ public sealed class LeaveService(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>سجلّ تغييرات الموظف في الشركة الفعّالة — **ويبقى مقروءاً بعد فكّ الإسناد**.</summary>
+    /// <remarks>
+    /// 🔴 **كان يُقرأ عبر خاصية التنقّل** <c>l.EmployeeCompany!.EmployeeId</c>، ولـ
+    /// <c>EmployeeCompany</c> فلترٌ يستبعد المحذوف ناعماً — فكان فكُّ الإسناد **يمحو السجلّ
+    /// من العرض في اللحظة نفسها** التي يصير فيها أهمَّ ما يُقرأ (شرط المالك: «كل شيء مذكور
+    /// في سجل تغييراته»). الآن تُجمع معرّفات الإسناد **متجاوزةً الفلتر**، والعزل يبقى قائماً
+    /// بشرط <c>CompanyId</c> المكتوب يدوياً وبفلتر <c>EmployeeLog</c> نفسه.
+    /// </remarks>
     public async Task<List<EmployeeLog>> LogAsync(int employeeId, CancellationToken ct = default)
     {
-        await RequireVisibleAsync(employeeId, ct);
+        var companyId = current.ActiveCompanyId
+                        ?? throw new ValidationException("تعذّر تحديد الشركة الفعّالة.");
+
+        var linkIds = await db.EmployeeCompanies.IgnoreQueryFilters()
+            .Where(x => x.EmployeeId == employeeId && x.CompanyId == companyId)
+            .Select(x => x.EmployeeCompanyId)
+            .ToListAsync(ct);
+        if (linkIds.Count == 0)
+            throw new NotFoundException("الموظف غير موجود أو لا تملك صلاحية رؤيته.");
+
         return await db.EmployeeLogs
-            .Where(l => l.EmployeeCompany!.EmployeeId == employeeId)
+            .Where(l => linkIds.Contains(l.EmployeeCompanyId))
             .OrderByDescending(l => l.ChangedAt)
             .Take(200)
             .ToListAsync(ct);

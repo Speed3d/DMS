@@ -96,6 +96,44 @@ public sealed class EmployeesController(
         int id, EmploymentRequest req, CancellationToken ct)
         => MapEmployment(await employees.UpsertEmploymentAsync(id, ToEmployment(req), ct));
 
+    /// <summary>
+    /// شروط عمله في شركةٍ أخرى لتعبئة نموذج الإسناد (ADR-028) — **204 إن لم توجد**.
+    /// </summary>
+    /// <remarks>
+    /// 🔴 توسيعٌ مقصود لحدّ ADR-027 بقرار المالك: يكشف **المبلغ** لا الاسم فقط. وقيودُه
+    /// الثلاثة في الخدمة: `CanManageEmployees` · **لمن ليس مُسنَداً هنا** · **مُدقَّق**.
+    /// </remarks>
+    [HttpGet("{id:int}/employment-template")]
+    public async Task<ActionResult<EmploymentTemplateResponse?>> Template(int id, CancellationToken ct)
+    {
+        var t = await employees.EmploymentTemplateAsync(id, ct);
+        return t is null
+            ? Ok(null)
+            : Ok(new EmploymentTemplateResponse(
+                t.Position, t.PositionEn, t.SalaryCurrency, t.BaseSalary, t.SourceCompanyName));
+    }
+
+    /// <summary>مَن فُكّ إسنادهم عن الشركة الفعّالة — ملفّاتهم وسجلّاتهم تبقى مقروءة.</summary>
+    [HttpGet("unlinked")]
+    public async Task<ActionResult<List<EmployeeListItem>>> Unlinked(CancellationToken ct)
+        => (await employees.ListUnlinkedAsync(ct)).Select(x => new EmployeeListItem(
+            x.EmployeeId, x.EmployeeCompanyId,
+            x.Employee?.FullName ?? "—", x.Employee?.FullNameEn, x.Employee?.NationalId,
+            x.Employee?.Phone, !string.IsNullOrEmpty(x.Employee?.PhotoBlobKey),
+            x.Position, x.HireDate, x.TerminationDate,
+            x.SalaryCurrency, x.BaseSalary, x.DisplayOrder, x.IsActive)).ToList();
+
+    /// <summary>
+    /// **فكّ إسناده عن الشركة الفعّالة** — لا حذفَ ملفّه (ADR-028).
+    /// </summary>
+    /// <remarks>مرفوض (409) لمن له رواتب مُسدَّدة هنا؛ البديل «إنهاء الخدمة».</remarks>
+    [HttpDelete("{id:int}/employment")]
+    public async Task<IActionResult> Unlink(int id, [FromQuery] string? notes, CancellationToken ct)
+    {
+        await employees.UnlinkAsync(id, notes, ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:int}/terminate")]
     public async Task<IActionResult> Terminate(int id, TerminateRequest req, CancellationToken ct)
     {

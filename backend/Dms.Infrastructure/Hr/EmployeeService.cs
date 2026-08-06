@@ -23,6 +23,23 @@ public sealed record TerminationInput(DateTime TerminationDate, TerminationReaso
 /// <summary>نتيجة البحث برقم الهوية — **الحدّ الأدنى الذي يكفي لاتخاذ القرار، لا أكثر**.</summary>
 public sealed record ExistingEmployeeHint(int EmployeeId, string FullName, bool AlreadyInThisCompany);
 
+/// <summary>
+/// شروط عمل الموظف في شركةٍ أخرى — **قالبُ تعبئةٍ عند الإسناد** (ADR-028، بقرار المالك).
+/// </summary>
+/// <remarks>
+/// 🔴 **هذا توسيعٌ مقصود لحدّ ADR-027**، ويجب أن يبقى معلوماً: ADR-024 تكشف **واقعة** الصرف،
+/// وADR-027 تكشف **اسم** الشركة، وهذا يكشف **المبلغ** — راتبَ الموظف في الشركة الأخرى.
+/// وافق عليه المالك (2026-08-06) لأن الشركتين له، وبثلاثة قيود مكتوبة في
+/// <see cref="IEmployeeService.EmploymentTemplateAsync"/>.
+///
+/// ⚠️ **وبلا تاريخ تعيين عمداً:** قرار المالك أن تاريخ التعيين في الشركة الثانية هو **تاريخ
+/// بدء العمل فيها** لا المنقول عن الأولى — وهو يؤثّر في مكافأة نهاية الخدمة وفي الشهر
+/// الجزئي الأول، فنقلُه كان سيُنشئ التزاماً لم يقع.
+/// </remarks>
+public sealed record EmploymentTemplate(
+    string Position, string? PositionEn, Currency SalaryCurrency, decimal BaseSalary,
+    string SourceCompanyName);
+
 /// <summary>شركةٌ أخرى يعمل فيها الموظف — **الاسم فقط** (ADR-027).</summary>
 /// <remarks>
 /// ⚠️ لا راتب ولا صفة ولا تاريخ تعيين: تلك شروطُ عملٍ تخصّ تلك الشركة وحدها، وكشفُها هنا
@@ -44,6 +61,22 @@ public interface IEmployeeService
     Task<(byte[] content, string fileName)> GetPhotoAsync(int employeeId, CancellationToken ct = default);
     Task<ExistingEmployeeHint?> LookupByNationalIdAsync(string nationalId, CancellationToken ct = default);
     Task<List<OtherCompanyRef>> OtherCompaniesAsync(int employeeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// شروط عمله في شركةٍ أخرى، لتعبئة نموذج الإسناد — <c>null</c> إن لم توجد (ADR-028).
+    /// </summary>
+    /// <remarks>
+    /// **ثلاثة قيود تحدّ التوسيع** (شرط موافقة المالك):
+    /// <list type="number">
+    /// <item>لمن يملك <c>CanManageEmployees</c> وحده.</item>
+    /// <item>**فقط لمن ليس مُسنَداً هنا** — أي أثناء إسنادٍ حقيقي لا كنافذةٍ دائمة على رواتب الغير.</item>
+    /// <item>**يُسجَّل في سجلّ التدقيق** — فالكشف يُعرف مَن طلبه ومتى.</item>
+    /// </list>
+    /// </remarks>
+    Task<EmploymentTemplate?> EmploymentTemplateAsync(int employeeId, CancellationToken ct = default);
+
+    Task UnlinkAsync(int employeeId, string? notes, CancellationToken ct = default);
+    Task<List<EmployeeCompany>> ListUnlinkedAsync(CancellationToken ct = default);
     Task<List<PayrollEntry>> SalaryHistoryAsync(int employeeId, int take, CancellationToken ct = default);
 }
 
@@ -352,6 +385,99 @@ public sealed class EmployeeService(
             .Where(c => ids.Contains(c.CompanyId))
             .OrderBy(c => c.Name)
             .Select(c => new OtherCompanyRef(c.CompanyId, c.Name))
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<EmploymentTemplate?> EmploymentTemplateAsync(
+        int employeeId, CancellationToken ct = default)
+    {
+        RequireWrite();                       // القيد ١
+        var companyId = RequireCompany();
+
+        // القيد ٢: أثناء إسنادٍ حقيقي وحده. مَن كان مُسنَداً هنا فشروطُه أمامه في بطاقته،
+        // وفتحُ النقطة له كان يحوّلها إلى **نافذةٍ دائمة** على رواتب الشركات الأخرى.
+        var alreadyHere = await db.EmployeeCompanies.IgnoreQueryFilters()
+            .AnyAsync(x => x.EmployeeId == employeeId && x.CompanyId == companyId && !x.IsDeleted, ct);
+        if (alreadyHere)
+            throw new ValidationException("الموظف مُسنَدٌ إلى هذه الشركة — شروط عمله هنا في بطاقته.");
+
+        var link = await db.EmployeeCompanies.IgnoreQueryFilters()
+            .Where(x => x.EmployeeId == employeeId && x.CompanyId != companyId && !x.IsDeleted)
+            .OrderByDescending(x => x.UpdatedAt ?? x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (link is null) return null;
+
+        var source = await db.Companies.IgnoreQueryFilters()
+            .Where(c => c.CompanyId == link.CompanyId)
+            .Select(c => c.Name).FirstOrDefaultAsync(ct) ?? "شركة أخرى";
+
+        // القيد ٣: الكشف يُسجَّل. توسيعٌ صامتٌ لا يُراجَع توسيعٌ يُنسى.
+        audit.Add("ReadEmploymentTemplate", nameof(EmployeeCompany), employeeId.ToString(),
+            $"قراءة شروط العمل من «{source}» لإسناده", companyId);
+        await db.SaveChangesAsync(ct);
+
+        return new EmploymentTemplate(
+            link.Position, link.PositionEn, link.SalaryCurrency, link.BaseSalary, source);
+    }
+
+    /// <summary>
+    /// **فكّ إسناد الموظف عن الشركة الفعّالة** — حذفٌ ناعم للإسناد وحده (ADR-028).
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **ليس حذفاً للموظف:** <see cref="DeleteAsync"/> يحذف الملفّ كلّه فيختفي من كل
+    /// شركاته. وهذا يفكّ **رابطةً واحدة** ويترك الملفّ وبقية إسناداته سليمة.
+    ///
+    /// ⚠️ **ويُرفض لمن له رواتب مُسدَّدة**: سطرٌ في كشفٍ مُسدَّد سجلٌّ ماليّ، وفكُّ إسناده
+    /// يُفقده سنده — القاعدة نفسها التي تحكم حذف الموظف.
+    ///
+    /// 🔴 **والسجلّ يبقى مقروءاً بعده** (شرط المالك: «كل شيء مذكور في سجل تغييراته»):
+    /// <c>EmployeeLog</c> بلا فلتر حذفٍ ناعم، و<c>LogAsync</c> يصل إليه عبر معرّفات الإسناد
+    /// **متجاوزاً الفلتر** لا عبر خاصية تنقّلٍ يحجبها.
+    /// </remarks>
+    public async Task UnlinkAsync(int employeeId, string? notes, CancellationToken ct = default)
+    {
+        RequireWrite();
+        var companyId = RequireCompany();
+
+        var link = await db.EmployeeCompanies
+                       .FirstOrDefaultAsync(x => x.EmployeeId == employeeId && x.CompanyId == companyId, ct)
+                   ?? throw new NotFoundException("الموظف غير مُسنَد لهذه الشركة.");
+
+        var paid = await db.PayrollEntries
+            .AnyAsync(e => e.EmployeeCompanyId == link.EmployeeCompanyId
+                        && e.Period!.Status == PayrollStatus.Paid, ct);
+        if (paid)
+            throw new ConflictException(
+                "لا يمكن فكّ إسناد موظف له رواتب مُسدَّدة في هذه الشركة — "
+                + "استخدم «إنهاء الخدمة» بدلاً منه.");
+
+        // 🔴 **السجلّ يُكتب قبل الفكّ لا بعده**: بعده يصير الإسناد محذوفاً فيسقط الحارس.
+        AddLog(link, EmployeeChangeType.UnlinkedFromCompany,
+            "فُكّ إسناده عن هذه الشركة" + (string.IsNullOrWhiteSpace(notes) ? "" : $" — {notes.Trim()}"));
+
+        var now = DateTime.UtcNow;
+        link.IsDeleted = true;
+        link.DeletedByUserId = current.UserId;
+        link.DeletedAt = now;
+
+        audit.Add("UnlinkEmployee", nameof(EmployeeCompany), employeeId.ToString(),
+            $"فكّ إسناد «{link.Employee?.FullName ?? employeeId.ToString()}»", companyId);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>مَن فُكّ إسنادهم عن الشركة الفعّالة — للاطّلاع على ملفّاتهم وسجلّاتهم.</summary>
+    /// <remarks>
+    /// ⚠️ **<c>IgnoreQueryFilters</c> لتجاوز الحذف الناعم لا العزل**: الشرط على
+    /// <c>CompanyId</c> مكتوبٌ يدوياً هنا، فلا تتسرّب إسنادات شركةٍ أخرى.
+    /// </remarks>
+    public async Task<List<EmployeeCompany>> ListUnlinkedAsync(CancellationToken ct = default)
+    {
+        var companyId = RequireCompany();
+        return await db.EmployeeCompanies.IgnoreQueryFilters()
+            .Include(x => x.Employee)
+            .Where(x => x.CompanyId == companyId && x.IsDeleted)
+            .OrderByDescending(x => x.DeletedAt)
             .ToListAsync(ct);
     }
 

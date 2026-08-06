@@ -12,10 +12,15 @@ public sealed record PayrollSheetLine(
     string Net, string NetIqd, string PaymentStatus, string? Notes,
     bool IsNewHire, bool IsTerminated);
 
+/// <param name="TotalIqd">**ما تدفعه الشركة فعلاً** — بعد استثناء ما صرفته شركةٌ أخرى (ADR-028).</param>
+/// <param name="ExcludedIqd">
+/// المستثنى، أو <c>null</c> إن لم يكن ثمّة استثناء.
+/// ⚠️ **يُطبع ولا يُسقَط صامتاً**: كشفٌ إجماليُّه أقلّ من مجموع أعمدته بلا تفسير يبدو خطأ حساب.
+/// </param>
 public sealed record PayrollSheetModel(
     string CompanyName, string MonthName, int Year, string Status,
     string WorkingDays, string? ExchangeRate,
-    IReadOnlyList<PayrollSheetLine> Lines, string TotalIqd);
+    IReadOnlyList<PayrollSheetLine> Lines, string TotalIqd, string? ExcludedIqd = null);
 
 /// <summary>كشف الرواتب الشهري للطباعة — عربي RTL على نمط <see cref="FinancialReportPdf"/>.</summary>
 public static class PayrollSheetPdf
@@ -113,11 +118,22 @@ public static class PayrollSheetPdf
                 page.Footer().PaddingTop(8).Column(col =>
                 {
                     col.Item().LineHorizontal(1).LineColor(Colors.Grey.Medium);
+
+                    // ⚠️ **المستثنى قبل الإجمالي لا بعده** (ADR-028): يقرأ المحاسب سببَ نقصان
+                    //    الرقم قبل أن يرى الرقم، فلا يظنّه خطأ حساب.
+                    if (m.ExcludedIqd is { } excluded)
+                    {
+                        col.Item().PaddingTop(4).AlignLeft()
+                            .Text($"مستثنى (مدفوع من شركة أخرى): {excluded} د.ع")
+                            .FontSize(9.5f).FontColor(Colors.Grey.Darken2);
+                    }
+
                     col.Item().PaddingTop(5).Row(row =>
                     {
                         row.RelativeItem().Text($"عدد الموظفين: {m.Lines.Count}").SemiBold();
                         row.RelativeItem().AlignLeft()
-                            .Text($"الإجمالي بالدينار العراقي: {m.TotalIqd} د.ع").SemiBold().FontSize(11);
+                            .Text($"الإجمالي المستحقّ بالدينار العراقي: {m.TotalIqd} د.ع")
+                            .SemiBold().FontSize(11);
                     });
                 });
             });

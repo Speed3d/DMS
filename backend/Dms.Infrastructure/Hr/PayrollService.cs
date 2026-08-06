@@ -44,6 +44,36 @@ public sealed record ExternalPaymentHint(
     int EntryId, string EmployeeName, int PaidByCompanyId, string PaidByCompanyName,
     DateTime? PaidAt);
 
+/// <summary>
+/// موظفٌ في الكشف **يعمل في أكثر من شركة** — وحالُ قراره (ADR-028).
+/// </summary>
+/// <remarks>
+/// 🔴 **أوسع من <see cref="ExternalPaymentHint"/> عمداً، وهذا جوهر ADR-028.** ذاك يكشف مَن
+/// **صرفت له** شركةٌ أخرى فعلاً، فيبقى بابٌ مفتوح: لو لم تكن الأخرى قد سدّدت بعد فلا تنبيه
+/// ولا منع — **فتدفع الشركتان معاً**. وهذا يكشف **كل مزدوج** فيُلزم بالحسم قبل التسديد.
+///
+/// و<paramref name="OtherPaidAt"/> فارغٌ يعني «الشركة الأخرى لم تسدّد بعد» — وهو فرقٌ
+/// يقرّر أيّ القرارَين مسموح: تعليمُ «صُرف من الخارج» لا يجوز بلا صرفٍ حقيقي هناك.
+/// </remarks>
+public sealed record DualCompanyRow(
+    int EntryId, string EmployeeName, int OtherCompanyId, string OtherCompanyName,
+    DateTime? OtherPaidAt, PayrollPaymentStatus Decision)
+{
+    /// <summary>لم يُحسم أمره بعد.</summary>
+    public bool NeedsDecision => Decision == PayrollPaymentStatus.Unpaid;
+
+    /// <summary>
+    /// حُسم «يُصرف من هنا» **ثم صرفت الشركة الأخرى بعده** — قرارٌ تقادم فيجب إعادة حسمه.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **بلا هذا الفحص تبقى ثغرةٌ كاملة:** المحاسب يقرّر الصرف من هنا يوم 1، وتصرف
+    /// الشركة الأخرى يوم 3، ويُسدَّد الكشف يوم 5 — فيُصرف الراتب مرّتين **وقد مرّ من
+    /// بوّابة الحسم**. القرار يُقاس بأحدث الوقائع لا بوقت اتّخاذه.
+    /// </remarks>
+    public bool IsStale =>
+        Decision == PayrollPaymentStatus.ConfirmedByThisCompany && OtherPaidAt is not null;
+}
+
 /// <summary>قيدٌ في سجلّ تعديلات شهرٍ مُسدَّد (ADR-026).</summary>
 /// <remarks>
 /// ⚠️ **يُعرض ولا يُعدَّل ولا يُحذف** — نظير `EmployeeLog`. سجلٌّ يمكن تنقيحه لا يُحتجّ به.
@@ -72,7 +102,9 @@ public interface IPayrollService
     Task DeletePeriodAsync(int year, int month, CancellationToken ct = default);
     Task DeleteYearAsync(int year, CancellationToken ct = default);
     Task<List<ExternalPaymentHint>> DetectExternalPaymentsAsync(int year, int month, CancellationToken ct = default);
+    Task<List<DualCompanyRow>> DetectDualCompanyAsync(int year, int month, CancellationToken ct = default);
     Task ConfirmExternalPaymentAsync(int entryId, CancellationToken ct = default);
+    Task ConfirmPayHereAsync(int entryId, CancellationToken ct = default);
     Task<List<EndOfServiceSuggestion>> SuggestEndOfServiceAsync(int year, int month, CancellationToken ct = default);
 }
 
@@ -95,7 +127,10 @@ public sealed class PayrollService(
             .ToListAsync(ct);
         if (periods.Count == 0) return [];
 
+        // 🔴 قاعدة `PayrollPayable` (ADR-028): ما صرفته شركةٌ أخرى **ليس ممّا دفعناه**.
+        //    بلا هذا الشرط كانت إجماليات السنة تنتفخ بمبالغ لم تخرج من خزينة الشركة.
         var totals = await db.PayrollEntries
+            .Where(PayrollPayable.Predicate)
             .GroupBy(e => e.Period!.Year)
             .Select(g => new { Year = g.Key, Total = g.Sum(x => x.NetSalaryIqd) })
             .ToDictionaryAsync(x => x.Year, x => x.Total, ct);
@@ -120,7 +155,11 @@ public sealed class PayrollService(
             {
                 p.Month, p.Status,
                 Count = p.Entries.Count(e => !e.IsDeleted),
-                Total = p.Entries.Where(e => !e.IsDeleted).Sum(e => (decimal?)e.NetSalaryIqd) ?? 0m,
+                // 🔴 قاعدة `PayrollPayable` (ADR-028) — الشرط مكتوبٌ هنا حرفياً لأن EF لا
+                //    تُدرج شجرة تعبيرٍ داخل لامدا متداخلة. **أي تغيير في القاعدة يمسّ هذا السطر.**
+                Total = p.Entries
+                    .Where(e => !e.IsDeleted && e.PaymentStatus != PayrollPaymentStatus.PaidByOtherCompany)
+                    .Sum(e => (decimal?)e.NetSalaryIqd) ?? 0m,
             })
             .ToListAsync(ct);
 
@@ -354,9 +393,19 @@ public sealed class PayrollService(
             throw new ValidationException("الكشف فارغ — ولّد الموظفين قبل التسديد.");
 
         // ما يُتساهَل معه في المسودّة يُرفض هنا: التسديد لا رجعة فيه.
+        // ⚠️ والحارسان على **ما يُدفع فعلاً**: صافي مَن صرفته شركةٌ أخرى لا يعنينا، وسعرُ
+        //    الصرف لا يلزم من أجل سطرٍ لن نصرفه.
+        var payable = PayrollPayable.Payable(live).ToList();
         PayrollCalculator.EnsureRateSet(
-            live.Any(e => e.SnapshotCurrency == Currency.USD), period.ExchangeRate);
-        foreach (var e in live) PayrollCalculator.EnsurePayable(e.SnapshotName, e.NetSalary);
+            payable.Any(e => e.SnapshotCurrency == Currency.USD), period.ExchangeRate);
+        foreach (var e in payable) PayrollCalculator.EnsurePayable(e.SnapshotName, e.NetSalary);
+
+        // 🔴 **بوّابة الحسم (ADR-028):** لا يُسدَّد كشفٌ فيه موظفٌ يعمل في أكثر من شركة ولم
+        //    يُحسم أمره. كان التسديد يمرّ بلا سؤال، فصُرف راتبٌ صرفته شركةٌ أخرى.
+        // ⚠️ **بعد حارسَي الحساب لا قبلهما**: كشفٌ ناقصُ سعر الصرف غيرُ قابلٍ للحساب أصلاً،
+        //    فسؤالُ المحاسب عن قرارٍ في أرقامٍ لم تُحسب بعد يقلب ترتيب العلاج. (كشفه أول
+        //    تشغيل: صار «التسديد بلا سعر صرف» يردّ 409 بدل 400.)
+        await EnsureDualCompanyResolvedAsync(period, ct);
 
         if (input.OutgoingBookId is { } bookId)
         {
@@ -373,12 +422,20 @@ public sealed class PayrollService(
         if (!string.IsNullOrWhiteSpace(input.Notes)) period.Notes = input.Notes.Trim();
         period.UpdatedAt = DateTime.UtcNow;
 
-        // مَن كان «لم يُصرف» يصير مصروفاً من هذه الشركة؛ ومَن عُلِّم مدفوعاً من الخارج يبقى.
-        foreach (var e in live.Where(x => x.PaymentStatus == PayrollPaymentStatus.Unpaid))
+        // مَن كان «لم يُصرف» أو **حُسم أن يُصرف من هنا** يصير مصروفاً من هذه الشركة؛
+        // ومَن عُلِّم مدفوعاً من الخارج يبقى على حاله.
+        foreach (var e in live.Where(x => PayrollPayable.Includes(x.PaymentStatus)
+                                       && x.PaymentStatus != PayrollPaymentStatus.PaidByThisCompany))
             e.PaymentStatus = PayrollPaymentStatus.PaidByThisCompany;
 
-        audit.Add("PayPayroll", nameof(PayrollPeriod), $"{year}-{month:D2}",
-            $"تسديد {live.Count} راتباً بإجمالي {live.Sum(x => x.NetSalaryIqd):#,0.##} د.ع", period.CompanyId);
+        // ⚠️ **سجلّ التدقيق يقول ما خرج فعلاً** — كان يسجّل الإجمالي الخام، فيوثّق مبلغاً
+        //    أكبر من المصروف ويصير الشاهدُ نفسه مضلِّلاً.
+        var excluded = PayrollPayable.ExcludedIqd(live);
+        var detail = $"تسديد {payable.Count} راتباً بإجمالي {PayrollPayable.TotalIqd(live):#,0.##} د.ع"
+                   + (excluded > 0
+                       ? $" (استُثني {live.Count - payable.Count} مدفوعاً من شركة أخرى بقيمة {excluded:#,0.##} د.ع)"
+                       : string.Empty);
+        audit.Add("PayPayroll", nameof(PayrollPeriod), $"{year}-{month:D2}", detail, period.CompanyId);
         await SaveGuardedAsync(ct);
     }
 
@@ -431,8 +488,13 @@ public sealed class PayrollService(
         var period = await FindPeriodAsync(year, month, ct);
         if (period is null) return [];
 
+        // ⚠️ **تشمل «حُسم أن يُصرف من هنا» لا `Unpaid` وحدها (ADR-028):** لولا ذلك لَعجز
+        //    المحاسب عن التراجع حين تصرف الشركة الأخرى **بعد** قراره — فيبقى الكشف عالقاً
+        //    عند حارس التقادم بلا مخرج.
         var mine = period.Entries
-            .Where(e => !e.IsDeleted && e.PaymentStatus == PayrollPaymentStatus.Unpaid)
+            .Where(e => !e.IsDeleted
+                     && e.PaymentStatus is PayrollPaymentStatus.Unpaid
+                                        or PayrollPaymentStatus.ConfirmedByThisCompany)
             .ToList();
         if (mine.Count == 0) return [];
 
@@ -471,6 +533,137 @@ public sealed class PayrollService(
                 payer.PaidAt));
         }
         return hints;
+    }
+
+    /// <summary>
+    /// كل موظفي الكشف **الذين يعملون في أكثر من شركة** — مع قرار كلٍّ وحال الشركة الأخرى.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **خامس موضع <c>IgnoreQueryFilters</c> متعمَّد في الوحدة** (ADR-024 · ADR-027 ·
+    /// وثلاثةٌ في `EmployeeService`): السؤال بطبيعته عابرٌ للشركات — «أين يعمل هذا الشخص
+    /// أيضاً؟» — والفلترُ العام يحجب الجواب. وقراءةٌ خالصة: لا يكتب حرفاً في أي شركة.
+    ///
+    /// والمكشوف **اسم الشركة وتاريخ صرفها فقط** — لا راتبه هناك (حدّ ADR-027 نفسه).
+    /// </remarks>
+    public async Task<List<DualCompanyRow>> DetectDualCompanyAsync(
+        int year, int month, CancellationToken ct = default)
+    {
+        RequireWrite();
+        var companyId = RequireCompany();
+
+        var period = await FindPeriodAsync(year, month, ct);
+        if (period is null) return [];
+
+        var live = period.Entries.Where(e => !e.IsDeleted).ToList();
+        if (live.Count == 0) return [];
+
+        // معرّف الموظف خلف كل سطر.
+        var linkIds = live.Select(e => e.EmployeeCompanyId).ToList();
+        var employeeByLink = await db.EmployeeCompanies.IgnoreQueryFilters()
+            .Where(x => linkIds.Contains(x.EmployeeCompanyId))
+            .ToDictionaryAsync(x => x.EmployeeCompanyId, x => x.EmployeeId, ct);
+        var employeeIds = employeeByLink.Values.Distinct().ToList();
+
+        // إسناداتُهم **خارج** هذه الشركة (حيّةً غير محذوفة).
+        var otherLinks = await db.EmployeeCompanies.IgnoreQueryFilters()
+            .Where(x => employeeIds.Contains(x.EmployeeId) && x.CompanyId != companyId && !x.IsDeleted)
+            .Select(x => new { x.EmployeeId, x.CompanyId })
+            .ToListAsync(ct);
+        if (otherLinks.Count == 0) return [];
+
+        var otherCompanyIds = otherLinks.Select(x => x.CompanyId).Distinct().ToList();
+        var names = await db.Companies.IgnoreQueryFilters()
+            .Where(c => otherCompanyIds.Contains(c.CompanyId))
+            .ToDictionaryAsync(c => c.CompanyId, c => c.Name, ct);
+
+        // ومَن **صرفت له** إحداها هذا الشهر فعلاً (بتاريخ صرفها).
+        var paidElsewhere = await db.PayrollEntries.IgnoreQueryFilters()
+            .Where(e => !e.IsDeleted
+                     && e.CompanyId != companyId
+                     && e.Period!.Year == year && e.Period.Month == month
+                     && e.Period.Status == PayrollStatus.Paid
+                     && employeeIds.Contains(e.EmployeeCompany!.EmployeeId))
+            .Select(e => new { e.CompanyId, EmployeeId = e.EmployeeCompany!.EmployeeId, e.Period!.PaidAt })
+            .ToListAsync(ct);
+
+        var rows = new List<DualCompanyRow>();
+        foreach (var entry in live)
+        {
+            if (!employeeByLink.TryGetValue(entry.EmployeeCompanyId, out var empId)) continue;
+
+            // الشركة الأخرى التي **صرفت** أولى بالعرض من مجرّد شركةٍ يعمل فيها.
+            var payer = paidElsewhere.FirstOrDefault(x => x.EmployeeId == empId);
+            var otherId = payer?.CompanyId
+                          ?? otherLinks.FirstOrDefault(x => x.EmployeeId == empId)?.CompanyId;
+            if (otherId is not { } oid) continue;
+
+            rows.Add(new DualCompanyRow(
+                entry.EntryId, entry.SnapshotName, oid,
+                names.TryGetValue(oid, out var n) ? n : "شركة أخرى",
+                payer?.PaidAt, entry.PaymentStatus));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// بوّابة الحسم قبل التسديد (ADR-028) — تمنع ما بُنيت ADR-024 لمنعه وعجزت عنه.
+    /// </summary>
+    /// <remarks>
+    /// ترفض حالتين: **لم يُحسم** أصلاً، و**حُسم ثم تغيّرت الحال** (صرفت الأخرى بعد القرار).
+    /// والرسالة تحمل **الأسماء** لا عدداً — «موظفان لم يُحسم أمرهما» يترك المحاسب يبحث.
+    /// </remarks>
+    private async Task EnsureDualCompanyResolvedAsync(PayrollPeriod period, CancellationToken ct)
+    {
+        var rows = await DetectDualCompanyAsync(period.Year, period.Month, ct);
+
+        var pending = rows.Where(r => r.NeedsDecision).Select(r => r.EmployeeName).ToList();
+        if (pending.Count > 0)
+            throw new ConflictException(
+                $"لم يُحسم أمر مَن يعمل في أكثر من شركة: {string.Join(" · ", pending)}. "
+                + "حدّد لكلٍّ منهم «يُصرف من هنا» أو «صُرف من شركة أخرى» قبل التسديد.");
+
+        var stale = rows.Where(r => r.IsStale)
+            .Select(r => $"{r.EmployeeName} (صرفت له {r.OtherCompanyName})").ToList();
+        if (stale.Count > 0)
+            throw new ConflictException(
+                $"تغيّرت الحال بعد قرارك: {string.Join(" · ", stale)}. "
+                + "أعِد حسم أمرهم قبل التسديد لئلا يُصرف الراتب مرّتين.");
+    }
+
+    /// <summary>
+    /// قرارٌ صريح: **يُصرف من هذه الشركة** رغم عمله في شركةٍ أخرى (ADR-028).
+    /// </summary>
+    /// <remarks>
+    /// مسموحٌ دائماً لمن يعمل في أكثر من شركة — بخلاف نظيره «صُرف من الخارج» الذي يشترط
+    /// صرفاً حقيقياً هناك. والسبب: أن تقول «سأدفع أنا» لا يحتاج إذناً من أحد، وأن تقول
+    /// «دفع غيري» **ادّعاءٌ على واقعة** يجب أن تكون قد حدثت.
+    /// </remarks>
+    public async Task ConfirmPayHereAsync(int entryId, CancellationToken ct = default)
+    {
+        RequireWrite();
+
+        var entry = await db.PayrollEntries.Include(e => e.Period)
+                        .FirstOrDefaultAsync(e => e.EntryId == entryId, ct)
+                    ?? throw new NotFoundException("السطر غير موجود.");
+
+        if (entry.Period!.Status == PayrollStatus.Paid)
+            throw new ConflictException("الكشف مُسدَّد — لا يمكن تعديل حالة الدفع.");
+
+        var rows = await DetectDualCompanyAsync(entry.Period.Year, entry.Period.Month, ct);
+        if (rows.All(r => r.EntryId != entryId))
+            throw new ValidationException("هذا الموظف لا يعمل في شركةٍ أخرى — لا قرار مطلوب.");
+
+        entry.PaymentStatus = PayrollPaymentStatus.ConfirmedByThisCompany;
+
+        // ⚠️ **تُمحى لقطةُ الدافع الخارجي** إن كان السطر معلَّماً سابقاً: بقاؤها يجعل الكشف
+        //    يقول «مدفوع من فلانة» عن راتبٍ ندفعه نحن.
+        entry.PaidByCompanyId = null;
+        entry.PaidByCompanyName = null;
+        entry.UpdatedAt = DateTime.UtcNow;
+
+        audit.Add("ConfirmPayHere", nameof(PayrollEntry), entryId.ToString(),
+            $"{entry.SnapshotName} — يُصرف من هذه الشركة", entry.CompanyId);
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>يُعلّم السطر «مدفوع من الخارج» — **بقرار المستخدم لا تلقائياً**.</summary>

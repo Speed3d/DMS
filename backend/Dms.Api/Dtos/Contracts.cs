@@ -114,6 +114,15 @@ public sealed record SalaryHistoryItem(
 
 public sealed record ExistingEmployeeResponse(int EmployeeId, string FullName, bool AlreadyInThisCompany);
 
+/// <summary>شروط عمله في شركةٍ أخرى — قالبُ تعبئةٍ عند الإسناد (ADR-028).</summary>
+/// <remarks>
+/// ⚠️ **بلا تاريخ تعيين عمداً** (قرار المالك): تاريخ التعيين في الشركة الثانية هو تاريخ بدء
+/// العمل فيها لا المنقول عن الأولى — وهو يؤثّر في مكافأة نهاية الخدمة وفي الشهر الجزئي الأول.
+/// </remarks>
+public sealed record EmploymentTemplateResponse(
+    string Position, string? PositionEn, Currency SalaryCurrency, decimal BaseSalary,
+    string SourceCompanyName);
+
 // ── الرواتب ──
 public sealed record PayrollYearResponse(int Year, int MonthsCreated, int MonthsPaid, decimal TotalIqd);
 
@@ -139,11 +148,26 @@ public sealed record PayrollPeriodResponse(
     int PeriodId, int Year, int Month, string MonthName, PayrollStatus Status,
     decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode, int WorkingDays,
     DateTime? PaidAt, int? OutgoingBookId, string? ManualBookNumber, string? Notes,
+    /// <param name="TotalIqd">
+    /// 🔴 **ما تدفعه الشركة فعلاً** — بعد استثناء ما صرفته شركةٌ أخرى (ADR-028).
+    /// كان يجمع كل السطور، فيُظهر للمحاسب مبلغاً يفوق ما سيخرج من الخزينة.
+    /// </param>
     byte[] RowVersion, decimal TotalIqd, List<PayrollEntryResponse> Entries,
     // ── تعديل الشهر المُسدَّد (ADR-026) ──
     DateTime? LastAmendedAt = null, int AmendmentCount = 0,
     /// <summary>هل يملك الطالبُ تعديلَ هذا الشهر بعد تسديده؟ (لإظهار الزرّ أو إخفائه)</summary>
-    bool CanAmend = false);
+    bool CanAmend = false,
+    /// <summary>المستثنى لأن شركةً أخرى صرفته — **يُعرض ولا يُطرح صامتاً** (ADR-028).</summary>
+    decimal ExcludedIqd = 0);
+
+/// <summary>موظفٌ في الكشف يعمل في أكثر من شركة — وحالُ قراره (ADR-028).</summary>
+/// <remarks>
+/// <c>otherPaidAt</c> فارغٌ يعني أن الشركة الأخرى **لم تسدّد بعد**، وحينها القرار الوحيد
+/// المسموح هو «يُصرف من هنا»: تعليمُ «صُرف من الخارج» ادّعاءٌ على واقعةٍ لم تقع.
+/// </remarks>
+public sealed record DualCompanyResponse(
+    int EntryId, string EmployeeName, int OtherCompanyId, string OtherCompanyName,
+    DateTime? OtherPaidAt, PayrollPaymentStatus Decision, bool NeedsDecision, bool IsStale);
 
 /// <summary>مدخلات سطر واحد. **بلا صافٍ عمداً** — الخادم يحسبه ولا يقبله من العميل.</summary>
 public sealed record SaveEntryRequest(

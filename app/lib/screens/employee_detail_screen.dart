@@ -225,6 +225,61 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
     }
   }
 
+  /// فكّ إسناده عن الشركة الفعّالة — بسببٍ اختياري يُحفظ في سجلّ تغييراته (ADR-028).
+  Future<void> _unlink() async {
+    final e = _employee!;
+    final others = e.otherCompanies.map((c) => c.name).join(' · ');
+    final notes = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('فكّ الإسناد عن هذه الشركة'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'سيخرج «${e.fullName}» من قائمة موظفي هذه الشركة، '
+                'ويبقى ملفّه وعملُه في «$others» كما هو.\n\n'
+                'وسجلّ تغييراته هنا يبقى مقروءاً من مِرشَّح «مفكوكو الإسناد».',
+                style: const TextStyle(fontSize: 13, height: 1.7),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: notes,
+                decoration: const InputDecoration(
+                  labelText: 'السبب (اختياري) — يُحفظ في سجلّ تغييراته',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('فكّ الإسناد')),
+        ],
+      ),
+    );
+    // ⚠️ **القراءة قبل التخلّص**: `dispose` يُبطل الـcontroller، فقراءة `text` بعده تُلقي.
+    final reason = notes.text;
+    notes.dispose();
+    if (ok != true || !mounted) return;
+
+    try {
+      await ref.read(apiClientProvider).unlinkEmployee(widget.employeeId, notes: reason);
+      if (!mounted) return;
+      // الخروج فوراً: بطاقته لم تعد ضمن هذه الشركة، فإبقاؤها مفتوحةً يعرض حالاً زائلة.
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
   Future<void> _addLeave() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -323,6 +378,15 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
                   onPressed: _terminate,
                   icon: const Icon(Icons.person_off_rounded),
                   tooltip: 'إنهاء الخدمة',
+                ),
+              // 🔴 **فكّ الإسناد لا حذف الملفّ** (ADR-028): يُخرجه من هذه الشركة ويترك
+              //    ملفّه وبقية إسناداته سليمة. ويُعرض لمن يعمل في أكثر من شركة **فقط** —
+              //    فكُّ آخر إسنادٍ للموظف يجعله بلا شركة، وذلك ما يفعله «حذف» لا «فكّ».
+              if (e.otherCompanies.isNotEmpty)
+                IconButton(
+                  onPressed: _unlink,
+                  icon: const Icon(Icons.link_off_rounded),
+                  tooltip: 'فكّ الإسناد عن هذه الشركة',
                 ),
             ],
           ],

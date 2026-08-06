@@ -80,10 +80,41 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   /// وضع الإسناد — الشخص موجود، والمطلوب شروط عمله في هذه الشركة وحدها.
   bool get _isLink => widget.link != null;
 
+  /// شروط عمله في الشركة الأخرى — تُعبَّأ افتراضاً وتبقى مقفلة حتى يطلب تغييرها (ADR-028).
+  EmploymentTemplate? _template;
+
+  /// هل فتح المستخدم القفل ليكتب شروطاً مختلفة في هذه الشركة؟
+  ///
+  /// ⚠️ **مقفولٌ افتراضاً بقرار المالك**: الغالب أن الشروط واحدة، والقفل يمنع تعديلاً
+  /// بالخطأ. وتاريخُ التعيين **خارج القفل دائماً** — فهو تاريخ بدء العمل هنا لا هناك.
+  bool _customTerms = false;
+
+  /// هل حقول شروط العمل قابلة للتحرير؟ تُقفل **فقط** في وضع الإسناد وقد جاء قالبٌ ولم
+  /// يُطلب تغييره — فيما عدا ذلك تبقى كما كانت.
+  bool get _fieldsEditable => !_isLink || _template == null || _customTerms;
+
   @override
   void initState() {
     super.initState();
     if (_isEdit) _load();
+    if (_isLink) _loadTemplate();
+  }
+
+  /// يجلب شروط عمله من الشركة الأخرى ويعبّئ بها الحقول.
+  Future<void> _loadTemplate() async {
+    try {
+      final t = await ref.read(apiClientProvider).employmentTemplate(widget.link!.employeeId);
+      if (t == null || !mounted) return;
+      setState(() {
+        _template = t;
+        _position.text = t.position;
+        _positionEn.text = t.positionEn ?? '';
+        _currency = t.salaryCurrency;
+        _baseSalary.text = t.baseSalary.toStringAsFixed(0);
+      });
+    } catch (_) {
+      // القالب مساعِدٌ لا حاسم: فشلُ جلبه يترك الحقول فارغة ويكملها المستخدم بيده.
+    }
   }
 
   @override
@@ -326,13 +357,29 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     subtitle: 'الراتب والصفة يخصّان الشركة الفعّالة وحدها — '
                         'للموظف في شركة أخرى شروطُ عملٍ مستقلّة هناك.',
                     children: [
+                      // ── قالب الشركة الأخرى: معبّأ ومقفول حتى يُطلب تغييره (ADR-028) ──
+                      if (_isLink && _template != null) ...[
+                        _TemplateNotice(
+                          sourceCompany: _template!.sourceCompanyName,
+                          custom: _customTerms,
+                          onChanged: (v) => setState(() => _customTerms = v),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       _Field(
                         controller: _position,
                         label: 'الصفة بالعربية *',
+                        enabled: _fieldsEditable,
                         validator: (v) =>
                             (v == null || v.trim().isEmpty) ? 'الصفة مطلوبة' : null,
                       ),
-                      _Field(controller: _positionEn, label: 'الصفة بالإنجليزية'),
+                      _Field(
+                          controller: _positionEn,
+                          label: 'الصفة بالإنجليزية',
+                          enabled: _fieldsEditable),
+                      // ⚠️ **تاريخ التعيين خارج القفل دائماً** (قرار المالك): هو تاريخ بدء
+                      //    العمل في **هذه** الشركة لا المنقول عن الأخرى، ويؤثّر في مكافأة
+                      //    نهاية الخدمة وفي الشهر الجزئي الأول.
                       _DateField(
                         label: 'تاريخ التعيين *',
                         value: _hireDate,
@@ -342,11 +389,14 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                         label: 'عملة الراتب',
                         value: _currency,
                         items: const {'IQD': 'دينار عراقي', 'USD': 'دولار أمريكي'},
-                        onChanged: (v) => setState(() => _currency = v!),
+                        onChanged: _fieldsEditable
+                            ? (v) => setState(() => _currency = v!)
+                            : null,
                       ),
                       _Field(
                         controller: _baseSalary,
                         label: 'الراتب الأساسي *',
+                        enabled: _fieldsEditable,
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
                         validator: (v) {
@@ -470,6 +520,68 @@ class _LinkBanner extends StatelessWidget {
                       color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.75)),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// بطاقة «شروطه منقولة من شركةٍ أخرى» + مفتاح فتح القفل (ADR-028).
+class _TemplateNotice extends StatelessWidget {
+  final String sourceCompany;
+  final bool custom;
+  final ValueChanged<bool> onChanged;
+  const _TemplateNotice({
+    required this.sourceCompany,
+    required this.custom,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = isDark ? AppColors.goldBrightDark : AppColors.navyDeep;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.content_copy_rounded, size: 18, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                custom
+                    ? 'تكتب شروطاً مستقلّة في هذه الشركة — لا تُغيّر شيئاً في «$sourceCompany».'
+                    : 'الصفة والعملة والراتب منقولة من «$sourceCompany».',
+                style: TextStyle(fontSize: 12.5, height: 1.6, color: color),
+              ),
+            ),
+          ]),
+          // `Material` شفّافة: `SwitchListTile` يرسم خلفيته على أقرب `Material` فوقه،
+          // وحاوية ذات خلفية تحجبه (الدرس المسجَّل في `hr_render_test`).
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: custom,
+              onChanged: onChanged,
+              title: const Text('شروط مختلفة في هذه الشركة',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              subtitle: Text('افتحه لتحديد صفةٍ أو راتبٍ مختلف',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
             ),
           ),
         ],
@@ -654,6 +766,12 @@ class _Field extends StatelessWidget {
   final String? Function(String?)? validator;
   final VoidCallback? onEditingDone;
 
+  /// حقلٌ مقروءٌ لا محرَّر — يُستعمل لقفل شروط العمل المنقولة عن شركةٍ أخرى (ADR-028).
+  ///
+  /// ⚠️ **`enabled` لا `readOnly`**: الأول يُبهت الحقل فيُرى مقفولاً بلا شرح، والثاني يبدو
+  /// محرَّراً ثم لا يستجيب — وهو أسوأ ما يُقدَّم لمستخدم.
+  final bool enabled;
+
   const _Field({
     required this.controller,
     required this.label,
@@ -663,6 +781,7 @@ class _Field extends StatelessWidget {
     this.inputFormatters,
     this.validator,
     this.onEditingDone,
+    this.enabled = true,
   });
 
   @override
@@ -670,6 +789,7 @@ class _Field extends StatelessWidget {
         padding: const EdgeInsets.only(top: 14),
         child: TextFormField(
           controller: controller,
+          enabled: enabled,
           maxLines: maxLines,
           keyboardType: keyboardType,
           inputFormatters: inputFormatters,
@@ -691,7 +811,8 @@ class _Dropdown<T> extends StatelessWidget {
   final String label;
   final T value;
   final Map<T, String> items;
-  final ValueChanged<T?> onChanged;
+  /// `null` تُعطّل القائمة — نظير `enabled: false` في [_Field] (سلوك Flutter المعتاد).
+  final ValueChanged<T?>? onChanged;
   const _Dropdown(
       {required this.label, required this.value, required this.items, required this.onChanged});
 

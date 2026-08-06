@@ -111,14 +111,19 @@ public sealed class HrController(
 
         int? pendingLeaves = seesEmployees ? await leaves.PendingCountAsync(ct) : null;
 
+        // 🔴 **بطاقتا لوحة التحكم تعرضان ما دفعته الشركة، لا ما ظهر في الكشوف** (ADR-028).
+        //    كانتا تجمعان كل السطور — فانتفخت «رواتب هذه السنة» في قاعدة المالك بمبالغ
+        //    صرفتها شركةٌ أخرى، وهي أوّل رقمٍ تقع عليه العين عند فتح النظام.
         decimal? thisMonth = seesPayroll
             ? await db.PayrollEntries
+                .Where(PayrollPayable.Predicate)
                 .Where(e => e.Period!.Year == now.Year && e.Period.Month == now.Month)
                 .SumAsync(e => (decimal?)e.NetSalaryIqd, ct) ?? 0m
             : null;
 
         decimal? thisYear = seesPayroll
             ? await db.PayrollEntries
+                .Where(PayrollPayable.Predicate)
                 .Where(e => e.Period!.Year == now.Year)
                 .SumAsync(e => (decimal?)e.NetSalaryIqd, ct) ?? 0m
             : null;

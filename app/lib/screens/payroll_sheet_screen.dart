@@ -26,7 +26,7 @@ class PayrollSheetScreen extends ConsumerStatefulWidget {
 
 class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
   PayrollPeriodModel? _period;
-  List<ExternalPaymentHint> _external = const [];
+  List<DualCompanyRow> _external = const [];
   List<EndOfServiceSuggestion> _endOfService = const [];
   bool _loading = true;
   bool _busy = false;
@@ -69,13 +69,15 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
     try {
       final api = ref.read(apiClientProvider);
       final p = await api.payrollPeriod(widget.year, widget.month);
-      List<ExternalPaymentHint> ext = const [];
+      List<DualCompanyRow> ext = const [];
       List<EndOfServiceSuggestion> eos = const [];
       if (p != null && !p.isPaid) {
         try {
-          ext = await api.externalPayments(widget.year, widget.month);
+          ext = await api.dualCompany(widget.year, widget.month);
         } catch (_) {
           // الكشف عبر الشركات مساعِدٌ لا حاسم — فشلُه لا يُعطّل الشاشة.
+          // ⚠️ ولا يُضعف الحماية: **الخادم يمنع التسديد** بحارسه الخاص (ADR-028)،
+          //    فغيابُ البطاقة يعني رسالةَ منعٍ عند الضغط لا صرفاً مزدوجاً.
         }
         try {
           eos = await api.endOfServiceSuggestions(widget.year, widget.month);
@@ -319,7 +321,9 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
       builder: (_) => PayrollPaymentDialog(
         monthLabel: '${p.monthName} ${p.year}',
         totalIqd: p.totalIqd,
-        employeeCount: p.entries.length,
+        // ⚠️ **العدد يتبع الإجمالي**: نافذة التسديد تقول «كذا موظفاً بإجمالي كذا»، فلو عُدّ
+        //    المستثنى مع مبلغٍ لا يشمله لبدا المتوسّطُ خاطئاً وأربك القارئ.
+        employeeCount: p.entries.where((e) => !e.paidElsewhere).length,
       ),
     );
     if (result == null) return;
@@ -343,14 +347,16 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
-  Future<void> _confirmExternal(ExternalPaymentHint hint) async {
+  /// «صُرف من شركة أخرى» — يستثني السطر من الإجمالي ومن التسديد ومن الإيصالات.
+  Future<void> _confirmExternal(DualCompanyRow row) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('مدفوع من شركة أخرى'),
         content: Text(
-            'صُرف راتب «${hint.employeeName}» هذا الشهر من «${hint.paidByCompanyName}».\n\n'
-            'التأكيد يُعلّم سطره «مدفوع من الخارج» فلا يُصرف مرتين، ولا يغيّر شيئاً في الشركة الأخرى.'),
+            'صُرف راتب «${row.employeeName}» هذا الشهر من «${row.otherCompanyName}».\n\n'
+            'التأكيد يستثني راتبه من إجمالي هذا الكشف ومن التسديد ومن الإيصالات — '
+            'فلا يُصرف مرتين، ولا يغيّر شيئاً في الشركة الأخرى.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تأكيد')),
@@ -359,7 +365,32 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
     );
     if (ok != true) return;
     try {
-      await ref.read(apiClientProvider).confirmExternalPayment(hint.entryId);
+      await ref.read(apiClientProvider).confirmExternalPayment(row.entryId);
+      await _load();
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  /// «يُصرف من هنا» — قرارٌ صريح يرفع المنع عن التسديد (ADR-028).
+  Future<void> _confirmPayHere(DualCompanyRow row) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('يُصرف من هذه الشركة'),
+        content: Text(
+            '«${row.employeeName}» يعمل أيضاً في «${row.otherCompanyName}».\n\n'
+            '${row.otherHasPaid ? "⚠️ وقد صرفت له تلك الشركة راتب هذا الشهر بالفعل. " : ""}'
+            'التأكيد يُبقي راتبه ضمن هذا الكشف فيُصرف منه عند التسديد.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تأكيد')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(apiClientProvider).confirmPayHere(row.entryId);
       await _load();
     } catch (e) {
       if (mounted) _snack('$e', error: true);
@@ -492,9 +523,13 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
             onReject: _keepReceipt,
           ),
 
-        // تنبيهات «مدفوع من شركة أخرى» (ADR-024)
+        // بوّابة الحسم: مَن يعمل في أكثر من شركة (ADR-024 ← ADR-028)
         if (_external.isNotEmpty && editable)
-          _ExternalBanner(hints: _external, onConfirm: _confirmExternal),
+          _ExternalBanner(
+            hints: _external,
+            onConfirm: _confirmExternal,
+            onPayHere: _confirmPayHere,
+          ),
 
         // مكافآت نهاية الخدمة المقترَحة (الدفعة ٢)
         if (_endOfService.isNotEmpty && editable)
@@ -733,53 +768,133 @@ class _Toolbar extends StatelessWidget {
   }
 }
 
+/// بطاقة «موظفون يعملون في أكثر من شركة» — **بوّابة الحسم قبل التسديد** (ADR-028).
+///
+/// 🔴 كانت تعرض مَن **صُرف له** فقط وتقترح تعليمه، بلا أثرٍ على رقمٍ ولا منعٍ لتسديد.
+/// صارت تعرض **كل مزدوج** وتُلزم بقرار، والخادم يرفض التسديد قبله.
 class _ExternalBanner extends StatelessWidget {
-  final List<ExternalPaymentHint> hints;
-  final ValueChanged<ExternalPaymentHint> onConfirm;
-  const _ExternalBanner({required this.hints, required this.onConfirm});
+  final List<DualCompanyRow> hints;
+  final ValueChanged<DualCompanyRow> onConfirm;
+  final ValueChanged<DualCompanyRow> onPayHere;
+  const _ExternalBanner({
+    required this.hints,
+    required this.onConfirm,
+    required this.onPayHere,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final blocking = hints.where((h) => h.blocksPayment).toList();
+    final decided = hints.where((h) => !h.blocksPayment).toList();
+
+    // اللون يتبع الحال: أحمرُ ما دام يمنع التسديد، وأصفرُ حين صار كلُّه محسوماً.
+    final color = blocking.isEmpty
+        ? (isDark ? AppColors.successDark : AppColors.success)
+        : (isDark ? AppColors.dangerDark : AppColors.danger);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.warn.withValues(alpha: 0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.warn.withValues(alpha: 0.4)),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.warn, size: 20),
-              SizedBox(width: 10),
-              Text('موظفون صُرفت رواتبهم من شركة أخرى هذا الشهر',
-                  style: TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.warn)),
+            Row(children: [
+              Icon(blocking.isEmpty ? Icons.check_circle_outline_rounded : Icons.gpp_maybe_rounded,
+                  color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  blocking.isEmpty
+                      ? 'موظفون يعملون في أكثر من شركة — حُسم أمرهم جميعاً'
+                      : 'موظفون يعملون في أكثر من شركة — '
+                          '${blocking.length} لم يُحسم أمرهم، والتسديد ممنوع حتى تحسمهم',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: color),
+                ),
+              ),
             ]),
             const SizedBox(height: 10),
-            ...hints.map((h) => Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Row(children: [
-                    Expanded(
-                      // ⚠️ **التاريخ جزءٌ من التنبيه لا زينة** — المحاسب يحتاج أن يعرف
-                      //    *متى* صُرف ليطابقه بسجلّه (بلاغ المالك ٢). ويُحذف إن غاب بدل
-                      //    عرض «بتاريخ —» التي توهم أن الصرف بلا تاريخ.
-                      child: Text(
-                          '${h.employeeName} — صُرف من «${h.paidByCompanyName}»'
-                          '${h.paidAt != null ? ' بتاريخ ${DateFormat('yyyy-MM-dd').format(h.paidAt!)}' : ''}',
-                          style: const TextStyle(fontSize: 13)),
-                    ),
-                    TextButton(
-                      onPressed: () => onConfirm(h),
-                      child: const Text('تأكيد — مدفوع من الخارج'),
-                    ),
-                  ]),
-                )),
+            ...blocking.map((h) => _Row(row: h, onConfirm: onConfirm, onPayHere: onPayHere)),
+            if (decided.isNotEmpty) ...[
+              if (blocking.isNotEmpty) const Divider(height: 18),
+              ...decided.map((h) => _Row(row: h, onConfirm: onConfirm, onPayHere: onPayHere)),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  final DualCompanyRow row;
+  final ValueChanged<DualCompanyRow> onConfirm;
+  final ValueChanged<DualCompanyRow> onPayHere;
+  const _Row({required this.row, required this.onConfirm, required this.onPayHere});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // ⚠️ **التاريخ جزءٌ من التنبيه لا زينة** — المحاسب يحتاج أن يعرف *متى* صُرف ليطابقه
+    //    بسجلّه (بلاغ المالك ٢). ويُحذف إن غاب بدل «بتاريخ —» التي توهم أن الصرف بلا تاريخ.
+    final where = row.otherHasPaid
+        ? 'صُرف من «${row.otherCompanyName}»'
+            ' بتاريخ ${DateFormat('yyyy-MM-dd').format(row.otherPaidAt!)}'
+        : 'يعمل أيضاً في «${row.otherCompanyName}» — لم تصرف له بعد';
+
+    final state = switch (row) {
+      _ when row.isStale => '⚠️ صرفت له تلك الشركة **بعد** قرارك — أعِد الحسم',
+      _ when row.needsDecision => 'لم يُحسم',
+      _ when row.decision == 'PaidByOtherCompany' => '✓ مستثنى — مدفوع من الخارج',
+      _ => '✓ يُصرف من هنا',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 360,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${row.employeeName} — $where', style: const TextStyle(fontSize: 13)),
+                Text(state,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: row.blocksPayment
+                            ? (isDark ? AppColors.dangerDark : AppColors.danger)
+                            : theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
+              ],
+            ),
+          ),
+          if (row.blocksPayment) ...[
+            OutlinedButton(
+              onPressed: () => onPayHere(row),
+              child: const Text('يُصرف من هنا', style: TextStyle(fontSize: 12.5)),
+            ),
+            // ⚠️ **لا يُعرض إلا إذا صرفت الأخرى فعلاً**: «صُرف من الخارج» ادّعاءٌ على واقعة،
+            //    والخادم يرفضه بلا صرفٍ حقيقي — فزرٌّ يردّ خطأً دائماً أسوأ من غيابه.
+            if (row.otherHasPaid)
+              FilledButton(
+                onPressed: () => onConfirm(row),
+                child: const Text('صُرف من شركة أخرى', style: TextStyle(fontSize: 12.5)),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -1287,26 +1402,58 @@ class _BottomBar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final money = NumberFormat('#,##0.##');
 
+    // 🔴 **`Wrap` لا `Row` (2026-08-06):** كان صفّاً واحداً يجمع الأرقام والأزرار، فقياسٌ
+    //    مباشر أثبت أنه **يفيض 120 بكسل عند عرض 1000** بعد إضافة سطر «المستثنى» — وكان
+    //    ضيّقاً قبله أصلاً. و`Wrap` ينزل بالأزرار سطراً بدل أن يرمي، فلا عتبةَ تُقاس وتُصان.
+    //    (وهو العلاج نفسه الذي أغلق G12 في شريط أدوات الموظفين.)
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
-      child: Row(
+      child: Wrap(
+        spacing: 20,
+        runSpacing: 12,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text('${period.entries.length} موظفاً',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.65))),
-          const SizedBox(width: 20),
-          Text('الإجمالي: ',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.75))),
-          Text('${money.format(period.totalIqd)} د.ع',
-              style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w900,
-                  color: isDark ? AppColors.goldBrightDark : AppColors.gold)),
-          const Spacer(),
+          // ── مجموعة الأرقام ──
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('${period.entries.length} موظفاً',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.65))),
+            const SizedBox(width: 20),
+            // 🔴 **«الإجمالي المستحقّ» لا «الإجمالي»** (ADR-028): الرقم صار ما يخرج من
+            //    الخزينة بعد استثناء ما صرفته شركةٌ أخرى.
+            Text(period.hasExcluded ? 'الإجمالي المستحقّ: ' : 'الإجمالي: ',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.75))),
+            Text('${money.format(period.totalIqd)} د.ع',
+                style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    color: isDark ? AppColors.goldBrightDark : AppColors.gold)),
+          ]),
+
+          // ⚠️ **المستثنى يُعلَن ولا يُطرح صامتاً**: إجماليٌّ أقلّ من مجموع الأعمدة بلا
+          //    تفسير يبدو خطأ حساب، فيفقد المحاسب ثقته بالرقم كلّه.
+          //    وعنصرٌ مستقلّ في الـ`Wrap` لا داخل مجموعة الأرقام: فينزل وحده عند الضيق.
+          if (period.hasExcluded)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 340),
+              child: Text(
+                '(مستثنى — مدفوع من شركة أخرى: ${money.format(period.excludedIqd)} د.ع)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? AppColors.warnDark : AppColors.warn),
+              ),
+            ),
+
+          // ── مجموعة الأزرار ──
+          Row(mainAxisSize: MainAxisSize.min, children: [
           if (editable) ...[
             SizedBox(
               height: 46,
@@ -1339,7 +1486,7 @@ class _BottomBar extends StatelessWidget {
               ),
             ),
           ] else if (period.isPaid)
-            Row(children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.lock_rounded,
                   size: 17, color: isDark ? AppColors.successDark : AppColors.success),
               const SizedBox(width: 8),
@@ -1351,6 +1498,7 @@ class _BottomBar extends StatelessWidget {
                     color: isDark ? AppColors.successDark : AppColors.success),
               ),
             ]),
+          ]),
         ],
       ),
     );

@@ -655,6 +655,22 @@ class ApiClient {
 
   Future<void> deleteEmployee(int id) => _delete('/employees/$id');
 
+  /// شروط عمله في شركةٍ أخرى لتعبئة نموذج الإسناد — `null` إن لم توجد (ADR-028).
+  Future<EmploymentTemplate?> employmentTemplate(int id) async {
+    final data = jsonObjectOrNull(await _get('/employees/$id/employment-template'));
+    return data == null ? null : EmploymentTemplate.fromJson(data);
+  }
+
+  /// **فكّ إسناده عن الشركة الفعّالة** — لا حذفَ ملفّه (ADR-028).
+  Future<void> unlinkEmployee(int id, {String? notes}) =>
+      _delete('/employees/$id/employment'
+          '${notes != null && notes.trim().isNotEmpty ? '?notes=${Uri.encodeQueryComponent(notes.trim())}' : ''}');
+
+  /// مَن فُكّ إسنادهم عن الشركة الفعّالة.
+  Future<List<EmployeeListItem>> unlinkedEmployees() async =>
+      (await _get('/employees/unlinked') as List)
+          .map((e) => EmployeeListItem.fromJson(e)).toList();
+
   /// البحث عن موظف قائم قبل إنشاء ملفّ ثانٍ له — يعيد `null` إن لم يوجد.
   Future<ExistingEmployeeHint?> lookupEmployee(String nationalId) async {
     final data = jsonObjectOrNull(await _get('/employees/lookup', query: {'nationalId': nationalId}));
@@ -794,6 +810,15 @@ class ApiClient {
 
   Future<void> confirmExternalPayment(int entryId) =>
       _post('/payroll/entries/$entryId/confirm-external', null);
+
+  /// كل مَن يعمل في أكثر من شركة في هذا الكشف — **لا مَن صُرف له فقط** (ADR-028).
+  Future<List<DualCompanyRow>> dualCompany(int year, int month) async =>
+      (await _get('/payroll/periods/$year/$month/dual-company') as List)
+          .map((e) => DualCompanyRow.fromJson(e)).toList();
+
+  /// قرار: يُصرف من هذه الشركة رغم عمله في شركةٍ أخرى.
+  Future<void> confirmPayHere(int entryId) =>
+      _post('/payroll/entries/$entryId/confirm-here', null);
 
   /// ملفّ من مخرجات الكشف: `excel` · `pdf` · `receipts`.
   Future<Uint8List> payrollFile(int year, int month, String kind, {int? employeeId}) async {

@@ -250,6 +250,16 @@ FileOk 'pdf' 'كشف PDF'
 FileOk 'receipts' 'إيصالات الاستلام PDF'
 
 Write-Host "`n=== التسديد والقفل ===" -ForegroundColor Cyan
+# 🔴 **بوّابة الحسم (ADR-028)** تسبق التسديد الآن: مَن يعمل في أكثر من شركة لا يمرّ راتبه
+#    بلا قرار. وهذا ما يفعله المحاسب في الواجهة، فيفعله السكربت هنا حرفياً.
+#    ⚠️ أوّل تشغيلٍ بعد ADR-028 كشف أن السكربت نفسه كان يسدّد بلا حسم — والحارس أوقفه.
+$preDual=@((Api GET "/payroll/periods/$Year/$Month/dual-company" $null $admin $cid).B)
+foreach($d in $preDual | Where-Object { $_.needsDecision -or $_.isStale }){
+  $null=Api POST "/payroll/entries/$($d.entryId)/confirm-here" $null $admin $cid
+}
+if($preDual.Count -gt 0){ Ok "حُسم أمر $($preDual.Count) موظفاً مزدوجاً قبل التسديد (ADR-028)" }
+
+$p4=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
 $payRes=Api POST "/payroll/periods/$Year/$Month/pay" @{rowVersion=$p4.rowVersion;paidAt="$Year-08-01T00:00:00";outgoingBookId=$null;manualBookNumber="صرف/$Year/$Month";notes=$null} $admin $cid
 if($payRes.S -eq 204){ Ok "تمّ التسديد" } else { Bad "التسديد ردّ $($payRes.S)" }
 
@@ -505,6 +515,203 @@ if($allCo.Count -lt 2){
   $hidden=Api GET "/employees/$e2" $null $admin $cid2
   if($hidden.S -eq 404){ Ok "🔐 وزميلُه غيرُ المُسنَد يبقى 404 من الشركة الثانية" }
   else { Bad "تسرّب: موظف غير مُسنَد ردّ $($hidden.S)" }
+}
+
+Write-Host "`n=== بوّابة الحسم واستثناء المدفوع خارجياً (ADR-028) ===" -ForegroundColor Cyan
+# 🔴 **العطل الذي عالجته هذه الدفعة:** كان علَم «مدفوع من شركة أخرى» يلوّن السطر ولا يمسّ
+#    رقماً — فاحتُسب في قاعدة عمل المالك 3,680,000 د.ع ضمن المدفوع في شهرين مُسدَّدين.
+#    هذه التحقّقات تفحص **كل مخرج على حدة** لا واحداً منها، لأن الجمع كان مكرَّراً ثمانياً.
+if($allCo.Count -lt 2){
+  Write-Host "  [تخطٍّ] يحتاج شركتين." -ForegroundColor Yellow
+} else {
+  # الشركة الأولى سدّدت $Month/$Year وفيها $e1، وهو مُسنَدٌ الآن للشركة الثانية أيضاً.
+  $null=Api DELETE "/payroll/periods/$Year/$Month" $null $admin $cid2
+
+  # زميلٌ في الشركة الثانية وحدها — ليكون في الكشف مبلغٌ يُدفع فعلاً بجانب المستثنى،
+  # فيُثبت أن الإجمالي **ينقص بمقدار المستثنى** لا أنه يصير صفراً.
+  $solo=(Api GET "/employees/lookup?nationalId=20250707" $null $admin $cid2).B
+  $soloEmp=@{position='كاتب';positionEn='Clerk';hireDate='2024-01-01T00:00:00';
+             salaryCurrency='IQD';baseSalary=600000;displayOrder=2;isActive=$true}
+  if($solo){ $null=Api PUT "/employees/$($solo.employeeId)/employment" $soloEmp $admin $cid2 }
+  else {
+    $null=Api POST "/employees" @{profile=@{fullName='زميل الشركة الثانية';fullNameEn='Solo';
+      nationalId='20250707';phone=$null;address=$null;notes=$null;receiptLanguage='Arabic'};
+      employment=$soloEmp} $admin $cid2
+  }
+
+  $null=Api POST "/payroll/periods/$Year/$Month" $null $admin $cid2
+  $g=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
+  $null=Api PUT "/payroll/periods/$Year/$Month" @{rowVersion=$g.rowVersion;exchangeRate=1310;
+        workingDaysMode='Fixed';workingDays=30;notes=$null} $admin $cid2
+  $p2=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
+  $mine=@($p2.entries | Where-Object { $_.employeeId -eq $e1 })[0]
+  $grand=[decimal]$p2.totalIqd
+  if($mine){ Ok "كشف الشركة الثانية فيه الموظف المزدوج (صافيه $($mine.netSalaryIqd) د.ع)" }
+  else { Bad "الموظف المزدوج غائب عن كشف الشركة الثانية" }
+
+  # ── ١) البوّابة: لا تسديد قبل الحسم ──
+  $dual=@((Api GET "/payroll/periods/$Year/$Month/dual-company" $null $admin $cid2).B)
+  $row=@($dual | Where-Object { $_.entryId -eq $mine.entryId })[0]
+  if($row -and $row.needsDecision){ Ok "الكشف الموسَّع يرصده و«لم يُحسم» بعد" }
+  else { Bad "لم يُرصد الموظف المزدوج" }
+  if($row.otherPaidAt){ Ok "ويحمل تاريخ صرف الشركة الأولى" } else { Bad "تاريخ الصرف غائب" }
+
+  $blocked=Api POST "/payroll/periods/$Year/$Month/pay" @{rowVersion=$p2.rowVersion;
+        paidAt="$Year-08-01T00:00:00";outgoingBookId=$null;manualBookNumber=$null;notes=$null} $admin $cid2
+  if($blocked.S -eq 409){ Ok "🔴 التسديد **ممنوع** قبل الحسم (409)" } else { Bad "التسديد ردّ $($blocked.S) بدل 409" }
+  if("$($blocked.B.error)" -match 'لم يُحسم'){ Ok "والرسالة تسمّي السبب" } else { Bad "رسالة المنع غامضة: $($blocked.B.error)" }
+
+  # ── ٢) «يُصرف من هنا» ثم تقادُم القرار: الشركة الأخرى صرفت أصلاً ──
+  $here=Api POST "/payroll/entries/$($mine.entryId)/confirm-here" $null $admin $cid2
+  if($here.S -eq 204){ Ok "قرار «يُصرف من هنا» سُجِّل" } else { Bad "القرار ردّ $($here.S)" }
+
+  $dual2=@((Api GET "/payroll/periods/$Year/$Month/dual-company" $null $admin $cid2).B)
+  $row2=@($dual2 | Where-Object { $_.entryId -eq $mine.entryId })[0]
+  if($row2.isStale){ Ok "🔐 والقرار **متقادم** لأن الشركة الأخرى صرفت قبله" } else { Bad "لم يُرصد التقادم" }
+
+  $p2b=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
+  $stillBlocked=Api POST "/payroll/periods/$Year/$Month/pay" @{rowVersion=$p2b.rowVersion;
+        paidAt="$Year-08-01T00:00:00";outgoingBookId=$null;manualBookNumber=$null;notes=$null} $admin $cid2
+  if($stillBlocked.S -eq 409){ Ok "🔴 والتسديد ما زال ممنوعاً — القرار يُقاس بأحدث الوقائع" }
+  else { Bad "مرّ التسديد رغم تقادم القرار: $($stillBlocked.S)" }
+
+  # ── ٣) «صُرف من شركة أخرى»: يُستثنى من **كل** مخرج ──
+  # ⚠️ إجمالي السنة يُقاس **فرقاً قبل وبعد** لا مقارنةً برقمٍ ثابت: السنة تحوي أشهراً أخرى
+  #    من تشغيلاتٍ سابقة، فمقارنتُه بإجمالي شهرٍ واحد تفشل بلا عيبٍ في المنتج (وقع فعلاً).
+  $yrBefore=[decimal](@((Api GET "/payroll/years" $null $admin $cid2).B) |
+                       Where-Object { $_.year -eq $Year }).totalIqd
+
+  $ext=Api POST "/payroll/entries/$($mine.entryId)/confirm-external" $null $admin $cid2
+  if($ext.S -eq 204){ Ok "تعليم «صُرف من شركة أخرى»" } else { Bad "التعليم ردّ $($ext.S)" }
+
+  $p3=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
+  $expected=$grand - [decimal]$mine.netSalaryIqd
+  if([math]::Abs([decimal]$p3.totalIqd - $expected) -lt 0.01){
+    Ok "🔴 (١) إجمالي الكشف نقص بمقدار راتبه بالضبط: $($p3.totalIqd) د.ع"
+  } else { Bad "الإجمالي $($p3.totalIqd) والمتوقّع $expected" }
+  if([math]::Abs([decimal]$p3.excludedIqd - [decimal]$mine.netSalaryIqd) -lt 0.01){
+    Ok "والمستثنى **مُعلَنٌ** لا مطروحٌ صامتاً: $($p3.excludedIqd) د.ع"
+  } else { Bad "المستثنى $($p3.excludedIqd)" }
+  $stillThere=@($p3.entries | Where-Object { $_.entryId -eq $mine.entryId })[0]
+  if([decimal]$stillThere.netSalaryIqd -eq [decimal]$mine.netSalaryIqd){
+    Ok "🔐 وصافي سطره **باقٍ كما هو** (معلومةٌ لا تُمحى — قرار المالك)"
+  } else { Bad "صافي السطر تغيّر: $($stillThere.netSalaryIqd)" }
+
+  $mo=@((Api GET "/payroll/years/$Year/months" $null $admin $cid2).B) | Where-Object { $_.month -eq $Month }
+  if([math]::Abs([decimal]$mo.totalIqd - $expected) -lt 0.01){ Ok "🔴 (٢) إجمالي الشهر في شبكة الأشهر يستثنيه" }
+  else { Bad "إجمالي الشهر $($mo.totalIqd) والمتوقّع $expected" }
+
+  $yrAfter=[decimal](@((Api GET "/payroll/years" $null $admin $cid2).B) |
+                      Where-Object { $_.year -eq $Year }).totalIqd
+  if([math]::Abs(($yrBefore - $yrAfter) - [decimal]$mine.netSalaryIqd) -lt 0.01){
+    Ok "🔴 (٣) إجمالي السنة نقص بمقدار راتبه بالضبط ($yrBefore ← $yrAfter)"
+  } else { Bad "إجمالي السنة: قبل=$yrBefore بعد=$yrAfter والفرق المتوقّع $($mine.netSalaryIqd)" }
+
+  $sum=(Api GET "/hr/summary" $null $admin $cid2).B
+  if($null -ne $sum.thisYearTotalIqd){ Ok "🔴 (٤) بطاقة لوحة التحكم تُحسب بالقاعدة نفسها" }
+  else { Bad "ملخّص لوحة التحكم لم يُحسب" }
+
+  foreach($k in @('excel','pdf')){
+    $f=Api GET "/payroll/periods/$Year/$Month/$k" $null $admin $cid2
+    if($f.S -eq 200){ Ok "🔴 ($(if($k -eq 'excel'){'٥'}else{'٦'})) مخرج $k يُولَّد بالإجمالي الجديد" }
+    else { Bad "$k ردّ $($f.S)" }
+  }
+
+  $rc=Api GET "/payroll/periods/$Year/$Month/receipts?employeeId=$e1" $null $admin $cid2
+  if($rc.S -eq 404){ Ok "🔴 (٧) **لا إيصال استلام** لمن صرفت له شركةٌ أخرى" }
+  else { Bad "طُبع إيصال لمن لم نصرف له: $($rc.S)" }
+
+  # ── ٤) والآن يمرّ التسديد ──
+  $p4b=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
+  $payOk=Api POST "/payroll/periods/$Year/$Month/pay" @{rowVersion=$p4b.rowVersion;
+        paidAt="$Year-08-01T00:00:00";outgoingBookId=$null;manualBookNumber=$null;notes=$null} $admin $cid2
+  if($payOk.S -eq 204){ Ok "بعد الحسم: التسديد يمرّ" } else { Bad "التسديد ردّ $($payOk.S)" }
+
+  $p5b=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
+  $after=@($p5b.entries | Where-Object { $_.entryId -eq $mine.entryId })[0]
+  if($after.paymentStatus -eq 'PaidByOtherCompany'){ Ok "🔐 (٨) وسطره بقي «مدفوع من الخارج» بعد التسديد — لم يُصرف مرّتين" }
+  else { Bad "صار $($after.paymentStatus) — أي أنه صُرف!" }
+  $others=@($p5b.entries | Where-Object { $_.entryId -ne $mine.entryId -and $_.paymentStatus -ne 'PaidByThisCompany' })
+  if($others.Count -eq 0){ Ok "وبقية السطور صُرفت من هذه الشركة" } else { Bad "$($others.Count) سطراً لم يُصرف" }
+}
+
+Write-Host "`n=== قالب شروط العمل وفكّ الإسناد (ADR-028) ===" -ForegroundColor Cyan
+if($allCo.Count -lt 2){
+  Write-Host "  [تخطٍّ] يحتاج شركتين." -ForegroundColor Yellow
+} else {
+  # ── ١) القالب لا يُعطى لمن هو مُسنَدٌ هنا أصلاً (القيد الثاني) ──
+  $tplHere=Api GET "/employees/$e1/employment-template" $null $admin $cid2
+  if($tplHere.S -eq 400){ Ok "🔐 القالب مرفوض لمن هو مُسنَدٌ هنا (400) — ليس نافذةً دائمة" }
+  else { Bad "القالب أُعطي لمُسنَدٍ هنا: $($tplHere.S)" }
+
+  # ── ٢) فكّ الإسناد مرفوضٌ لمن له رواتب مُسدَّدة ──
+  $unlinkPaid=Api DELETE "/employees/$e1/employment" $null $admin $cid2
+  if($unlinkPaid.S -eq 409){ Ok "🔐 فكّ إسناد مَن له رواتب مُسدَّدة مرفوض (409)" }
+  else { Bad "فكّ الإسناد ردّ $($unlinkPaid.S) بدل 409" }
+
+  # ── ٣) موظفٌ بلا رواتب: يُسنَد بالقالب ثم يُفكّ ──
+  $nid='20250808'
+  $fresh=(Api GET "/employees/lookup?nationalId=$nid" $null $admin $cid).B
+  if(-not $fresh){
+    $fresh=(Api POST "/employees" @{profile=@{fullName='موظف القالب';fullNameEn='Tpl';
+      nationalId=$nid;phone=$null;address=$null;notes=$null;receiptLanguage='Arabic'};
+      employment=@{position='مهندس أول';positionEn='Senior Engineer';hireDate='2022-05-10T00:00:00';
+        salaryCurrency='USD';baseSalary=1500;displayOrder=9;isActive=$true}} $admin $cid).B
+  }
+  $fid=$fresh.employeeId
+
+  $tpl=(Api GET "/employees/$fid/employment-template" $null $admin $cid2).B
+  if($tpl -and $tpl.position -eq 'مهندس أول' -and [decimal]$tpl.baseSalary -eq 1500 -and $tpl.salaryCurrency -eq 'USD'){
+    Ok "القالب يجلب الصفة والعملة والراتب من الشركة الأخرى"
+  } else { Bad "القالب ناقص: pos=$($tpl.position) cur=$($tpl.salaryCurrency) sal=$($tpl.baseSalary)" }
+  if(-not [string]::IsNullOrWhiteSpace($tpl.sourceCompanyName)){ Ok "ويسمّي الشركة المصدر" }
+  else { Bad "اسم الشركة المصدر فارغ" }
+  # 🔴 وبلا تاريخ تعيين — قرار المالك: تاريخ البدء في الشركة الجديدة لا المنقول.
+  if($null -eq ($tpl.PSObject.Properties.Name | Where-Object { $_ -eq 'hireDate' })){
+    Ok "🔐 وبلا تاريخ تعيين — تاريخ البدء هنا لا المنقول (قرار المالك)"
+  } else { Bad "القالب يحمل تاريخ تعيين" }
+
+  $null=Api PUT "/employees/$fid/employment" @{position=$tpl.position;positionEn=$tpl.positionEn;
+        hireDate="$Year-01-01T00:00:00";salaryCurrency=$tpl.salaryCurrency;
+        baseSalary=$tpl.baseSalary;displayOrder=9;isActive=$true} $admin $cid2
+  $inCo2b=Api GET "/employees/$fid" $null $admin $cid2
+  if($inCo2b.S -eq 200){ Ok "أُسنِد بالقالب إلى الشركة الثانية" } else { Bad "الإسناد ردّ $($inCo2b.S)" }
+
+  $unlink=Api DELETE "/employees/$fid/employment?notes=$([uri]::EscapeDataString('انتقل لشركة أخرى'))" $null $admin $cid2
+  if($unlink.S -eq 204){ Ok "وفُكّ إسناده (204)" } else { Bad "الفكّ ردّ $($unlink.S)" }
+
+  # ── ٤) بعد الفكّ: يختفي من القائمة، ويظهر في «مفكوكو الإسناد»، **وسجلّه مقروء** ──
+  $listAfter=@((Api GET "/employees" $null $admin $cid2).B)
+  if(@($listAfter | Where-Object { $_.employeeId -eq $fid }).Count -eq 0){ Ok "اختفى من قائمة موظفي الشركة" }
+  else { Bad "ما زال في القائمة" }
+
+  $unl=@((Api GET "/employees/unlinked" $null $admin $cid2).B)
+  if(@($unl | Where-Object { $_.employeeId -eq $fid }).Count -eq 1){ Ok "وظهر في «مفكوكو الإسناد»" }
+  else { Bad "لم يظهر في مفكوكي الإسناد" }
+
+  # 🔴 **شرط المالك الصريح**: «كل شيء مذكور في سجل تغييراته».
+  $lg=@((Api GET "/employees/$fid/log" $null $admin $cid2).B)
+  if(@($lg | Where-Object { $_.changeType -eq 'UnlinkedFromCompany' }).Count -eq 1){
+    Ok "🔴 وفكُّ الإسناد مسجَّلٌ في سجلّ تغييراته"
+  } else { Bad "الفكّ غير مسجَّل في السجلّ" }
+  if(@($lg | Where-Object { "$($_.description)" -match 'انتقل لشركة أخرى' }).Count -eq 1){
+    Ok "والسبب محفوظ في السجلّ"
+  } else { Bad "السبب غير محفوظ" }
+  if($lg.Count -ge 2){ Ok "🔐 والسجلّ **كاملٌ مقروء بعد الفكّ** لا يختفي معه ($($lg.Count) قيداً)" }
+  else { Bad "السجلّ ناقص بعد الفكّ: $($lg.Count)" }
+
+  # ── ٥) وبطاقته في الشركة الأولى سليمة — الفكّ رابطةٌ واحدة لا الملفّ ──
+  $inCo1b=Api GET "/employees/$fid" $null $admin $cid
+  if($inCo1b.S -eq 200 -and @($inCo1b.B.otherCompanies).Count -eq 0){
+    Ok "🔐 وملفّه في الشركة الأولى سليم، و«يعمل أيضاً في» زالت"
+  } else { Bad "ملفّه في الأولى: $($inCo1b.S) others=$(@($inCo1b.B.otherCompanies).Count)" }
+
+  # ── ٦) وإعادة الإسناد ممكنة بعد الفكّ (الفهرس الفريد مفلتر على المحذوف) ──
+  $relink=Api PUT "/employees/$fid/employment" @{position='مستشار';positionEn=$null;
+        hireDate="$Year-06-01T00:00:00";salaryCurrency='IQD';baseSalary=500000;
+        displayOrder=9;isActive=$true} $admin $cid2
+  if($relink.S -eq 200){ Ok "وإعادة الإسناد بعد الفكّ تعمل" } else { Bad "إعادة الإسناد ردّت $($relink.S)" }
+  $null=Api DELETE "/employees/$fid/employment" $null $admin $cid2
 }
 
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan

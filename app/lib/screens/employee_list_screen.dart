@@ -36,8 +36,7 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   late Future<List<EmployeeListItem>> _future;
   final _search = TextEditingController();
 
-  /// `null` = الكل · `true` = على رأس العمل · `false` = منتهو الخدمة.
-  bool? _activeOnly = true;
+  _EmpFilter _filter = _EmpFilter.active;
 
   /// وضع «مَن ينتظر بتّ إجازته» — يحلّ محلّ الجدول العادي، ولا يُخفي بقية الشاشة.
   bool _pendingLeavesOnly = false;
@@ -58,10 +57,12 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   }
 
   void _reload() {
-    _future = ref.read(apiClientProvider).employees(
-          activeOnly: _activeOnly,
-          search: _search.text,
-        );
+    final api = ref.read(apiClientProvider);
+    // 🔴 **مفكوكو الإسناد لهم نقطةٌ أخرى** (ADR-028): إسنادُهم محذوفٌ ناعماً فيحجبه الفلتر
+    //    العام، ونقطتُهم تتجاوزه بشرط شركةٍ مكتوبٍ يدوياً.
+    _future = _filter == _EmpFilter.unlinked
+        ? api.unlinkedEmployees()
+        : api.employees(activeOnly: _filter.activeOnly, search: _search.text);
     setState(() {});
   }
 
@@ -83,6 +84,14 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
       _reload();
       invalidateHr(ref);
     }
+  }
+
+  /// سجلّ تغييرات موظفٍ فُكّ إسناده — **الوعد الذي قطعته نافذةُ الفكّ** (ADR-028).
+  Future<void> _openUnlinkedLog(EmployeeListItem e) async {
+    showDialog(
+      context: context,
+      builder: (_) => _UnlinkedLogDialog(employeeId: e.employeeId, name: e.fullName),
+    );
   }
 
   /// «إضافة موظف قائم» — بحثٌ بالهوية ثم إسنادٌ إلى الشركة الفعّالة (ADR-027).
@@ -176,9 +185,9 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                 );
 
                 final filterWidget = _StatusFilter(
-                  value: _activeOnly,
+                  value: _filter,
                   onChanged: (v) {
-                    _activeOnly = v;
+                    _filter = v ?? _EmpFilter.active;
                     _reload();
                   },
                 );
@@ -291,6 +300,15 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                     );
                   }
                   final items = snap.data ?? const <EmployeeListItem>[];
+                  if (items.isEmpty && _filter == _EmpFilter.unlinked) {
+                    return _Message(
+                      icon: Icons.link_off_rounded,
+                      title: 'لا أحد فُكّ إسناده',
+                      subtitle: 'مَن تفكّ إسناده عن هذه الشركة يظهر هنا، '
+                          'ويبقى سجلّ تغييراته مقروءاً.',
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4),
+                    );
+                  }
                   if (items.isEmpty) {
                     return _Message(
                       icon: Icons.groups_2_outlined,
@@ -322,7 +340,15 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                           : null,
                     );
                   }
-                  return _EmployeeTable(items: items, onTap: (e) => _openDetail(e.employeeId));
+                  // 🔴 **المفكوك يفتح سجلّه لا بطاقته**: بطاقته تردّ 404 بعد الفكّ (لم يعد
+                  //    مُسنَداً هنا)، والمطلوب أصلاً هو **سجلّ تغييراته** — وهو يبقى مقروءاً.
+                  return _EmployeeTable(
+                    items: items,
+                    unlinked: _filter == _EmpFilter.unlinked,
+                    onTap: (e) => _filter == _EmpFilter.unlinked
+                        ? _openUnlinkedLog(e)
+                        : _openDetail(e.employeeId),
+                  );
                 },
               ),
             ),
@@ -508,9 +534,24 @@ class _PendingLeavesListState extends ConsumerState<_PendingLeavesList> {
   }
 }
 
+/// مِرشَّح قائمة الموظفين — أربعُ حالات لا ثلاث بعد ADR-028.
+enum _EmpFilter {
+  active('على رأس العمل', true),
+  terminated('منتهو الخدمة', false),
+  all('الكل', null),
+
+  /// مَن فُكّ إسنادهم — **قائمةٌ من نقطةٍ أخرى** لأن إسنادهم محذوفٌ ناعماً.
+  /// وهي ما يجعل «كل شيء مذكور في سجل تغييراته» قابلاً للقراءة بعد الفكّ (شرط المالك).
+  unlinked('مفكوكو الإسناد', null);
+
+  const _EmpFilter(this.label, this.activeOnly);
+  final String label;
+  final bool? activeOnly;
+}
+
 class _StatusFilter extends StatelessWidget {
-  final bool? value;
-  final ValueChanged<bool?> onChanged;
+  final _EmpFilter value;
+  final ValueChanged<_EmpFilter?> onChanged;
   const _StatusFilter({required this.value, required this.onChanged});
 
   @override
@@ -525,15 +566,13 @@ class _StatusFilter extends StatelessWidget {
         border: Border.all(color: theme.dividerColor, width: 1.5),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<bool?>(
+        child: DropdownButton<_EmpFilter>(
           value: value,
           borderRadius: BorderRadius.circular(12),
           style: TextStyle(fontSize: 14, color: theme.textTheme.bodyMedium?.color),
-          items: const [
-            DropdownMenuItem(value: true, child: Text('على رأس العمل')),
-            DropdownMenuItem(value: false, child: Text('منتهو الخدمة')),
-            DropdownMenuItem(value: null, child: Text('الكل')),
-          ],
+          items: _EmpFilter.values
+              .map((f) => DropdownMenuItem(value: f, child: Text(f.label)))
+              .toList(),
           onChanged: onChanged,
         ),
       ),
@@ -541,10 +580,85 @@ class _StatusFilter extends StatelessWidget {
   }
 }
 
+/// سجلّ تغييرات موظفٍ فُكّ إسناده — يُقرأ ولا يُعدَّل (ADR-028).
+class _UnlinkedLogDialog extends ConsumerStatefulWidget {
+  final int employeeId;
+  final String name;
+  const _UnlinkedLogDialog({required this.employeeId, required this.name});
+
+  @override
+  ConsumerState<_UnlinkedLogDialog> createState() => _UnlinkedLogDialogState();
+}
+
+class _UnlinkedLogDialogState extends ConsumerState<_UnlinkedLogDialog> {
+  late Future<List<EmployeeLogItem>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(apiClientProvider).employeeLog(widget.employeeId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = DateFormat('yyyy-MM-dd HH:mm');
+
+    return AlertDialog(
+      title: Text('سجلّ تغييرات — ${widget.name}'),
+      content: SizedBox(
+        width: 560,
+        height: 380,
+        child: FutureBuilder<List<EmployeeLogItem>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snap.hasError) {
+              return Center(child: Text('${snap.error}',
+                  style: const TextStyle(color: AppColors.danger)));
+            }
+            final items = snap.data ?? const <EmployeeLogItem>[];
+            if (items.isEmpty) return const Center(child: Text('لا توجد تغييرات مسجّلة.'));
+
+            return ListView.separated(
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const Divider(height: 16),
+              itemBuilder: (context, i) {
+                final l = items[i];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l.description, style: const TextStyle(fontSize: 13.5)),
+                    const SizedBox(height: 2),
+                    Text(d.format(l.changedAt),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: theme.textTheme.bodyMedium?.color
+                                ?.withValues(alpha: 0.55))),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+      ],
+    );
+  }
+}
+
 class _EmployeeTable extends StatelessWidget {
   final List<EmployeeListItem> items;
   final ValueChanged<EmployeeListItem> onTap;
-  const _EmployeeTable({required this.items, required this.onTap});
+
+  /// قائمة مفكوكي الإسناد — عمود الحالة يقول «فُكّ إسناده» لا حالة عمل.
+  final bool unlinked;
+
+  const _EmployeeTable({required this.items, required this.onTap, this.unlinked = false});
 
   @override
   Widget build(BuildContext context) {
@@ -622,7 +736,11 @@ class _EmployeeTable extends StatelessWidget {
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                           ),
                         ),
-                        SizedBox(width: 120, child: _EmployeeStatus(item: e)),
+                        SizedBox(
+                            width: 120,
+                            child: unlinked
+                                ? const _UnlinkedPill()
+                                : _EmployeeStatus(item: e)),
                       ],
                     ),
                   ),
@@ -657,6 +775,33 @@ class _Avatar extends StatelessWidget {
               fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 15),
         ),
       );
+}
+
+/// شارة «فُكّ إسناده» — حالةٌ ثالثة لا حالةُ عملٍ في هذه الشركة.
+class _UnlinkedPill extends StatelessWidget {
+  const _UnlinkedPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      decoration: BoxDecoration(
+        color: (color ?? Colors.grey).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.link_off_rounded, size: 13, color: color),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text('فُكّ إسناده',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color, fontSize: 11.5, fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    );
+  }
 }
 
 class _EmployeeStatus extends StatelessWidget {

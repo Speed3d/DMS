@@ -63,6 +63,63 @@ void main() {
     expect(e.employment!.baseSalary, greaterThan(0));
   });
 
+  // ─────────── استثناء المدفوع خارجياً وبوّابة الحسم (ADR-028) ───────────
+  //
+  // 🔴 **العيّنتان من خادمٍ حيّ لكشفٍ فيه موظفةٌ صرفت لها شركةٌ أخرى.** والعطل الذي تحرسانه
+  //    كلّف قاعدة عمل المالك 3,680,000 د.ع محسوبةً ضمن المدفوع في شهرين مُسدَّدين.
+  test('الكشف يفصل «المستحقّ» عن «المستثنى» — والمجموع ليس واحداً', () {
+    final p = PayrollPeriodModel.fromJson(fixture('payroll_period_excluded'));
+
+    expect(p.totalIqd, 600000);
+    expect(p.excludedIqd, 750000);
+    expect(p.hasExcluded, isTrue);
+
+    // 🔴 **الفرق هو بيت القصيد**: لو ساوى الإجمالي مجموعَ السطور لعاد العيب.
+    final rawSum = p.entries.fold<double>(0, (a, e) => a + e.netSalaryIqd);
+    expect(rawSum, greaterThan(p.totalIqd));
+    expect(rawSum - p.totalIqd, p.excludedIqd);
+
+    // ⚠️ **وصافي السطر المستثنى باقٍ** — معلومةٌ لا تُمحى (قرار المالك 2026-08-06).
+    final excluded = p.entries.firstWhere((e) => e.paidElsewhere);
+    expect(excluded.netSalaryIqd, 750000);
+  });
+
+  test('وكشفٌ بلا استثناء: excludedIqd صفر لا مفقود', () {
+    final p = PayrollPeriodModel.fromJson(fixture('payroll_period'));
+    expect(p.excludedIqd, 0);
+    expect(p.hasExcluded, isFalse);
+  });
+
+  test('صفّ «يعمل في أكثر من شركة» يحمل قراره وحال الشركة الأخرى', () {
+    final rows = (fixture('dual_company') as List)
+        .map((e) => DualCompanyRow.fromJson(e))
+        .toList();
+
+    expect(rows, hasLength(1));
+    final r = rows.first;
+    expect(r.employeeName, isNotEmpty);
+    expect(r.otherCompanyName, isNotEmpty);
+    expect(r.otherHasPaid, isTrue, reason: 'الشركة الأخرى صرفت فعلاً في هذه العيّنة');
+    expect(r.decision, 'PaidByOtherCompany');
+    expect(r.needsDecision, isFalse);
+    expect(r.isStale, isFalse);
+    expect(r.blocksPayment, isFalse);
+  });
+
+  test('🔐 وحالتا المنع محسوبتان لا مقروءتين من الخادم وحده', () {
+    final base = (fixture('dual_company') as List).first as Map<String, dynamic>;
+
+    final pending = DualCompanyRow.fromJson({...base, 'needsDecision': true});
+    expect(pending.blocksPayment, isTrue, reason: 'لم يُحسم ⇒ يمنع');
+
+    final stale = DualCompanyRow.fromJson({...base, 'isStale': true});
+    expect(stale.blocksPayment, isTrue, reason: 'قرارٌ تقادم ⇒ يمنع');
+
+    // والشركة الأخرى لم تصرف ⇒ «صُرف من الخارج» غير مسموح، فيُخفى زرّه.
+    final notPaid = DualCompanyRow.fromJson({...base, 'otherPaidAt': null});
+    expect(notPaid.otherHasPaid, isFalse);
+  });
+
   // ─────────── «يعمل أيضاً في» (ADR-027) ───────────
   //
   // 🔴 **عيّنتان لا واحدة**: الأولى لموظفٍ في شركتين والثانية لمن في واحدة. عيّنةُ الحالة

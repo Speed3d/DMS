@@ -363,7 +363,12 @@ class PayrollPeriodModel {
   /// `byte[]` على الخادم. (بلاغ المالك 2026-08-04.)
   final String rowVersion;
 
+  /// 🔴 **ما تدفعه الشركة فعلاً** — بعد استثناء ما صرفته شركةٌ أخرى (ADR-028).
   final double totalIqd;
+
+  /// المستثنى لأن شركةً أخرى صرفته — **يُعرض بجانب الإجمالي ولا يُطرح صامتاً**.
+  final double excludedIqd;
+
   final List<PayrollEntryModel> entries;
 
   /// وقت آخر تعديلٍ **بعد التسديد** — `null` إن لم يُعدَّل قطّ (ADR-026).
@@ -385,7 +390,11 @@ class PayrollPeriodModel {
     this.outgoingBookId, this.manualBookNumber, this.notes,
     this.lastAmendedAt, this.amendmentCount = 0, this.canAmend = false,
     required this.rowVersion, required this.totalIqd, required this.entries,
+    this.excludedIqd = 0,
   });
+
+  /// هل استُثني شيء؟ (يُظهر سطر «مستثنى» بجانب الإجمالي)
+  bool get hasExcluded => excludedIqd > 0;
 
   bool get isPaid => status == 'Paid';
   bool get isCalendarMode => workingDaysMode == 'Calendar';
@@ -407,6 +416,7 @@ class PayrollPeriodModel {
         notes: j['notes'],
         rowVersion: j['rowVersion'] as String? ?? '',
         totalIqd: (j['totalIqd'] as num?)?.toDouble() ?? 0,
+        excludedIqd: (j['excludedIqd'] as num?)?.toDouble() ?? 0,
         entries: (j['entries'] as List? ?? [])
             .map((e) => PayrollEntryModel.fromJson(e)).toList(),
         lastAmendedAt: DateTime.tryParse(j['lastAmendedAt'] ?? ''),
@@ -460,6 +470,88 @@ class ExternalPaymentHint {
   factory ExternalPaymentHint.fromJson(Map<String, dynamic> j) => ExternalPaymentHint(
       j['entryId'], j['employeeName'] ?? '', j['paidByCompanyId'], j['paidByCompanyName'] ?? '',
       paidAt: DateTime.tryParse(j['paidAt'] ?? ''));
+}
+
+/// شروط عمل الموظف في شركةٍ أخرى — **قالبُ تعبئةٍ عند الإسناد** (ADR-028).
+///
+/// ⚠️ **بلا تاريخ تعيين عمداً** (قرار المالك 2026-08-06): تاريخ التعيين في الشركة الثانية هو
+/// تاريخ **بدء العمل فيها** لا المنقول عن الأولى.
+class EmploymentTemplate {
+  final String position;
+  final String? positionEn;
+  final String salaryCurrency;
+  final double baseSalary;
+
+  /// اسم الشركة التي جاءت منها هذه الشروط — يُعرض ليعرف المستخدم مصدر الأرقام.
+  final String sourceCompanyName;
+
+  EmploymentTemplate({
+    required this.position,
+    this.positionEn,
+    required this.salaryCurrency,
+    required this.baseSalary,
+    required this.sourceCompanyName,
+  });
+
+  factory EmploymentTemplate.fromJson(Map<String, dynamic> j) => EmploymentTemplate(
+        position: j['position'] ?? '',
+        positionEn: j['positionEn'],
+        salaryCurrency: j['salaryCurrency'] ?? 'IQD',
+        baseSalary: (j['baseSalary'] as num?)?.toDouble() ?? 0,
+        sourceCompanyName: j['sourceCompanyName'] ?? '',
+      );
+}
+
+/// موظفٌ في الكشف **يعمل في أكثر من شركة** — وحالُ قراره (ADR-028).
+///
+/// 🔴 **أوسع من [ExternalPaymentHint] عمداً:** تلك تكشف مَن **صُرف له** فعلاً، فتترك باباً
+/// مفتوحاً — لو لم تكن الشركة الأخرى قد سدّدت بعد فلا تنبيه، **فتدفع الشركتان معاً**.
+/// وهذه تُلزم بالحسم قبل التسديد أياً كانت حال الأخرى.
+class DualCompanyRow {
+  final int entryId;
+  final String employeeName;
+  final int otherCompanyId;
+  final String otherCompanyName;
+
+  /// تاريخ صرف الشركة الأخرى — `null` تعني **أنها لم تسدّد بعد**.
+  final DateTime? otherPaidAt;
+
+  /// حالة الدفع المخزَّنة: `Unpaid` تعني «لم يُحسم».
+  final String decision;
+
+  final bool needsDecision;
+
+  /// حُسم «يُصرف من هنا» ثم صرفت الأخرى بعده — قرارٌ تقادم فيجب إعادة حسمه.
+  final bool isStale;
+
+  DualCompanyRow({
+    required this.entryId,
+    required this.employeeName,
+    required this.otherCompanyId,
+    required this.otherCompanyName,
+    required this.otherPaidAt,
+    required this.decision,
+    required this.needsDecision,
+    required this.isStale,
+  });
+
+  /// هل صرفت الشركة الأخرى فعلاً؟ **يحكم أيّ القرارَين مسموح**: بلا صرفٍ هناك لا يجوز
+  /// تعليم «صُرف من الخارج» — فذلك ادّعاءٌ على واقعةٍ لم تقع.
+  bool get otherHasPaid => otherPaidAt != null;
+
+  /// يحتاج تدخّلاً قبل التسديد (لم يُحسم، أو حُسم وتقادم).
+  bool get blocksPayment => needsDecision || isStale;
+
+  factory DualCompanyRow.fromJson(Map<String, dynamic> j) => DualCompanyRow(
+        entryId: j['entryId'],
+        employeeName: j['employeeName'] ?? '',
+        otherCompanyId: j['otherCompanyId'] ?? 0,
+        otherCompanyName: j['otherCompanyName'] ?? '',
+        otherPaidAt: DateTime.tryParse(j['otherPaidAt'] ?? ''),
+        decision: j['decision'] ?? 'Unpaid',
+        needsDecision: j['needsDecision'] ?? false,
+        isStale: j['isStale'] ?? false,
+      );
 }
 
 /// إجازةٌ معلّقة مع صاحبها — تجيب «مَن ينتظر؟» بدل «كم ينتظر؟».

@@ -176,6 +176,29 @@ public sealed class PayrollController(
                 h.EntryId, h.EmployeeName, h.PaidByCompanyId, h.PaidByCompanyName,
                 h.PaidAt)).ToList();
 
+    /// <summary>
+    /// كل موظفي الكشف الذين يعملون في أكثر من شركة — **لا مَن صُرف لهم فقط** (ADR-028).
+    /// </summary>
+    /// <remarks>
+    /// أوسع من <c>external-payments</c> عمداً: تلك تكشف الصرف الواقع، وهذه تُلزم بالحسم
+    /// **قبل** أن يقع — فتسدّ باب «سبقتْني الشركة الأخرى ولم ينبّهني أحد».
+    /// </remarks>
+    [HttpGet("periods/{year:int}/{month:int}/dual-company")]
+    public async Task<ActionResult<List<DualCompanyResponse>>> DualCompany(
+        int year, int month, CancellationToken ct)
+        => (await payroll.DetectDualCompanyAsync(year, month, ct))
+            .Select(r => new DualCompanyResponse(
+                r.EntryId, r.EmployeeName, r.OtherCompanyId, r.OtherCompanyName,
+                r.OtherPaidAt, r.Decision, r.NeedsDecision, r.IsStale)).ToList();
+
+    /// <summary>قرار: **يُصرف من هذه الشركة** رغم عمله في شركةٍ أخرى (ADR-028).</summary>
+    [HttpPost("entries/{entryId:int}/confirm-here")]
+    public async Task<IActionResult> ConfirmHere(int entryId, CancellationToken ct)
+    {
+        await payroll.ConfirmPayHereAsync(entryId, ct);
+        return NoContent();
+    }
+
     [HttpPost("entries/{entryId:int}/confirm-external")]
     public async Task<IActionResult> ConfirmExternal(int entryId, CancellationToken ct)
     {
@@ -222,8 +245,19 @@ public sealed class PayrollController(
                 _ => ExcelRowStyle.Normal,
             })).ToList();
 
+        // 🔴 الإجمالي = **ما تدفعه الشركة** (ADR-028)، والمستثنى يُعلَن في سطرٍ خاصّ لا
+        //    يُطرح صامتاً — فلا يرى المحاسب رقماً أقلّ من مجموع الأعمدة بلا تفسير.
+        var excludedIqd = PayrollPayable.ExcludedIqd(period.Entries);
+        if (excludedIqd > 0)
+        {
+            rows.Add(new ExcelRow(
+                ["", "مستثنى — مدفوع من شركة أخرى", "", "", "", "", "", "", "", "",
+                 Num(excludedIqd), "", "لا يُصرف من هذه الشركة"],
+                ExcelRowStyle.Note));
+        }
         rows.Add(new ExcelRow(
-            ["", "الإجمالي", "", "", "", "", "", "", "", "", Num(period.Entries.Sum(e => e.NetSalaryIqd)), "", ""],
+            ["", "الإجمالي المستحقّ", "", "", "", "", "", "", "", "",
+             Num(PayrollPayable.TotalIqd(period.Entries)), "", ""],
             ExcelRowStyle.Total));
 
         var bytes = ExcelExporter.CreateStyled($"رواتب {month:D2}-{year}", headers, rows);
@@ -247,7 +281,8 @@ public sealed class PayrollController(
                 e.AbsenceDays.ToString(), Num(e.AbsenceDeduction),
                 Num(e.NetSalary), Num(e.NetSalaryIqd), PaymentLabel(e), e.Notes,
                 e.IsNewHire, e.IsTerminated)).ToList(),
-            Num(period.Entries.Sum(e => e.NetSalaryIqd)));
+            Num(PayrollPayable.TotalIqd(period.Entries)),
+            PayrollPayable.ExcludedIqd(period.Entries) is var ex && ex > 0 ? Num(ex) : null);
 
         return File(PayrollSheetPdf.Generate(model), MimeTypes.For(".pdf"));
     }
@@ -260,7 +295,10 @@ public sealed class PayrollController(
         var period = await RequirePeriodAsync(year, month, ct);
         var company = await CompanyNameAsync(ct);
 
-        var entries = period.Entries.OrderBy(e => e.DisplayOrder).ToList();
+        // 🔴 **لا إيصال لمن لم نصرف له** (ADR-028): الإيصال إقرارٌ موقَّع بالاستلام، وطبعُه
+        //    لمن صرفت له شركةٌ أخرى يُنتج مستنداً يشهد بما لم يقع — وهو أخطر من مجرّد رقمٍ
+        //    زائد في إجمالي.
+        var entries = PayrollPayable.Payable(period.Entries).OrderBy(e => e.DisplayOrder).ToList();
         var linkIds = entries.Select(e => e.EmployeeCompanyId).ToList();
 
         var people = await db.EmployeeCompanies.Include(x => x.Employee)
@@ -271,7 +309,9 @@ public sealed class PayrollController(
             entries = entries.Where(e =>
                 people.TryGetValue(e.EmployeeCompanyId, out var p) && p.EmployeeId == eid).ToList();
 
-        if (entries.Count == 0) throw new NotFoundException("لا توجد إيصالات لهذا الطلب.");
+        if (entries.Count == 0)
+            throw new NotFoundException(
+                "لا توجد إيصالات لهذا الطلب — وقد يكون الراتب مدفوعاً من شركة أخرى فلا إيصال له هنا.");
 
         var models = entries.Select(e =>
         {
@@ -345,8 +385,11 @@ public sealed class PayrollController(
             p.PeriodId, p.Year, p.Month, PayrollCalculator.ArabicMonth(p.Month), p.Status,
             p.ExchangeRate, p.WorkingDaysMode, p.WorkingDays,
             p.PaidAt, p.OutgoingBookId, p.ManualBookNumber, p.Notes,
-            p.RowVersion ?? [], entries.Sum(e => e.NetSalaryIqd), entries,
-            p.LastAmendedAt, p.AmendmentCount, current.CanAmendPaidPayroll);
+            // 🔴 `totalIqd` صار **ما تدفعه الشركة**، و`excludedIqd` ما صرفته شركةٌ أخرى
+            //    (ADR-028). كان الأول يجمع الكل فيُظهر للمحاسب مبلغاً يفوق ما سيخرج.
+            p.RowVersion ?? [], PayrollPayable.TotalIqd(p.Entries), entries,
+            p.LastAmendedAt, p.AmendmentCount, current.CanAmendPaidPayroll,
+            PayrollPayable.ExcludedIqd(p.Entries));
     }
 
     private async Task<string> CompanyNameAsync(CancellationToken ct)
