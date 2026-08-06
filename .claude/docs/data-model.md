@@ -19,6 +19,10 @@
 ### RefreshToken
 `RefreshTokenId, UserId, TokenHash (مجزّأ), ExpiresAt, CreatedAt, RevokedAt?`.
 
+> 🔗 **الموظف في أكثر من شركة (ADR-027):** لا كيان ولا عمود جديد — صفٌّ ثانٍ في
+> `EmployeeCompany` بشروط عملٍ مستقلّة. و«يعمل أيضاً في» في بطاقته **يُشتقّ** من هذه الصفوف
+> ولا يُخزَّن. **دفعةٌ بلا مهاجرة.**
+
 ### Employee / EmployeeCompany (الموظفون — ADR-023، migration `AddHrModule`)
 - `Employee`: `EmployeeId, FullName, FullNameEn?, NationalId?, Phone?, Address?, PhotoBlobKey?, Notes?, ReceiptLanguage(enum Arabic/English), CreatedByUserId?, CreatedAt, IsDeleted, DeletedByUserId?, DeletedAt?, Companies (تنقّل)` — **بلا `CompanyId`** ليعمل الشخص في شركتين بلا تكرار ملفّه.
   - 🔐 **العزل بفلترٍ عام عبر الإسناد** (نظير `User` تماماً): `!IsDeleted && (!filter || Companies.Any(c => c.CompanyId == active && !c.IsDeleted))`. **كيانٌ بلا `CompanyId` ليس كياناً بلا عزل** — بدون هذا السطر تُقرأ بياناتُ أي موظف في القاعدة.
