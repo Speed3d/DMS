@@ -261,6 +261,33 @@ public sealed class PayrollService(
         var existingIds = period.Entries.Where(e => !e.IsDeleted)
             .Select(e => e.EmployeeCompanyId).ToHashSet();
 
+        // ── تذكُّر قرار الشهر السابق للموظف المزدوج (G14) ──
+        //
+        // 🔴 **بوّابة الحسم (ADR-028) تطلب قراراً في كل شهر**، وهي كلفةٌ مقبولة عند موظفَين
+        //    وعبءٌ عند عشرين. فنحمل قرار الشهر الماضي **في اتجاهٍ واحد فقط**:
+        //
+        //    ✅ «يُصرف من هنا» يُحمَل  — أسوأ ما يقع أن ندفع، وهو الافتراض أصلاً.
+        //    ❌ «صُرف من شركة أخرى» **لا يُحمَل أبداً** — فكونُها صرفت في آذار لا يعني أنها
+        //       ستصرف في نيسان، وحملُه يستثني راتباً بناءً على واقعةٍ قديمة **فلا يقبض
+        //       الموظف من أحد**. سكوتٌ يُنتج جوعاً أسوأ من سؤالٍ يُنتج ضغطة.
+        //
+        // ⚠️ **وحارس التقادم يبقى نافذاً**: لو صرفت الشركة الأخرى هذا الشهر بعد القرار
+        //    المحمول، يمنع `EnsureDualCompanyResolvedAsync` التسديدَ ويطلب إعادة الحسم.
+        var candidateEmpIds = candidates.Select(c => c.EmployeeId).Distinct().ToList();
+        var dualEmployeeIds = (await db.EmployeeCompanies.IgnoreQueryFilters()
+            .Where(x => candidateEmpIds.Contains(x.EmployeeId)
+                     && x.CompanyId != companyId && !x.IsDeleted)
+            .Select(x => x.EmployeeId).Distinct().ToListAsync(ct)).ToHashSet();
+
+        // قرارات الشهر السابق — بمفتاح الإسناد لا الموظف (فالشخص قد يُسنَد مرّتين).
+        var prev = month == 1 ? (year - 1, 12) : (year, month - 1);
+        var previousDecisions = dualEmployeeIds.Count == 0
+            ? []
+            : await db.PayrollEntries
+                .Where(e => !e.IsDeleted && e.Period!.Year == prev.Item1 && e.Period.Month == prev.Item2)
+                .Select(e => new { e.EmployeeCompanyId, e.PaymentStatus })
+                .ToDictionaryAsync(x => x.EmployeeCompanyId, x => x.PaymentStatus, ct);
+
         int added = 0, skipped = 0;
         foreach (var link in candidates)
         {
@@ -289,7 +316,7 @@ public sealed class PayrollService(
                 AbsenceDeduction = amounts.AbsenceDeduction,
                 NetSalary = amounts.NetSalary,
                 NetSalaryIqd = amounts.NetSalaryIqd,
-                PaymentStatus = PayrollPaymentStatus.Unpaid,
+                PaymentStatus = CarriedDecision(link, dualEmployeeIds, previousDecisions),
                 IsNewHire = link.HireDate >= monthStart && link.HireDate <= monthEnd,
                 IsTerminated = link.TerminationDate is { } t && t >= monthStart && t <= monthEnd,
                 TerminationDate = link.TerminationDate,
@@ -778,6 +805,27 @@ public sealed class PayrollService(
     }
 
     // ─────────────────────────── مساعدات ───────────────────────────
+
+    /// <summary>
+    /// حالة الدفع الابتدائية لسطرٍ جديد — تحمل قرار الشهر السابق للموظف المزدوج (G14).
+    /// </summary>
+    /// <remarks>
+    /// **في اتجاهٍ واحد عمداً.** «يُصرف من هنا» يُحمَل لأن أسوأ نتائجه أن ندفع — وهو
+    /// الافتراض أصلاً. و«صُرف من شركة أخرى» **لا يُحمَل**: حملُه يستثني راتباً بناءً على
+    /// واقعةٍ قديمة فلا يقبض الموظف من أحد، وذلك أسوأ من ضغطةِ حسمٍ إضافية.
+    ///
+    /// ⚠️ **و<see cref="PayrollPaymentStatus.PaidByThisCompany"/> تُقرأ «قرارٌ سابق بالصرف
+    /// من هنا»**: الشهر السابق سُدِّد، فتحوّل قرارُه إلى «مدفوع». وإغفالها كان يُلغي أثر
+    /// الميزة كلَّه — إذ لا يبقى `ConfirmedByThisCompany` بعد التسديد أبداً.
+    /// </remarks>
+    private static PayrollPaymentStatus CarriedDecision(
+        EmployeeCompany link,
+        HashSet<int> dualEmployeeIds,
+        IReadOnlyDictionary<int, PayrollPaymentStatus> previousDecisions) =>
+        PayrollPayable.CarryDecision(
+            isDual: dualEmployeeIds.Contains(link.EmployeeId),
+            previous: previousDecisions.TryGetValue(link.EmployeeCompanyId, out var last)
+                ? last : null);
 
     private void RecomputeAll(PayrollPeriod period)
     {

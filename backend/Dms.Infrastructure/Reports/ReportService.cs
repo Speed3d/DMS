@@ -1,6 +1,8 @@
 using System.Globalization;
 using Dms.Documents.Reports;
 using Dms.Domain;
+using Dms.Infrastructure.Archive;
+using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -25,23 +27,16 @@ public interface IReportService
     Task<List<ActivityRow>> ActivityAsync(DateTime? from, DateTime? to, int? userId, CancellationToken ct = default);
 }
 
-public sealed class ReportService(AppDbContext db, ICurrentUser current) : IReportService
+public sealed class ReportService(
+    AppDbContext db, ICurrentUser current,
+    IOutgoingService outgoing, IArchiveService archive) : IReportService
 {
-    /// <summary>
-    /// قصرُ صفوف **الأرشيف** على ما أنشأه الموظف/القارئ.
-    /// </summary>
-    /// <remarks>
-    /// 🔴 **لم تعُد تشمل الصادر (ADR-030).** صارت رؤية الصادر لكل من يملك قسمه، وإبقاءُ
-    /// التقرير مقصوراً كان يجعله يناقض الشاشة: يفتح المستخدم كل كتاب ويرى مبلغه، ثم يقرأ
-    /// تقريراً بمجموعٍ أصغر بلا تفسير. **وتقييدُ مجموعٍ يستطيع قارئُه جمعَه بنفسه حمايةٌ
-    /// شكلية** — تُربك ولا تمنع.
-    ///
-    /// ⚠️ **والأرشيف يبقى مقيّداً** بقرار المالك (لم يُطلب تغيير قاعدته).
-    /// ⚠️ وهو **أضيق من قاعدة شاشة الأرشيف نفسها** (عمله + قسمه + `CanViewAllIncoming`):
-    /// تباعدٌ قائم من قبل هذه الدفعة، لم أوسّعه ولم أُصلحه هنا لئلا أغيّر ما لم يُطلب —
-    /// **ومرصودٌ ليُحسم لا ليُنسى.**
-    /// </remarks>
-    private bool ArchiveOwnOnly => current.Role is UserRole.Employee or UserRole.Reader;
+    // 🔴 **لا قاعدةَ رؤيةٍ مكتوبة هنا (ADR-030).** كان هذا الملفّ يحمل نسختَه الخاصة
+    //    («المُنشئ وحده») للصادر والأرشيف معاً، فتباعدت عن الشاشتين:
+    //      · الصادر — صار يُرى بالقسم، والتقرير بقي مقصوراً على المُنشئ.
+    //      · الأرشيف — الشاشة تُظهر «عمله + قسمه»، والتقرير يُظهر «عمله» وحده، فيقرأ
+    //        موظفُ القسم أضبارةً على الشاشة **ولا يجدها في تقريره**.
+    //    ⇒ التقرير ينادي الآن `Query()` كلٍّ من الخدمتين، فما يُجمَع هو **عين ما يُرى**.
 
     public async Task<FinancialReportResult> FinancialAsync(
         DateTime? from, DateTime? to, int? entityId, string source, CancellationToken ct = default)
@@ -52,9 +47,7 @@ public sealed class ReportService(AppDbContext db, ICurrentUser current) : IRepo
 
         if (includeOutgoing)
         {
-            // بلا قصرٍ على المُنشئ (ADR-030): مَن يملك قسم الصادر يرى كل كتب شركته،
-            // والعزل بين الشركات يفرضه الفلتر العام.
-            var oq = db.OutgoingBooks.Where(b => b.Status == BookStatus.Final && b.AmountInIqd != null);
+            var oq = outgoing.Query().Where(b => b.Status == BookStatus.Final && b.AmountInIqd != null);
             if (from is not null) oq = oq.Where(b => b.Date >= from);
             if (to is not null) oq = oq.Where(b => b.Date <= to);
             if (entityId is not null) oq = oq.Where(b => b.EntityId == entityId);
@@ -67,8 +60,7 @@ public sealed class ReportService(AppDbContext db, ICurrentUser current) : IRepo
 
         if (includeArchive)
         {
-            var aq = db.ArchiveDocs.Where(a => a.AmountInIqd != null);
-            if (ArchiveOwnOnly) aq = aq.Where(a => a.CreatedByUserId == current.UserId);
+            var aq = archive.Query().Where(a => a.AmountInIqd != null);
             if (from is not null) aq = aq.Where(a => (a.BookDate ?? a.CreatedAt) >= from);
             if (to is not null) aq = aq.Where(a => (a.BookDate ?? a.CreatedAt) <= to);
             if (entityId is not null) aq = aq.Where(a => a.FromEntityId == entityId || a.ToEntityId == entityId);

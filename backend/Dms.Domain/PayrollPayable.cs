@@ -60,4 +60,36 @@ public static class PayrollPayable
     /// <summary>السطور التي تدفعها الشركة فعلاً (للإيصالات وحرّاس التسديد).</summary>
     public static IEnumerable<PayrollEntry> Payable(IEnumerable<PayrollEntry> entries) =>
         entries.Where(e => !e.IsDeleted && Includes(e.PaymentStatus));
+
+    /// <summary>
+    /// حالةُ سطرٍ جديد لموظفٍ **مزدوج**، بحملِ قرار الشهر السابق (G14).
+    /// </summary>
+    /// <param name="isDual">هل يعمل في أكثر من شركة؟ غيرُ المزدوج لا قرارَ له أصلاً.</param>
+    /// <param name="previous">حالته في الشهر السابق، أو <c>null</c> إن لم يكن له سطر.</param>
+    /// <remarks>
+    /// 🔴 **الحملُ في اتجاهٍ واحد عمداً — وهذا جوهر القاعدة لا تفصيلٌ فيها:**
+    ///
+    /// | القرار السابق | يُحمَل؟ | لماذا |
+    /// |---|---|---|
+    /// | «يُصرف من هنا» | ✅ | أسوأ نتائجه أن ندفع، وهو الافتراض أصلاً |
+    /// | «مدفوع» (سُدِّد الشهر) | ✅ | هو القرار نفسه بعد أن تحوّل بالتسديد |
+    /// | **«صُرف من شركة أخرى»** | ❌ | كونُها صرفت في آذار لا يعني أنها ستصرف في نيسان. وحملُه **يستثني راتباً فلا يقبضه الموظف من أحد** — وسكوتٌ يُنتج جوعاً أسوأ من سؤالٍ يُنتج ضغطة |
+    ///
+    /// ⚠️ **وإغفال «مدفوع» يُلغي الميزة كلَّها:** بعد تسديد الشهر تتحوّل
+    /// <see cref="PayrollPaymentStatus.ConfirmedByThisCompany"/> إلى
+    /// <see cref="PayrollPaymentStatus.PaidByThisCompany"/>، فلا يبقى القرار الصريح ظاهراً
+    /// في أيّ شهرٍ مُسدَّد — ولن يُحمَل شيءٌ أبداً.
+    ///
+    /// ⚠️ **وحارس التقادم يبقى فوق هذا كلّه:** قرارٌ محمول ثم صرفت الشركة الأخرى ⇒ التسديد
+    /// يُمنع ويُطلب حسمٌ جديد.
+    /// </remarks>
+    public static PayrollPaymentStatus CarryDecision(bool isDual, PayrollPaymentStatus? previous)
+    {
+        if (!isDual || previous is not { } last) return PayrollPaymentStatus.Unpaid;
+
+        return last is PayrollPaymentStatus.ConfirmedByThisCompany
+                    or PayrollPaymentStatus.PaidByThisCompany
+            ? PayrollPaymentStatus.ConfirmedByThisCompany
+            : PayrollPaymentStatus.Unpaid;
+    }
 }

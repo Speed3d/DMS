@@ -87,6 +87,50 @@ public class PayrollPayableTests
         Assert.Equal(0m, PayrollPayable.ExcludedIqd(entries));
     }
 
+    // ─────────── حملُ قرار الشهر السابق للموظف المزدوج (G14) ───────────
+
+    [Fact]
+    public void غيرُ_المزدوج_لا_قرارَ_له_مهما_كان_شهرُه_السابق()
+    {
+        foreach (var s in Enum.GetValues<PayrollPaymentStatus>())
+            Assert.Equal(PayrollPaymentStatus.Unpaid, PayrollPayable.CarryDecision(false, s));
+    }
+
+    [Fact]
+    public void ومزدوجٌ_بلا_شهرٍ_سابق_يُسأل()
+    {
+        Assert.Equal(PayrollPaymentStatus.Unpaid, PayrollPayable.CarryDecision(true, null));
+    }
+
+    /// <summary>«يُصرف من هنا» يُحمَل — أسوأ نتائجه أن ندفع، وهو الافتراض أصلاً.</summary>
+    [Theory]
+    [InlineData(PayrollPaymentStatus.ConfirmedByThisCompany)]
+    [InlineData(PayrollPaymentStatus.PaidByThisCompany)]
+    public void قرارُ_الصرف_من_هنا_يُحمَل(PayrollPaymentStatus previous)
+    {
+        Assert.Equal(PayrollPaymentStatus.ConfirmedByThisCompany,
+            PayrollPayable.CarryDecision(true, previous));
+    }
+
+    /// <summary>
+    /// 🔴 **أهمّ حارسٍ في G14:** «صُرف من شركة أخرى» **لا يُحمَل**. حملُه يستثني راتباً بناءً
+    /// على واقعةٍ قديمة، فلو لم تصرف تلك الشركة هذا الشهر **لم يقبض الموظف من أحد**.
+    /// </summary>
+    [Fact]
+    public void لكن_مدفوعٌ_من_شركة_أخرى_لا_يُحمَل_أبداً()
+    {
+        Assert.Equal(PayrollPaymentStatus.Unpaid,
+            PayrollPayable.CarryDecision(true, PayrollPaymentStatus.PaidByOtherCompany));
+    }
+
+    /// <summary>والقرار المحمول **يدخل في المدفوع** — فلا يُنقص إجمالاً بصمت.</summary>
+    [Fact]
+    public void والقرارُ_المحمول_يدخل_في_المدفوع()
+    {
+        var carried = PayrollPayable.CarryDecision(true, PayrollPaymentStatus.PaidByThisCompany);
+        Assert.True(PayrollPayable.Includes(carried));
+    }
+
     /// <summary>
     /// ⚠️ **حارسٌ على الـenum نفسه:** أي حالةٍ جديدة تُضاف مستقبلاً يجب أن يقرّر كاتبُها
     /// هل تدخل في المدفوع أم لا — وهذا الاختبار يُسقطه حتى يفعل.

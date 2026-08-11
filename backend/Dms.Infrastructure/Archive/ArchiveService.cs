@@ -24,6 +24,16 @@ public sealed record ArchiveSearchInput(
 
 public interface IArchiveService
 {
+    /// <summary>
+    /// قاعدة رؤية الأرشيف — **مُعلَنة ليستدعيها غيرُها بدل أن ينسخها** (ADR-030).
+    /// </summary>
+    /// <remarks>
+    /// 🔴 كان التقرير المالي يكتب نسخةً **أضيق** منها (المُنشئ وحده)، فيقرأ موظفُ القسم
+    /// أضبارةً على الشاشة ولا يجدها في تقريره. نظيرُ `IOutgoingService.Query()` و
+    /// `IIncomingService.Query()` — وثلاثتها الآن مُعلَنة لأن **كل نسخةٍ ثانية تتباعد**.
+    /// </remarks>
+    IQueryable<ArchiveDoc> Query();
+
     Task<List<ArchiveDoc>> SearchAsync(ArchiveSearchInput filter, CancellationToken ct = default);
     Task<ArchiveDoc> GetAsync(int id, CancellationToken ct = default);
     Task<ArchiveDoc> CreateAsync(CreateArchiveInput input, CancellationToken ct = default);
@@ -48,7 +58,7 @@ public sealed class ArchiveService(
     ///
     /// وأضبارة **بلا قسم** تبقى للمنشئ والمدير فأعلى — لا تتسرّب، ولا تختفي عمّن أدخلها.
     /// </remarks>
-    private IQueryable<ArchiveDoc> Query()
+    public IQueryable<ArchiveDoc> Query()
     {
         var q = db.ArchiveDocs.AsQueryable();
         // ⚠️ نفس صلاحية «يرى كل الوارد» تشمل الأرشيف (قرار المالك: علَمٌ واحد للاثنين —
