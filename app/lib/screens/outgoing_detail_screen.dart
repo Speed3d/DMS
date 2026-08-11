@@ -206,7 +206,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                             child: Text('V${v.versionNo}', style: const TextStyle(fontWeight: FontWeight.bold)),
                           ),
                           title: Text(v.changeNote ?? 'تعديل على محتوى الكتاب', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(DateFormat('yyyy/MM/dd HH:mm').format(v.changedAt)),
+                          subtitle: Text(DateFormat('yyyy/MM/dd HH:mm').format(v.changedAt.toLocal())),
                         ),
                       ),
                   ],

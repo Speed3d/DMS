@@ -4,6 +4,48 @@
 // تصديرها فيصل إليها كل من يستورد `models.dart` كالمعتاد بلا استيراد ثانٍ.
 export 'models_hr.dart';
 
+/// يقرأ **لحظةً زمنية** من الخادم بوصفها UTC صريحاً.
+///
+/// 🔴 **عطلٌ بلّغ عنه المالك (2026-08-12): الأوقات متأخّرة ثلاث ساعات، والتاريخ يتأخّر يوماً.**
+///
+/// السبب في حرفٍ واحد: الخادم يرسل `"2026-08-11T21:31:00.846"` **بلا `Z`** — لأن EF يقرأ
+/// `datetime2` من SQL Server بـ`Kind = Unspecified`، و`System.Text.Json` لا يضيف علامة
+/// منطقةٍ لما لا يعرف منطقته. والقيمة **UTC فعلاً**، لكن `DateTime.parse` في Dart يقرأ نصّاً
+/// بلا منطقةٍ على أنه **محليّ** — فيصير `toLocal()` بلا أثر، ويُعرض وقتُ غرينتش على أنه وقت
+/// بغداد. (سُجّل الحدث 21:31 UTC وعُرض 21:31 والساعة عند المالك 00:31 من اليوم التالي.)
+///
+/// ⚠️ **ولا يُستعمل هذا للتواريخ التقويمية** (`Date` · `BookDate` · `HireDate`): تلك **أيامٌ
+/// لا لحظات**، وتحويلُها بالمنطقة الزمنية يُنقص يوماً من كتابٍ مؤرَّخ في الأول من الشهر.
+/// **التفريق بين اللحظة واليوم هو كلُّ الأمر هنا** — وخلطهما ينتج عطلاً معكوساً.
+DateTime parseInstant(String? raw) {
+  if (raw == null || raw.isEmpty) return DateTime.now().toUtc();
+  // نصٌّ يحمل منطقته (Z أو ±hh:mm) يُقرأ كما هو؛ وما لا يحملها فهو UTC من خادمنا.
+  final hasZone = raw.endsWith('Z') ||
+      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(raw);
+  return (DateTime.tryParse(hasZone ? raw : '${raw}Z') ?? DateTime.now()).toUtc();
+}
+
+/// قيمةُ منسدلةٍ **مضمونٌ وجودها بين خياراتها** — أو `null`.
+///
+/// 🔴 **عطلٌ بلّغ عنه المالك (2026-08-12):**
+/// `There should be exactly one item with [DropdownButton]'s value: 7` — شاشة الوارد تسقط
+/// عند فتحها.
+///
+/// السبب: قيمة المرشِّح **محفوظةٌ في مزوّد يعيش أطول من الشاشة**، وقائمةُ خياراتها تُجلب
+/// **غير متزامنة**. ففي أول إطارٍ بعد إعادة التحميل تكون القيمة 7 والقائمة **فارغة بعد** —
+/// وMaterial يؤكّد وجودَ عنصرٍ واحدٍ بالضبط بقيمة المنسدلة، فيرمي.
+/// ويقع الأمر نفسه إن **حُذف** القسم أو النوع المحفوظ: قيمةٌ لا خيار لها إلى الأبد.
+///
+/// ⚠️ **علاجٌ بالعرض لا بالحالة**: لا نمسّ المزوّد هنا — تعديلُ مزوّد أثناء البناء رمى
+/// `Tried to modify a provider while the widget tree was building` في بلاغٍ سابق (2026-08-06).
+/// فتُعرض «الكل» ريثما تصل القائمة، وتعود القيمة للظهور من تلقائها حين تصل.
+///
+/// 🔴 **وهذه عائلةٌ لا حالة**: ثلاث منسدلات في المستودع تشترك في النمط (قسمُ الوارد ·
+/// نوعُ المستند · قسمُ الأرشيف) — وقد أُصلح نظيرُها في 2026-07-26 **في موضعٍ واحد فقط**،
+/// فبقي الاثنان الآخران ينتظران بلاغاً. دالّةٌ واحدة تخدمها كلها.
+T? safeDropdownValue<T>(T? value, Iterable<T> allowed) =>
+    value != null && allowed.contains(value) ? value : null;
+
 class AuthResult {
   final String accessToken;
   final DateTime accessExpires;
@@ -492,7 +534,7 @@ class BackupRecordModel {
   BackupRecordModel(this.id, this.createdAt, this.fileName, this.sizeBytes, this.type,
       this.scope, this.category, this.status, this.note);
   factory BackupRecordModel.fromJson(Map<String, dynamic> j) => BackupRecordModel(
-        j['backupRecordId'], DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
+        j['backupRecordId'], parseInstant(j['createdAt']),
         j['fileName'] ?? '', j['sizeBytes'] ?? 0, j['type'] ?? 'Manual',
         j['scope'] ?? 'Full', j['category'] ?? 'Manual',
         j['status'] ?? 'Success', j['note']);
@@ -542,7 +584,7 @@ class ActivityRow {
   ActivityRow(this.timestamp, this.userId, this.userName, this.action, this.actionLabel,
       this.entityType, this.entityLabel, this.entityId, this.details);
   factory ActivityRow.fromJson(Map<String, dynamic> j) => ActivityRow(
-        DateTime.tryParse(j['timestamp'] ?? '') ?? DateTime.now(),
+        parseInstant(j['timestamp']),
         j['userId'], j['userName'] ?? '—',
         j['action'] ?? '', j['actionLabel'] ?? '',
         j['entityType'] ?? '', j['entityLabel'] ?? '',
@@ -677,7 +719,7 @@ class ArchiveListItem {
         j['archiveId'], j['archiveNumber'] ?? '', j['title'] ?? '', j['bookNumber'],
         j['bookDate'] == null ? null : DateTime.tryParse(j['bookDate']),
         j['amountInIqd'],
-        DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
+        parseInstant(j['createdAt']),
       );
 }
 
@@ -866,7 +908,7 @@ class AttachmentModel {
   AttachmentModel(this.attachmentId, this.fileName, this.fileType, this.fileSize, this.uploadedAt);
   factory AttachmentModel.fromJson(Map<String, dynamic> j) => AttachmentModel(
         j['attachmentId'], j['fileName'] ?? '', j['fileType'] ?? '', j['fileSize'] ?? 0,
-        DateTime.tryParse(j['uploadedAt'] ?? '') ?? DateTime.now());
+        parseInstant(j['uploadedAt']));
 }
 
 class DocumentTypeModel {
@@ -885,7 +927,7 @@ class VersionModel {
   final String? changeNote;
   VersionModel(this.versionNo, this.changedAt, this.changedByUserId, this.changeNote);
   factory VersionModel.fromJson(Map<String, dynamic> j) => VersionModel(
-        j['versionNo'], DateTime.tryParse(j['changedAt'] ?? '') ?? DateTime.now(),
+        j['versionNo'], parseInstant(j['changedAt']),
         j['changedByUserId'] ?? 0, j['changeNote']);
 }
 
@@ -1075,7 +1117,7 @@ class IncomingAssignment {
         name: j['name'] ?? '—',
         note: j['note'],
         assignedByUserName: j['assignedByUserName'] ?? '—',
-        assignedAt: DateTime.tryParse(j['assignedAt'] ?? '') ?? DateTime.now(),
+        assignedAt: parseInstant(j['assignedAt']),
       );
 }
 
@@ -1153,7 +1195,7 @@ class IncomingDetail {
         amountInIqd: j['amountInIqd'],
         replyOutgoingId: j['replyOutgoingId'],
         replyOutgoingNumber: j['replyOutgoingNumber'],
-        createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
+        createdAt: parseInstant(j['createdAt']),
       );
 }
 
@@ -1179,6 +1221,6 @@ class MovementLogItem {
         fromDepartment: j['fromDepartment'],
         toDepartment: j['toDepartment'],
         performedByUserName: j['performedByUserName'] ?? '',
-        performedAt: DateTime.tryParse(j['performedAt'] ?? '') ?? DateTime.now(),
+        performedAt: parseInstant(j['performedAt']),
       );
 }

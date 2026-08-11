@@ -295,9 +295,12 @@ class _ArchiveDetailState extends ConsumerState<ArchiveDetailTab> {
     return Column(
       children: [
         Expanded(
+          // 🔴 **بلا عمود مبالغ (قرار المالك 2026-08-12):** المبالغ تُسجَّل في **الصادر وحده**،
+          //    فعمودٌ فارغٌ دائماً في الأرشيف **ليس حيادياً**: يوحي بأن ثمّة مبلغاً يُنتظر
+          //    إدخاله، ويسرق عرضاً يحتاجه العنوان. والحقل باقٍ في العقد لو عاد الحكم.
           child: ReportTable(
-            minWidth: 1100,
-            columns: const ['المصدر', 'الرقم', 'التاريخ', 'العنوان', 'الجهة', 'النوع', 'القسم', 'بالدينار'],
+            minWidth: 1000,
+            columns: const ['المصدر', 'الرقم', 'التاريخ', 'العنوان', 'الجهة', 'النوع', 'القسم'],
             rows: [
               for (final row in r.rows)
                 [
@@ -308,8 +311,6 @@ class _ArchiveDetailState extends ConsumerState<ArchiveDetailTab> {
                   row.entityName ?? '—',
                   row.documentType ?? '—',
                   row.departments,
-                  // الوارد المؤرشف بلا مبلغ عمداً (أُلغي من الحساب المالي 2026-07-25).
-                  row.amountInIqd == null ? '—' : fmtNum(row.amountInIqd!),
                 ],
             ],
           ),
@@ -317,7 +318,6 @@ class _ArchiveDetailState extends ConsumerState<ArchiveDetailTab> {
         SummaryBar(items: [
           'عدد السجلات: ${r.count}',
           'وارد مؤرشف: ${r.incomingCount} · أضابير: ${r.paperCount}',
-          'إجمالي الأضابير: ${fmtNum(r.totalIqd)} د.ع',
         ]),
       ],
     );

@@ -407,28 +407,28 @@ public sealed class ReportService(
     public async Task<byte[]> ArchiveDetailPdfAsync(ArchiveLensFilter f, CancellationToken ct = default)
     {
         var r = await ArchiveDetailAsync(f, ct);
+
+        // 🔴 **بلا عمود مبالغ (قرار المالك 2026-08-12)** — المبالغ تُسجَّل في الصادر وحده،
+        //    وعمودٌ فارغٌ دائماً يوحي بنقصٍ في الإدخال لا بغياب المعنى. والحقل باقٍ في العقد.
         var model = new TableReportModel(
             "تقرير الأرشيف التفصيلي", await CompanyNameAsync(ct), LensPeriodLabel(f),
             [
                 new TableReportColumn("المصدر", 1.8f),
                 new TableReportColumn("الرقم", 2.2f),
                 new TableReportColumn("التاريخ", 1.6f),
-                new TableReportColumn("العنوان", 5f),
-                new TableReportColumn("الجهة", 2.4f),
-                new TableReportColumn("النوع", 2f),
-                new TableReportColumn("القسم", 2.2f),
-                new TableReportColumn("بالدينار", 2f),
+                new TableReportColumn("العنوان", 5.5f),
+                new TableReportColumn("الجهة", 2.6f),
+                new TableReportColumn("النوع", 2.2f),
+                new TableReportColumn("القسم", 2.4f),
             ],
             r.Rows.Select(x => (IReadOnlyList<string>)new[]
             {
                 x.SourceLabel, x.Number, x.Date.ToString("yyyy-MM-dd"), x.Title,
                 x.EntityName ?? "—", x.DocumentType ?? "—", x.Departments,
-                x.AmountInIqd?.ToString("#,0.##", CultureInfo.InvariantCulture) ?? "—",
             }).ToList(),
             [
                 $"عدد السجلات: {r.Count}",
                 $"وارد مؤرشف: {r.IncomingCount} · أضابير: {r.PaperCount}",
-                $"إجمالي الأضابير: {r.TotalIqd.ToString("#,0.##", CultureInfo.InvariantCulture)} د.ع",
             ]);
         return TableReportPdf.Generate(model);
     }
@@ -436,14 +436,12 @@ public sealed class ReportService(
     public async Task<byte[]> ArchiveDetailExcelAsync(ArchiveLensFilter f, CancellationToken ct = default)
     {
         var r = await ArchiveDetailAsync(f, ct);
-        var headers = new[] { "المصدر", "الرقم", "التاريخ", "العنوان", "الجهة", "النوع", "القسم", "بالدينار" };
+        var headers = new[] { "المصدر", "الرقم", "التاريخ", "العنوان", "الجهة", "النوع", "القسم" };
         var rows = r.Rows.Select(x => (IReadOnlyList<string>)new[]
         {
             x.SourceLabel, x.Number, x.Date.ToString("yyyy-MM-dd"), x.Title,
             x.EntityName ?? "", x.DocumentType ?? "", x.Departments,
-            x.AmountInIqd?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
         }).ToList();
-        rows.Add(["الإجمالي", "", "", "", "", "", "", r.TotalIqd.ToString("0.##", CultureInfo.InvariantCulture)]);
         return ExcelExporter.Create("الأرشيف التفصيلي", headers, rows);
     }
 

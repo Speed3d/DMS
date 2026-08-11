@@ -110,8 +110,10 @@ class IncomingListScreen extends ConsumerWidget {
                       final deptsAsync = ref.watch(departmentsListProvider);
                       final selected = ref.watch(incomingDepartmentFilterProvider);
                       final depts = deptsAsync.asData?.value ?? const <DepartmentModel>[];
+                      // ⚠️ القيمة قد تسبق قائمتها (تحميلٌ غير متزامن) أو يُحذف قسمُها.
+                      final safe = safeDropdownValue(selected, depts.map((d) => d.departmentId));
                       return DropdownButton<int?>(
-                        value: selected,
+                        value: safe,
                         isExpanded: true,
                         hint: const Text('القسم', style: TextStyle(fontSize: 14)),
                         icon: const Icon(Icons.keyboard_arrow_down_rounded),
@@ -142,8 +144,10 @@ class IncomingListScreen extends ConsumerWidget {
                       final typesAsync = ref.watch(documentTypesListProvider);
                       final selected = ref.watch(incomingDocTypeFilterProvider);
                       final types = typesAsync.asData?.value ?? const <DocumentTypeModel>[];
+                      // 🔴 هنا وقع بلاغ المالك: القيمة 7 والقائمة فارغة بعدُ.
+                      final safe = safeDropdownValue(selected, types.map((t) => t.documentTypeId));
                       return DropdownButton<int?>(
-                        value: selected,
+                        value: safe,
                         isExpanded: true,
                         hint: const Text('نوع المستند', style: TextStyle(fontSize: 14)),
                         icon: const Icon(Icons.keyboard_arrow_down_rounded),

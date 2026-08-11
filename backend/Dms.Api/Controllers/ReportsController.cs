@@ -49,17 +49,21 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
 
     // ══════════════════ تقرير النشاط ══════════════════
     //
-    // 🔐 **حارسٌ مزدوج مقصود: قسم التقارير (على الصنف) + دور رئيس الشركة فأعلى (هنا).**
+    // 🔐 **حارسٌ مزدوج مقصود: قسم التقارير (على الصنف) + دور السوبر أدمن (هنا).**
     //    سجلّ التدقيق يكشف مواضيع الصادر وأرقامه والأرشيف والمستخدمين — أي **بيانات كل
-    //    الأقسام**. ولذلك `AuditController` مقصورٌ على `SuperAdmin,President` منذ تدقيق
-    //    2026-07-14، وفتحُ البيانات نفسها من باب التقارير بقسمٍ وحده **التفافٌ على ذلك القرار
-    //    لا ميزةٌ جديدة** — نظير الحدّ المزدوج الذي منع قراءة الوارد من باب الأرشيف (ADR-021).
-    //    ⚠️ ومَن ينقض هذا لاحقاً فليَنقُض `AuditController` معه، وإلا صار للبيان بابان
-    //    بحارسين مختلفين — وهو أسوأ من بابٍ واحدٍ مفتوح لأنه يُوهم بالإغلاق.
+    //    الأقسام**، ويكشف معها **مَن فعل ماذا**، وهي معلومةٌ عن الأشخاص لا عن الوثائق.
+    //
+    // 🔄 **ضُيّق من «رئيس الشركة فأعلى» إلى «السوبر أدمن وحده» بقرار المالك (2026-08-12).**
+    //    مبرّرُه أن التقرير **رقابةٌ على المستخدمين أنفسهم** — بمن فيهم رئيس الشركة — فمن
+    //    يُراقَب لا يملك أداة المراقبة. والقاعدة الجديدة: **كل من دون السوبر أدمن محجوب**،
+    //    رئيساً كان أو مديراً أو موظفاً أو قارئاً.
+    //
+    // ⚠️ **و`AuditController` ضُيّق معه في الدفعة نفسها** — البابان يقودان إلى البيان نفسه،
+    //    وبابان بحارسين مختلفين أسوأ من بابٍ واحدٍ مفتوح لأنه يُوهم بالإغلاق.
 
     /// <summary>تقرير النشاط من سجل التدقيق — سطورٌ مترجَمة + تجميعٌ بالفعل وبالمستخدم.</summary>
     [HttpGet("activity")]
-    [Authorize(Roles = "SuperAdmin,President")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<ActionResult<ActivityReportDto>> Activity(
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? userId,
         [FromQuery] string? action, [FromQuery] string? entityType, [FromQuery] int take = 500,
@@ -76,7 +80,7 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
     }
 
     [HttpGet("activity/pdf")]
-    [Authorize(Roles = "SuperAdmin,President")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> ActivityPdf(
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? userId,
         [FromQuery] string? action, [FromQuery] string? entityType, [FromQuery] int take = 500,
@@ -88,7 +92,7 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
     }
 
     [HttpGet("activity/excel")]
-    [Authorize(Roles = "SuperAdmin,President")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> ActivityExcel(
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? userId,
         [FromQuery] string? action, [FromQuery] string? entityType, [FromQuery] int take = 500,
@@ -183,7 +187,7 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
     /// فيظنّ الفلتر ناقصاً. والمصدر الواحد يُبقي العربية في مكانٍ واحد.
     /// </remarks>
     [HttpGet("activity/vocabulary")]
-    [Authorize(Roles = "SuperAdmin,President")]
+    [Authorize(Roles = "SuperAdmin")]
     public ActionResult<AuditVocabularyDto> ActivityVocabulary()
         => new AuditVocabularyDto(
             AuditLabels.Actions.Select(kv => new LabeledValueDto(kv.Key, kv.Value))

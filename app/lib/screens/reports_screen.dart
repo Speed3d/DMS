@@ -19,6 +19,18 @@ class ReportsScreen extends ConsumerStatefulWidget {
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
+/// 🔴 **التبويب المالي مخفيّ بقرار المالك (2026-08-12).**
+///
+/// سببه أن **المبالغ تُسجَّل في الصادر وحده** — لا في الوارد ولا في الأرشيف — فالتقرير
+/// المالي (صادر + أرشيف) صار **نسخةً أفقر من «الصادر التفصيلي»**: يعرض المبالغ نفسها بلا
+/// حالةٍ ولا مُنشئ ولا معتمِد. **وتقريران يقولان الشيء نفسه أسوأ من واحد** — يسأل قارئهما
+/// أيّهما الصحيح حين يختلفان.
+///
+/// ⚠️ **مخفيّ لا محذوف**: النقاط الثلاث في `ReportsController` باقيةٌ ومختبَرة (ومعيار
+/// القبول الثالث «التقرير المالي بالدينار» يبقى مستوفى)، والإظهار **تغييرُ هذا السطر وحده** —
+/// نظير `_showWordExport` في تفاصيل الصادر (G9).
+const bool kShowFinancialTab = false;
+
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
@@ -27,7 +39,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     // ⚠️ تُبنى القائمة من الصلاحيات في كل بناء — فتبديل الشركة (ADR-017) يعيد حسابها،
     //    ولا يبقى تبويبٌ من شركةٍ سابقة معروضاً.
     final tabs = <({String title, IconData icon, Widget body})>[
-      (title: 'المالي', icon: Icons.payments_outlined, body: const FinancialReportTab()),
+      if (kShowFinancialTab)
+        (title: 'المالي', icon: Icons.payments_outlined, body: const FinancialReportTab()),
       if (s.canSeeOutgoingDetailReport)
         (title: 'الصادر التفصيلي', icon: Icons.outbox_outlined, body: const OutgoingDetailTab()),
       if (s.canSeeArchiveDetailReport)
@@ -36,7 +49,31 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         (title: 'النشاط', icon: Icons.history, body: const ActivityReportTab()),
     ];
 
-    if (tabs.length == 1) return const FinancialReportTab();
+    // 🔴 **حالةٌ صارت ممكنة بعد إخفاء المالي**: مَن يملك قسم «التقارير» وحده بلا الصادر ولا
+    //    الأرشيف لا يبقى له تبويب. وشاشةٌ فارغة تُقرأ عطلاً — فتُقال الحقيقة صراحةً.
+    if (tabs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, size: 48, color: Theme.of(context).disabledColor),
+              const SizedBox(height: 12),
+              const Text('لا تقارير متاحة بصلاحياتك الحالية.', textAlign: TextAlign.center),
+              const SizedBox(height: 4),
+              const Text(
+                'كل تقرير يحتاج قسم «التقارير» مع قسم وحدته — راجع مسؤول النظام.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (tabs.length == 1) return tabs.first.body;
 
     return DefaultTabController(
       length: tabs.length,

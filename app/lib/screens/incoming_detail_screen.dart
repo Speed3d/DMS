@@ -1121,7 +1121,7 @@ class _ForwardHistory extends StatelessWidget {
                 children: [
                   Text('${e.key + 1}. ${m.fromDepartment ?? 'غير محدد'} ← ${m.toDepartment ?? 'غير محدد'}',
                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                  Text('${m.performedByUserName} · ${fmt.format(m.performedAt)}',
+                  Text('${m.performedByUserName} · ${fmt.format(m.performedAt.toLocal())}',
                       style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   // الوصف يحمل نصّ الملاحظة إن كُتبت عند الإحالة.
                   if (m.description.contains('ملاحظة:'))
@@ -1189,7 +1189,7 @@ class _MovementsWidget extends ConsumerWidget {
                           children: [
                             Text(log.description, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                             const SizedBox(height: 4),
-                            Text('${log.performedByUserName} • ${DateFormat('yyyy/MM/dd HH:mm').format(log.performedAt)}',
+                            Text('${log.performedByUserName} • ${DateFormat('yyyy/MM/dd HH:mm').format(log.performedAt.toLocal())}',
                               style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6), fontSize: 11)),
                           ],
                         ),

@@ -632,7 +632,7 @@ class _UnlinkedLogDialogState extends ConsumerState<_UnlinkedLogDialog> {
                   children: [
                     Text(l.description, style: const TextStyle(fontSize: 13.5)),
                     const SizedBox(height: 2),
-                    Text(d.format(l.changedAt),
+                    Text(d.format(l.changedAt.toLocal()),
                         style: TextStyle(
                             fontSize: 11.5,
                             color: theme.textTheme.bodyMedium?.color

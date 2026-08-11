@@ -425,8 +425,10 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
         )),
         Consumer(builder: (context, ref, _) {
           final depts = ref.watch(departmentsListProvider).asData?.value ?? const <DepartmentModel>[];
+          // ⚠️ الفرد الثالث من عائلة «قيمةٌ تسبق قائمتها» — نفس علاج شاشة الوارد.
+          final safeDept = safeDropdownValue(_departmentId, depts.map((d) => d.departmentId));
           return box(DropdownButton<int?>(
-            value: _departmentId,
+            value: safeDept,
             isExpanded: true,
             hint: const Text('القسم', style: TextStyle(fontSize: 13.5)),
             icon: const Icon(Icons.keyboard_arrow_down_rounded),

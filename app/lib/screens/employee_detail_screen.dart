@@ -792,7 +792,7 @@ class _DocumentsCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                   fontSize: 13.5, fontWeight: FontWeight.w700)),
-                          Text('${_size(a.fileSize)} · ${date.format(a.uploadedAt)}',
+                          Text('${_size(a.fileSize)} · ${date.format(a.uploadedAt.toLocal())}',
                               style: TextStyle(
                                   fontSize: 11.5,
                                   color: theme.textTheme.bodyMedium?.color
@@ -987,7 +987,7 @@ class _ChangeLogCard extends StatelessWidget {
                             // الوصف نصٌّ عربي جاهز من الخادم — لا يُركَّب هنا.
                             Text(l.description,
                                 style: const TextStyle(fontSize: 13, height: 1.5)),
-                            Text(date.format(l.changedAt),
+                            Text(date.format(l.changedAt.toLocal()),
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: theme.textTheme.bodyMedium?.color

@@ -288,7 +288,7 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
                           Text('إصدار ${a.versionNo} — ${a.changedBy}',
                               style: const TextStyle(
                                   fontSize: 13, fontWeight: FontWeight.w800)),
-                          Text(d.format(a.changedAt),
+                          Text(d.format(a.changedAt.toLocal()),
                               style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
                           const SizedBox(height: 4),
                           Text(a.reason, style: const TextStyle(fontSize: 13)),

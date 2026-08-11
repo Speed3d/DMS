@@ -36,35 +36,30 @@ void main() {
         ),
       );
 
-  group('🔐 تقرير النشاط — القسم لا يكفي', () {
-    test('رئيس الشركة بقسم التقارير: يراه', () {
-      expect(sessionWith(modules: ['Reports'], role: 'President').canSeeActivityReport, isTrue);
-    });
+  group('🔐 تقرير النشاط — السوبر أدمن وحده', () {
+    // 🔄 **ضُيّق بقرار المالك (2026-08-12)** من «رئيس الشركة فأعلى» إلى «السوبر أدمن وحده»:
+    //    التقرير **رقابةٌ على المستخدمين أنفسهم بمن فيهم الرئيس** — فمن يُراقَب لا يملك
+    //    أداة المراقبة. ومرآتُه في الخادم `[Authorize(Roles = "SuperAdmin")]` على النقاط
+    //    الأربع **و`/api/audit` معها**.
 
-    test('سوبر أدمن بقسم التقارير: يراه', () {
+    test('السوبر أدمن: يراه', () {
       expect(sessionWith(modules: ['Reports'], role: 'SuperAdmin').canSeeActivityReport, isTrue);
-    });
-
-    // 🔴 **الحارس الجوهري**: هذا بالضبط ما يمنع أن يصير التقرير باباً خلفياً لسجلّ التدقيق.
-    //    مديرٌ يملك التقارير — وهي تُمنح لمحاسبين ليقرأوا المالي — لا يقرأ بها نشاط الجميع.
-    test('🔐 مدير بقسم التقارير: **محجوب** — سجلّ التدقيق يكشف كل الأقسام', () {
-      expect(sessionWith(modules: ['Reports'], role: 'Manager').canSeeActivityReport, isFalse);
-    });
-
-    test('🔐 موظف وقارئ بقسم التقارير: محجوبان', () {
-      expect(sessionWith(modules: ['Reports'], role: 'Employee').canSeeActivityReport, isFalse);
-      expect(sessionWith(modules: ['Reports'], role: 'Reader').canSeeActivityReport, isFalse);
-    });
-
-    // ⚠️ **ولا حارسَ «رئيسٌ بلا قسم التقارير»**: رئيس الشركة والسوبر أدمن **معفيان من قيد
-    //    الأقسام أصلاً** (`AllowedModules = All` في الخادم و`hasModule` في العميل)، فقائمة
-    //    أقسامهما لا تعني شيئاً. كتبتُ الحارس أولاً يتوقّع الحجب **ففشل — والمنتج سليم**،
-    //    وهذا ما يُثبته الاختبار أدناه صراحةً بدل أن يُترك فراغاً يُعاد اكتشافه.
-    test('الرئيس معفى من قيد الأقسام — فقائمةٌ بلا «التقارير» لا تحجبه', () {
-      expect(sessionWith(modules: ['Outgoing'], role: 'President').canSeeActivityReport, isTrue);
+      // ولا يشترط القسم — فهو معفى من قيد الأقسام أصلاً، واشتراطُه يوهم بحدٍّ لا وجود له.
       expect(sessionWith(modules: const [], role: 'SuperAdmin').canSeeActivityReport, isTrue);
-      // وغيرُ المعفى يُحجب بالقائمة فعلاً — وإلا لم يكن للقيد معنى.
-      expect(sessionWith(modules: ['Outgoing'], role: 'Manager').canSeeActivityReport, isFalse);
+    });
+
+    // 🔴 **الحارس الجوهري بعد التضييق**: الرئيس **محجوب** رغم أنه معفى من كل الأقسام.
+    //    لو بقي الشرط «قسم التقارير» لظلّ يراه — لأن الإعفاء يمنحه كل قسم.
+    test('🔐 رئيس الشركة: **محجوب** — والإعفاء من الأقسام لا ينفعه', () {
+      expect(sessionWith(modules: ['Reports'], role: 'President').canSeeActivityReport, isFalse);
+      expect(sessionWith(modules: kAllModules, role: 'President').canSeeActivityReport, isFalse);
+    });
+
+    test('🔐 المدير والموظف والقارئ: محجوبون مهما مُنحوا', () {
+      for (final role in ['Manager', 'Employee', 'Reader']) {
+        expect(sessionWith(modules: kAllModules, role: role).canSeeActivityReport, isFalse,
+            reason: 'الدور $role يجب أن يُحجب عن سجلّ التدقيق');
+      }
     });
   });
 
@@ -116,27 +111,42 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('رئيس بكل الأقسام: أربعة تبويبات', (tester) async {
-      await pumpReports(tester, sessionWith(modules: ['Reports', 'Outgoing', 'Archive'], role: 'President'));
-      expect(find.text('المالي'), findsOneWidget);
-      expect(find.text('الصادر التفصيلي'), findsOneWidget);
-      expect(find.text('الأرشيف التفصيلي'), findsOneWidget);
-      expect(find.text('النشاط'), findsOneWidget);
+    // ⚠️ **المطابقة داخل شريط التبويبات وحده**: التبويب الأول يُرسَم جسمُه معه، وفيه عنوانٌ
+    //    بالنصّ نفسه — فـ`find.text` على الشجرة كلها يجد اثنين ويفشل **بلا عيب**.
+    Finder tabNamed(String t) =>
+        find.descendant(of: find.byType(TabBar), matching: find.text(t));
+
+    testWidgets('سوبر أدمن بكل الأقسام: ثلاثة تبويبات **بلا المالي**', (tester) async {
+      await pumpReports(tester, sessionWith(modules: kAllModules, role: 'SuperAdmin'));
+      expect(tabNamed('الصادر التفصيلي'), findsOneWidget);
+      expect(tabNamed('الأرشيف التفصيلي'), findsOneWidget);
+      expect(tabNamed('النشاط'), findsOneWidget);
+      // 🔴 المالي مخفيّ بقرار المالك — تقريران يقولان الشيء نفسه أسوأ من واحد.
+      expect(find.text('المالي'), findsNothing);
+      expect(find.byType(Tab), findsNWidgets(3));
     });
 
-    testWidgets('🔐 مدير بكل الأقسام: **لا تبويب نشاط**', (tester) async {
-      await pumpReports(tester, sessionWith(modules: ['Reports', 'Outgoing', 'Archive'], role: 'Manager'));
-      expect(find.text('الصادر التفصيلي'), findsOneWidget);
-      expect(find.text('النشاط'), findsNothing);
+    testWidgets('🔐 رئيس بكل الأقسام: تبويبان — **لا نشاط**', (tester) async {
+      await pumpReports(tester, sessionWith(modules: kAllModules, role: 'President'));
+      expect(tabNamed('الصادر التفصيلي'), findsOneWidget);
+      expect(tabNamed('الأرشيف التفصيلي'), findsOneWidget);
+      expect(tabNamed('النشاط'), findsNothing);
+      expect(find.byType(Tab), findsNWidgets(2));
     });
 
-    testWidgets('موظف بالتقارير وحدها: المالي بلا تبويبات إطلاقاً', (tester) async {
-      // تبويبٌ واحد لا يستحقّ شريط تبويبات — الشاشة تعود إلى شكلها الأصلي.
-      await pumpReports(tester, sessionWith(modules: ['Reports'], role: 'Employee'));
-      expect(find.text('الصادر التفصيلي'), findsNothing);
+    testWidgets('مدير بالتقارير والصادر: تبويبٌ واحد بلا شريط', (tester) async {
+      // تبويبٌ واحد لا يستحقّ شريط تبويبات — تُعرض الشاشة مباشرةً.
+      await pumpReports(tester, sessionWith(modules: ['Reports', 'Outgoing'], role: 'Manager'));
+      expect(find.byType(TabBar), findsNothing);
       expect(find.text('الأرشيف التفصيلي'), findsNothing);
       expect(find.text('النشاط'), findsNothing);
+    });
+
+    // 🔴 **حالةٌ وُلدت من إخفاء المالي**: قسم «التقارير» وحده لم يعد يفتح شيئاً.
+    testWidgets('موظف بالتقارير وحدها: رسالةٌ صريحة لا شاشةٌ فارغة', (tester) async {
+      await pumpReports(tester, sessionWith(modules: ['Reports'], role: 'Employee'));
       expect(find.byType(TabBar), findsNothing);
+      expect(find.textContaining('لا تقارير متاحة'), findsOneWidget);
     });
   });
 
@@ -181,12 +191,16 @@ void main() {
           reason: 'جمعُ المسودّة مع المعتمد هو عطل ADR-029 بعينه');
     });
 
-    testWidgets('الأرشيف التفصيلي: المصدران مميّزان والوارد بلا مبلغ', (tester) async {
+    testWidgets('الأرشيف التفصيلي: المصدران مميّزان و**بلا عمود مبالغ**', (tester) async {
       await pumpTab(tester, const ArchiveDetailTab(), _DataApi());
       expect(find.text('وارد مؤرشف'), findsWidgets);
       expect(find.text('أضبارة ورقية'), findsWidgets);
       expect(find.textContaining('وارد مؤرشف: 1 · أضابير: 1'), findsOneWidget);
-      expect(find.textContaining('إجمالي الأضابير: 2,620,000'), findsOneWidget);
+      // 🔴 قرار المالك (2026-08-12): المبالغ في الصادر وحده — فعمودٌ فارغٌ دائماً
+      //    يوحي بنقصٍ في الإدخال. لا عمود ولا إجمالي في هذا التقرير.
+      expect(find.text('بالدينار'), findsNothing);
+      expect(find.textContaining('إجمالي الأضابير'), findsNothing);
+      expect(find.textContaining('2,620,000'), findsNothing);
     });
   });
 
