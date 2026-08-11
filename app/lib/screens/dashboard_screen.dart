@@ -207,8 +207,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     const SizedBox(height: 32),
 
                 // Hint: القسم الأوسط (الرسوم البيانية + نشاطات أخيرة).
-                // كلاهما يقرأ `outItems` وحدها ⇒ يخصّان الصادر، فيُخفيان مع بطاقاته.
-                if (showOutgoing)
+                // 🔄 **الرسم صار يشمل الوارد** (طلب المالك 2026-08-10)، فلم يعُد محصوراً
+                //    بقسم الصادر: يظهر لمن يملك **أيّاً** منهما، ويرسم ما يملكه وحده.
+                if (showOutgoing || showIncoming)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final isSmall = constraints.maxWidth < 900;
@@ -218,13 +219,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('نشاط الصادر (الأسبوع الحالي)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text(
+                            showOutgoing && showIncoming
+                                ? 'نشاط الصادر والوارد (الأسبوع الحالي)'
+                                : showOutgoing
+                                    ? 'نشاط الصادر (الأسبوع الحالي)'
+                                    : 'نشاط الوارد (الأسبوع الحالي)',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 6),
-                          Text('مقارنة بين المسودات والكتب المعتمدة يومياً', style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
-                          const SizedBox(height: 32),
+                          Text(
+                            showOutgoing && showIncoming
+                                ? 'المسودات والمعتمد والوارد المستلَم يومياً'
+                                : showOutgoing
+                                    ? 'مقارنة بين المسودات والكتب المعتمدة يومياً'
+                                    : 'الكتب الواردة المستلَمة يومياً',
+                            style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
+                          ),
+                          const SizedBox(height: 14),
+                          // ⚠️ **مفتاح الألوان لازمٌ بعد الخط الثالث**: خطّان يُميَّزان بالحدس،
+                          //    وثلاثةٌ لا. و`Wrap` لئلا يفيض على البطاقة الضيّقة.
+                          Wrap(spacing: 16, runSpacing: 8, children: [
+                            if (showOutgoing) _ChartLegend(color: AppColors.warn, label: 'مسودّات الصادر'),
+                            if (showOutgoing) _ChartLegend(color: AppColors.success, label: 'الصادر المعتمد'),
+                            if (showIncoming)
+                              _ChartLegend(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? AppColors.goldBright
+                                    : AppColors.navy,
+                                label: 'الوارد المستلَم'),
+                          ]),
+                          const SizedBox(height: 18),
                           SizedBox(
                             height: 300,
-                            child: _buildChart(outItems),
+                            child: _buildChart(outItems, incItems,
+                                showOutgoing: showOutgoing, showIncoming: showIncoming),
                           ),
                         ],
                       ),
@@ -262,13 +291,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     );
 
+                    // ── «آخر الوارد» (طلب المالك 2026-08-10) ──
+                    // نظير «أحدث الصادر» تماماً، ويُخفى مع قسمه لا مع قسم الصادر.
+                    final incomingCard = CustomCard(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              const Text('آخر الوارد',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis),
+                              TextButton(
+                                // المؤشّر 3 = الوارد (مرجعيةٌ ثابتة في `home_shell`).
+                                onPressed: () => widget.onNavigate?.call(3),
+                                child: const Text('عرض الكل', style: TextStyle(color: AppColors.gold)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          ...incItems.take(5).map((e) => _buildIncomingItem(e)),
+                          if (incItems.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Center(child: Text('لا توجد كتب واردة حالياً')),
+                            ),
+                        ],
+                      ),
+                    );
+
+                    // البطاقات الجانبية: كلٌّ تظهر مع قسمها وحده.
+                    final sideCards = <Widget>[
+                      if (showOutgoing) activitiesCard,
+                      if (showIncoming) incomingCard,
+                    ];
+
                     if (isSmall) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           chartCard,
-                          const SizedBox(height: 24),
-                          activitiesCard,
+                          for (final c in sideCards) ...[const SizedBox(height: 24), c],
                         ],
                       );
                     }
@@ -277,8 +344,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(flex: 7, child: chartCard),
-                        const SizedBox(width: 24),
-                        Expanded(flex: 4, child: activitiesCard),
+                        if (sideCards.isNotEmpty) ...[
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                sideCards.first,
+                                for (final c in sideCards.skip(1)) ...[
+                                  const SizedBox(height: 24),
+                                  c,
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     );
                   }
@@ -404,23 +485,100 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // Hint: رسم بياني باستخدام حزمة fl_chart
-  Widget _buildChart(List<OutgoingListItem> items) {
+  /// سطرٌ في بطاقة «آخر الوارد» — نظير [_buildActivityItem] بحقول الوارد.
+  ///
+  /// ⚠️ **الرقم الداخلي أوّلاً ثم الخارجي**: الوارد يحمل رقمَين، والداخليُّ هو ما يتداوله
+  /// موظفو الشركة. وحين يغيب (نادر) يُعرض الخارجي بدل «بلا رقم» الفارغة.
+  Widget _buildIncomingItem(IncomingListItem item) {
     final theme = Theme.of(context);
-    
+    final number = item.incomingNumber?.trim().isNotEmpty == true
+        ? item.incomingNumber!
+        : (item.externalNumber?.trim().isNotEmpty == true
+            ? item.externalNumber!
+            : 'بلا رقم');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isVerySmall = constraints.maxWidth < 180;
+          return Row(
+            children: [
+              if (!isVerySmall) ...[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.inbox_rounded,
+                      size: 18,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6)),
+                ),
+                const SizedBox(width: 14),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.subject,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Text('$number · ${item.entityName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5))),
+                  ],
+                ),
+              ),
+              if (!isVerySmall) ...[
+                const SizedBox(width: 8),
+                StatusPill(status: item.status),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // Hint: رسم بياني باستخدام حزمة fl_chart
+  ///
+  /// ⚠️ **يرسم ما يملكه المستخدم فقط** (2026-08-10): مَن لا يملك قسم الصادر لا يُرسم له
+  /// خطّاه، ومَن لا يملك الوارد لا يُرسم له خطّه. وخطٌّ بصفرٍ دائم **معلومة كاذبة** لا
+  /// معلومة ناقصة — وهو الدرس نفسه الذي أخفى بطاقات اللوحة لغير أصحابها.
+  Widget _buildChart(
+    List<OutgoingListItem> items,
+    List<IncomingListItem> incoming, {
+    required bool showOutgoing,
+    required bool showIncoming,
+  }) {
+    final theme = Theme.of(context);
+
     // حساب بداية الأسبوع (الأحد)
     DateTime now = DateTime.now();
     int daysSinceSunday = now.weekday == 7 ? 0 : now.weekday;
     DateTime startOfWeek = DateTime(now.year, now.month, now.day).subtract(Duration(days: daysSinceSunday));
     DateTime endOfWeek = startOfWeek.add(const Duration(days: 7));
 
+    bool inThisWeek(DateTime d) =>
+        d.isAfter(startOfWeek.subtract(const Duration(milliseconds: 1))) && d.isBefore(endOfWeek);
+    int dayIndexOf(DateTime d) => d.weekday == 7 ? 0 : d.weekday;
+
     final List<int> draftsPerDay = List.filled(7, 0);
     final List<int> finalsPerDay = List.filled(7, 0);
+    final List<int> incomingPerDay = List.filled(7, 0);
     int maxCount = 4;
 
-    for (final item in items) {
-      if (item.date.isAfter(startOfWeek.subtract(const Duration(milliseconds: 1))) && item.date.isBefore(endOfWeek)) {
-        int dayIndex = item.date.weekday == 7 ? 0 : item.date.weekday;
+    if (showOutgoing) {
+      for (final item in items) {
+        if (!inThisWeek(item.date)) continue;
+        final dayIndex = dayIndexOf(item.date);
         if (item.status.toLowerCase().contains('draft')) {
           draftsPerDay[dayIndex]++;
         } else {
@@ -429,9 +587,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     }
 
+    // ⚠️ **`receivedDate` لا تاريخ الكتاب الخارجي**: الرسم عن **نشاط الشركة هذا الأسبوع**،
+    //    وكتابٌ مؤرَّخ قبل شهرٍ استُلم اليوم هو عملُ اليوم. (وهو حقل الوارد الوحيد المضمون.)
+    if (showIncoming) {
+      for (final item in incoming) {
+        if (!inThisWeek(item.receivedDate)) continue;
+        incomingPerDay[dayIndexOf(item.receivedDate)]++;
+      }
+    }
+
     for (int i = 0; i < 7; i++) {
       if (draftsPerDay[i] > maxCount) maxCount = draftsPerDay[i];
       if (finalsPerDay[i] > maxCount) maxCount = finalsPerDay[i];
+      if (incomingPerDay[i] > maxCount) maxCount = incomingPerDay[i];
     }
     
     final maxY = ((maxCount / 5).ceil() + 1) * 5.0;
@@ -486,36 +654,53 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         minY: 0,
         maxY: maxY,
         lineBarsData: [
-          // الخط الأول (المسودات)
-          LineChartBarData(
-            spots: [
-              for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), draftsPerDay[i].toDouble())
-            ],
-            isCurved: true,
-            color: AppColors.warn,
-            barWidth: 4,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: AppColors.warn.withValues(alpha: 0.1),
+          // الصادر — المسودات ثم المعتمدة (تُرسَم لمن يملك القسم وحده).
+          if (showOutgoing)
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), draftsPerDay[i].toDouble())
+              ],
+              isCurved: true,
+              color: AppColors.warn,
+              barWidth: 4,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: AppColors.warn.withValues(alpha: 0.1),
+              ),
             ),
-          ),
-          // الخط الثاني (المعتمدة)
-          LineChartBarData(
-            spots: [
-              for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), finalsPerDay[i].toDouble())
-            ],
-            isCurved: true,
-            color: AppColors.success,
-            barWidth: 4,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: AppColors.success.withValues(alpha: 0.1),
+          if (showOutgoing)
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), finalsPerDay[i].toDouble())
+              ],
+              isCurved: true,
+              color: AppColors.success,
+              barWidth: 4,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: AppColors.success.withValues(alpha: 0.1),
+              ),
             ),
-          ),
+          // الوارد — خطٌّ ثالث بلون مميّز (طلب المالك 2026-08-10).
+          // ⚠️ **بلا تظليلٍ تحته**: ثلاثة تظليلات متراكبة تُعمي الرسم، والخطّ الثالث يُقرأ
+          //    بلونه وحده. (وهو `AppColors.navy` لا لونٌ رابع جديد — الطقم كما هو.)
+          if (showIncoming)
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < 7; i++) FlSpot(i.toDouble(), incomingPerDay[i].toDouble())
+              ],
+              isCurved: true,
+              color: theme.brightness == Brightness.dark
+                  ? AppColors.goldBright
+                  : AppColors.navy,
+              barWidth: 4,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+            ),
         ],
       ),
     );
@@ -525,6 +710,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final s = n.toStringAsFixed(0);
     return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
   }
+}
+
+/// مفتاح لونٍ واحد في رأس الرسم البياني.
+///
+/// ⚠️ **لزم بعد إضافة الخط الثالث (الوارد)**: خطّان يُميَّزان بالحدس من العنوان، وثلاثةٌ لا.
+class _ChartLegend extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _ChartLegend({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 12,
+            height: 4,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.75))),
+        ],
+      );
 }
 
 /// ما يُعرض لمستخدم بلا أي قسم تشغيلي في الشركة الفعّالة.

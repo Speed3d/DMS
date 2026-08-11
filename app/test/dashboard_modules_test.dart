@@ -74,9 +74,11 @@ void main() {
     expect(find.text('صادر معتمد'), findsNothing);
     expect(find.text('إجمالي مبالغ الصادر'), findsNothing);
     expect(find.text('أضابير الأرشيف'), findsNothing);
-    // الرسم البياني وقائمة «أحدث الكتب» يخصّان الصادر ⇒ يُخفيان معه.
+    // 🔄 **الرسم لم يعُد محصوراً بالصادر** (2026-08-10): يظهر هنا بعنوان الوارد،
+    //    وقائمة «أحدث الصادر» وحدها هي ما يُخفى مع قسمه.
     expect(find.text('نشاط الصادر (الأسبوع الحالي)'), findsNothing);
-    expect(find.text('أحدث الكتب'), findsNothing);
+    expect(find.text('أحدث الصادر'), findsNothing);
+    expect(find.text('نشاط الوارد (الأسبوع الحالي)'), findsOneWidget);
   });
 
   testWidgets('موظفة بصلاحية الصادر وحده: بطاقات الصادر والرسم البياني فقط', (tester) async {
@@ -100,8 +102,62 @@ void main() {
     expect(find.text('أضابير الأرشيف'), findsOneWidget);
     // بامتلاك الوارد **والأرشيف** معاً تظهر بطاقة المؤرشف — بخلاف الوارد وحده.
     expect(find.text('وارد مؤرشف'), findsOneWidget);
-    expect(find.text('نشاط الصادر (الأسبوع الحالي)'), findsOneWidget);
+
+    // 🔄 **العنوان يتبع ما يملكه** (2026-08-10): صاحب القسمين يرى رسماً واحداً يجمعهما.
+    expect(find.text('نشاط الصادر والوارد (الأسبوع الحالي)'), findsOneWidget);
+    expect(find.text('نشاط الصادر (الأسبوع الحالي)'), findsNothing);
+
+    // والبطاقتان الجانبيتان معاً.
+    expect(find.text('أحدث الصادر'), findsOneWidget);
+    expect(find.text('آخر الوارد'), findsOneWidget);
   });
+
+  // ─────────── الرسم و«آخر الوارد» يتبعان الأقسام (طلب المالك 2026-08-10) ───────────
+  //
+  // 🔴 **قبل هذه الدفعة كان الرسم كلُّه محصوراً بقسم الصادر** — فمن يملك الوارد وحده
+  //    لا يرى نشاطه إطلاقاً، ومَن يملك القسمين يرى نصف الصورة. والعنوان الآن يعلن ما
+  //    يُرسَم، فلا يقرأ أحدٌ «نشاط الصادر» ويرى فيه خطّ الوارد.
+  testWidgets('🔄 صاحب الوارد وحده: يرى رسم الوارد و«آخر الوارد» — لا رسم الصادر',
+      (tester) async {
+    await pumpDashboard(tester, sessionWith(['Incoming']));
+
+    expect(find.text('نشاط الوارد (الأسبوع الحالي)'), findsOneWidget);
+    expect(find.text('آخر الوارد'), findsOneWidget);
+    expect(find.text('الوارد المستلَم'), findsOneWidget, reason: 'مفتاح لون الوارد');
+
+    expect(find.text('نشاط الصادر (الأسبوع الحالي)'), findsNothing);
+    expect(find.text('نشاط الصادر والوارد (الأسبوع الحالي)'), findsNothing);
+    expect(find.text('أحدث الصادر'), findsNothing);
+    // 🔐 ولا مفتاحَ لونٍ لخطٍّ لا يُرسَم — وإلا دلّ على بيانات لا يراها.
+    expect(find.text('مسودّات الصادر'), findsNothing);
+    expect(find.text('الصادر المعتمد'), findsNothing);
+  });
+
+  testWidgets('وصاحب الصادر وحده: لا «آخر الوارد» ولا مفتاح لونه', (tester) async {
+    await pumpDashboard(tester, sessionWith(['Outgoing']));
+
+    expect(find.text('نشاط الصادر (الأسبوع الحالي)'), findsOneWidget);
+    expect(find.text('أحدث الصادر'), findsOneWidget);
+    expect(find.text('مسودّات الصادر'), findsOneWidget);
+
+    expect(find.text('آخر الوارد'), findsNothing);
+    expect(find.text('الوارد المستلَم'), findsNothing);
+  });
+
+  // ─────────── حارس رسم: ثلاث بطاقات في القسم الأوسط لا اثنتان ───────────
+  //
+  // ⚠️ **العمود الجانبي صار يحمل بطاقتين متراكمتين** («أحدث الصادر» + «آخر الوارد») بجانب
+  //    الرسم. وعطبُ التخطيط لا يُكتشف إلا بالرسم — درسٌ كلّف هذا المشروع أربعة بلاغات.
+  for (final w in <double>[420, 700, 900, 1280, 1600]) {
+    testWidgets('لوحة التحكم لا تفيض عند $w بكسل بالأقسام الثلاثة', (tester) async {
+      tester.view.physicalSize = Size(w, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboard(tester, sessionWith(['Outgoing', 'Incoming', 'Archive']));
+      expect(tester.takeException(), isNull, reason: 'فيض تخطيط في لوحة التحكم عند $w');
+    });
+  }
 
   testWidgets('السوبر أدمن معفى: يرى كل شيء ولو كانت قائمة أقسامه فارغة', (tester) async {
     await pumpDashboard(tester, sessionWith(const [], role: 'SuperAdmin'));
