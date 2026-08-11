@@ -1,6 +1,7 @@
 using Dms.Documents.Storage;
 using Dms.Domain;
 using Dms.Infrastructure.Incoming;
+using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -19,9 +20,13 @@ public interface IAttachmentService
         OwnerType ownerType, List<int> ownerIds, CancellationToken ct = default);
 }
 
+/// <remarks>
+/// ⚠️ **يحقن خدمتَي الوارد والصادر ليستدعي `Query()` كلٍّ منهما** بدل نسخ قواعد الرؤية.
+/// لا دورةَ اعتماد: كلتاهما لا تعرف المرفقات.
+/// </remarks>
 public sealed class AttachmentService(
     AppDbContext db, ICurrentUser current, IAuditService audit, IFileStorage storage,
-    IIncomingService incoming) : IAttachmentService
+    IIncomingService incoming, IOutgoingService outgoing) : IAttachmentService
 {
     private const long MaxBytes = 50 * 1024 * 1024; // 50MB
     private static readonly string[] Allowed = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".zip", ".dwg"];
@@ -161,10 +166,22 @@ public sealed class AttachmentService(
             return;
         }
 
+        // ── الصادر: نفس علاج الوارد أعلاه، ولنفس السبب (ADR-030) ──
+        // 🔴 كانت القاعدة **منسوخةً هنا** (`creator != current.UserId`) بجانب نسختها في
+        //    `OutgoingService.Query()`. ولمّا تغيّرت قاعدة الرؤية بقرار المالك كان النسختان
+        //    ستتباعدان: يرى المستخدم الكتاب ويُمنع من مرفقاته — وهو **العطل نفسه حرفياً**
+        //    الذي وقع في الوارد وعُولج باستدعاء `Query()` بدل التكرار.
+        if (type == OwnerType.Outgoing)
+        {
+            var seen = await outgoing.Query().AnyAsync(b => b.OutgoingId == ownerId, ct);
+            if (!seen)
+                throw new NotFoundException("الكتاب الصادر غير موجود أو لا تملك صلاحية رؤيته.");
+            return;
+        }
+
+        // ── الأرشيف: قاعدته لم تتغيّر (عمله + قسمه) — قرار المالك 2026-08-10 ──
         int? creator = type switch
         {
-            OwnerType.Outgoing => await db.OutgoingBooks.Where(b => b.OutgoingId == ownerId)
-                .Select(b => (int?)b.CreatedByUserId).FirstOrDefaultAsync(ct),
             OwnerType.Archive => await db.ArchiveDocs.Where(a => a.ArchiveId == ownerId)
                 .Select(a => (int?)a.CreatedByUserId).FirstOrDefaultAsync(ct),
             _ => null,

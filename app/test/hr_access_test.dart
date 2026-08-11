@@ -195,5 +195,31 @@ void main() {
       expect(kModuleLabels['Employees'], isNotNull);
       expect(kModuleLabels['Payroll'], isNotNull);
     });
+
+    // ─────────── D7: الافتراض لا يمنح الحسّاس (2026-08-10) ───────────
+    //
+    // 🔴 **عيبٌ كان حيّاً:** شاشة المستخدمين تُهيّئ كل إسنادٍ جديد بقائمة الأقسام، وكانت
+    //    تستعمل `kAllModules` — فيبدأ مربّعا الموظفين والرواتب **مؤشَّرَين**. والخادم يقبل
+    //    ما يُرسله العميل (`ResolveModules` لا يجرّد إلا القارئ)، فكلُّ مستخدمٍ يُسنَد لشركة
+    //    كان ينال رواتبها ما لم ينتبه المسؤول. وهذا **التفافٌ على جوهر حارس ADR-025**:
+    //    `AppModule.All = 127` يحمي المسار الذي لا يرسل فيه العميل شيئاً، والواجهة ترسل دائماً.
+    test('🔐 kDefaultModules تستثني الموظفين والرواتب — مرآةُ AppModule.All = 127', () {
+      expect(kDefaultModules, isNot(contains('Employees')));
+      expect(kDefaultModules, isNot(contains('Payroll')));
+      expect(kDefaultModules.length, 7, reason: 'سبعةٌ كـAppModule.All بالضبط');
+    });
+
+    test('وهي مجموعةٌ جزئية من kAllModules — لا قسمَ فيها خارج المعروف', () {
+      for (final m in kDefaultModules) {
+        expect(kAllModules, contains(m), reason: '«$m» ليس قسماً معروفاً');
+      }
+    });
+
+    test('🔴 والفرق بينهما هو القسمان الحسّاسان بالضبط — لا أقلّ ولا أكثر', () {
+      final diff = kAllModules.where((m) => !kDefaultModules.contains(m)).toSet();
+      expect(diff, {'Employees', 'Payroll'},
+          reason: 'أيُّ قسمٍ جديد خارج AppModule.All يجب أن يُضاف هنا بوعي، '
+              'وأيُّ قسمٍ أساسيّ سقط من الافتراض يُعطّل مستخدمين');
+    });
   });
 }

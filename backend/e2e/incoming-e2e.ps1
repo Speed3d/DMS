@@ -307,6 +307,53 @@ if ($EmployeeUser -and $EmployeePwd) {
     Skip "لم تُمرَّر بيانات موظف (-EmployeeUser / -EmployeePwd) — تخطّي اختبارات الصلاحيات"
 }
 
+# ─────────────── 10) رؤية الصادر: القسم يفتح كل كتب الشركة (ADR-030) ───────────────
+Section "10) رؤية الصادر — مَن يملك القسم يرى كتب غيره"
+# 🔴 **بلاغ المالك (2026-08-10):** موظفٌ بصلاحية الصادر كان يرى ما أنشأه وحده، فلا يرى
+#    كتاب زميله ولا كتاب رئيسه — ولا يعرف أحدٌ ما صدر عن شركته ولا تسلسله.
+#    القاعدة الآن: **القسم يفتح كل كتب الشركة**، والتحرير يبقى مقيّداً.
+if ($EmployeeUser -and $EmployeePwd -and $sTok) {
+    # نضمن للموظف قسم الصادر (قد لا يملكه).
+    $u2 = (Api GET "/users" $null $adminTok $cid).Body | Where-Object { $_.username -eq $EmployeeUser }
+    $pay2 = @($u2.companies | ForEach-Object {
+        $mods = @($_.modules)
+        if ($_.companyId -eq $cid -and $mods -notcontains "Outgoing") { $mods += "Outgoing" }
+        @{ companyId = $_.companyId; modules = $mods; departmentId = $_.departmentId
+           canApprove = $_.canApprove; canManageIncoming = $_.canManageIncoming } })
+    $null = Api PUT "/users/$($u2.userId)" @{ fullName = $u2.fullName; role = $u2.role
+        isActive = $true; companies = $pay2 } $adminTok $cid
+
+    $sTok2 = (Api POST "/auth/login" @{ username = $EmployeeUser; password = $EmployeePwd } $null $null).Body.accessToken
+
+    # كتابٌ أنشأه **الأدمن** — أي ليس من عمل الموظف إطلاقاً.
+    $adminDraft = Api POST "/outgoing" @{
+        companyId = $cid; entityId = $eid; templateId = $null
+        date = (Get-Date).ToString("yyyy-MM-dd"); subject = "كتاب الرئيس — حارس رؤية الصادر"
+        bodyHtml = "<p>أنشأه الأدمن لاختبار أن الموظف يراه.</p>" } $adminTok $cid
+
+    if ($adminDraft.Status -eq 200) {
+        $aoid = $adminDraft.Body.outgoingId
+
+        $list = @((Api GET "/outgoing" $null $sTok2 $cid).Body | Where-Object { $_.outgoingId -eq $aoid })
+        Expect "الموظف يرى كتاب الأدمن في القائمة" $list.Count 1
+
+        Expect "ويفتح تفاصيله" (Api GET "/outgoing/$aoid" $null $sTok2 $cid).Status 200
+        Expect "ويصل إلى مرفقاته (القاعدة واحدة لا نسختان)" (Api GET "/outgoing/$aoid/attachments" $null $sTok2 $cid).Status 200
+
+        # 🔐 والحدّ الباقي: الرؤية ليست التحرير.
+        Expect "🔐 ولا يعدّل مسودّة غيره (403)" (Api PUT "/outgoing/$aoid" @{
+            entityId = $eid; date = (Get-Date).ToString("yyyy-MM-dd")
+            subject = "محاولة تعديل"; bodyHtml = "<p>x</p>" } $sTok2 $cid).Status 403
+
+        # وتقريره المالي يشمل كتب غيره الآن (بلا قصرٍ على المُنشئ).
+        Expect "التقرير المالي يستجيب للموظف" (Api GET "/reports/financial?source=Outgoing" $null $sTok2 $cid).Status 200
+
+        $null = Api DELETE "/outgoing/$aoid" $null $adminTok $cid
+    } else { Bad "تعذّر إنشاء كتاب الأدمن: $($adminDraft.Status)" }
+} else {
+    Skip "لا موظف اختبار — تخطّي حرّاس رؤية الصادر"
+}
+
 # ─────────────────────────── النتيجة ───────────────────────────
 Write-Host "`n================ النتيجة ================" -ForegroundColor Cyan
 Write-Host "  نجح: $script:pass" -ForegroundColor Green

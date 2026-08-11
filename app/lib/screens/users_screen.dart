@@ -538,9 +538,11 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   }
 
   /// يضمن وجود سطر وصول (وأقسام مجلوبة) لكل شركة مُسندة.
+  ///
+  /// ⚠️ **`kDefaultModules` لا `kAllModules`**: الموظفون والرواتب يُمنحان صراحةً (ADR-025).
   void _ensureAccess(int companyId) {
     _access.putIfAbsent(companyId,
-        () => CompanyAccess(companyId: companyId, modules: List.from(kAllModules)));
+        () => CompanyAccess(companyId: companyId, modules: List.from(kDefaultModules)));
     _departmentsByCompany.putIfAbsent(
         companyId, () => ref.read(apiClientProvider).departments(companyId: companyId));
   }
@@ -572,7 +574,9 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
     // صلاحيات كل شركة على حدة (ADR-017). الأدوار المعفاة تُرسَل بكل الأقسام،
     // والقسم/إدارة الوارد للموظف والقارئ فقط (المدير فأعلى يديره بحكم دوره).
     final companies = _selectedCompanyIds.map((cid) {
-      final a = _access[cid] ?? CompanyAccess(companyId: cid, modules: List.from(kAllModules));
+      // ⚠️ الاحتياط هنا **يُرسَل فعلاً** إن غاب السطر — فبقاؤه `kAllModules` كان يمنح
+      //    الموظفين والرواتب من باب خلفيّ حتى لو صحّحنا `_ensureAccess` وحدها.
+      final a = _access[cid] ?? CompanyAccess(companyId: cid, modules: List.from(kDefaultModules));
       return {
         'companyId': cid,
         'modules': _roleExemptFromModules ? kAllModules : a.modules,
@@ -602,8 +606,9 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
 
   /// بطاقة صلاحيات المستخدم وقسمه في شركة واحدة.
   Widget _companyAccessCard(int companyId, String companyName) {
+    // ⚠️ ويُطابق ما يُرسَل: بطاقةٌ تعرض مربّعات مؤشَّرة وحمولةٌ ترسل غيرها = كذبةٌ بصرية.
     final access = _access[companyId] ??
-        CompanyAccess(companyId: companyId, modules: List.from(kAllModules));
+        CompanyAccess(companyId: companyId, modules: List.from(kDefaultModules));
     final theme = Theme.of(context);
 
     void update(CompanyAccess next) => setState(() => _access[companyId] = next);

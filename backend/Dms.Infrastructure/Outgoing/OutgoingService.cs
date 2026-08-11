@@ -52,14 +52,30 @@ public sealed class OutgoingService(
 {
     private const string CounterType = "Outgoing";
 
-    /// <summary>استعلام يطبّق رؤية الموظف (عمله فقط)؛ العزل حسب الشركة يفرضه DbContext.</summary>
-    public IQueryable<OutgoingBook> Query()
-    {
-        var q = db.OutgoingBooks.AsQueryable();
-        if (current.Role == UserRole.Employee || current.Role == UserRole.Reader)
-            q = q.Where(b => b.CreatedByUserId == current.UserId);
-        return q;
-    }
+    /// <summary>
+    /// قاعدة رؤية الصادر: **مَن يملك قسم الصادر يرى كل كتب شركته** (ADR-030).
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **تغيّرت بقرار المالك (2026-08-10).** كانت تقصر الموظف والقارئ على **ما أنشآه**،
+    /// فكان موظفٌ يصدر كتاباً ولا يراه زميله ولا يرى كتاب رئيسه — ولا يعرف أحدٌ ما صدر عن
+    /// شركته ولا تسلسله. والصادر **سجلٌّ مؤسَّسيّ** لا ملفٌّ شخصيّ: الرقم فيه متسلسل على
+    /// مستوى الشركة، فمن يرى نصفه يرى تسلسلاً بثقوب.
+    ///
+    /// والقياس على الوارد مقصود: هناك يرى الموظف كتب قسمه لا كتبه وحدها (ADR-015/018)،
+    /// وهو ما أثبت نفعه عملياً.
+    ///
+    /// ⚠️ **الرؤية ليست التحرير.** التعديل يبقى محكوماً بـ<see cref="EnsureCanModifyDraft"/>
+    /// (المدير أيّ مسودّة · والموظف مسودّته وحدها)، والاعتماد بـ<see cref="EffectiveCanApprove"/>.
+    /// وسّعنا ما يُقرأ ولم نمسّ ما يُكتب.
+    ///
+    /// ⚠️ **والبوّابة قبلها:** <c>[RequireModule(AppModule.Outgoing)]</c> على وحدة التحكّم —
+    /// فمن لا يملك القسم لا يبلغ هذا الاستعلام أصلاً. والعزل بين الشركات يفرضه الفلتر العام.
+    ///
+    /// 🔴 **ولا تُنسَخ هذه القاعدة في مكانٍ آخر**: المرفقات تنادي هذه الدالّة نفسها. نسخةٌ
+    /// ثانية منها في <c>AttachmentService</c> كلّفت الوارد عيباً حقيقياً (موظف القسم يرى
+    /// الكتاب ويُمنع من مرفقاته).
+    /// </remarks>
+    public IQueryable<OutgoingBook> Query() => db.OutgoingBooks.AsQueryable();
 
     public async Task<OutgoingBook> GetAsync(int id, CancellationToken ct = default)
         => await Query().FirstOrDefaultAsync(b => b.OutgoingId == id, ct)
