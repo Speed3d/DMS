@@ -313,11 +313,15 @@ Section "10) رؤية الصادر — مَن يملك القسم يرى كتب 
 #    كتاب زميله ولا كتاب رئيسه — ولا يعرف أحدٌ ما صدر عن شركته ولا تسلسله.
 #    القاعدة الآن: **القسم يفتح كل كتب الشركة**، والتحرير يبقى مقيّداً.
 if ($EmployeeUser -and $EmployeePwd -and $sTok) {
-    # نضمن للموظف قسم الصادر (قد لا يملكه).
+    # نضمن للموظف قسمَي **الصادر والتقارير** (قد لا يملكهما).
+    # ⚠️ ولماذا التقارير أيضاً؟ لأن `ReportsController` محروس بـ[RequireModule(AppModule.Reports)]،
+    #    فالموظف بلا القسم يُردّ **403 وهو السلوك الصحيح**. منحُه إيّاه هو ما يجعل الحارس
+    #    يختبر ما يدّعيه: أن التقرير صار يتبع رؤية الصادر (ADR-030) لا أن الحارس سقط.
     $u2 = (Api GET "/users" $null $adminTok $cid).Body | Where-Object { $_.username -eq $EmployeeUser }
     $pay2 = @($u2.companies | ForEach-Object {
         $mods = @($_.modules)
         if ($_.companyId -eq $cid -and $mods -notcontains "Outgoing") { $mods += "Outgoing" }
+        if ($_.companyId -eq $cid -and $mods -notcontains "Reports")  { $mods += "Reports" }
         @{ companyId = $_.companyId; modules = $mods; departmentId = $_.departmentId
            canApprove = $_.canApprove; canManageIncoming = $_.canManageIncoming } })
     $null = Api PUT "/users/$($u2.userId)" @{ fullName = $u2.fullName; role = $u2.role
@@ -326,8 +330,12 @@ if ($EmployeeUser -and $EmployeePwd -and $sTok) {
     $sTok2 = (Api POST "/auth/login" @{ username = $EmployeeUser; password = $EmployeePwd } $null $null).Body.accessToken
 
     # كتابٌ أنشأه **الأدمن** — أي ليس من عمل الموظف إطلاقاً.
+    # ⚠️ **بقالبٍ حقيقي إن وُجد**: معاينة المسودّة تحمّل القالب، و`LoadRefsAsync` ترمي
+    #    «القالب غير موجود» (404) لكتابٍ بلا قالب — **للأدمن نفسه**. فمسودّةٌ بلا قالب
+    #    تجعل حارس المعاينة يفشل بسببٍ لا علاقة له بالرؤية (وقع فعلاً في 2026-08-11).
+    $tplId = ((Api GET "/templates" $null $adminTok $cid).Body | Select-Object -First 1).templateId
     $adminDraft = Api POST "/outgoing" @{
-        companyId = $cid; entityId = $eid; templateId = $null
+        companyId = $cid; entityId = $eid; templateId = $tplId
         date = (Get-Date).ToString("yyyy-MM-dd"); subject = "كتاب الرئيس — حارس رؤية الصادر"
         bodyHtml = "<p>أنشأه الأدمن لاختبار أن الموظف يراه.</p>" } $adminTok $cid
 
@@ -338,14 +346,25 @@ if ($EmployeeUser -and $EmployeePwd -and $sTok) {
         Expect "الموظف يرى كتاب الأدمن في القائمة" $list.Count 1
 
         Expect "ويفتح تفاصيله" (Api GET "/outgoing/$aoid" $null $sTok2 $cid).Status 200
-        Expect "ويصل إلى مرفقاته (القاعدة واحدة لا نسختان)" (Api GET "/outgoing/$aoid/attachments" $null $sTok2 $cid).Status 200
+
+        # 🔴 **حارسٌ صُحِّح بعد أول تشغيل (2026-08-11):** كان يطلب `/outgoing/{id}/attachments`
+        #    ويتوقّع 200 — و**المسار غير موجود في `OutgoingController` أصلاً** (المرفقات
+        #    للوارد والأرشيف فقط)، فكان الـ404 من **جدول التوجيه** لا من الصلاحية: حارسٌ
+        #    يفشل دائماً ولا يقول شيئاً عن المنتج.
+        #    وقاعدة ADR-030 في `AttachmentService` **موجودة وسليمة** (تنادي `outgoing.Query()`
+        #    بدل نسخةٍ ثانية) — لكن **لا سطح API يبلغها**: لا رفع ولا قائمة لمرفقات الصادر.
+        #    ⇒ الحارس صار على نقطتين **موجودتين** تشتركان في قاعدة الرؤية نفسها.
+        Expect "ويقرأ سجل إصداراته" (Api GET "/outgoing/$aoid/versions" $null $sTok2 $cid).Status 200
+        if ($tplId) {
+            Expect "ويعاين مسودّته (القاعدة واحدة لا نسخ متفرّقة)" (Api GET "/outgoing/$aoid/preview-draft" $null $sTok2 $cid).Status 200
+        } else { Skip "لا قالب في الشركة — تخطّي حارس معاينة المسودّة" }
 
         # 🔐 والحدّ الباقي: الرؤية ليست التحرير.
         Expect "🔐 ولا يعدّل مسودّة غيره (403)" (Api PUT "/outgoing/$aoid" @{
             entityId = $eid; date = (Get-Date).ToString("yyyy-MM-dd")
             subject = "محاولة تعديل"; bodyHtml = "<p>x</p>" } $sTok2 $cid).Status 403
 
-        # وتقريره المالي يشمل كتب غيره الآن (بلا قصرٍ على المُنشئ).
+        # وتقريره المالي يشمل كتب غيره الآن (بلا قصرٍ على المُنشئ) — **بعد منحه قسم التقارير**.
         Expect "التقرير المالي يستجيب للموظف" (Api GET "/reports/financial?source=Outgoing" $null $sTok2 $cid).Status 200
 
         $null = Api DELETE "/outgoing/$aoid" $null $adminTok $cid
