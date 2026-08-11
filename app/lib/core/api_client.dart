@@ -499,6 +499,102 @@ class ApiClient {
     }
   }
 
+  /// يومٌ بلا وقت — عقد التقارير يعامل `from`/`to` **يومين لا لحظتين**، وإرسال الوقت
+  /// معهما يجعل «من اليوم» تعني «من هذه اللحظة» فيختفي عملُ الصباح.
+  String _dayOnly(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  // ---------- تقرير النشاط (ADR-031) ----------
+  //
+  // ⚠️ **رئيس الشركة فأعلى فقط** — الخادم يردّ 403 لغيرهم مهما ملكوا من أقسام. والواجهة
+  //    تُخفي التبويب بالحارس نفسه (`canSeeActivityReport`) لئلا يُقاد المستخدم إلى شاشة تردّ 403.
+
+  Map<String, dynamic> _activityQuery(
+      DateTime? from, DateTime? to, int? userId, String? action, String? entityType, int take) {
+    final q = <String, dynamic>{'take': take};
+    if (from != null) q['from'] = _dayOnly(from);
+    if (to != null) q['to'] = _dayOnly(to);
+    if (userId != null) q['userId'] = userId;
+    if (action != null && action.isNotEmpty) q['action'] = action;
+    if (entityType != null && entityType.isNotEmpty) q['entityType'] = entityType;
+    return q;
+  }
+
+  Future<ActivityReport> activityReport(
+          {DateTime? from, DateTime? to, int? userId, String? action, String? entityType, int take = 500}) async =>
+      ActivityReport.fromJson(
+          await _get('/reports/activity', query: _activityQuery(from, to, userId, action, entityType, take)));
+
+  Future<Uint8List> activityReportFile(String format,
+      {DateTime? from, DateTime? to, int? userId, String? action, String? entityType, int take = 500}) async {
+    try {
+      final res = await _dio.get<List<int>>('/reports/activity/$format',
+          queryParameters: _activityQuery(from, to, userId, action, entityType, take),
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<AuditVocabulary> auditVocabulary() async =>
+      AuditVocabulary.fromJson(await _get('/reports/activity/vocabulary'));
+
+  // ---------- التقارير التفصيلية ----------
+
+  Map<String, dynamic> _outgoingDetailQuery(DateTime? from, DateTime? to, int? entityId, String? status) {
+    final q = <String, dynamic>{};
+    if (from != null) q['from'] = _dayOnly(from);
+    if (to != null) q['to'] = _dayOnly(to);
+    if (entityId != null) q['entityId'] = entityId;
+    if (status != null && status.isNotEmpty) q['status'] = status;
+    return q;
+  }
+
+  Future<OutgoingDetailReport> outgoingDetailReport(
+          {DateTime? from, DateTime? to, int? entityId, String? status}) async =>
+      OutgoingDetailReport.fromJson(
+          await _get('/reports/outgoing-detail', query: _outgoingDetailQuery(from, to, entityId, status)));
+
+  Future<Uint8List> outgoingDetailFile(String format,
+      {DateTime? from, DateTime? to, int? entityId, String? status}) async {
+    try {
+      final res = await _dio.get<List<int>>('/reports/outgoing-detail/$format',
+          queryParameters: _outgoingDetailQuery(from, to, entityId, status),
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Map<String, dynamic> _archiveDetailQuery(String? search, int? year, int? month, int? departmentId, String? source) {
+    final q = <String, dynamic>{};
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    if (year != null) q['year'] = year;
+    if (month != null) q['month'] = month;
+    if (departmentId != null) q['departmentId'] = departmentId;
+    if (source != null && source.isNotEmpty && source != 'All') q['source'] = source;
+    return q;
+  }
+
+  Future<ArchiveDetailReport> archiveDetailReport(
+          {String? search, int? year, int? month, int? departmentId, String? source}) async =>
+      ArchiveDetailReport.fromJson(await _get('/reports/archive-detail',
+          query: _archiveDetailQuery(search, year, month, departmentId, source)));
+
+  Future<Uint8List> archiveDetailFile(String format,
+      {String? search, int? year, int? month, int? departmentId, String? source}) async {
+    try {
+      final res = await _dio.get<List<int>>('/reports/archive-detail/$format',
+          queryParameters: _archiveDetailQuery(search, year, month, departmentId, source),
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   // ---------- النسخ الاحتياطي ----------
   Future<BackupScheduleModel> backupSchedule() async =>
       BackupScheduleModel.fromJson(await _get('/backup/schedule'));

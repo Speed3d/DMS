@@ -73,6 +73,23 @@ class SessionState {
   /// 🔄 **كان الحدّ «المدير فأعلى» (ADR-023) فصار «فوق القارئ» (ADR-025).**
   bool get _aboveReader => auth?.role != 'Reader';
 
+  // ── حرّاس التقارير — **مرايا للحرّاس الخلفية حرفياً** (ADR-031) ──
+  // ⚠️ القاعدة نفسها المكتوبة لأقسام الموظفين أعلاه: بندٌ يقود إلى شاشة تردّ 403 **أسوأ من
+  //    إخفائه**. وكلُّ حارسٍ هنا له نظيرٌ في `ReportsController` — فمن غيّر هناك يغيّر هنا.
+
+  /// تقرير النشاط: **قسم التقارير مع دور رئيس الشركة فأعلى**.
+  ///
+  /// سجلّ التدقيق يكشف بيانات كل الأقسام، فلا يفتحه القسمُ وحده (ADR-031) — نظير
+  /// `[Authorize(Roles = "SuperAdmin,President")]` على النقاط الأربع.
+  bool get canSeeActivityReport =>
+      hasModule('Reports') && (auth?.role == 'SuperAdmin' || auth?.role == 'President');
+
+  /// الصادر التفصيلي: قسم التقارير **مع** قسم الصادر (حدٌّ مزدوج — ADR-031).
+  bool get canSeeOutgoingDetailReport => hasModule('Reports') && hasModule('Outgoing');
+
+  /// الأرشيف التفصيلي: قسم التقارير **مع** قسم الأرشيف (حدٌّ مزدوج — ADR-031).
+  bool get canSeeArchiveDetailReport => hasModule('Reports') && hasModule('Archive');
+
   SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool? bypassCompanySelection, bool clearAuth = false, bool clearCompany = false}) =>
       SessionState(
         auth: clearAuth ? null : (auth ?? this.auth),

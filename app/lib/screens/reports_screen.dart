@@ -5,14 +5,67 @@ import '../core/api_client.dart';
 import '../core/downloader.dart';
 import '../core/session.dart';
 import '../models.dart';
+import 'reports_activity_tab.dart';
+import 'reports_detail_tabs.dart';
 
+/// شاشة التقارير — **تبويبات تتبع صلاحيات المستخدم** (ADR-031).
+///
+/// 🔐 التبويب لا يظهر إن كانت نقطتُه سترّد 403: النشاط لرئيس الشركة فأعلى، والتفصيليان
+/// لمن يملك قسم وحدتهما مع قسم التقارير. **بندٌ يقود إلى 403 أسوأ من إخفائه** — القاعدة
+/// نفسها المتّبعة في أقسام الموظفين والرواتب.
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
   @override
-  ConsumerState<ReportsScreen> createState() => _State();
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _State extends ConsumerState<ReportsScreen> {
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(sessionProvider);
+
+    // ⚠️ تُبنى القائمة من الصلاحيات في كل بناء — فتبديل الشركة (ADR-017) يعيد حسابها،
+    //    ولا يبقى تبويبٌ من شركةٍ سابقة معروضاً.
+    final tabs = <({String title, IconData icon, Widget body})>[
+      (title: 'المالي', icon: Icons.payments_outlined, body: const FinancialReportTab()),
+      if (s.canSeeOutgoingDetailReport)
+        (title: 'الصادر التفصيلي', icon: Icons.outbox_outlined, body: const OutgoingDetailTab()),
+      if (s.canSeeArchiveDetailReport)
+        (title: 'الأرشيف التفصيلي', icon: Icons.inventory_2_outlined, body: const ArchiveDetailTab()),
+      if (s.canSeeActivityReport)
+        (title: 'النشاط', icon: Icons.history, body: const ActivityReportTab()),
+    ];
+
+    if (tabs.length == 1) return const FinancialReportTab();
+
+    return DefaultTabController(
+      length: tabs.length,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [for (final t in tabs) Tab(icon: Icon(t.icon, size: 18), text: t.title)],
+            ),
+          ),
+          Expanded(child: TabBarView(children: [for (final t in tabs) t.body])),
+        ],
+      ),
+    );
+  }
+}
+
+/// التقرير المالي — **لم يتغيّر منطقه** (تقريرٌ يعمل ومُثبَتٌ حيّاً لا يُعاد كتابته).
+class FinancialReportTab extends ConsumerStatefulWidget {
+  const FinancialReportTab({super.key});
+  @override
+  ConsumerState<FinancialReportTab> createState() => _FinancialState();
+}
+
+class _FinancialState extends ConsumerState<FinancialReportTab> {
   DateTime? _from, _to;
   int? _entityId;
   String _source = 'All';
@@ -51,17 +104,11 @@ class _State extends ConsumerState<ReportsScreen> {
     try {
       final bytes = await ref.read(apiClientProvider).financialReportFile(
           format, from: _from, to: _to, entityId: _entityId, source: _source);
-      final name = format == 'pdf' ? 'financial-report.pdf' : 'financial-report.xlsx';
-      final mime = format == 'pdf'
-          ? 'application/pdf'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      await downloadBytes(bytes, name, mime);
+      await downloadBytes(bytes, reportFileName('financial-report', format), reportMime(format));
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
     }
   }
-
-  String _fmt(num n) => n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 
   @override
   Widget build(BuildContext context) {
@@ -72,24 +119,9 @@ class _State extends ConsumerState<ReportsScreen> {
         children: [
           Text('التقرير المالي', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 12),
-          // الفلاتر
           Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            OutlinedButton.icon(
-              onPressed: () async {
-                final d = await showDatePicker(context: context, initialDate: _from ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
-                if (d != null) setState(() => _from = d);
-              },
-              icon: const Icon(Icons.event),
-              label: Text(_from == null ? 'من تاريخ' : DateFormat('yyyy-MM-dd').format(_from!)),
-            ),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final d = await showDatePicker(context: context, initialDate: _to ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
-                if (d != null) setState(() => _to = d);
-              },
-              icon: const Icon(Icons.event),
-              label: Text(_to == null ? 'إلى تاريخ' : DateFormat('yyyy-MM-dd').format(_to!)),
-            ),
+            DateFilterButton(label: 'من تاريخ', value: _from, onPick: (d) => setState(() => _from = d)),
+            DateFilterButton(label: 'إلى تاريخ', value: _to, onPick: (d) => setState(() => _to = d)),
             SizedBox(
               width: 200,
               child: DropdownButtonFormField<int?>(
@@ -122,15 +154,7 @@ class _State extends ConsumerState<ReportsScreen> {
               TextButton(onPressed: () { setState(() { _from = null; _to = null; _entityId = null; }); _run(); }, child: const Text('مسح الفلاتر')),
           ]),
           const SizedBox(height: 8),
-          if (_report != null)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(onPressed: () => _export('pdf'), icon: const Icon(Icons.picture_as_pdf), label: const Text('تصدير PDF')),
-                OutlinedButton.icon(onPressed: () => _export('excel'), icon: const Icon(Icons.table_chart), label: const Text('تصدير Excel')),
-              ],
-            ),
+          if (_report != null) ExportButtons(onExport: _export),
           const SizedBox(height: 12),
           if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
           Expanded(child: _busy ? const Center(child: CircularProgressIndicator()) : _results()),
@@ -146,66 +170,143 @@ class _State extends ConsumerState<ReportsScreen> {
     return Column(
       children: [
         Expanded(
-          child: Card(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final table = DataTable(
-                  columns: const [
-                    DataColumn(label: Text('المصدر')),
-                    DataColumn(label: Text('الرقم')),
-                    DataColumn(label: Text('التاريخ')),
-                    DataColumn(label: Text('الجهة')),
-                    DataColumn(label: Text('المبلغ')),
-                    DataColumn(label: Text('بالدينار')),
-                  ],
-                  rows: [
-                    for (final row in r.rows)
-                      DataRow(cells: [
-                        DataCell(Text(row.source)),
-                        DataCell(Text(row.number)),
-                        DataCell(Text(DateFormat('yyyy-MM-dd').format(row.date))),
-                        DataCell(Text(row.entityName)),
-                        DataCell(Text(row.amount == null ? '—' : '${row.amount} ${row.currency == 'USD' ? 'دولار' : 'دينار'}')),
-                        DataCell(Text(row.amountInIqd == null ? '—' : _fmt(row.amountInIqd!))),
-                      ]),
-                  ],
-                );
-                
-                Widget content = SizedBox(width: double.infinity, child: table);
-                if (constraints.maxWidth < 900) {
-                  content = SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 900),
-                      child: table,
-                    ),
-                  );
-                }
-                
-                return SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: content,
-                );
-              }
-            ),
-          ),
-        ),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          margin: const EdgeInsets.only(top: 8),
-          decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(8)),
-          child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            runSpacing: 8,
-            children: [
-              Text('عدد السجلات: ${r.count}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('الإجمالي بالدينار العراقي: ${_fmt(r.totalIqd)} د.ع',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal)),
+          child: ReportTable(
+            minWidth: 900,
+            columns: const ['المصدر', 'الرقم', 'التاريخ', 'الجهة', 'المبلغ', 'بالدينار'],
+            rows: [
+              for (final row in r.rows)
+                [
+                  row.source,
+                  row.number,
+                  DateFormat('yyyy-MM-dd').format(row.date),
+                  row.entityName,
+                  row.amount == null ? '—' : '${row.amount} ${row.currency == 'USD' ? 'دولار' : 'دينار'}',
+                  row.amountInIqd == null ? '—' : fmtNum(row.amountInIqd!),
+                ],
             ],
           ),
         ),
+        SummaryBar(items: [
+          'عدد السجلات: ${r.count}',
+          'الإجمالي بالدينار العراقي: ${fmtNum(r.totalIqd)} د.ع',
+        ]),
       ],
     );
   }
+}
+
+// ══════════════════ عناصر مشتركة بين التبويبات ══════════════════
+//
+// 🔴 **مشتركة عمداً**: أربعة تقارير بأربع نسخٍ من الجدول والتصدير والملخّص تعني أربعة
+//    أماكن يُصلَح فيها فيضُ التخطيط والتنسيق — وهو نمط «القاعدة المنسوخة» في الواجهة.
+
+String fmtNum(num n) =>
+    n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+
+String reportFileName(String base, String format) => format == 'pdf' ? '$base.pdf' : '$base.xlsx';
+
+String reportMime(String format) => format == 'pdf'
+    ? 'application/pdf'
+    : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+class DateFilterButton extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final ValueChanged<DateTime> onPick;
+  const DateFilterButton({super.key, required this.label, required this.value, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+        onPressed: () async {
+          final d = await showDatePicker(
+              context: context,
+              initialDate: value ?? DateTime.now(),
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100));
+          if (d != null) onPick(d);
+        },
+        icon: const Icon(Icons.event),
+        label: Text(value == null ? label : DateFormat('yyyy-MM-dd').format(value!)),
+      );
+}
+
+class ExportButtons extends StatelessWidget {
+  final Future<void> Function(String format) onExport;
+  const ExportButtons({super.key, required this.onExport});
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+              onPressed: () => onExport('pdf'),
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('تصدير PDF')),
+          OutlinedButton.icon(
+              onPressed: () => onExport('excel'),
+              icon: const Icon(Icons.table_chart),
+              label: const Text('تصدير Excel')),
+        ],
+      );
+}
+
+/// جدول تقريرٍ بأعمدة نصّية — **يمرّر أفقياً تحت `minWidth`** بدل أن يفيض.
+///
+/// ⚠️ الفيض تحت العرض الضيّق عطبٌ متكرّر في هذا المستودع (G12 وجدول الرواتب)، وعلاجه
+/// الثابت: تمريرٌ أفقيّ بحدٍّ أدنى **محسوبٍ من عدد الأعمدة** لا مكتوبٍ بيد لكل جدول.
+class ReportTable extends StatelessWidget {
+  final List<String> columns;
+  final List<List<String>> rows;
+  final double minWidth;
+  const ReportTable({super.key, required this.columns, required this.rows, this.minWidth = 900});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: LayoutBuilder(builder: (context, constraints) {
+        final table = DataTable(
+          columns: [for (final c in columns) DataColumn(label: Text(c))],
+          rows: [
+            for (final r in rows)
+              DataRow(cells: [
+                for (var i = 0; i < columns.length; i++)
+                  // خليّةٌ ناقصة تُزحزح الجدول كلَّه — نملأ الفراغ بدل أن نكسر المحاذاة.
+                  DataCell(Text(i < r.length ? r[i] : '')),
+              ]),
+          ],
+        );
+        Widget content = SizedBox(width: double.infinity, child: table);
+        if (constraints.maxWidth < minWidth) {
+          content = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(constraints: BoxConstraints(minWidth: minWidth), child: table),
+          );
+        }
+        return SingleChildScrollView(scrollDirection: Axis.vertical, child: content);
+      }),
+    );
+  }
+}
+
+/// شريط الملخّص أسفل التقرير — `Wrap` لا `Row` لئلا يفيض تحت العرض الضيّق.
+class SummaryBar extends StatelessWidget {
+  final List<String> items;
+  const SummaryBar({super.key, required this.items});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(8)),
+        child: Wrap(
+          spacing: 24,
+          runSpacing: 8,
+          children: [
+            for (final t in items)
+              Text(t, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+          ],
+        ),
+      );
 }

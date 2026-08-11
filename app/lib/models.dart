@@ -523,6 +523,146 @@ class FinancialReport {
         j['totalIqd'] ?? 0, j['count'] ?? 0);
 }
 
+// ══════════════════ تقرير النشاط (ADR-031) ══════════════════
+
+/// سطر نشاط من سجلّ التدقيق.
+///
+/// ⚠️ **المفتاح الخام والعربية معاً**: `action` للفلترة و`actionLabel` للعرض. وفعلٌ لم
+/// تُضَف ترجمته يصل خاماً من الخادم **ولا يُخفى** — سجلٌّ أمنيّ لا يُنقَص منه (ADR-031).
+class ActivityRow {
+  final DateTime timestamp;
+  final int? userId;
+  final String userName;
+  final String action;
+  final String actionLabel;
+  final String entityType;
+  final String entityLabel;
+  final String? entityId;
+  final String? details;
+  ActivityRow(this.timestamp, this.userId, this.userName, this.action, this.actionLabel,
+      this.entityType, this.entityLabel, this.entityId, this.details);
+  factory ActivityRow.fromJson(Map<String, dynamic> j) => ActivityRow(
+        DateTime.tryParse(j['timestamp'] ?? '') ?? DateTime.now(),
+        j['userId'], j['userName'] ?? '—',
+        j['action'] ?? '', j['actionLabel'] ?? '',
+        j['entityType'] ?? '', j['entityLabel'] ?? '',
+        j['entityId'], j['details']);
+}
+
+class CountRow {
+  final String label;
+  final int count;
+  CountRow(this.label, this.count);
+  factory CountRow.fromJson(Map<String, dynamic> j) => CountRow(j['label'] ?? '—', j['count'] ?? 0);
+}
+
+class ActivityReport {
+  final List<ActivityRow> rows;
+
+  /// العدد الكلّي **قبل القصّ** — «رأيتَ 500 من 12,340» معلومة، و«رأيتَ 500» تضليل.
+  final int totalCount;
+  final List<CountRow> byAction;
+  final List<CountRow> byUser;
+  ActivityReport(this.rows, this.totalCount, this.byAction, this.byUser);
+  factory ActivityReport.fromJson(Map<String, dynamic> j) => ActivityReport(
+        ((j['rows'] ?? []) as List).map((e) => ActivityRow.fromJson(e)).toList(),
+        j['totalCount'] ?? 0,
+        ((j['byAction'] ?? []) as List).map((e) => CountRow.fromJson(e)).toList(),
+        ((j['byUser'] ?? []) as List).map((e) => CountRow.fromJson(e)).toList());
+}
+
+/// عنصر فلترة: مفتاحُه الخام يُرسَل، وعربيّته تُعرض.
+class LabeledValue {
+  final String value;
+  final String label;
+  LabeledValue(this.value, this.label);
+  factory LabeledValue.fromJson(Map<String, dynamic> j) =>
+      LabeledValue(j['value'] ?? '', j['label'] ?? '');
+}
+
+class AuditVocabulary {
+  final List<LabeledValue> actions;
+  final List<LabeledValue> entities;
+  AuditVocabulary(this.actions, this.entities);
+  factory AuditVocabulary.fromJson(Map<String, dynamic> j) => AuditVocabulary(
+        ((j['actions'] ?? []) as List).map((e) => LabeledValue.fromJson(e)).toList(),
+        ((j['entities'] ?? []) as List).map((e) => LabeledValue.fromJson(e)).toList());
+}
+
+// ══════════════════ التقارير التفصيلية ══════════════════
+
+class OutgoingDetailRow {
+  final int outgoingId;
+  final String number;
+  final DateTime date;
+  final String subject;
+  final String entityName;
+
+  /// ⚠️ نصٌّ لا رقم — الخادم يسلسل الـenums بأسمائها (`"Draft"`/`"Final"`).
+  final String status;
+  final String statusLabel;
+  final String createdBy;
+  final String? approvedBy;
+  final num? amount;
+  final String? currency;
+  final num? amountInIqd;
+  OutgoingDetailRow(this.outgoingId, this.number, this.date, this.subject, this.entityName,
+      this.status, this.statusLabel, this.createdBy, this.approvedBy,
+      this.amount, this.currency, this.amountInIqd);
+  factory OutgoingDetailRow.fromJson(Map<String, dynamic> j) => OutgoingDetailRow(
+        j['outgoingId'] ?? 0, j['number'] ?? '',
+        DateTime.tryParse(j['date'] ?? '') ?? DateTime.now(),
+        j['subject'] ?? '', j['entityName'] ?? '',
+        '${j['status'] ?? ''}', j['statusLabel'] ?? '',
+        j['createdBy'] ?? '—', j['approvedBy'],
+        j['amount'], j['currency'], j['amountInIqd']);
+}
+
+/// ⚠️ `approvedTotalIqd` **للمعتمد وحده**، و`drafts` رقمٌ بجانبه لا داخله (درس ADR-029).
+class OutgoingDetailReport {
+  final List<OutgoingDetailRow> rows;
+  final int count;
+  final int drafts;
+  final int approved;
+  final num approvedTotalIqd;
+  OutgoingDetailReport(this.rows, this.count, this.drafts, this.approved, this.approvedTotalIqd);
+  factory OutgoingDetailReport.fromJson(Map<String, dynamic> j) => OutgoingDetailReport(
+        ((j['rows'] ?? []) as List).map((e) => OutgoingDetailRow.fromJson(e)).toList(),
+        j['count'] ?? 0, j['drafts'] ?? 0, j['approved'] ?? 0, j['approvedTotalIqd'] ?? 0);
+}
+
+class ArchiveDetailRow {
+  final bool isIncoming;
+  final String sourceLabel;
+  final String number;
+  final DateTime date;
+  final String title;
+  final String? entityName;
+  final String? documentType;
+  final String departments;
+  final num? amountInIqd;
+  ArchiveDetailRow(this.isIncoming, this.sourceLabel, this.number, this.date, this.title,
+      this.entityName, this.documentType, this.departments, this.amountInIqd);
+  factory ArchiveDetailRow.fromJson(Map<String, dynamic> j) => ArchiveDetailRow(
+        j['isIncoming'] == true, j['sourceLabel'] ?? '', j['number'] ?? '',
+        DateTime.tryParse(j['date'] ?? '') ?? DateTime.now(),
+        j['title'] ?? '', j['entityName'], j['documentType'],
+        j['departments'] ?? '—', j['amountInIqd']);
+}
+
+/// ⚠️ `totalIqd` مجموع **الأضابير وحدها** — الوارد المؤرشف بلا مبلغ (قرار 2026-07-25).
+class ArchiveDetailReport {
+  final List<ArchiveDetailRow> rows;
+  final int count;
+  final int incomingCount;
+  final int paperCount;
+  final num totalIqd;
+  ArchiveDetailReport(this.rows, this.count, this.incomingCount, this.paperCount, this.totalIqd);
+  factory ArchiveDetailReport.fromJson(Map<String, dynamic> j) => ArchiveDetailReport(
+        ((j['rows'] ?? []) as List).map((e) => ArchiveDetailRow.fromJson(e)).toList(),
+        j['count'] ?? 0, j['incomingCount'] ?? 0, j['paperCount'] ?? 0, j['totalIqd'] ?? 0);
+}
+
 class ArchiveListItem {
   final int archiveId;
   final String archiveNumber;
