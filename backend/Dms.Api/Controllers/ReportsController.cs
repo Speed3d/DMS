@@ -1,6 +1,7 @@
 using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
+using Dms.Infrastructure.Archive;
 using Dms.Infrastructure.Reports;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -45,4 +46,148 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
         // بلا اسم ملف عمداً — انظر التعليق في FinancialPdf.
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
+
+    // ══════════════════ تقرير النشاط ══════════════════
+    //
+    // 🔐 **حارسٌ مزدوج مقصود: قسم التقارير (على الصنف) + دور رئيس الشركة فأعلى (هنا).**
+    //    سجلّ التدقيق يكشف مواضيع الصادر وأرقامه والأرشيف والمستخدمين — أي **بيانات كل
+    //    الأقسام**. ولذلك `AuditController` مقصورٌ على `SuperAdmin,President` منذ تدقيق
+    //    2026-07-14، وفتحُ البيانات نفسها من باب التقارير بقسمٍ وحده **التفافٌ على ذلك القرار
+    //    لا ميزةٌ جديدة** — نظير الحدّ المزدوج الذي منع قراءة الوارد من باب الأرشيف (ADR-021).
+    //    ⚠️ ومَن ينقض هذا لاحقاً فليَنقُض `AuditController` معه، وإلا صار للبيان بابان
+    //    بحارسين مختلفين — وهو أسوأ من بابٍ واحدٍ مفتوح لأنه يُوهم بالإغلاق.
+
+    /// <summary>تقرير النشاط من سجل التدقيق — سطورٌ مترجَمة + تجميعٌ بالفعل وبالمستخدم.</summary>
+    [HttpGet("activity")]
+    [Authorize(Roles = "SuperAdmin,President")]
+    public async Task<ActionResult<ActivityReportDto>> Activity(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? userId,
+        [FromQuery] string? action, [FromQuery] string? entityType, [FromQuery] int take = 500,
+        CancellationToken ct = default)
+    {
+        var r = await reports.ActivityAsync(new ActivityFilter(from, to, userId, action, entityType, take), ct);
+        return new ActivityReportDto(r.From, r.To,
+            r.Rows.Select(x => new ActivityRowDto(
+                x.Timestamp, x.UserId, x.UserName, x.Action, x.ActionLabel,
+                x.EntityType, x.EntityLabel, x.EntityId, x.Details)).ToList(),
+            r.TotalCount,
+            r.ByAction.Select(c => new CountRowDto(c.Label, c.Count)).ToList(),
+            r.ByUser.Select(c => new CountRowDto(c.Label, c.Count)).ToList());
+    }
+
+    [HttpGet("activity/pdf")]
+    [Authorize(Roles = "SuperAdmin,President")]
+    public async Task<IActionResult> ActivityPdf(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? userId,
+        [FromQuery] string? action, [FromQuery] string? entityType, [FromQuery] int take = 500,
+        CancellationToken ct = default)
+    {
+        var bytes = await reports.ActivityPdfAsync(new ActivityFilter(from, to, userId, action, entityType, take), ct);
+        // بلا اسم ملف عمداً — انظر التعليق في FinancialPdf.
+        return File(bytes, "application/pdf");
+    }
+
+    [HttpGet("activity/excel")]
+    [Authorize(Roles = "SuperAdmin,President")]
+    public async Task<IActionResult> ActivityExcel(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? userId,
+        [FromQuery] string? action, [FromQuery] string? entityType, [FromQuery] int take = 500,
+        CancellationToken ct = default)
+    {
+        var bytes = await reports.ActivityExcelAsync(new ActivityFilter(from, to, userId, action, entityType, take), ct);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    // ══════════════════ التقارير التفصيلية ══════════════════
+    //
+    // 🔐 **حدٌّ مزدوج هنا أيضاً — لكن بالقسم لا بالدور:** `[RequireModule(Reports)]` على الصنف
+    //    **مع قسم الوحدة نفسها** على كل نقطة. بدونه يصير التقرير **باباً خلفياً**: مَن مُنح
+    //    «التقارير» ليقرأ المالي كان سيقرأ **مواضيع الصادر وعناوين الأرشيف** وهي محجوبة عنه
+    //    في `/api/outgoing` و`/api/archive` بحرّاسهما.
+    //    ⚠️ **كشفَ هذا فحصُ الصلاحيات بعد الكتابة لا قبلها** — النقطتان كُتبتا بحارس التقارير
+    //    وحده أولاً، وهو بالضبط نمط «الباب الخلفي» الذي عالجته ADR-021 في الأرشيف والوارد.
+    //
+    // وأمّا **رؤية الصفوف** فتُحسم داخل `Query()`/`LensAsync` بقواعد الوحدتين نفسها — فمَن يرى
+    // الكتاب على الشاشة يراه في تقريره، ومَن لا يراه لا يجده (ADR-030).
+
+    /// <summary>الصادر التفصيلي: كتبٌ بحالتها ومُنشئها ومعتمِدها. `status`: `Draft`/`Final`.</summary>
+    [HttpGet("outgoing-detail")]
+    [RequireModule(AppModule.Outgoing)]
+    public async Task<ActionResult<OutgoingDetailReportDto>> OutgoingDetail(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] int? entityId, [FromQuery] BookStatus? status, CancellationToken ct = default)
+    {
+        var r = await reports.OutgoingDetailAsync(new OutgoingDetailFilter(from, to, entityId, status), ct);
+        return new OutgoingDetailReportDto(
+            r.Rows.Select(x => new OutgoingDetailRowDto(
+                x.OutgoingId, x.Number, x.Date, x.Subject, x.EntityName, x.Status, x.StatusLabel,
+                x.CreatedBy, x.ApprovedBy, x.ApprovedAt, x.Amount, x.Currency, x.AmountInIqd)).ToList(),
+            r.Count, r.Drafts, r.Approved, r.ApprovedTotalIqd);
+    }
+
+    [HttpGet("outgoing-detail/pdf")]
+    [RequireModule(AppModule.Outgoing)]
+    public async Task<IActionResult> OutgoingDetailPdf(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] int? entityId, [FromQuery] BookStatus? status, CancellationToken ct = default)
+        => File(await reports.OutgoingDetailPdfAsync(new OutgoingDetailFilter(from, to, entityId, status), ct),
+                "application/pdf");
+
+    [HttpGet("outgoing-detail/excel")]
+    [RequireModule(AppModule.Outgoing)]
+    public async Task<IActionResult> OutgoingDetailExcel(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] int? entityId, [FromQuery] BookStatus? status, CancellationToken ct = default)
+        => File(await reports.OutgoingDetailExcelAsync(new OutgoingDetailFilter(from, to, entityId, status), ct),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    /// <summary>الأرشيف التفصيلي — **من عدسة الأرشيف نفسها** (وارد مؤرشف + أضابير).</summary>
+    /// <remarks>
+    /// 🔐 وحدُّ الوارد المزدوج محفوظ داخل `LensAsync`: مَن لا يملك قسم «الوارد» **لا تظهر له
+    /// صفوفُ الوارد المؤرشف** في هذا التقرير ولا في الشاشة — الباب واحد والحارس واحد.
+    /// </remarks>
+    [HttpGet("archive-detail")]
+    [RequireModule(AppModule.Archive)]
+    public async Task<ActionResult<ArchiveDetailReportDto>> ArchiveDetail(
+        [FromQuery] string? search, [FromQuery] int? year, [FromQuery] int? month,
+        [FromQuery] int? departmentId, [FromQuery] string? source, CancellationToken ct = default)
+    {
+        var r = await reports.ArchiveDetailAsync(new ArchiveLensFilter(search, year, month, departmentId, source), ct);
+        return new ArchiveDetailReportDto(
+            r.Rows.Select(x => new ArchiveDetailRowDto(
+                x.IsIncoming, x.SourceLabel, x.Number, x.Date, x.Title,
+                x.EntityName, x.DocumentType, x.Departments, x.AmountInIqd)).ToList(),
+            r.Count, r.IncomingCount, r.PaperCount, r.TotalIqd);
+    }
+
+    [HttpGet("archive-detail/pdf")]
+    [RequireModule(AppModule.Archive)]
+    public async Task<IActionResult> ArchiveDetailPdf(
+        [FromQuery] string? search, [FromQuery] int? year, [FromQuery] int? month,
+        [FromQuery] int? departmentId, [FromQuery] string? source, CancellationToken ct = default)
+        => File(await reports.ArchiveDetailPdfAsync(new ArchiveLensFilter(search, year, month, departmentId, source), ct),
+                "application/pdf");
+
+    [HttpGet("archive-detail/excel")]
+    [RequireModule(AppModule.Archive)]
+    public async Task<IActionResult> ArchiveDetailExcel(
+        [FromQuery] string? search, [FromQuery] int? year, [FromQuery] int? month,
+        [FromQuery] int? departmentId, [FromQuery] string? source, CancellationToken ct = default)
+        => File(await reports.ArchiveDetailExcelAsync(new ArchiveLensFilter(search, year, month, departmentId, source), ct),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    /// <summary>مفردات سجلّ التدقيق (الأفعال والأنواع) بعربيّتها — لتملأ قوائم الفلترة.</summary>
+    /// <remarks>
+    /// 🔴 **تُقرأ من `AuditLabels` لا من القاعدة**: قائمةٌ مبنيّة على `DISTINCT` من السجلّ
+    /// **تخلو ممّا لم يقع بعد**، فيبحث المالك عن «استعادة نسخة» فلا يجدها لأنها لم تحدث —
+    /// فيظنّ الفلتر ناقصاً. والمصدر الواحد يُبقي العربية في مكانٍ واحد.
+    /// </remarks>
+    [HttpGet("activity/vocabulary")]
+    [Authorize(Roles = "SuperAdmin,President")]
+    public ActionResult<AuditVocabularyDto> ActivityVocabulary()
+        => new AuditVocabularyDto(
+            AuditLabels.Actions.Select(kv => new LabeledValueDto(kv.Key, kv.Value))
+                .OrderBy(x => x.Label, StringComparer.Ordinal).ToList(),
+            AuditLabels.Entities.Select(kv => new LabeledValueDto(kv.Key, kv.Value))
+                .OrderBy(x => x.Label, StringComparer.Ordinal).ToList());
 }

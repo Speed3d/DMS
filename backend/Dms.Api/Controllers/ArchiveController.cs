@@ -16,12 +16,13 @@ namespace Dms.Api.Controllers;
 [Authorize]
 [RequireModule(AppModule.Archive)]
 [Route("api/[controller]")]
+// ⚠️ `IIncomingService` و`ICurrentUser` **سقطا من هنا (2026-08-11)** مع نقل منطق العدسة إلى
+//    `ArchiveService.LensAsync` — لم يعودا مستعملَين، وبقاؤهما يوهم بأن الـcontroller يقرّر
+//    شيئاً في الرؤية وهو لا يقرّر.
 public sealed class ArchiveController(
     IArchiveService svc,
     IAttachmentService attachments,
-    AppDbContext db,
-    IIncomingService incomingService,
-    ICurrentUser current) : ControllerBase
+    AppDbContext db) : ControllerBase
 {
     /// <summary>
     /// **عدسة الأرشيف**: عرض موحّد يجمع الوارد المؤرشف والأضابير الورقية، مرتّباً بالأحدث.
@@ -36,80 +37,22 @@ public sealed class ArchiveController(
     /// قاعدة الرؤية (ما استلمه · ما أُحيل لقسمه · ما أحاله بنفسه) تطوّرت مرّتين (ADR-015 ثم
     /// ADR-018)، ونسخةٌ ثانية منها هنا كانت ستتخلّف عن الأصل عند أي تعديل ثالث فتُسرّب أو تحجب.
     /// </remarks>
+    /// <remarks>
+    /// 🔴 **المنطق نُقل إلى `ArchiveService.LensAsync` (2026-08-11)** حين احتاجه **التقرير
+    /// التفصيلي للأرشيف**. والبديل — نسخُه هناك — هو بعينه العطل الذي أُغلق قبل يومٍ واحد:
+    /// تقريرٌ يجمع غيرَ ما تعرضه الشاشة (ADR-030). هذه الدالّة **تحويلُ شكلٍ لا منطق**.
+    /// </remarks>
     [HttpGet("lens")]
     public async Task<ActionResult<List<ArchiveLensItem>>> Lens(
         [FromQuery] string? search, [FromQuery] int? year, [FromQuery] int? month,
         [FromQuery] int? departmentId, [FromQuery] string? source,
         CancellationToken ct = default)
     {
-        var items = new List<ArchiveLensItem>();
-
-        var wantIncoming = !string.Equals(source, "Paper", StringComparison.OrdinalIgnoreCase);
-        var wantPaper = !string.Equals(source, "Incoming", StringComparison.OrdinalIgnoreCase);
-
-        // ---- المصدر الأول: الوارد المؤرشف (يتطلّب قسم الوارد أيضاً) ----
-        if (wantIncoming && current.HasModule(AppModule.Incoming))
-        {
-            var q = incomingService.Query()
-                .Where(b => b.Status == IncomingStatus.Archived)
-                .Include(b => b.Entity)
-                .Include(b => b.Assignments).ThenInclude(a => a.Department)
-                .AsQueryable();
-
-            if (!string.IsNullOrWhiteSpace(search))
-                q = q.Where(b => (b.IncomingNumber != null && b.IncomingNumber.Contains(search))
-                                 || b.Subject.Contains(search)
-                                 || (b.Keywords != null && b.Keywords.Contains(search)));
-
-            if (departmentId.HasValue)
-                q = q.Where(b => b.Assignments.Any(a => a.DepartmentId == departmentId.Value));
-
-            var books = await q.ToListAsync(ct);
-            var typeNames = await db.DocumentTypes.ToDictionaryAsync(t => t.DocumentTypeId, t => t.Name, ct);
-
-            items.AddRange(books.Select(b =>
-            {
-                // Hint: `UpdatedAt` هو تاريخ الأرشفة فعلياً — التعديل ممنوع بعدها، فآخر
-                //       تحديث للكتاب هو لحظة أرشفته. فلا حاجة لعمود جديد ولا مهاجرة.
-                var archivedAt = b.UpdatedAt ?? b.CreatedAt;
-                return new ArchiveLensItem(
-                    ArchiveSource.Incoming, b.IncomingId, b.IncomingNumber ?? "—", b.Subject,
-                    archivedAt, archivedAt.Year, archivedAt.Month,
-                    b.Entity?.Name,
-                    b.DocumentTypeId is not null && typeNames.TryGetValue(b.DocumentTypeId.Value, out var tn) ? tn : null,
-                    b.Assignments.Select(a => a.Department?.Name ?? "—").ToList(),
-                    b.Notes);
-            }));
-        }
-
-        // ---- المصدر الثاني: الأضابير الورقية القديمة ----
-        if (wantPaper)
-        {
-        var docs = await svc.SearchAsync(new ArchiveSearchInput(search, null, null, null, null), ct);
-        var docTypeNames = await db.DocumentTypes.ToDictionaryAsync(t => t.DocumentTypeId, t => t.Name, ct);
-
-        items.AddRange(docs
-            .Where(a => !departmentId.HasValue || a.DepartmentId == departmentId.Value)
-            .Select(a =>
-            {
-                // تاريخ الكتاب الأصلي أدقّ للأضبارة القديمة من تاريخ إدخالها في النظام.
-                var at = a.BookDate ?? a.CreatedAt;
-                return new ArchiveLensItem(
-                    ArchiveSource.Paper, a.ArchiveId, a.ArchiveNumber, a.Title,
-                    at, at.Year, at.Month, null,
-                    a.DocumentTypeId is not null && docTypeNames.TryGetValue(a.DocumentTypeId.Value, out var tn) ? tn : null,
-                    a.Department?.Name is null ? [] : [a.Department.Name],
-                    a.Notes);
-            }));
-        }
-
-        // Hint: الفلترة بالسنة/الشهر بعد الدمج لا قبله — المصدران يشتقّان تاريخهما من
-        //       حقلين مختلفين (`UpdatedAt` للوارد و`BookDate` للأضبارة)، فتوحيدهما هنا
-        //       يضمن أن «شهر ٥» يعني الشيء نفسه في الجهتين.
-        if (year.HasValue) items = items.Where(i => i.Year == year.Value).ToList();
-        if (month.HasValue) items = items.Where(i => i.Month == month.Value).ToList();
-
-        return items.OrderByDescending(i => i.ArchivedAt).ToList();
+        var rows = await svc.LensAsync(new ArchiveLensFilter(search, year, month, departmentId, source), ct);
+        return rows.Select(r => new ArchiveLensItem(
+            r.IsIncoming ? ArchiveSource.Incoming : ArchiveSource.Paper,
+            r.Id, r.Number, r.Title, r.ArchivedAt, r.Year, r.Month,
+            r.EntityName, r.DocumentTypeName, r.Departments, r.Notes)).ToList();
     }
 
     /// <summary>

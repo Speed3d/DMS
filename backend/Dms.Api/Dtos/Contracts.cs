@@ -411,7 +411,46 @@ public sealed record AttachmentResponse(int AttachmentId, string FileName, strin
 // ----------------- Reports -----------------
 public sealed record FinancialRowDto(string Source, string Number, DateTime Date, string EntityName, decimal? Amount, Currency? Currency, decimal? AmountInIqd);
 public sealed record FinancialReportDto(DateTime? From, DateTime? To, List<FinancialRowDto> Rows, decimal TotalIqd, int Count);
-public sealed record ActivityRowDto(DateTime Timestamp, int? UserId, string UserName, string Action, string EntityType, string? EntityId, string? Details);
+/// <param name="Action">الفعل الخام (Create/Approve…) — يبقى ليُفلتَر به من الواجهة.</param>
+/// <param name="ActionLabel">عربيّته للعرض. **الاثنان معاً** لأن العرض يحتاج العربية والفلترة تحتاج المفتاح.</param>
+public sealed record ActivityRowDto(
+    DateTime Timestamp, int? UserId, string UserName,
+    string Action, string ActionLabel,
+    string EntityType, string EntityLabel,
+    string? EntityId, string? Details);
+
+public sealed record CountRowDto(string Label, int Count);
+
+/// <param name="TotalCount">العدد الكلّي قبل القصّ — ليعرف القارئ أنه يرى جزءاً.</param>
+public sealed record ActivityReportDto(
+    DateTime? From, DateTime? To, List<ActivityRowDto> Rows, int TotalCount,
+    List<CountRowDto> ByAction, List<CountRowDto> ByUser);
+
+/// <param name="Value">المفتاح الخام كما في السجلّ (يُرسَل في الفلتر).</param>
+/// <param name="Label">عربيّته (تُعرض للمستخدم).</param>
+public sealed record LabeledValueDto(string Value, string Label);
+
+/// <summary>مفردات السجلّ المعروفة — يملأ بها العميلُ قائمتَي الفلترة بلا تخمين ولا تثبيتٍ يشيخ.</summary>
+public sealed record AuditVocabularyDto(List<LabeledValueDto> Actions, List<LabeledValueDto> Entities);
+
+// ----------------- التقارير التفصيلية -----------------
+public sealed record OutgoingDetailRowDto(
+    int OutgoingId, string Number, DateTime Date, string Subject, string EntityName,
+    BookStatus Status, string StatusLabel, string CreatedBy, string? ApprovedBy,
+    DateTime? ApprovedAt, decimal? Amount, Currency? Currency, decimal? AmountInIqd);
+
+/// <param name="Drafts">عدد المسودّات — **تُعدّ ولا تدخل المجموع** (درس ADR-029).</param>
+/// <param name="ApprovedTotalIqd">مجموع **المعتمد وحده** بالدينار.</param>
+public sealed record OutgoingDetailReportDto(
+    List<OutgoingDetailRowDto> Rows, int Count, int Drafts, int Approved, decimal ApprovedTotalIqd);
+
+public sealed record ArchiveDetailRowDto(
+    bool IsIncoming, string SourceLabel, string Number, DateTime Date, string Title,
+    string? EntityName, string? DocumentType, string Departments, decimal? AmountInIqd);
+
+/// <param name="TotalIqd">مجموع **الأضابير وحدها** — الوارد المؤرشف بلا مبلغ (قرار 2026-07-25).</param>
+public sealed record ArchiveDetailReportDto(
+    List<ArchiveDetailRowDto> Rows, int Count, int IncomingCount, int PaperCount, decimal TotalIqd);
 
 // ----------------- Backup -----------------
 public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupScope Scope, RetentionCategory Category, BackupStatus Status, string? Note);

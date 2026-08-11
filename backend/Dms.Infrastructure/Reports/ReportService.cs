@@ -16,15 +16,67 @@ public sealed record FinancialReportRow(
 public sealed record FinancialReportResult(
     DateTime? From, DateTime? To, List<FinancialReportRow> Rows, decimal TotalIqd, int Count);
 
+/// <param name="Action">الفعل الخام كما في السجلّ (Create/Approve…) — للفلترة والمطابقة الآلية.</param>
+/// <param name="ActionLabel">عربيّته — للعرض والطباعة.</param>
 public sealed record ActivityRow(
-    DateTime Timestamp, int? UserId, string UserName, string Action, string EntityType, string? EntityId, string? Details);
+    DateTime Timestamp, int? UserId, string UserName,
+    string Action, string ActionLabel,
+    string EntityType, string EntityLabel,
+    string? EntityId, string? Details);
+
+/// <param name="Rows">السطور بعد الفلترة، مقصوصةً عند <c>take</c>.</param>
+/// <param name="TotalCount">العدد الكلّي **قبل القصّ** — ليعرف القارئ أنه يرى جزءاً.</param>
+/// <param name="ByAction">توزيع العمليات على الأفعال (عربيّةً) — أكثرها أولاً.</param>
+/// <param name="ByUser">توزيع العمليات على المستخدمين — أكثرهم أولاً.</param>
+public sealed record ActivityResult(
+    DateTime? From, DateTime? To, List<ActivityRow> Rows, int TotalCount,
+    List<CountRow> ByAction, List<CountRow> ByUser);
+
+public sealed record CountRow(string Label, int Count);
+
+/// <summary>خيارات تقرير النشاط — تُمرَّر ككائنٍ واحد لأنها ستّة وستزيد.</summary>
+public sealed record ActivityFilter(
+    DateTime? From = null, DateTime? To = null, int? UserId = null,
+    string? Action = null, string? EntityType = null, int Take = 500);
+
+public sealed record OutgoingDetailRow(
+    int OutgoingId, string Number, DateTime Date, string Subject, string EntityName,
+    BookStatus Status, string StatusLabel, string CreatedBy, string? ApprovedBy,
+    DateTime? ApprovedAt, decimal? Amount, Currency? Currency, decimal? AmountInIqd);
+
+/// <param name="Drafts">عدد المسودّات ضمن النتيجة — تُعدّ ولا تُجمع مبالغُها (درس ADR-029).</param>
+public sealed record OutgoingDetailResult(
+    List<OutgoingDetailRow> Rows, int Count, int Drafts, int Approved, decimal ApprovedTotalIqd);
+
+/// <param name="IsIncoming">صفٌّ من الوارد المؤرشف (لا مبلغ له) أم أضبارة ورقية.</param>
+public sealed record ArchiveDetailRow(
+    bool IsIncoming, string SourceLabel, string Number, DateTime Date, string Title,
+    string? EntityName, string? DocumentType, string Departments, decimal? AmountInIqd);
+
+public sealed record ArchiveDetailResult(
+    List<ArchiveDetailRow> Rows, int Count, int IncomingCount, int PaperCount, decimal TotalIqd);
+
+/// <param name="Status">حالة الصادر المطلوبة، أو فارغ = الكل.</param>
+public sealed record OutgoingDetailFilter(
+    DateTime? From = null, DateTime? To = null, int? EntityId = null, BookStatus? Status = null);
 
 public interface IReportService
 {
     Task<FinancialReportResult> FinancialAsync(DateTime? from, DateTime? to, int? entityId, string source, CancellationToken ct = default);
     Task<byte[]> FinancialPdfAsync(DateTime? from, DateTime? to, int? entityId, string source, CancellationToken ct = default);
     Task<byte[]> FinancialExcelAsync(DateTime? from, DateTime? to, int? entityId, string source, CancellationToken ct = default);
-    Task<List<ActivityRow>> ActivityAsync(DateTime? from, DateTime? to, int? userId, CancellationToken ct = default);
+
+    Task<ActivityResult> ActivityAsync(ActivityFilter filter, CancellationToken ct = default);
+    Task<byte[]> ActivityPdfAsync(ActivityFilter filter, CancellationToken ct = default);
+    Task<byte[]> ActivityExcelAsync(ActivityFilter filter, CancellationToken ct = default);
+
+    Task<OutgoingDetailResult> OutgoingDetailAsync(OutgoingDetailFilter filter, CancellationToken ct = default);
+    Task<byte[]> OutgoingDetailPdfAsync(OutgoingDetailFilter filter, CancellationToken ct = default);
+    Task<byte[]> OutgoingDetailExcelAsync(OutgoingDetailFilter filter, CancellationToken ct = default);
+
+    Task<ArchiveDetailResult> ArchiveDetailAsync(ArchiveLensFilter filter, CancellationToken ct = default);
+    Task<byte[]> ArchiveDetailPdfAsync(ArchiveLensFilter filter, CancellationToken ct = default);
+    Task<byte[]> ArchiveDetailExcelAsync(ArchiveLensFilter filter, CancellationToken ct = default);
 }
 
 public sealed class ReportService(
@@ -122,27 +174,333 @@ public sealed class ReportService(
         return ExcelExporter.Create("التقرير المالي", headers, rows);
     }
 
-    public async Task<List<ActivityRow>> ActivityAsync(DateTime? from, DateTime? to, int? userId, CancellationToken ct = default)
-    {
-        var q = db.AuditLogs.AsQueryable();
-        if (from is not null) q = q.Where(a => a.Timestamp >= from);
-        if (to is not null) q = q.Where(a => a.Timestamp < to.Value.Date.AddDays(1));
-        if (userId is not null) q = q.Where(a => a.UserId == userId);
+    // ══════════════════ تقرير النشاط (من سجل التدقيق) ══════════════════
+    //
+    // 🔐 **حدّ الصلاحية ليس هنا بل على الـController** — ونُصّ عليه لئلا يُنسى عند إضافة نقطة:
+    //    سجلّ التدقيق يكشف مواضيع الصادر وأرقامه والأرشيف والمستخدمين، أي **بيانات كل
+    //    الأقسام**. ولذلك `AuditController` مقصورٌ على «رئيس الشركة فأعلى» منذ تدقيق 2026-07-14
+    //    (البند D4). وفتحُ البيانات نفسها من باب التقارير بحارس القسم وحده **التفافٌ على ذلك
+    //    القرار**، لا ميزةٌ جديدة — نظير «الحدّ المزدوج» الذي منع قراءة الوارد من باب الأرشيف
+    //    (ADR-021).
+    //
+    // ⚠️ **والعزل بين الشركات نافذٌ فوق ذلك كله**: `AuditLogs` لها فلترٌ عامّ على `CompanyId`
+    //    في `AppDbContext` (يسمح بـ`null` لأحداث ما قبل اختيار الشركة كالدخول).
 
-        var logs = await q.OrderByDescending(a => a.Timestamp).Take(500)
+    public async Task<ActivityResult> ActivityAsync(ActivityFilter filter, CancellationToken ct = default)
+    {
+        var q = FilteredLogs(filter);
+
+        // العدّ الكلّي **قبل القصّ**: «رأيتَ 500 من 12,340» معلومةٌ، و«رأيتَ 500» تضليل.
+        var total = await q.CountAsync(ct);
+
+        var take = Math.Clamp(filter.Take, 1, 5000);
+        var logs = await q.OrderByDescending(a => a.Timestamp).Take(take)
             .Select(a => new { a.Timestamp, a.UserId, a.Action, a.EntityType, a.EntityId, a.Details })
             .ToListAsync(ct);
 
-        var ids = logs.Where(l => l.UserId is not null).Select(l => l.UserId!.Value).Distinct().ToList();
+        // التجميع على **كامل النطاق المفلتَر** لا على المقصوص — وإلا صار الملخّص يصف
+        // الصفحةَ الأولى ويُقرأ على أنه يصف الفترة.
+        var byAction = await q.GroupBy(a => a.Action)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count).Take(20).ToListAsync(ct);
+
+        // 🔴 **التجميع بالمستخدم يُجمع من مصدرين لا واحد** — لأن أحداث المصادقة تُكتب
+        //    بـ`UserId = null` والفاعل فيها في `EntityId` (انظر `AuditLabels.ActorUserId`).
+        //    وبمصدرٍ واحد كان «الأنشط» **يتجاهل كل عمليات الدخول** فيصف نشاطاً ناقصاً.
+        //    والتجميعان يقعان في SQL لا في الذاكرة — فالسجلّ ينمو بلا سقف.
+        var byUserRaw = await q.Where(a => a.UserId != null)
+            .GroupBy(a => a.UserId!.Value)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var byActorRaw = await q
+            .Where(a => a.UserId == null && a.EntityType == AuditLabels.UserEntityType && a.EntityId != null)
+            .GroupBy(a => a.EntityId!)
+            .Select(g => new { EntityId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var perUser = new Dictionary<int, int>();
+        foreach (var u in byUserRaw)
+            perUser[u.UserId] = perUser.GetValueOrDefault(u.UserId) + u.Count;
+        foreach (var a in byActorRaw)
+            if (int.TryParse(a.EntityId, out var uid))
+                perUser[uid] = perUser.GetValueOrDefault(uid) + a.Count;
+
+        var topUsers = perUser.OrderByDescending(kv => kv.Value).Take(20).ToList();
+
+        // أسماء المستخدمين: للسطور والتجميع معاً، بطلبٍ واحد.
+        // ⚠️ `IgnoreQueryFilters` مقصود: مستخدمٌ نُقل أو عُطّل يبقى اسمه مقروءاً في سجلٍّ
+        //    تاريخيّ — وإلا صار «—» ففُقدت **مَن** وهي نصف المعلومة الأمنية.
+        var ids = logs.Select(l => AuditLabels.ActorUserId(l.UserId, l.EntityType, l.EntityId))
+            .Where(x => x is not null).Select(x => x!.Value)
+            .Concat(topUsers.Select(u => u.Key)).Distinct().ToList();
         var names = await db.Users.IgnoreQueryFilters()
             .Where(u => ids.Contains(u.UserId))
             .ToDictionaryAsync(u => u.UserId, u => u.FullName, ct);
 
-        return logs.Select(l => new ActivityRow(
-            l.Timestamp, l.UserId,
-            l.UserId is not null && names.TryGetValue(l.UserId.Value, out var n) ? n : "—",
-            l.Action, l.EntityType, l.EntityId, l.Details)).ToList();
+        string NameOf(int? id) => id is not null && names.TryGetValue(id.Value, out var n) ? n : "—";
+
+        var rows = logs.Select(l =>
+        {
+            var actor = AuditLabels.ActorUserId(l.UserId, l.EntityType, l.EntityId);
+            return new ActivityRow(
+                l.Timestamp, actor, NameOf(actor),
+                l.Action, AuditLabels.Action(l.Action),
+                l.EntityType, AuditLabels.Entity(l.EntityType),
+                l.EntityId, l.Details);
+        }).ToList();
+
+        return new ActivityResult(
+            filter.From, filter.To, rows, total,
+            byAction.Select(a => new CountRow(AuditLabels.Action(a.Key), a.Count)).ToList(),
+            topUsers.Select(u => new CountRow(NameOf(u.Key), u.Value)).ToList());
     }
+
+    public async Task<byte[]> ActivityPdfAsync(ActivityFilter filter, CancellationToken ct = default)
+    {
+        var r = await ActivityAsync(filter, ct);
+        var model = new TableReportModel(
+            "تقرير النشاط", await CompanyNameAsync(ct), PeriodLabel(filter.From, filter.To),
+            [
+                new TableReportColumn("التاريخ والوقت", 2.4f),
+                new TableReportColumn("المستخدم", 2.2f),
+                new TableReportColumn("العملية", 2.6f),
+                new TableReportColumn("النوع", 2.2f),
+                new TableReportColumn("المعرّف", 1.2f),
+                new TableReportColumn("التفاصيل", 4f),
+            ],
+            r.Rows.Select(x => (IReadOnlyList<string>)new[]
+            {
+                LocalStamp(x.Timestamp), x.UserName, x.ActionLabel, x.EntityLabel,
+                x.EntityId ?? "—", x.Details ?? "—",
+            }).ToList(),
+            SummaryLines(r));
+        return TableReportPdf.Generate(model);
+    }
+
+    public async Task<byte[]> ActivityExcelAsync(ActivityFilter filter, CancellationToken ct = default)
+    {
+        var r = await ActivityAsync(filter, ct);
+        var headers = new[] { "التاريخ والوقت", "المستخدم", "العملية", "النوع", "المعرّف", "التفاصيل" };
+        var rows = r.Rows.Select(x => (IReadOnlyList<string>)new[]
+        {
+            LocalStamp(x.Timestamp), x.UserName, x.ActionLabel, x.EntityLabel,
+            x.EntityId ?? "", x.Details ?? "",
+        }).ToList();
+        return ExcelExporter.Create("تقرير النشاط", headers, rows);
+    }
+
+    // ══════════════════ التقرير التفصيلي للصادر ══════════════════
+    //
+    // 🔴 **بلا قاعدة رؤيةٍ خاصة**: ينادي `outgoing.Query()` كالتقرير المالي وكالشاشة —
+    //    فما يُطبَع هو **عين ما يُرى** (ADR-030). أي شرطِ رؤيةٍ يُكتب هنا يتباعد عند أول تغيير.
+    //
+    // 🔴 **والمسودّات تُعدّ ولا تُجمع**: خلطُ المسودّة بالمعتمد في مجموعٍ واحد هو بعينه عطل
+    //    ADR-029 («إجمالي السنة» كان يجمع المسودّات مع المُسدَّد). فالمجموع هنا **للمعتمد
+    //    وحده**، وعدد المسودّات يُعرض **بجانبه رقماً مستقلاً**.
+
+    public async Task<OutgoingDetailResult> OutgoingDetailAsync(
+        OutgoingDetailFilter f, CancellationToken ct = default)
+    {
+        var q = outgoing.Query();
+        if (f.From is not null) q = q.Where(b => b.Date >= f.From.Value.Date);
+        if (f.To is not null) q = q.Where(b => b.Date < f.To.Value.Date.AddDays(1));
+        if (f.EntityId is not null) q = q.Where(b => b.EntityId == f.EntityId);
+        if (f.Status is not null) q = q.Where(b => b.Status == f.Status);
+
+        var books = await q.OrderByDescending(b => b.Date)
+            .Select(b => new
+            {
+                b.OutgoingId, b.Number, b.Date, b.Subject, EntityName = b.Entity!.Name,
+                b.Status, b.CreatedByUserId, b.ApprovedByUserId, b.ApprovedAt,
+                b.Amount, b.Currency, b.AmountInIqd,
+            })
+            .ToListAsync(ct);
+
+        var ids = books.SelectMany(b => new[] { (int?)b.CreatedByUserId, b.ApprovedByUserId })
+            .Where(x => x is not null).Select(x => x!.Value).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => ids.Contains(u.UserId))
+            .ToDictionaryAsync(u => u.UserId, u => u.FullName, ct);
+        string NameOf(int? id) => id is not null && names.TryGetValue(id.Value, out var n) ? n : "—";
+
+        var rows = books.Select(b => new OutgoingDetailRow(
+            b.OutgoingId, b.Number ?? "— مسودّة —", b.Date, b.Subject, b.EntityName,
+            b.Status, StatusLabel(b.Status), NameOf(b.CreatedByUserId),
+            b.ApprovedByUserId is null ? null : NameOf(b.ApprovedByUserId),
+            b.ApprovedAt, b.Amount, b.Currency, b.AmountInIqd)).ToList();
+
+        var approved = rows.Where(r => r.Status == BookStatus.Final).ToList();
+        return new OutgoingDetailResult(
+            rows, rows.Count, rows.Count - approved.Count, approved.Count,
+            approved.Sum(r => r.AmountInIqd ?? 0m));
+    }
+
+    public async Task<byte[]> OutgoingDetailPdfAsync(OutgoingDetailFilter f, CancellationToken ct = default)
+    {
+        var r = await OutgoingDetailAsync(f, ct);
+        var model = new TableReportModel(
+            "تقرير الصادر التفصيلي", await CompanyNameAsync(ct), PeriodLabel(f.From, f.To),
+            [
+                new TableReportColumn("الرقم", 2.2f),
+                new TableReportColumn("التاريخ", 1.6f),
+                new TableReportColumn("الموضوع", 4.5f),
+                new TableReportColumn("الجهة", 2.6f),
+                new TableReportColumn("الحالة", 1.4f),
+                new TableReportColumn("أنشأه", 2f),
+                new TableReportColumn("اعتمده", 2f),
+                new TableReportColumn("المبلغ بالدينار", 2f),
+            ],
+            r.Rows.Select(x => (IReadOnlyList<string>)new[]
+            {
+                x.Number, x.Date.ToString("yyyy-MM-dd"), x.Subject, x.EntityName,
+                x.StatusLabel, x.CreatedBy, x.ApprovedBy ?? "—",
+                x.AmountInIqd?.ToString("#,0.##", CultureInfo.InvariantCulture) ?? "—",
+            }).ToList(),
+            [
+                $"عدد الكتب: {r.Count}",
+                $"معتمدة: {r.Approved} · مسودّات: {r.Drafts}",
+                $"إجمالي المعتمد: {r.ApprovedTotalIqd.ToString("#,0.##", CultureInfo.InvariantCulture)} د.ع",
+            ]);
+        return TableReportPdf.Generate(model);
+    }
+
+    public async Task<byte[]> OutgoingDetailExcelAsync(OutgoingDetailFilter f, CancellationToken ct = default)
+    {
+        var r = await OutgoingDetailAsync(f, ct);
+        var headers = new[] { "الرقم", "التاريخ", "الموضوع", "الجهة", "الحالة", "أنشأه", "اعتمده", "المبلغ", "العملة", "بالدينار" };
+        var rows = r.Rows.Select(x => (IReadOnlyList<string>)new[]
+        {
+            x.Number, x.Date.ToString("yyyy-MM-dd"), x.Subject, x.EntityName, x.StatusLabel,
+            x.CreatedBy, x.ApprovedBy ?? "",
+            x.Amount?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
+            CurrencyLabel(x.Currency),
+            x.AmountInIqd?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
+        }).ToList();
+
+        // الإجمالي **للمعتمد وحده** ومُعلَنٌ كذلك في نصّه — لا مجموعَ يخلط الحالتين (ADR-029).
+        rows.Add(["إجمالي المعتمد", "", "", "", "", "", "", "", "", r.ApprovedTotalIqd.ToString("0.##", CultureInfo.InvariantCulture)]);
+        return ExcelExporter.Create("الصادر التفصيلي", headers, rows);
+    }
+
+    // ══════════════════ التقرير التفصيلي للأرشيف ══════════════════
+    //
+    // 🔴 **ينادي `archive.LensAsync` نفسها التي تغذّي الشاشة** — لا نسخةً منها. ولهذا نُقلت
+    //    العدسة من الـcontroller إلى الخدمة: تقريرٌ يجمع غيرَ ما تعرضه الشاشة هو العطل الذي
+    //    أُغلق في ADR-030، وإعادتُه هنا كانت ستكون تكراراً للخطأ نفسه بعد يومٍ واحد.
+
+    public async Task<ArchiveDetailResult> ArchiveDetailAsync(ArchiveLensFilter f, CancellationToken ct = default)
+    {
+        var lens = await archive.LensAsync(f, ct);
+        var rows = lens.Select(r => new ArchiveDetailRow(
+            r.IsIncoming, r.IsIncoming ? "وارد مؤرشف" : "أضبارة ورقية",
+            r.Number, r.ArchivedAt, r.Title, r.EntityName, r.DocumentTypeName,
+            r.Departments.Count == 0 ? "—" : string.Join(" · ", r.Departments),
+            r.AmountInIqd)).ToList();
+
+        return new ArchiveDetailResult(
+            rows, rows.Count,
+            rows.Count(r => r.IsIncoming), rows.Count(r => !r.IsIncoming),
+            rows.Sum(r => r.AmountInIqd ?? 0m));
+    }
+
+    public async Task<byte[]> ArchiveDetailPdfAsync(ArchiveLensFilter f, CancellationToken ct = default)
+    {
+        var r = await ArchiveDetailAsync(f, ct);
+        var model = new TableReportModel(
+            "تقرير الأرشيف التفصيلي", await CompanyNameAsync(ct), LensPeriodLabel(f),
+            [
+                new TableReportColumn("المصدر", 1.8f),
+                new TableReportColumn("الرقم", 2.2f),
+                new TableReportColumn("التاريخ", 1.6f),
+                new TableReportColumn("العنوان", 5f),
+                new TableReportColumn("الجهة", 2.4f),
+                new TableReportColumn("النوع", 2f),
+                new TableReportColumn("القسم", 2.2f),
+                new TableReportColumn("بالدينار", 2f),
+            ],
+            r.Rows.Select(x => (IReadOnlyList<string>)new[]
+            {
+                x.SourceLabel, x.Number, x.Date.ToString("yyyy-MM-dd"), x.Title,
+                x.EntityName ?? "—", x.DocumentType ?? "—", x.Departments,
+                x.AmountInIqd?.ToString("#,0.##", CultureInfo.InvariantCulture) ?? "—",
+            }).ToList(),
+            [
+                $"عدد السجلات: {r.Count}",
+                $"وارد مؤرشف: {r.IncomingCount} · أضابير: {r.PaperCount}",
+                $"إجمالي الأضابير: {r.TotalIqd.ToString("#,0.##", CultureInfo.InvariantCulture)} د.ع",
+            ]);
+        return TableReportPdf.Generate(model);
+    }
+
+    public async Task<byte[]> ArchiveDetailExcelAsync(ArchiveLensFilter f, CancellationToken ct = default)
+    {
+        var r = await ArchiveDetailAsync(f, ct);
+        var headers = new[] { "المصدر", "الرقم", "التاريخ", "العنوان", "الجهة", "النوع", "القسم", "بالدينار" };
+        var rows = r.Rows.Select(x => (IReadOnlyList<string>)new[]
+        {
+            x.SourceLabel, x.Number, x.Date.ToString("yyyy-MM-dd"), x.Title,
+            x.EntityName ?? "", x.DocumentType ?? "", x.Departments,
+            x.AmountInIqd?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
+        }).ToList();
+        rows.Add(["الإجمالي", "", "", "", "", "", "", r.TotalIqd.ToString("0.##", CultureInfo.InvariantCulture)]);
+        return ExcelExporter.Create("الأرشيف التفصيلي", headers, rows);
+    }
+
+    private static string StatusLabel(BookStatus s) => s switch
+    {
+        BookStatus.Draft => "مسودّة",
+        BookStatus.Final => "معتمد",
+        _ => s.ToString(),
+    };
+
+    /// <summary>عنوان فترة عدسة الأرشيف — محورُها السنة والشهر لا مدى تاريخين (ADR-021).</summary>
+    private static string LensPeriodLabel(ArchiveLensFilter f)
+    {
+        if (f.Year is null && f.Month is null) return "كل الفترات";
+        if (f.Month is null) return $"سنة {f.Year}";
+        return f.Year is null ? $"شهر {f.Month}" : $"{f.Year}-{f.Month:D2}";
+    }
+
+    private IQueryable<AuditLog> FilteredLogs(ActivityFilter f)
+    {
+        var q = db.AuditLogs.AsQueryable();
+        if (f.From is not null) q = q.Where(a => a.Timestamp >= f.From.Value.Date);
+
+        // ⚠️ «إلى» يومٌ لا لحظة: `to = 2026-08-11` يجب أن يشمل عمل ذلك اليوم كلَّه،
+        //    وإلا اختفى نشاطُ اليوم المُختار كلُّه إلا ما وقع في منتصف ليله بالضبط.
+        if (f.To is not null) q = q.Where(a => a.Timestamp < f.To.Value.Date.AddDays(1));
+
+        // 🔴 **الفلترة بالمستخدم تشمل أحداث مصادقته** — نظير `AuditLabels.ActorUserId` تماماً.
+        //    بدونها: يُعرض سطر «تسجيل دخول — أحمد»، فإذا فُلتِر بأحمد اختفى. وتناقضٌ كهذا
+        //    يُفقد التقريرَ ثقتَه كلَّها لا سطراً واحداً منه.
+        if (f.UserId is not null)
+        {
+            var actorId = f.UserId.Value.ToString();
+            q = q.Where(a => a.UserId == f.UserId
+                          || (a.UserId == null && a.EntityType == AuditLabels.UserEntityType && a.EntityId == actorId));
+        }
+        if (!string.IsNullOrWhiteSpace(f.Action)) q = q.Where(a => a.Action == f.Action);
+        if (!string.IsNullOrWhiteSpace(f.EntityType)) q = q.Where(a => a.EntityType == f.EntityType);
+        return q;
+    }
+
+    private static List<string> SummaryLines(ActivityResult r)
+    {
+        var lines = new List<string> { $"عدد العمليات: {r.TotalCount}" };
+        if (r.Rows.Count < r.TotalCount) lines.Add($"المعروض: {r.Rows.Count}");
+        if (r.ByAction.Count > 0) lines.Add($"الأكثر: {r.ByAction[0].Label} ({r.ByAction[0].Count})");
+        if (r.ByUser.Count > 0) lines.Add($"الأنشط: {r.ByUser[0].Label} ({r.ByUser[0].Count})");
+        return lines;
+    }
+
+    /// <summary>وقتٌ محليّ للقارئ — السجلّ يُخزَّن UTC، والمالك يقرأ بتوقيت بغداد.</summary>
+    /// <remarks>
+    /// إزاحةٌ ثابتة ‎+03:00‎ لأن العراق **بلا توقيت صيفي منذ 2015**، وقاعدةُ مناطق زمنية قد
+    /// تغيب عن جهازٍ نظيف. (القرار نفسه المتّخذ في خطة وحدة المهام — D1.)
+    /// </remarks>
+    private static string LocalStamp(DateTime utc)
+        => DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(3).ToString("yyyy-MM-dd HH:mm");
 
     private async Task<string> CompanyNameAsync(CancellationToken ct)
     {
