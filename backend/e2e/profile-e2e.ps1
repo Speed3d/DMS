@@ -83,6 +83,14 @@ if($eid){ Ok "بطاقة الموظف: $eid" } else { Bad "تعذّر إنشاء
 # نظافةُ بداية: نفكّ أي ربطٍ سابق فيبدأ التشغيل من حالٍ معروفة.
 $null=Api DELETE "/employees/$eid/user" $null $admin $cid
 
+# 🔴 **وتُمحى إجازاتُ بطاقة الاختبار كلُّها — وإلا لم يُعَد تشغيل السكربت مرّتين.**
+#    التشغيل الأول **يوافق** على الإجازة، والموافَق عليها لا تُسحب (بحكم التصميم)، فيرتطم
+#    التشغيل الثاني بحارس التداخل ويفشل بأحد عشر تحقّقاً **بلا عيبٍ في المنتج**.
+#    والمحوُ هنا بيد الأدمن لا بيد الموظف: نقطة `/profile/leaves` تسحب المعلّق الذاتيّ وحده.
+foreach($lv in @((Api GET "/employees/$eid/leaves" $null $admin $cid).B)){
+  if($lv.leaveId){ $null=Api DELETE "/employees/leaves/$($lv.leaveId)" $null $admin $cid }
+}
+
 # ─────────────────────── ١) قبل الربط ───────────────────────
 Sec "١) قبل الربط — بروفايلٌ بلا بطاقة"
 $tok1=Login 'prof_emp'
@@ -134,11 +142,6 @@ foreach($ep in @("/employees","/payroll/years","/hr/summary","/hr/leaves/pending
 
 # ─────────────────────── ٤) طلب إجازة ذاتيّ ───────────────────────
 Sec "٤) طلب إجازة ذاتيّ"
-# نظافةُ بداية: نسحب أي طلبٍ معلّق من تشغيلٍ سابق.
-foreach($old in ((Api GET "/profile/leaves" $null $tok1 $cid).B | Where-Object { $_.status -eq 'Pending' })){
-  $null=Api DELETE "/profile/leaves/$($old.leaveId)" $null $tok1 $cid
-}
-
 $from=(Get-Date).AddDays(400).ToString('yyyy-MM-dd')
 $to=(Get-Date).AddDays(403).ToString('yyyy-MM-dd')
 $req=Api POST "/profile/leaves" @{leaveType='Annual';fromDate="$($from)T00:00:00";toDate="$($to)T00:00:00";notes='طلب اختبار'} $tok1 $cid
