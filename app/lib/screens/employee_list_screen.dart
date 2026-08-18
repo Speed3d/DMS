@@ -509,6 +509,16 @@ class _PendingLeavesListState extends ConsumerState<_PendingLeavesList> {
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.w700)),
                           ),
+                          // طلبٌ ذاتيّ ⇒ **حسمُه لم يُقرَّر بعد** وينتظر المراجع (ADR-033).
+                          if (l.isSelfRequested)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 6),
+                              child: Tooltip(
+                                message: 'طلبها الموظف بنفسه — قرار الحسم عند الموافقة',
+                                child: Icon(Icons.front_hand_rounded,
+                                    size: 16, color: isDark ? AppColors.goldBright : AppColors.gold),
+                              ),
+                            ),
                           if (l.deductFromSalary)
                             Padding(
                               padding: const EdgeInsetsDirectional.only(start: 6),

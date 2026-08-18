@@ -936,10 +936,14 @@ class ApiClient {
   Future<LeaveModel> addLeave(int employeeId, Map<String, dynamic> body) async =>
       LeaveModel.fromJson(await _post('/employees/$employeeId/leaves', body));
 
-  Future<LeaveModel> reviewLeave(int leaveId, bool approve, String? notes) async =>
+  /// ⚠️ `deductFromSalary` **يُرسل فقط حين يُقرَّر** (ADR-033): `null` تُبقي المسجَّل كما
+  /// هو — وهو الصواب لسطرٍ أدخله كاتب الشؤون بقراره. والطلب الذاتيّ وحده يحتاج القرار.
+  Future<LeaveModel> reviewLeave(int leaveId, bool approve, String? notes,
+          {bool? deductFromSalary}) async =>
       LeaveModel.fromJson(await _patch('/employees/leaves/$leaveId', {
         'approve': approve,
         'notes': notes,
+        if (deductFromSalary != null) 'deductFromSalary': deductFromSalary,
       }));
 
   Future<void> deleteLeave(int leaveId) => _delete('/employees/leaves/$leaveId');
@@ -1017,6 +1021,59 @@ class ApiClient {
   Future<List<PendingLeave>> pendingLeaves() async =>
       (await _get('/hr/leaves/pending') as List)
           .map((e) => PendingLeave.fromJson(e)).toList();
+
+  // ---------- ربط البطاقة بحساب النظام (ADR-033) ----------
+
+  Future<List<LinkableUser>> linkableUsers() async =>
+      (await _get('/employees/linkable-users') as List)
+          .map((e) => LinkableUser.fromJson(e)).toList();
+
+  Future<EmployeeDetail> linkEmployeeUser(int employeeId, int userId) async =>
+      EmployeeDetail.fromJson(
+          await _put('/employees/$employeeId/user', {'userId': userId}));
+
+  Future<EmployeeDetail> unlinkEmployeeUser(int employeeId) async =>
+      EmployeeDetail.fromJson(await _deleteReturnData('/employees/$employeeId/user'));
+
+  // ---------- البروفايل الشخصي (ADR-033) ----------
+
+  Future<MyProfile> myProfile() async => MyProfile.fromJson(await _get('/profile'));
+
+  /// صورتي بالتوكن — نظير `employeePhoto`؛ الويب لا يمرّر الترويسات مع `Image.network`.
+  Future<Uint8List> myPhoto() async {
+    try {
+      final res = await _dio.get<List<int>>('/profile/photo',
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  Future<List<LeaveModel>> myLeaves() async =>
+      (await _get('/profile/leaves') as List).map((e) => LeaveModel.fromJson(e)).toList();
+
+  /// ⚠️ **بلا `requiresApproval` وبلا `deductFromSalary`** — الخادم يفرض الأولى والمراجع
+  /// يقرّر الثانية. إرسالُهما من هنا كان سيعني أن الموظف يمنح نفسه إجازةً بلا حسم.
+  Future<LeaveModel> requestLeave(Map<String, dynamic> body) async =>
+      LeaveModel.fromJson(await _post('/profile/leaves', body));
+
+  Future<void> cancelMyLeave(int leaveId) => _delete('/profile/leaves/$leaveId');
+
+  Future<List<MyPayslip>> myPayslips({int? year}) async =>
+      (await _get('/profile/payslips',
+              query: year == null ? null : {'year': year}) as List)
+          .map((e) => MyPayslip.fromJson(e)).toList();
+
+  Future<Uint8List> myReceipt(int periodId) async {
+    try {
+      final res = await _dio.get<List<int>>('/profile/payslips/$periodId/receipt',
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
 
   // ---------- مساعدات ----------
   Future<dynamic> _get(String path, {Map<String, dynamic>? query}) async {

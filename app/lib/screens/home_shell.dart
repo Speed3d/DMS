@@ -18,6 +18,7 @@ import 'users_screen.dart';
 import 'backup_screen.dart';
 import 'employee_list_screen.dart';
 import 'payroll_years_screen.dart';
+import 'profile_screen.dart';
 
 import '../models.dart';
 
@@ -82,6 +83,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const BackupScreen(),
       const EmployeeListScreen(),   // 9  — الموظفون
       const PayrollYearsScreen(),   // 10 — الرواتب
+      const ProfileScreen(),        // 11 — الملف الشخصي (ADR-033)
     ];
 
     if (_index >= pages.length) _index = 0;
@@ -162,13 +164,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       context: context,
       position: RelativeRect.fromLTRB(26, 70, 26, 0),
       items: [
+        const PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
         const PopupMenuItem(value: 'password', child: Text('تغيير كلمة المرور')),
         if (auth.isSuperAdmin || auth.companyIds.length > 1) const PopupMenuItem(value: 'switch', child: Text('تبديل الشركة')),
         const PopupMenuItem(value: 'logout', child: Text('تسجيل الخروج', style: TextStyle(color: Colors.red))),
       ],
     ).then((v) {
       if (!mounted) return;
-      if (v == 'password') {
+      if (v == 'profile') {
+        // ⚠️ **مؤشّرٌ في القشرة لا شاشةٌ مدفوعة**: الشاشة المدفوعة تفقد الشريط العلوي
+        //    والجانبي، فيبدو البروفايل نافذةً معلّقة خارج النظام.
+        setState(() => _index = 11);
+      } else if (v == 'password') {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangePasswordScreen()));
       } else if (v == 'switch') {
         _switchCompany();
@@ -221,6 +228,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         //    لفتح قسمُ الموظفين شاشةَ الرواتب — وهو ما جاء الفصل ليمنعه.
         9 => session.canSeeEmployees,
         10 => session.canSeePayroll,
+        // 🔴 **بلا حارس عمداً** (ADR-033): البروفايل بياناتُ صاحب الجلسة نفسه، والخادم
+        //    يشتقّها من التوكن. حارسٌ هنا كان سيمنع مَن يحقّ له لا مَن لا يحقّ — والقارئ
+        //    داخلٌ كغيره، فحدّ «فوق القارئ» يحمي بيانات الغير لا بيانات المرء عن نفسه.
+        11 => true,
         _ => false,
       };
 
@@ -236,6 +247,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         8 => 'النسخ الاحتياطي',
         9 => 'الموظفون',
         10 => 'الرواتب',
+        11 => 'الملف الشخصي',
         _ => '',
       };
 
@@ -251,6 +263,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         8 => 'أخذ نسخ احتياطية واستعادتها',
         9 => 'بطاقات الموظفين وشروط عملهم في هذه الشركة',
         10 => 'كشوف الرواتب الشهرية وإيصالات الاستلام',
+        11 => 'بياناتك وإجازاتك ورواتبك',
         _ => '',
       };
 }
