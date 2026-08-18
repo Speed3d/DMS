@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IPayrollService, PayrollService>();
         services.AddScoped<ILeaveService, LeaveService>();
+        services.AddScoped<IProfileService, ProfileService>();
         // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();

@@ -85,7 +85,7 @@ public sealed class HrController(
             .Select(l => new PendingLeaveResponse(
                 l.LeaveId, l.EmployeeId, l.EmployeeName, l.Position,
                 l.LeaveType, l.LeaveTypeLabel, l.FromDate, l.ToDate, l.DurationDays,
-                l.DeductFromSalary, l.Notes, l.CreatedAt))
+                l.DeductFromSalary, l.Notes, l.CreatedAt, l.IsSelfRequested))
             .ToList();
 
     /// <summary>ملخّص للوحة التحكم — كل الأرقام مفلترة على الشركة الفعّالة تلقائياً.</summary>

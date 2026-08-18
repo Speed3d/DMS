@@ -13,7 +13,14 @@ public interface ILeaveService
 {
     Task<List<EmployeeLeave>> ListAsync(int employeeId, CancellationToken ct = default);
     Task<EmployeeLeave> CreateAsync(int employeeId, LeaveInput input, CancellationToken ct = default);
-    Task<EmployeeLeave> ReviewAsync(int leaveId, bool approve, string? notes, CancellationToken ct = default);
+    /// <summary>بتٌّ في إجازة — **وقرارُ الحسم يُتَّخذ هنا** للطلبات الذاتيّة (ADR-033).</summary>
+    /// <param name="deductFromSalary">
+    /// <c>null</c> ⇒ أبقِ ما هو مسجَّل (السلوك القديم حرفياً، ولا يمسّ سطراً سجّله كاتب
+    /// الشؤون بقراره). قيمةٌ صريحة ⇒ اكتبها — وهو المسار الذي يسلكه المراجع لطلبٍ ذاتيّ
+    /// جاء بلا قرار.
+    /// </param>
+    Task<EmployeeLeave> ReviewAsync(int leaveId, bool approve, string? notes,
+        bool? deductFromSalary = null, CancellationToken ct = default);
     Task DeleteAsync(int leaveId, CancellationToken ct = default);
     Task<List<EmployeeLog>> LogAsync(int employeeId, CancellationToken ct = default);
     Task<int> PendingCountAsync(CancellationToken ct = default);
@@ -30,7 +37,8 @@ public sealed record PendingLeaveItem(
     int LeaveId, int EmployeeId, string EmployeeName, string Position,
     LeaveType LeaveType, string LeaveTypeLabel,
     DateTime FromDate, DateTime ToDate, int DurationDays,
-    bool DeductFromSalary, string? Notes, DateTime CreatedAt);
+    bool DeductFromSalary, string? Notes, DateTime CreatedAt,
+    bool IsSelfRequested);
 
 /// <summary>الإجازات وسجلّ التغييرات (الدفعة ٢ من ADR-023).</summary>
 public sealed class LeaveService(
@@ -93,7 +101,8 @@ public sealed class LeaveService(
     }
 
     public async Task<EmployeeLeave> ReviewAsync(
-        int leaveId, bool approve, string? notes, CancellationToken ct = default)
+        int leaveId, bool approve, string? notes,
+        bool? deductFromSalary = null, CancellationToken ct = default)
     {
         RequireWrite();
         var leave = await db.EmployeeLeaves.Include(l => l.EmployeeCompany)
@@ -104,6 +113,13 @@ public sealed class LeaveService(
             throw new ConflictException("الإجازة روجعت من قبل — لا يمكن تغيير قرارها.");
 
         leave.Status = approve ? LeaveStatus.Approved : LeaveStatus.Rejected;
+
+        // 🔴 **القاعدة في `LeaveDecision` لا هنا** (ADR-033): الرفض لا يمسّ الحسم،
+        //    و`null` تُبقي المسجَّل ولا تكتب `false` — وإلا انقلب قرارُ كاتب الشؤون
+        //    صامتاً لأن العميل القديم لا يرسل الحقل.
+        leave.DeductFromSalary =
+            LeaveDecision.ResolveDeduction(approve, deductFromSalary, leave.DeductFromSalary);
+
         leave.ReviewedByUserId = current.UserId;
         leave.ReviewedAt = DateTime.UtcNow;
         leave.ReviewNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
@@ -111,7 +127,8 @@ public sealed class LeaveService(
         if (leave.EmployeeCompany is { } link)
             AddLog(link, EmployeeChangeType.LeaveRecorded,
                 $"{(approve ? "قُبلت" : "رُفضت")} إجازة {ArabicLeave(leave.LeaveType)} " +
-                $"({leave.FromDate:yyyy-MM-dd} → {leave.ToDate:yyyy-MM-dd})");
+                $"({leave.FromDate:yyyy-MM-dd} → {leave.ToDate:yyyy-MM-dd})" +
+                (approve ? (leave.DeductFromSalary ? " — تُحسم من الراتب" : " — بلا حسم") : ""));
 
         audit.Add("ReviewLeave", nameof(EmployeeLeave), leaveId.ToString(),
             approve ? "موافقة" : "رفض", leave.CompanyId);
@@ -181,7 +198,8 @@ public sealed class LeaveService(
                 l.LeaveType,
                 l.LeaveType.ArabicLabel(),
                 l.FromDate, l.ToDate, l.DurationDays,
-                l.DeductFromSalary, l.Notes, l.CreatedAt))
+                l.DeductFromSalary, l.Notes, l.CreatedAt,
+                l.IsSelfRequested))
             .ToListAsync(ct);
 
     // ─────────────────────────── مساعدات ───────────────────────────
