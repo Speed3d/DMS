@@ -63,6 +63,61 @@ public class EmployeeLeave
 }
 
 /// <summary>
+/// بتٌّ في حسم إجازةٍ من كشف شهرٍ بعينه — **سطرٌ لكل (إجازة × شهر)** (ADR-036).
+/// </summary>
+/// <remarks>
+/// 🔴 **لماذا جدولٌ مستقلّ لا عمودان على <see cref="EmployeeLeave"/>؟** لأن الإجازة تُقسَم
+/// بالأيام على الشهور (قرار المالك)، فإجازةُ ٢٨ آب ← ٣ أيلول **تُبتّ مرّتين**: أربعة أيام
+/// في كشف آب وثلاثة في كشف أيلول. وعمودٌ واحد على الإجازة لا يسع حالتين.
+///
+/// 🔴 **وغيابُ السطر هو «لم يُبتّ»** — وهو ما يُظهر التنبيه. أمّا <see cref="Applied"/>:
+/// <list type="bullet">
+/// <item><c>true</c> = طُبّق الحسم على سطر الراتب.</item>
+/// <item><c>false</c> = **صُرف النظر** عن الحسم هذا الشهر بقرارٍ صريح.</item>
+/// </list>
+/// فالحالتان **بتٌّ** يُسكت التنبيه، والفرق بينهما يبقى مقروءاً في السجلّ.
+///
+/// ⚠️ **ولا يُعدَّل قرار الإجازة نفسه**: <c>LeaveService.ReviewAsync</c> يرفض إعادة المراجعة
+/// بعد البتّ (409). فالتراجع يقع **هنا** — في الكشف — لا في سجلّ الإجازة، فيبقى ما بُتّ
+/// محفوظاً كما كان ويبقى الأثر الماليّ قابلاً للتصحيح.
+/// </remarks>
+public class EmployeeLeaveSettlement
+{
+    public int SettlementId { get; set; }
+
+    public int LeaveId { get; set; }
+
+    /// <summary>الشهر الذي **تخصّه هذه الأيام** — لا الكشف الذي بُتّ فيه.</summary>
+    /// <remarks>
+    /// 🔴 **المفتاح هو هذا لا <see cref="PeriodId"/>:** إجازةٌ مرحَّلة من آب تُبتّ في كشف
+    /// أيلول، وإجازةُ أيلول تُبتّ فيه أيضاً — فلو كان المفتاح الكشفَ لاصطدمتا وبدت إحداهما
+    /// مبتوتةً وهي لم تُمسّ.
+    /// </remarks>
+    public int LeaveYear { get; set; }
+
+    /// <inheritdoc cref="LeaveYear"/>
+    public int LeaveMonth { get; set; }
+
+    /// <summary>الكشف الذي بُتّ فيه فعلاً — قد يكون **غير شهر الإجازة** إن رُحِّلت.</summary>
+    public int PeriodId { get; set; }
+
+    /// <summary>منسوخ للفلترة المباشرة (نظير <see cref="EmployeeLeave.CompanyId"/>).</summary>
+    public int CompanyId { get; set; }
+
+    /// <summary>أيام هذه الإجازة الواقعة في ذلك الشهر — بـ<c>LeaveDeduction.DaysInMonth</c>.</summary>
+    public int Days { get; set; }
+
+    /// <summary>طُبّق الحسم؟ <c>false</c> = صُرف النظر عنه صراحةً.</summary>
+    public bool Applied { get; set; }
+
+    public int? SettledByUserId { get; set; }
+    public DateTime SettledAt { get; set; }
+    public string? Notes { get; set; }
+
+    public EmployeeLeave? Leave { get; set; }
+}
+
+/// <summary>
 /// سطر في سجلّ تغييرات الموظف — **يُكتب ولا يُعدَّل ولا يُحذف**.
 /// </summary>
 /// <remarks>

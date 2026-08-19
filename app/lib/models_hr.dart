@@ -465,6 +465,60 @@ class PayrollPeriodModel {
       );
 }
 
+/// إجازةٌ محسومة تنتظر البتّ في كشف الشهر (ADR-036).
+///
+/// ⚠️ [leaveYear]/[leaveMonth] **شهرُ هذه الأيام لا شهرُ الكشف** — ويختلفان حين تُرحَّل
+/// إجازةُ شهرٍ مُسدَّد، وعندها يصير [isLate] صحيحاً فيُسمّى شهرها في النصّ.
+class LeaveDeductionHint {
+  final int leaveId;
+  final int entryId;
+  final String employeeName;
+  final String leaveTypeLabel;
+  final DateTime fromDate;
+  final DateTime toDate;
+  final int leaveYear;
+  final int leaveMonth;
+  final String leaveMonthLabel;
+  final int days;
+  final double suggestedDeduction;
+  final String currency;
+  final bool isLate;
+
+  LeaveDeductionHint({
+    required this.leaveId,
+    required this.entryId,
+    required this.employeeName,
+    required this.leaveTypeLabel,
+    required this.fromDate,
+    required this.toDate,
+    required this.leaveYear,
+    required this.leaveMonth,
+    required this.leaveMonthLabel,
+    required this.days,
+    required this.suggestedDeduction,
+    required this.currency,
+    required this.isLate,
+  });
+
+  factory LeaveDeductionHint.fromJson(Map<String, dynamic> j) => LeaveDeductionHint(
+        leaveId: j['leaveId'],
+        entryId: j['entryId'] ?? 0,
+        employeeName: j['employeeName'] ?? '',
+        leaveTypeLabel: j['leaveTypeLabel'] ?? '',
+        // ⚠️ **تواريخ تقويمية لا لحظات** — لا تمرّ بـ`parseInstant` (درس G18):
+        //    تحويلُ يومٍ بالمنطقة الزمنية يُنقصه يوماً، وهذه أيامُ إجازةٍ تُحسب بها نقود.
+        fromDate: DateTime.tryParse(j['fromDate'] ?? '') ?? DateTime.now(),
+        toDate: DateTime.tryParse(j['toDate'] ?? '') ?? DateTime.now(),
+        leaveYear: j['leaveYear'] ?? 0,
+        leaveMonth: j['leaveMonth'] ?? 0,
+        leaveMonthLabel: j['leaveMonthLabel'] ?? '',
+        days: j['days'] ?? 0,
+        suggestedDeduction: (j['suggestedDeduction'] ?? 0).toDouble(),
+        currency: j['currency']?.toString() ?? 'IQD',
+        isLate: j['isLate'] ?? false,
+      );
+}
+
 /// قيدٌ في سجلّ تعديلات شهرٍ مُسدَّد (ADR-026) — يُعرض ولا يُعدَّل.
 class PayrollAmendment {
   final int versionNo;

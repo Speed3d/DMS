@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:dms_app/models.dart';
 import 'package:dms_app/screens/employee_list_screen.dart'
     show kEmpToolbarNarrow, kEmpToolbarNarrowWithChip;
+import 'package:dms_app/screens/payroll_sheet_screen.dart' show LeaveDeductionBanner;
 import 'package:dms_app/widgets/custom_card.dart';
 
 /// حرّاس رسم شاشات الوحدة.
@@ -331,4 +333,85 @@ void main() {
     expect(tester.takeException(), isNotNull,
         reason: 'لو لم يَعُد يفيض هنا فقد تغيّرت الأحجام ⇒ أعِد قياس العتبتين');
   });
+
+  // ══════════════ تنبيه حسم الإجازات (ADR-036) ══════════════
+  //
+  // 🔴 **درسُ بلاغ الصورة (2026-08-19):** `find.byIcon` ينجح على عنصرٍ **لا يراه أحد**.
+  //    فالحارس هنا يقيس **المستطيل** ويتحقّق أن الزرّين مفعَّلان، لا مجرّد وجودهما.
+  group('تنبيه حسم الإجازات', () {
+    LeaveDeductionHint hint({bool isLate = false, String name = 'أحمد مجيد حميد'}) =>
+        LeaveDeductionHint(
+          leaveId: 1,
+          entryId: 7,
+          employeeName: name,
+          leaveTypeLabel: 'اعتيادية',
+          fromDate: DateTime(2026, 2, 26),
+          toDate: DateTime(2026, 3, 3),
+          leaveYear: 2026,
+          leaveMonth: 2,
+          leaveMonthLabel: 'شباط 2026',
+          days: 3,
+          suggestedDeduction: 120000,
+          currency: 'IQD',
+          isLate: isLate,
+        );
+
+    Future<void> pumpBanner(WidgetTester tester, List<LeaveDeductionHint> items,
+        {double width = 900}) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: SizedBox(
+              width: width,
+              child: SingleChildScrollView(
+                child: LeaveDeductionBanner(
+                  items: items,
+                  onApply: (_) {},
+                  onWaive: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+    }
+
+    testWidgets('🔴 الزرّان موجودان **ومفعَّلان وبمساحةٍ حقيقية**', (tester) async {
+      await pumpBanner(tester, [hint()]);
+      expect(tester.takeException(), isNull);
+
+      for (final label in ['طبّق', 'صرف النظر']) {
+        final btn = find.widgetWithText(TextButton, label);
+        expect(btn, findsOneWidget, reason: 'زرّ «$label» مفقود');
+        expect(tester.widget<TextButton>(btn).onPressed, isNotNull,
+            reason: 'زرّ «$label» معطَّل — مدخلٌ غير موجود');
+        final r = tester.getRect(btn);
+        expect(r.width > 0 && r.height > 0, isTrue, reason: 'زرّ «$label» بمساحةٍ صفرية');
+      }
+    });
+
+    testWidgets('والمتأخّرة **تسمّي شهرها** فلا يظنّها المحاسب من هذا الشهر', (tester) async {
+      await pumpBanner(tester, [hint(isLate: true)]);
+      expect(find.textContaining('شباط 2026'), findsWidgets);
+      expect(find.textContaining('لم تُحسم'), findsWidgets);
+      expect(find.textContaining('من أشهرٍ سابقة'), findsOneWidget);
+    });
+
+    testWidgets('ويُعلَن صراحةً أن لا شيء يُحسم تلقائياً', (tester) async {
+      await pumpBanner(tester, [hint()]);
+      expect(find.textContaining('لا يُحسم شيء تلقائياً'), findsOneWidget);
+    });
+
+    // ⚠️ درسُ G12: الشريط الأفقيّ يفيض تحت ~500 بكسل — و`Wrap` هو العلاج المُثبَت.
+    for (final w in [380.0, 420.0, 700.0, 1280.0]) {
+      testWidgets('لا يفيض عند $w', (tester) async {
+        await pumpBanner(tester, [hint(isLate: true), hint(name: 'هدير صفاء وتوت')],
+            width: w);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
 }

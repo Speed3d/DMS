@@ -178,6 +178,70 @@ if($rev2.S -eq 409){ Ok "إعادة مراجعة إجازة محسومة مرف�
 $pend2=@(Api GET "/hr/leaves/pending" $null $admin $cid).B
 if(-not ($pend2 | Where-Object { $_.leaveId -eq $lv2.leaveId })){ Ok "الإجازة المبتوتة تخرج من قائمة الانتظار" } else { Bad "الإجازة المبتوتة ما زالت معلّقة في القائمة" }
 
+Write-Host "`n=== 🔴 حسم الإجازات من الكشف (ADR-036) ===" -ForegroundColor Cyan
+# 🔴 **العطل الذي أوجب هذه الدفعة:** الإجازة المقبولة بعلَم «تُحسم من الراتب» كانت
+#    **لا تمسّ رقماً ولا تُصدر تنبيهاً** — التوليد يكتب AbsenceDays = 0 ولا يقرأ الإجازات.
+#    وهي عائلة ADR-028 نفسها: علَمٌ يلوّن سطراً ولا يمسّ مالاً.
+# ⚠️ `$lv2` أعلاه: يومان (20–21) مقبولةٌ **بحسم**، و`$lv1`: ثلاثة أيام **بلا حسم**.
+
+$hints=@((Api GET "/payroll/periods/$Year/$Month/leave-deductions" $null $admin $cid).B)
+$mineHint=@($hints | Where-Object { $_.leaveId -eq $lv2.leaveId })[0]
+if($mineHint){ Ok "التنبيه يرصد الإجازة المحسومة" } else { Bad "الإجازة المحسومة غائبة عن التنبيه" }
+if($mineHint.days -eq 2){ Ok "وبيومين — لا مدّةً مخترَعة" } else { Bad "الأيام $($mineHint.days) بدل 2" }
+if(-not ($hints | Where-Object { $_.leaveId -eq $lv1.leaveId })){
+  Ok "🔐 والإجازة **بلا حسم** لا تُرصد — التنبيه للمال لا للسِّجلّ"
+} else { Bad "رُصدت إجازةٌ بلا حسم" }
+if($mineHint.isLate -eq $false){ Ok "وليست متأخّرة (شهرها هو الكشف نفسه)" } else { Bad "وُسمت متأخّرة" }
+
+# ── التطبيق: **الرقم ينقص بالمقدار المقترَح بالضبط** ──
+$before=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$rowBefore=@($before.entries | Where-Object { $_.entryId -eq $mineHint.entryId })[0]
+$apply=Api POST "/payroll/periods/$Year/$Month/leave-deductions/apply" @{leaveId=$mineHint.leaveId;leaveYear=$mineHint.leaveYear;leaveMonth=$mineHint.leaveMonth} $admin $cid
+if($apply.S -eq 204){ Ok "«طبّق» قُبل (204)" } else { Bad "التطبيق ردّ $($apply.S)" }
+
+$after=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$rowAfter=@($after.entries | Where-Object { $_.entryId -eq $mineHint.entryId })[0]
+if(($rowAfter.absenceDays - $rowBefore.absenceDays) -eq 2){
+  Ok "🔴 أيام الغياب **زادت** يومين ($($rowBefore.absenceDays) ⇐ $($rowAfter.absenceDays)) — تُضاف ولا تُستبدل"
+} else { Bad "الأيام $($rowBefore.absenceDays) ⇐ $($rowAfter.absenceDays)" }
+$drop=[decimal]$rowBefore.netSalary - [decimal]$rowAfter.netSalary
+if([math]::Abs($drop - [decimal]$mineHint.suggestedDeduction) -lt 0.01){
+  Ok "🔴 وصافيه نقص **بالمقدار المقترَح بالضبط**: $drop"
+} else { Bad "نقص $drop والمقترَح $($mineHint.suggestedDeduction)" }
+
+# ── ولا يظهر ثانيةً، ولا يُحسم مرّتين ──
+$hints2=@((Api GET "/payroll/periods/$Year/$Month/leave-deductions" $null $admin $cid).B)
+if(-not ($hints2 | Where-Object { $_.leaveId -eq $lv2.leaveId })){
+  Ok "🔐 وخرج من التنبيه بعد البتّ"
+} else { Bad "ما زال في التنبيه بعد تطبيقه" }
+$again=Api POST "/payroll/periods/$Year/$Month/leave-deductions/apply" @{leaveId=$mineHint.leaveId;leaveYear=$mineHint.leaveYear;leaveMonth=$mineHint.leaveMonth} $admin $cid
+if($again.S -eq 409){ Ok "🔴 وإعادة التطبيق مرفوضة (409) — لا حسمَ مرّتين" } else { Bad "إعادة التطبيق ردّت $($again.S)" }
+
+# ── «صرف النظر»: بتٌّ صريح **لا يمسّ رقماً** ──
+# ⚠️ إجازةٌ ثانية في أيامٍ لا تتداخل مع سابقتيها (5–7 و20–21).
+$lv3=(Api POST "/employees/$e1/leaves" @{leaveType='Sick';fromDate="$Year-$($Month.ToString('00'))-25T00:00:00";toDate="$Year-$($Month.ToString('00'))-26T00:00:00";requiresApproval=$true;deductFromSalary=$true;notes=$null} $admin $cid).B
+$null=Api PATCH "/employees/leaves/$($lv3.leaveId)" @{approve=$true;notes='موافق';deductFromSalary=$true} $admin $cid
+$hints3=@((Api GET "/payroll/periods/$Year/$Month/leave-deductions" $null $admin $cid).B)
+$h3=@($hints3 | Where-Object { $_.leaveId -eq $lv3.leaveId })[0]
+if($h3){ Ok "الإجازة الثانية تظهر في التنبيه" } else { Bad "الإجازة الثانية غائبة" }
+
+$preWaive=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+$waive=Api POST "/payroll/periods/$Year/$Month/leave-deductions/waive" @{leaveId=$h3.leaveId;leaveYear=$h3.leaveYear;leaveMonth=$h3.leaveMonth;notes='قرار المدير'} $admin $cid
+if($waive.S -eq 204){ Ok "«صرف النظر» قُبل (204)" } else { Bad "صرف النظر ردّ $($waive.S)" }
+$postWaive=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid).B
+if([decimal]$postWaive.totalIqd -eq [decimal]$preWaive.totalIqd){
+  Ok "🔴 و**لم يمسّ ديناراً** — الإجمالي كما هو: $($postWaive.totalIqd)"
+} else { Bad "الإجمالي تغيّر: $($preWaive.totalIqd) ⇐ $($postWaive.totalIqd)" }
+$hints4=@((Api GET "/payroll/periods/$Year/$Month/leave-deductions" $null $admin $cid).B)
+if(-not ($hints4 | Where-Object { $_.leaveId -eq $lv3.leaveId })){
+  Ok "🔐 وخرج من التنبيه كذلك — البتّ بتٌّ ولو لم يُحسم"
+} else { Bad "ما زال في التنبيه بعد صرف النظر" }
+
+# ── والسجلّ يشهد: سطران في ملفّ الموظف بفعلَين مختلفَين ──
+$log036=@((Api GET "/employees/$e1/log" $null $admin $cid).B | Where-Object { $_.changeType -eq 'LeaveDeductionSettled' })
+if($log036.Count -ge 2){ Ok "🔴 وسطرا السجلّ (حسم + صرف نظر) في ملفّ الموظف" }
+else { Bad "سجلّ البتّ ناقص — وُجد $($log036.Count)" }
+
 Write-Host "`n=== مستمسكات الموظف (بلاغ المالك ٧) ===" -ForegroundColor Cyan
 # ⚠️ `OwnerType.Employee` وحارسُه كانا جاهزَين منذ الدفعة ١ **بلا نقطتَي رفعٍ وقائمة** —
 #    رابع تكرارٍ لنمط «ميزة بلا مدخل». الحارس هنا يمنع موتها صامتةً مرّةً أخرى.
@@ -341,6 +405,51 @@ if(-not $rowT.receiptIsStale){ Ok "وزال التنبيه ✔ دورة كامل
 
 $delEmp=Api DELETE "/employees/$e1" $null $admin $cid
 if($delEmp.S -eq 409){ Ok "حذف موظف له رواتب مُسدَّدة مرفوض (409) ✔ السجل المالي محميّ" } else { Bad "حذف الموظف ردّ $($delEmp.S) بدل 409" }
+
+Write-Host "`n=== 🔴 إجازةٌ في شهرٍ مُسدَّد تُرحَّل إلى الكشف التالي (ADR-036) ===" -ForegroundColor Cyan
+# 🔴 **قرار المالك الثالث:** «تم تسديد الراتب يوم 22 وأخذ الموظف إجازة يوم 27» — الإجازة
+#    لا تضيع: تظهر في الكشف التالي **منسوبةً لشهرها الأصلي** بعلَم تأخّر.
+# ⚠️ وشهر الاختبار **مُسدَّدٌ الآن** (قسم التسديد أعلاه)، فهذه هي الحالة بعينها.
+
+$nextY = if($Month -eq 12){ $Year + 1 } else { $Year }
+$nextM = if($Month -eq 12){ 1 } else { $Month + 1 }
+
+# إجازةٌ في الشهر المُسدَّد، بأيامٍ لا تتداخل مع سابقاتها (5-7 · 20-21 · 25-26).
+$lvLate=(Api POST "/employees/$e1/leaves" @{leaveType='Annual';fromDate="$Year-$($Month.ToString('00'))-10T00:00:00";toDate="$Year-$($Month.ToString('00'))-11T00:00:00";requiresApproval=$true;deductFromSalary=$true;notes='بعد التسديد'} $admin $cid).B
+$null=Api PATCH "/employees/leaves/$($lvLate.leaveId)" @{approve=$true;notes='موافق';deductFromSalary=$true} $admin $cid
+
+# 🔐 ولا تُطبَّق على الشهر المُسدَّد نفسه — تعديلُه مسارٌ آخر بلقطةٍ وسبب (ADR-026).
+$onPaid=Api POST "/payroll/periods/$Year/$Month/leave-deductions/apply" @{leaveId=$lvLate.leaveId;leaveYear=$Year;leaveMonth=$Month} $admin $cid
+if($onPaid.S -eq 409){ Ok "🔐 التطبيق على الشهر المُسدَّد مرفوض (409) — لا التفافَ على ADR-026" }
+else { Bad "التطبيق على المُسدَّد ردّ $($onPaid.S)" }
+
+# الكشف التالي
+$null=Api DELETE "/payroll/periods/$nextY/$nextM" $null $admin $cid
+$gen2=(Api POST "/payroll/periods/$nextY/$nextM" $null $admin $cid).B
+if($gen2.added -ge 1){ Ok "تولّد كشف الشهر التالي ($nextM/$nextY)" } else { Bad "التوليد أضاف $($gen2.added)" }
+
+$lateHints=@((Api GET "/payroll/periods/$nextY/$nextM/leave-deductions" $null $admin $cid).B)
+$lh=@($lateHints | Where-Object { $_.leaveId -eq $lvLate.leaveId })[0]
+if($lh){ Ok "🔴 **الإجازة المتأخّرة تظهر في الكشف التالي** — لم تضِع بتسديد شهرها" }
+else { Bad "الإجازة المتأخّرة غائبة عن الكشف التالي" }
+if($lh.isLate){ Ok "🔐 ومُعلَّمةٌ **متأخّرة** — فيعرف المحاسب أنها ليست من هذا الشهر" } else { Bad "لم تُعلَّم متأخّرة" }
+if($lh.leaveMonth -eq $Month -and $lh.leaveYear -eq $Year){
+  Ok "🔴 و**منسوبةٌ لشهرها الأصلي** ($($lh.leaveMonthLabel)) لا لشهر الكشف"
+} else { Bad "نُسبت إلى $($lh.leaveMonth)/$($lh.leaveYear)" }
+if($lh.days -eq 2){ Ok "وبيومين" } else { Bad "الأيام $($lh.days) بدل 2" }
+
+# وتُطبَّق على الكشف المفتوح
+$b2=(Api GET "/payroll/periods/$nextY/$nextM" $null $admin $cid).B
+$r2b=@($b2.entries | Where-Object { $_.entryId -eq $lh.entryId })[0]
+$ap2=Api POST "/payroll/periods/$nextY/$nextM/leave-deductions/apply" @{leaveId=$lh.leaveId;leaveYear=$lh.leaveYear;leaveMonth=$lh.leaveMonth} $admin $cid
+if($ap2.S -eq 204){ Ok "وتُطبَّق على الكشف المفتوح (204)" } else { Bad "التطبيق ردّ $($ap2.S)" }
+$a2=(Api GET "/payroll/periods/$nextY/$nextM" $null $admin $cid).B
+$r2a=@($a2.entries | Where-Object { $_.entryId -eq $lh.entryId })[0]
+if(($r2a.absenceDays - $r2b.absenceDays) -eq 2){ Ok "🔴 وأيام غياب الشهر التالي زادت يومين" }
+else { Bad "الأيام $($r2b.absenceDays) ⇐ $($r2a.absenceDays)" }
+
+# ⚠️ تنظيف: يُحذف كشف الشهر التالي ليبقى السكربت قابلاً لإعادة التشغيل.
+$null=Api DELETE "/payroll/periods/$nextY/$nextM" $null $admin $cid
 
 Write-Host "`n=== 🔐 فصل الصلاحيات: قسمٌ لا يفتح الآخر (ADR-025) ===" -ForegroundColor Cyan
 # 🔄 **تغيّر جوهريّ عن ADR-023:** كان الاختبار يُثبت أن الموظف **يُجرَّد** من الوحدة. الآن

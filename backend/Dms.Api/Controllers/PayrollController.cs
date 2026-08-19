@@ -217,6 +217,49 @@ public sealed class PayrollController(
                 s.EntryId, s.EmployeeName, s.Amount, s.Currency, s.YearsServed, s.DaysPerYear))
             .ToList();
 
+    // ─────────────── حسم الإجازات من الكشف (ADR-036) ───────────────
+
+    /// <summary>إجازاتٌ مقبولةٌ بحسمٍ تنتظر البتّ في هذا الكشف.</summary>
+    /// <remarks>
+    /// 🔴 **تنبيهٌ لا حسمٌ تلقائيّ** (قرار المالك 2026-08-19): كانت الإجازة المحسومة لا تمسّ
+    /// رقماً ولا تُصدر تنبيهاً. والقائمة تشمل **إجازات أشهرٍ مُسدَّدة سابقة** بعلَم
+    /// <c>isLate</c> — فلا تضيع إجازةٌ وُوفق عليها بعد إقفال شهرها.
+    /// </remarks>
+    [HttpGet("periods/{year:int}/{month:int}/leave-deductions")]
+    public async Task<ActionResult<List<LeaveDeductionResponse>>> LeaveDeductions(
+        int year, int month, CancellationToken ct)
+        => (await payroll.DetectLeaveDeductionsAsync(year, month, ct))
+            .Select(h => new LeaveDeductionResponse(
+                h.LeaveId, h.EntryId, h.EmployeeName, h.LeaveTypeLabel,
+                h.FromDate, h.ToDate, h.LeaveYear, h.LeaveMonth, h.LeaveMonthLabel,
+                h.Days, h.SuggestedDeduction, h.Currency, h.IsLate))
+            .ToList();
+
+    /// <summary>يطبّق الحسم على سطر الراتب — والأيام تبقى قابلةً للتعديل بعدها.</summary>
+    [HttpPost("periods/{year:int}/{month:int}/leave-deductions/apply")]
+    public async Task<IActionResult> ApplyLeaveDeduction(
+        int year, int month, SettleLeaveDeductionRequest req, CancellationToken ct)
+    {
+        await payroll.ApplyLeaveDeductionAsync(
+            year, month, req.LeaveId, req.LeaveYear, req.LeaveMonth, ct);
+        return NoContent();
+    }
+
+    /// <summary>صرف النظر عن الحسم — **بتٌّ صريح لا يمسّ رقماً**.</summary>
+    /// <remarks>
+    /// 🔴 **هنا يقع التراجع لا في سجلّ الإجازة**: <c>LeaveService.ReviewAsync</c> يرفض إعادة
+    /// المراجعة بعد البتّ (409)، فيبقى ما قرّره المراجع محفوظاً كما قرّره، ويبقى الأثر
+    /// الماليّ قابلاً للتصحيح في الكشف.
+    /// </remarks>
+    [HttpPost("periods/{year:int}/{month:int}/leave-deductions/waive")]
+    public async Task<IActionResult> WaiveLeaveDeduction(
+        int year, int month, SettleLeaveDeductionRequest req, CancellationToken ct)
+    {
+        await payroll.WaiveLeaveDeductionAsync(
+            year, month, req.LeaveId, req.LeaveYear, req.LeaveMonth, req.Notes, ct);
+        return NoContent();
+    }
+
     // ─────────────────────────── مخرجات ───────────────────────────
 
     [HttpGet("periods/{year:int}/{month:int}/excel")]

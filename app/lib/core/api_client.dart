@@ -894,6 +894,26 @@ class ApiClient {
         'notes': notes,
       });
 
+  /// إجازاتٌ محسومة تنتظر البتّ في كشف الشهر (ADR-036).
+  Future<List<LeaveDeductionHint>> leaveDeductions(int year, int month) async =>
+      (await _get('/payroll/periods/$year/$month/leave-deductions') as List)
+          .map((e) => LeaveDeductionHint.fromJson(e))
+          .toList();
+
+  /// يطبّق الحسم على سطر الراتب — الأيام تبقى قابلةً للتعديل بعده.
+  Future<void> applyLeaveDeduction(int year, int month, LeaveDeductionHint h) =>
+      _post('/payroll/periods/$year/$month/leave-deductions/apply',
+          {'leaveId': h.leaveId, 'leaveYear': h.leaveYear, 'leaveMonth': h.leaveMonth});
+
+  /// صرف النظر عن الحسم — بتٌّ صريح لا يمسّ رقماً.
+  Future<void> waiveLeaveDeduction(int year, int month, LeaveDeductionHint h, String? notes) =>
+      _post('/payroll/periods/$year/$month/leave-deductions/waive', {
+        'leaveId': h.leaveId,
+        'leaveYear': h.leaveYear,
+        'leaveMonth': h.leaveMonth,
+        'notes': notes,
+      });
+
   Future<void> deletePayrollPeriod(int year, int month) =>
       _delete('/payroll/periods/$year/$month');
 

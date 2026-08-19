@@ -46,6 +46,55 @@ void main() {
     expect(e.paymentStatus, isNotEmpty);
   });
 
+  group('تنبيه حسم الإجازات (ADR-036) — على استجابةٍ حقيقية', () {
+    // العيّنة التُقطت من الخادم لإجازةٍ **تعبُر شهرين** (26 شباط ← 3 آذار) — وهي
+    // الحالة التي حسمها المالك: **تُقسَم بالأيام**.
+    List<LeaveDeductionHint> hints() => (fixture('leave_deductions') as List)
+        .map((e) => LeaveDeductionHint.fromJson(e))
+        .toList();
+
+    test('العقد يصل كاملاً', () {
+      final h = hints().single;
+      expect(h.leaveId, greaterThan(0));
+      expect(h.entryId, greaterThan(0));
+      expect(h.employeeName, isNotEmpty);
+      expect(h.leaveTypeLabel, isNotEmpty);
+      expect(h.currency, 'IQD');
+    });
+
+    /// 🔴 **برهان التقسيم على بياناتٍ حقيقية**: 26–28 شباط = ثلاثة أيام، لا سبعة.
+    test('🔴 الأيام أيامُ هذا الشهر وحده — لا مدّة الإجازة كلها', () {
+      final h = hints().single;
+      expect(h.days, 3);
+      expect(h.leaveYear, 2026);
+      expect(h.leaveMonth, 2);
+      // والمدى نفسه يمتدّ إلى آذار — فالتقسيم واقعٌ لا ادّعاء.
+      expect(h.toDate.month, 3);
+    });
+
+    /// الخصم المقترَح = الأساسي × الأيام ÷ أيام العمل — يأتي **محسوباً من الخادم**.
+    test('الخصم المقترَح يصل محسوباً', () {
+      expect(hints().single.suggestedDeduction, 120000);
+    });
+
+    /// ⚠️ **اسم الشهر عربيٌّ جاهزٌ من الخادم** — لا يُركَّب في العميل (سابقة ADR-023).
+    test('واسم الشهر عربيٌّ جاهز', () {
+      expect(hints().single.leaveMonthLabel, contains('شباط'));
+    });
+
+    test('وليست متأخّرة حين يكون الكشف شهرَها', () {
+      expect(hints().single.isLate, isFalse);
+    });
+
+    /// ⚠️ **تواريخ تقويمية لا لحظات** (درس G18): يومُ الإجازة لا يُزحزح بالمنطقة الزمنية.
+    test('⚠️ تواريخ الإجازة أيامٌ لا لحظات', () {
+      final h = hints().single;
+      expect(h.fromDate.day, 26);
+      expect(h.fromDate.month, 2);
+      expect(h.toDate.day, 3);
+    });
+  });
+
   test('قائمة الموظفين', () {
     final list = (fixture('employees') as List)
         .map((e) => EmployeeListItem.fromJson(e))

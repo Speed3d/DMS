@@ -28,6 +28,7 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
   PayrollPeriodModel? _period;
   List<DualCompanyRow> _external = const [];
   List<EndOfServiceSuggestion> _endOfService = const [];
+  List<LeaveDeductionHint> _leaveHints = const [];
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -71,6 +72,7 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
       final p = await api.payrollPeriod(widget.year, widget.month);
       List<DualCompanyRow> ext = const [];
       List<EndOfServiceSuggestion> eos = const [];
+      List<LeaveDeductionHint> leaves = const [];
       if (p != null && !p.isPaid) {
         try {
           ext = await api.dualCompany(widget.year, widget.month);
@@ -84,12 +86,18 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
         } catch (_) {
           // اقتراح المكافأة كذلك — مطفأٌ افتراضياً في الإعدادات.
         }
+        try {
+          leaves = await api.leaveDeductions(widget.year, widget.month);
+        } catch (_) {
+          // تنبيه الإجازات مساعِدٌ لا حاسم — فشلُه لا يُعطّل الكشف.
+        }
       }
       if (!mounted) return;
       _applyPeriod(p);
       setState(() {
         _external = ext;
         _endOfService = eos;
+        _leaveHints = leaves;
         _loading = false;
       });
     } catch (e) {
@@ -404,6 +412,110 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
   }
 
   /// يضع المكافأة المقترَحة في السطر ثم يحفظ — **بضغطة المستخدم لا تلقائياً**.
+  /// يطبّق حسم إجازة على سطرها — **الأيام تبقى قابلةً للتعديل بعده**.
+  ///
+  /// ⚠️ **بلا `_saveEntries()`**: الخادم يحسب الأيام ويعدّل السطر بنفسه، فإرسالُ حفظٍ
+  /// بعده يكتب فوق ما حسبه بقيمٍ قديمة في الشاشة. `_load()` وحدها تُعيد الحقيقة.
+  Future<void> _applyLeaveDeduction(LeaveDeductionHint h) async {
+    final money = NumberFormat('#,##0.##');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حسم إجازة'),
+        content: Text(
+            '«${h.employeeName}» — إجازة ${h.leaveTypeLabel} ${h.days} '
+            '${h.days == 1 ? 'يوم' : 'أيام'} من ${h.leaveMonthLabel}.\n\n'
+            'ستُضاف إلى أيام غيابه هذا الشهر، والخصم المقترَح '
+            '${money.format(h.suggestedDeduction)} ${h.currency == 'USD' ? '\$' : 'د.ع'}.\n\n'
+            'ويمكنك تعديل الأيام والخصم بعدها قبل التسديد.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('طبّق')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await ref.read(apiClientProvider).applyLeaveDeduction(widget.year, widget.month, h);
+      await _load();
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  /// صرف النظر عن الحسم — **بتٌّ صريح لا يمسّ رقماً**.
+  Future<void> _waiveLeaveDeduction(LeaveDeductionHint h) async {
+    final notes = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('صرف النظر عن الحسم'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('لن يُحسم شيء عن إجازة «${h.employeeName}» '
+                '(${h.days} ${h.days == 1 ? 'يوم' : 'أيام'} من ${h.leaveMonthLabel})، '
+                'ويبقى قرار الإجازة في سجلّها كما بُتّ.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: notes,
+              decoration: const InputDecoration(labelText: 'السبب (اختياري)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('تراجع')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true), child: const Text('صرف النظر')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await ref
+          .read(apiClientProvider)
+          .waiveLeaveDeduction(widget.year, widget.month, h, notes.text.trim());
+      await _load();
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  /// إفراغ كشف الشهر — **للمسودّة وحدها** (الخادم يرفض المُسدَّد بـ409).
+  Future<void> _deletePeriod() async {
+    final count = _period?.entries.length ?? 0;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('إفراغ كشف الشهر'),
+        content: Text(
+            'سيُحذف كشف ${arabicMonth(widget.month)} ${widget.year} '
+            'بسطوره الـ$count، وتعود الشاشة إلى «لم يُولَّد بعد».\n\n'
+            'المكافآت والخصومات وأيام الغياب المُدخَلة تضيع معه.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('تراجع')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('إفراغ'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await ref.read(apiClientProvider).deletePayrollPeriod(widget.year, widget.month);
+      await _load();
+      if (mounted) _snack('أُفرغ كشف الشهر.');
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
   Future<void> _applyEndOfService(EndOfServiceSuggestion s) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -469,6 +581,14 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
                 onPressed: _busy ? null : () => _export('receipts', 'pdf', 'application/pdf'),
                 icon: const Icon(Icons.print_rounded),
                 tooltip: 'طباعة كل الإيصالات'),
+            // 🔴 **مدخلٌ كان مفقوداً**: النقطة و`deletePayrollPeriod` موجودتان منذ ADR-023
+            //    ولا شاشة تناديهما — سادس تكرارٍ لنمط «ميزة بلا مدخل».
+            // ⚠️ **للمسودّة وحدها**: الكشف المُسدَّد سجلٌّ ماليّ، والخادم يرفضه بـ409.
+            if (canManage && !p.isPaid)
+              IconButton(
+                  onPressed: _busy ? null : _deletePeriod,
+                  icon: const Icon(Icons.delete_sweep_rounded),
+                  tooltip: 'إفراغ كشف الشهر'),
           ],
         ],
       ),
@@ -540,6 +660,14 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
         // مكافآت نهاية الخدمة المقترَحة (الدفعة ٢)
         if (_endOfService.isNotEmpty && editable)
           _EndOfServiceBanner(items: _endOfService, onApply: _applyEndOfService),
+
+        // 🔴 **الإجازة المحسومة كانت لا تمسّ رقماً ولا تُنبّه** (ADR-036).
+        if (!p.isPaid && _leaveHints.isNotEmpty)
+          LeaveDeductionBanner(
+            items: _leaveHints,
+            onApply: _applyLeaveDeduction,
+            onWaive: _waiveLeaveDeduction,
+          ),
 
         if (p.needsExchangeRate)
           const _WarnBanner(
@@ -1053,6 +1181,96 @@ class _AmendBar extends StatelessWidget {
 }
 
 /// مكافآت نهاية الخدمة المقترَحة — **اقتراحٌ لا تطبيق**، والتفعيل من إعدادات الوحدة.
+/// تنبيه الإجازات المحسومة (ADR-036) — **اقتراحٌ بزرَّين لا حسمٌ تلقائيّ**.
+///
+/// ⚠️ **عامّة لا خاصّة عمداً**: حارس الرسم يبنيها **هي** لا نسخةً منها — ونسخةٌ في
+/// الاختبار تُثبت سلامة ما لا يراه المستخدم (درس `hr_render_test`).
+///
+/// 🔴 **ولماذا زرّان لا زرّ؟** لأن `LeaveService.ReviewAsync` يرفض إعادة مراجعة إجازةٍ
+/// بُتّ فيها (409)، فلو لم يكن للمحاسب إلا «طبّق» لصار قرار المراجع **غير قابل للتراجع
+/// مالياً**. و«صرف النظر» بتٌّ صريح يُسكت التنبيه ولا يمسّ رقماً.
+class LeaveDeductionBanner extends StatelessWidget {
+  final List<LeaveDeductionHint> items;
+  final ValueChanged<LeaveDeductionHint> onApply;
+  final ValueChanged<LeaveDeductionHint> onWaive;
+  const LeaveDeductionBanner({
+    super.key,
+    required this.items,
+    required this.onApply,
+    required this.onWaive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final money = NumberFormat('#,##0.##');
+    final late = items.where((h) => h.isLate).length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.45)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.event_busy_rounded, color: Colors.orange, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  late == 0
+                      ? 'إجازات تُحسم من الراتب — لم تُحسم بعد'
+                      : 'إجازات تُحسم من الراتب — منها $late من أشهرٍ سابقة',
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.orange),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 2),
+            Text(
+              'لا يُحسم شيء تلقائياً — اضغط «طبّق» لإضافة الأيام، والأيام والخصم يبقيان '
+              'قابلَين للتعديل بعدها.',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.5,
+                  color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.7)),
+            ),
+            // ⚠️ `Wrap` لا `Row` — درسُ G12: شريطٌ أفقيّ يفيض تحت ~500 بكسل.
+            ...items.map((h) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '${h.employeeName} — ${h.leaveTypeLabel} ${h.days} '
+                        '${h.days == 1 ? 'يوم' : 'أيام'}'
+                        '${h.isLate ? ' من ${h.leaveMonthLabel} (لم تُحسم)' : ''} '
+                        '⇐ ${money.format(h.suggestedDeduction)} '
+                        '${h.currency == 'USD' ? '\$' : 'د.ع'}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      TextButton(onPressed: () => onApply(h), child: const Text('طبّق')),
+                      TextButton(
+                        onPressed: () => onWaive(h),
+                        child: const Text('صرف النظر',
+                            style: TextStyle(color: Colors.blueGrey)),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _EndOfServiceBanner extends StatelessWidget {
   final List<EndOfServiceSuggestion> items;
   final ValueChanged<EndOfServiceSuggestion> onApply;

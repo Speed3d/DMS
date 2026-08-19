@@ -55,6 +55,7 @@ public class AppDbContext : DbContext
     public DbSet<HrSettings> HrSettings => Set<HrSettings>();
     public DbSet<EmployeeLeave> EmployeeLeaves => Set<EmployeeLeave>();
     public DbSet<EmployeeLog> EmployeeLogs => Set<EmployeeLog>();
+    public DbSet<EmployeeLeaveSettlement> EmployeeLeaveSettlements => Set<EmployeeLeaveSettlement>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -430,6 +431,23 @@ public class AppDbContext : DbContext
                 .HasForeignKey(x => x.EmployeeCompanyId).OnDelete(DeleteBehavior.Cascade);
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- EmployeeLeaveSettlement (بتّ حسم الإجازة في كشف شهر — ADR-036) ----
+        b.Entity<EmployeeLeaveSettlement>(e =>
+        {
+            e.HasKey(x => x.SettlementId);
+            e.Property(x => x.Notes).HasMaxLength(500);
+
+            // 🔴 **الفهرس الفريد هو الحارس الأخير ضدّ الحسم مرّتين**: سباقُ نقرتين على
+            //    «طبّق» يمرّ من فحص التطبيق ثم يرتطم هنا — فيُخصم مرّةً واحدة لا مرّتين.
+            e.HasIndex(x => new { x.LeaveId, x.LeaveYear, x.LeaveMonth }).IsUnique();
+
+            e.HasOne(x => x.Leave).WithMany()
+                .HasForeignKey(x => x.LeaveId).OnDelete(DeleteBehavior.Cascade);
+
+            // ⚠️ **بلا فلتر حذفٍ ناعم** — لا حذف لهذا السطر أصلاً: البتّ واقعةٌ لا تُمحى.
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 
         // ---- EmployeeLog (سجلّ التغييرات — يُكتب ولا يُعدَّل) ----

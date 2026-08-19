@@ -35,6 +35,17 @@ public sealed record EndOfServiceSuggestion(
     int EntryId, string EmployeeName, decimal Amount, string Currency,
     decimal YearsServed, int DaysPerYear);
 
+/// <summary>إجازةٌ محسومة تنتظر البتّ في كشف هذا الشهر (ADR-036).</summary>
+/// <remarks>
+/// ⚠️ <see cref="LeaveYear"/>/<see cref="LeaveMonth"/> هما **شهر هذه الأيام** لا شهر الكشف —
+/// والفرق يظهر حين تُرحَّل إجازةُ شهرٍ مُسدَّد إلى الكشف التالي.
+/// </remarks>
+public sealed record LeaveDeductionHint(
+    int LeaveId, int EntryId, string EmployeeName, string LeaveTypeLabel,
+    DateTime FromDate, DateTime ToDate,
+    int LeaveYear, int LeaveMonth, string LeaveMonthLabel,
+    int Days, decimal SuggestedDeduction, Currency Currency, bool IsLate);
+
 public sealed record PeriodSettingsInput(
     decimal? ExchangeRate, WorkingDaysMode WorkingDaysMode, int WorkingDays, string? Notes);
 
@@ -116,6 +127,20 @@ public interface IPayrollService
     Task ConfirmExternalPaymentAsync(int entryId, CancellationToken ct = default);
     Task ConfirmPayHereAsync(int entryId, CancellationToken ct = default);
     Task<List<EndOfServiceSuggestion>> SuggestEndOfServiceAsync(int year, int month, CancellationToken ct = default);
+
+    /// <summary>إجازاتٌ محسومة تنتظر البتّ في كشف هذا الشهر (ADR-036).</summary>
+    Task<List<LeaveDeductionHint>> DetectLeaveDeductionsAsync(
+        int year, int month, CancellationToken ct = default);
+
+    /// <summary>يطبّق حسم إجازةٍ على سطرها — **أيامٌ تبقى قابلة للتعديل** بعدها.</summary>
+    Task ApplyLeaveDeductionAsync(
+        int year, int month, int leaveId, int leaveYear, int leaveMonth,
+        CancellationToken ct = default);
+
+    /// <summary>يصرف النظر عن حسم إجازةٍ — **بتٌّ صريح لا يمسّ رقماً**.</summary>
+    Task WaiveLeaveDeductionAsync(
+        int year, int month, int leaveId, int leaveYear, int leaveMonth, string? notes,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -769,6 +794,189 @@ public sealed class PayrollService(
     /// لا تُضاف تلقائياً بحال: المكافأة التزامٌ ماليّ يقرّره صاحب العمل بعد مراجعة الخدمة
     /// والذمّة، وحسابُها آلياً وإدراجُها في الصافي كان سيصرف مبلغاً لم يوافق عليه أحد.
     /// </remarks>
+    // ─────────────── حسم الإجازات من الكشف (ADR-036) ───────────────
+
+    /// <remarks>
+    /// 🔴 **سبب وجود هذا المسار:** الإجازة المقبولة بعلَم «تُحسم من الراتب» كانت **لا تمسّ
+    /// رقماً ولا تُصدر تنبيهاً** — التوليد يكتب <c>AbsenceDays = 0</c> ولا يقرأ الإجازات
+    /// أصلاً. وهي عائلة عطل ADR-028 نفسها: **علَمٌ يلوّن سطراً ولا يمسّ مالاً**.
+    ///
+    /// ⚠️ **تنبيهٌ لا حسمٌ تلقائيّ** (قرار المالك): يُعرض المقترَح ويُطبَّق **بضغطة**، لأن
+    /// المراجع قد يتراجع. ونظيرُه القائم <see cref="SuggestEndOfServiceAsync"/>.
+    /// </remarks>
+    public async Task<List<LeaveDeductionHint>> DetectLeaveDeductionsAsync(
+        int year, int month, CancellationToken ct = default)
+    {
+        RequireWrite();
+        ValidateYearMonth(year, month);
+
+        var period = await FindPeriodAsync(year, month, ct);
+        if (period is null) return [];
+
+        var live = period.Entries.Where(e => !e.IsDeleted).ToList();
+        if (live.Count == 0) return [];
+
+        var linkIds = live.Select(e => e.EmployeeCompanyId).ToList();
+        var sheetEnd = new DateTime(year, month, 1).AddMonths(1).AddDays(-1);
+
+        // الإجازات المرشَّحة: مقبولةٌ · تُحسم · بدأت قبل نهاية هذا الشهر (لا مستقبلية).
+        var leaves = await db.EmployeeLeaves
+            .Where(l => linkIds.Contains(l.EmployeeCompanyId)
+                     && l.Status == LeaveStatus.Approved
+                     && l.DeductFromSalary
+                     && l.FromDate <= sheetEnd)
+            .ToListAsync(ct);
+        if (leaves.Count == 0) return [];
+
+        var leaveIds = leaves.Select(l => l.LeaveId).ToList();
+        var settled = await db.EmployeeLeaveSettlements
+            .Where(x => leaveIds.Contains(x.LeaveId))
+            .Select(x => new { x.LeaveId, x.LeaveYear, x.LeaveMonth })
+            .ToListAsync(ct);
+
+        // حالة كشوف الأشهر — لقاعدة الترحيل: تُعالَج في شهرها ما دام مفتوحاً.
+        var paidMonths = await db.PayrollPeriods
+            .Where(p => p.Status == PayrollStatus.Paid)
+            .Select(p => new { p.Year, p.Month })
+            .ToListAsync(ct);
+
+        var entryByLink = live.ToDictionary(e => e.EmployeeCompanyId);
+
+        var hints = new List<LeaveDeductionHint>();
+        foreach (var leave in leaves)
+        {
+            if (!entryByLink.TryGetValue(leave.EmployeeCompanyId, out var entry)) continue;
+
+            // كل شهرٍ تمسّه الإجازة — التقسيم بالأيام (قرار المالك).
+            var cursor = new DateTime(leave.FromDate.Year, leave.FromDate.Month, 1);
+            var last = new DateTime(leave.ToDate.Year, leave.ToDate.Month, 1);
+            for (; cursor <= last; cursor = cursor.AddMonths(1))
+            {
+                int ly = cursor.Year, lm = cursor.Month;
+
+                var days = LeaveDeduction.DaysInMonth(leave.FromDate, leave.ToDate, ly, lm);
+                if (days <= 0) continue;
+
+                if (settled.Any(x => x.LeaveId == leave.LeaveId
+                                  && x.LeaveYear == ly && x.LeaveMonth == lm)) continue;
+
+                var isPaid = paidMonths.Any(p => p.Year == ly && p.Month == lm);
+                if (!LeaveDeduction.ShowsInSheet(ly, lm, year, month, isPaid)) continue;
+
+                hints.Add(new LeaveDeductionHint(
+                    leave.LeaveId, entry.EntryId, entry.SnapshotName,
+                    leave.LeaveType.ArabicLabel(), leave.FromDate, leave.ToDate,
+                    ly, lm, $"{PayrollCalculator.ArabicMonth(lm)} {ly}",
+                    days,
+                    PayrollCalculator.SuggestAbsenceDeduction(
+                        entry.SnapshotBaseSalary, days, period.WorkingDays),
+                    entry.SnapshotCurrency,
+                    IsLate: !(ly == year && lm == month)));
+            }
+        }
+
+        return hints
+            .OrderByDescending(h => h.IsLate)
+            .ThenBy(h => h.EmployeeName)
+            .ToList();
+    }
+
+    public Task ApplyLeaveDeductionAsync(
+        int year, int month, int leaveId, int leaveYear, int leaveMonth,
+        CancellationToken ct = default)
+        => SettleLeaveDeductionAsync(year, month, leaveId, leaveYear, leaveMonth, true, null, ct);
+
+    public Task WaiveLeaveDeductionAsync(
+        int year, int month, int leaveId, int leaveYear, int leaveMonth, string? notes,
+        CancellationToken ct = default)
+        => SettleLeaveDeductionAsync(year, month, leaveId, leaveYear, leaveMonth, false, notes, ct);
+
+    /// <remarks>
+    /// 🔴 **الأيام تُعاد حسابها هنا ولا تُقبل من العميل** — نظير قاعدة الوحدة كلّها: «كل مبلغ
+    /// محسوب يمرّ من <see cref="PayrollCalculator"/>». عميلٌ يرسل ٣٠ يوماً بدل يومين يُنتج
+    /// راتباً صفرياً بلا أن يخطئ أحد.
+    ///
+    /// ⚠️ **والتطبيق على المسودّة وحدها**: تعديل شهرٍ مُسدَّد له مسارُه الخاص بلقطةٍ وسبب
+    /// (ADR-026)، ولا يُلتفّ عليه من هنا. ولذلك تُرحَّل إجازةُ الشهر المُقفل إلى الكشف
+    /// المفتوح بدل أن تُطبَّق على المُقفل.
+    /// </remarks>
+    private async Task SettleLeaveDeductionAsync(
+        int year, int month, int leaveId, int leaveYear, int leaveMonth,
+        bool applied, string? notes, CancellationToken ct)
+    {
+        RequireWrite();
+        var period = await RequireDraftAsync(year, month, ct);
+
+        var leave = await db.EmployeeLeaves.Include(l => l.EmployeeCompany)
+                        .FirstOrDefaultAsync(l => l.LeaveId == leaveId, ct)
+                    ?? throw new NotFoundException("الإجازة غير موجودة.");
+
+        if (leave.Status != LeaveStatus.Approved || !leave.DeductFromSalary)
+            throw new ValidationException("هذه الإجازة ليست مقبولةً بحسمٍ من الراتب.");
+
+        var days = LeaveDeduction.DaysInMonth(leave.FromDate, leave.ToDate, leaveYear, leaveMonth);
+        if (days <= 0)
+            throw new ValidationException("لا أيام لهذه الإجازة في الشهر المطلوب.");
+
+        if (await db.EmployeeLeaveSettlements.AnyAsync(
+                x => x.LeaveId == leaveId && x.LeaveYear == leaveYear && x.LeaveMonth == leaveMonth, ct))
+            throw new ConflictException("بُتّ في حسم هذه الإجازة من قبل.");
+
+        var entry = period.Entries.FirstOrDefault(
+                        e => !e.IsDeleted && e.EmployeeCompanyId == leave.EmployeeCompanyId)
+                    ?? throw new NotFoundException("صاحب الإجازة ليس في كشف هذا الشهر.");
+
+        var monthLabel = $"{PayrollCalculator.ArabicMonth(leaveMonth)} {leaveYear}";
+
+        if (applied)
+        {
+            // ⚠️ **تُضاف ولا تُستبدل**: قد يكون للموظف إجازتان في الشهر، وقد يكون المحاسب
+            //    سجّل غياباً يدوياً قبلها — والاستبدال يمحو أيّهما سبق.
+            entry.AbsenceDays += days;
+            entry.AbsenceDeductionIsManual = false;
+            Recompute(period, entry, null);
+            entry.UpdatedAt = DateTime.UtcNow;
+            period.UpdatedAt = DateTime.UtcNow;
+        }
+
+        db.EmployeeLeaveSettlements.Add(new EmployeeLeaveSettlement
+        {
+            LeaveId = leaveId,
+            LeaveYear = leaveYear,
+            LeaveMonth = leaveMonth,
+            PeriodId = period.PeriodId,
+            CompanyId = period.CompanyId,
+            Days = days,
+            Applied = applied,
+            SettledByUserId = current.UserId,
+            SettledAt = DateTime.UtcNow,
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+        });
+
+        // 🔴 **في ملفّ الموظف أيضاً**: الأثر مالٌ يُنقص راتبه، فمن يقرأ ملفّه لاحقاً يجب أن
+        //    يرى لماذا نقص راتب ذلك الشهر ومَن قرّره.
+        if (leave.EmployeeCompany is { } link)
+            db.EmployeeLogs.Add(new EmployeeLog
+            {
+                EmployeeCompanyId = link.EmployeeCompanyId,
+                CompanyId = link.CompanyId,
+                ChangeType = EmployeeChangeType.LeaveDeductionSettled,
+                Description = applied
+                    ? $"حُسمت إجازة {leave.LeaveType.ArabicLabel()} ({days} يوماً من {monthLabel}) " +
+                      $"من كشف {PayrollCalculator.ArabicMonth(month)} {year}"
+                    : $"صُرف النظر عن حسم إجازة {leave.LeaveType.ArabicLabel()} " +
+                      $"({days} يوماً من {monthLabel})",
+                ChangedByUserId = current.UserId ?? 0,
+                ChangedAt = DateTime.UtcNow,
+            });
+
+        audit.Add(applied ? "ApplyLeaveDeduction" : "WaiveLeaveDeduction",
+            nameof(EmployeeLeave), leaveId.ToString(),
+            $"{days} يوماً من {monthLabel} — كشف {year}-{month:D2}", period.CompanyId);
+
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task<List<EndOfServiceSuggestion>> SuggestEndOfServiceAsync(
         int year, int month, CancellationToken ct = default)
     {

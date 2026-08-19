@@ -197,6 +197,21 @@ public sealed record GenerateRequest(string? AmendmentReason = null);
 public sealed record SignedReceiptResponse(
     int AttachmentId, string FileName, string FileType, long FileSize, DateTime UploadedAt);
 
+/// <summary>إجازةٌ محسومة تنتظر البتّ في كشف الشهر (ADR-036).</summary>
+/// <remarks>
+/// ⚠️ <c>LeaveYear</c>/<c>LeaveMonth</c> **شهرُ هذه الأيام لا شهرُ الكشف** — ويختلفان حين
+/// تُرحَّل إجازةُ شهرٍ مُسدَّد. و<c>IsLate</c> هو ما يجعل العميل يقول «من شهر ٤ لم تُحسم».
+/// </remarks>
+public sealed record LeaveDeductionResponse(
+    int LeaveId, int EntryId, string EmployeeName, string LeaveTypeLabel,
+    DateTime FromDate, DateTime ToDate,
+    int LeaveYear, int LeaveMonth, string LeaveMonthLabel,
+    int Days, decimal SuggestedDeduction, Currency Currency, bool IsLate);
+
+/// <summary>بتٌّ في حسم إجازة — الشهر المقصود **يأتي من العميل لأن الإجازة قد تُقسَم**.</summary>
+public sealed record SettleLeaveDeductionRequest(
+    int LeaveId, int LeaveYear, int LeaveMonth, string? Notes = null);
+
 /// <summary>قيدٌ في سجلّ تعديلات الشهر (ADR-026) — يُعرض ولا يُعدَّل.</summary>
 public sealed record PayrollAmendmentResponse(
     int VersionNo, string Reason, string ChangedBy, DateTime ChangedAt, string SnapshotJson);
