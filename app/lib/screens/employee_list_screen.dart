@@ -769,22 +769,40 @@ class _EmployeeTable extends StatelessWidget {
 /// ⚠️ **الصورة الحقيقية تُعرض في ملفّ الموظف لا في القائمة عمداً:** نقطة الصورة مصادَقة،
 /// فجلبُها يلزمه طلبٌ بالتوكن لكل صفّ (`Image.network` على الويب لا يمرّر الترويسات).
 /// قائمةٌ من خمسين موظفاً كانت ستُطلق خمسين طلباً عند كل فتح.
-class _Avatar extends StatelessWidget {
+/// صورة الموظف في القائمة — **الصورة إن وُجدت، وإلا الحرف الأول**.
+///
+/// 🔴 **كانت تستقبل `employeeId` و`hasPhoto` وتتجاهلهما** وتعرض الحرف دائماً
+/// (بلاغ المالك 2026-08-20): ميزةٌ نصف مُنفَّذة — المعلومة تصل ولا تُستعمل.
+///
+/// ⚠️ **ولا تُطلب الصورة إلا لمن له صورة**: `hasPhoto` تأتي مع القائمة في الطلب
+/// نفسه، فيُوفَّر طلبٌ فاشل (404) لكل موظفٍ بلا صورة.
+class _Avatar extends ConsumerWidget {
   final int employeeId;
   final bool hasPhoto;
   final String name;
   const _Avatar({required this.employeeId, required this.hasPhoto, required this.name});
 
   @override
-  Widget build(BuildContext context) => CircleAvatar(
-        radius: 19,
-        backgroundColor: AppColors.navy.withValues(alpha: 0.12),
-        child: Text(
-          name.trim().isNotEmpty ? name.trim().characters.first : '؟',
-          style: const TextStyle(
-              fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 15),
-        ),
-      );
+  Widget build(BuildContext context, WidgetRef ref) {
+    // `asData?.value` لا `when`: الصفّ يُرسم فوراً بالحرف، وتحلّ الصورة محلَّه
+    // حين تصل — بلا دوّارةٍ تقفز في كل صفّ أثناء التمرير.
+    final photo = hasPhoto
+        ? ref.watch(employeePhotoProvider(employeeId)).asData?.value
+        : null;
+
+    return CircleAvatar(
+      radius: 19,
+      backgroundColor: AppColors.navy.withValues(alpha: 0.12),
+      backgroundImage: photo == null ? null : MemoryImage(photo),
+      child: photo != null
+          ? null
+          : Text(
+              name.trim().isNotEmpty ? name.trim().characters.first : '؟',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w900, color: AppColors.navy, fontSize: 15),
+            ),
+    );
+  }
 }
 
 /// شارة «فُكّ إسناده» — حالةٌ ثالثة لا حالةُ عملٍ في هذه الشركة.

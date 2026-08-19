@@ -9,6 +9,7 @@ import '../core/profile_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import 'change_password_screen.dart';
 
@@ -218,7 +219,22 @@ class _Avatar extends StatelessWidget {
   Widget build(BuildContext context) => Stack(
         clipBehavior: Clip.none,
         children: [
-          _box(context),
+          // 🔍 والصورة تُضغط فتكبر هنا أيضاً — نفس سلوك ملفّ الموظف.
+          if (photo == null)
+            _box(context)
+          else
+            Tooltip(
+              message: 'عرض الصورة بحجمٍ أكبر',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => AttachmentViewer.show(
+                  context,
+                  bytes: photo!,
+                  fileName: 'صورتي.jpg',
+                ),
+                child: _box(context),
+              ),
+            ),
           if (onChange != null)
             Positioned(
               bottom: -6,

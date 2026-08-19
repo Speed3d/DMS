@@ -599,19 +599,11 @@ class _Header extends StatelessWidget {
     return CustomCard(
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 38,
-            backgroundColor: AppColors.navy.withValues(alpha: 0.12),
-            backgroundImage: photo != null ? MemoryImage(photo!) : null,
-            child: photo == null
-                ? Text(
-                    employee.fullName.trim().isNotEmpty
-                        ? employee.fullName.trim().characters.first
-                        : '؟',
-                    style: const TextStyle(
-                        fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.navy))
-                : null,
-          ),
+          // 🔍 **الضغط يكبّر الصورة** (بلاغ المالك 2026-08-20) — بالعارض المشترك
+          //    نفسه الذي يعرض المرفقات، فيرث التكبير والتصغير بالسحب.
+          // ⚠️ **ولا يُغلَّف بـ`InkWell` بلا صورة**: مؤشّرُ يدٍ على صورةٍ غير موجودة
+          //    يَعِد بما لا يقع.
+          _ZoomableAvatar(photo: photo, name: employee.fullName),
           const SizedBox(width: 20),
           Expanded(
             child: Column(
@@ -1483,6 +1475,46 @@ class _TerminateDialogState extends State<_TerminateDialog> {
           child: const Text('تأكيد'),
         ),
       ],
+    );
+  }
+}
+
+/// أفاتار الموظف — **يُضغط فيكبر** (بلاغ المالك 2026-08-20).
+///
+/// يستعمل [AttachmentViewer] المشترك بدل عارضٍ خاصّ: يرث منه التكبير بالسحب
+/// (`InteractiveViewer`) وشكل النافذة، فلا يتباعد سلوك الصور في الشاشات.
+class _ZoomableAvatar extends StatelessWidget {
+  final Uint8List? photo;
+  final String name;
+  const _ZoomableAvatar({required this.photo, required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = CircleAvatar(
+      radius: 38,
+      backgroundColor: AppColors.navy.withValues(alpha: 0.12),
+      backgroundImage: photo != null ? MemoryImage(photo!) : null,
+      child: photo == null
+          ? Text(
+              name.trim().isNotEmpty ? name.trim().characters.first : '؟',
+              style: const TextStyle(
+                  fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.navy))
+          : null,
+    );
+
+    if (photo == null) return avatar;
+
+    return Tooltip(
+      message: 'عرض الصورة بحجمٍ أكبر',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => AttachmentViewer.show(
+          context,
+          bytes: photo!,
+          fileName: 'صورة $name.jpg',
+        ),
+        child: avatar,
+      ),
     );
   }
 }
