@@ -194,18 +194,45 @@ void main() {
     // 🔴 **الحارس هنا حارسُ مدخلٍ لا حارسُ دالّة**: نمطُ «ميزة بلا مدخل» تكرّر في هذا
     //    المستودع خمس مرّات (G7 · G8 · G10 · مستمسكات الموظف · إسناد موظفٍ قائم)،
     //    فنقطةُ رفعٍ في الخادم بلا زرٍّ في الشاشة ميزةٌ ميتة.
-    testWidgets('🔴 المربوط: زرّ تغيير الصورة **موجود**', (tester) async {
+    testWidgets('🔴 المربوط: شارةُ الكاميرا على الأفاتار موجودة **وداخل الشاشة**',
+        (tester) async {
       await pumpProfile(tester, _LinkedApi());
-      expect(find.byIcon(Icons.photo_camera_rounded), findsOneWidget);
-      expect(find.byTooltip('تغيير صورتي'), findsOneWidget);
+      final badge = find.byTooltip('تغيير صورتي');
+      expect(badge, findsOneWidget);
+
+      // ⚠️ **الوجود في الشجرة ليس ظهوراً على الشاشة.** الشارة موضوعةٌ بإزاحةٍ سالبة
+      //    داخل `Stack`، فلو قصّها سلفٌ أو خرجت عن الحدود لبقي `find` ناجحاً
+      //    **والمستخدم لا يراها** — وهو بيت بلاغ المالك (2026-08-19).
+      final r = tester.getRect(badge);
+      final screen = tester.getRect(find.byType(Scaffold));
+      expect(r.width > 0 && r.height > 0, isTrue, reason: 'مساحةٌ صفرية = غير مرئية');
+      expect(screen.contains(r.topLeft) && screen.contains(r.bottomRight), isTrue,
+          reason: 'الشارة خارج حدود الشاشة: $r مقابل $screen');
+    });
+
+    // 🔴 **بلاغ المالك (2026-08-19): «لا أرى أي مكان أغيّر منه الصورة».**
+    //    الشارة الصغيرة في زاوية الأفاتار لا تكفي مدخلاً — **الميزة التي لا يجدها
+    //    صاحبها ميزةٌ غير موجودة**، وهو نمطٌ تكرّر في هذا المستودع (G7 · G8 · G10 ·
+    //    المستمسكات · إسناد موظفٍ قائم). فالمدخل زرٌّ **مُسمّى** بجانب «تغيير كلمة المرور».
+    testWidgets('🔴 وزرٌّ **مُسمّى** في تبويب الهويّة — لا شارةً وحدها', (tester) async {
+      await pumpProfile(tester, _LinkedApi());
+      final btn = find.widgetWithText(OutlinedButton, 'تغيير الصورة الشخصية');
+      expect(btn, findsOneWidget);
+      expect(tester.widget<OutlinedButton>(btn).onPressed, isNotNull,
+          reason: 'زرٌّ معطَّل مدخلٌ غير موجود');
+      final r = tester.getRect(btn);
+      expect(r.width > 0 && r.height > 0, isTrue);
     });
 
     // ⚠️ **بلا بطاقةٍ لا موضعَ للصورة**: الصورة تُكتب على البطاقة، فزرٌّ يردّ 404
     //    أسوأ من زرٍّ غائب — يوهم صاحبَه أن الميزة معطوبة لا محجوبة.
-    testWidgets('🔴 غير المربوط: لا زرّ صورة أصلاً', (tester) async {
+    testWidgets('🔴 غير المربوط: لا شارةَ ولا زرّ — لا موضعَ لصورته', (tester) async {
       await pumpProfile(tester, _UnlinkedApi());
       expect(find.byIcon(Icons.photo_camera_rounded), findsNothing);
       expect(find.byTooltip('تغيير صورتي'), findsNothing);
+      expect(find.widgetWithText(OutlinedButton, 'تغيير الصورة الشخصية'), findsNothing);
+      // وكلمةُ المرور تبقى متاحةً له — الحجب للصورة وحدها.
+      expect(find.text('تغيير كلمة المرور'), findsOneWidget);
     });
   });
 

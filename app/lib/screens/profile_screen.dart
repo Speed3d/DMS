@@ -121,7 +121,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _IdentityTab(profile: profile),
+                    _IdentityTab(
+                      profile: profile,
+                      onChangePhoto: linked ? _changePhoto : null,
+                      photoBusy: _photoBusy,
+                    ),
                     if (linked) const _LeavesTab(),
                     if (linked) const _PayslipsTab(),
                   ],
@@ -295,7 +299,13 @@ class _UnlinkedNotice extends StatelessWidget {
 
 class _IdentityTab extends StatelessWidget {
   final MyProfile profile;
-  const _IdentityTab({required this.profile});
+  final VoidCallback? onChangePhoto;
+  final bool photoBusy;
+  const _IdentityTab({
+    required this.profile,
+    this.onChangePhoto,
+    this.photoBusy = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -335,21 +345,43 @@ class _IdentityTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _SectionTitle('الأمان'),
-                const Text(
-                  'الاسم وبيانات الموظف تُعدَّل من شؤون الموظفين لا من هنا — '
-                  'فهي تظهر في الكتب الرسمية وإيصالات الرواتب.',
-                  style: TextStyle(fontSize: 12.5, height: 1.6),
+                const _SectionTitle('حسابي'),
+                Text(
+                  onChangePhoto == null
+                      ? 'الاسم وبيانات الموظف تُعدَّل من شؤون الموظفين لا من هنا — '
+                          'فهي تظهر في الكتب الرسمية وإيصالات الرواتب.'
+                      : 'صورتك تُغيّرها بنفسك، وهي الصورة نفسها في ملفّك لدى شؤون '
+                          'الموظفين. أمّا الاسم وبقيّة بيانات الموظف فتُعدَّل من هناك لا '
+                          'من هنا — فهي تظهر في الكتب الرسمية وإيصالات الرواتب.',
+                  style: const TextStyle(fontSize: 12.5, height: 1.6),
                 ),
                 const SizedBox(height: 12),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ChangePasswordScreen())),
-                    icon: const Icon(Icons.lock_outline, size: 18),
-                    label: const Text('تغيير كلمة المرور'),
-                  ),
+                // ⚠️ `Wrap` لا `Row` — درسُ G12: شريطُ أزرارٍ أفقيّ يفيض تحت ~500 بكسل.
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ChangePasswordScreen())),
+                      icon: const Icon(Icons.lock_outline, size: 18),
+                      label: const Text('تغيير كلمة المرور'),
+                    ),
+                    // 🔴 **زرٌّ مُسمّى لا شارةً على الأفاتار وحدها (بلاغ المالك 2026-08-19):**
+                    //    الشارة الصغيرة في زاوية الصورة **لا تُرى** — والميزة التي لا يجدها
+                    //    صاحبها ميزةٌ غير موجودة. الشارة تبقى اختصاراً، وهذا هو المدخل.
+                    if (onChangePhoto != null)
+                      OutlinedButton.icon(
+                        onPressed: photoBusy ? null : onChangePhoto,
+                        icon: photoBusy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.photo_camera_rounded, size: 18),
+                        label: const Text('تغيير الصورة الشخصية'),
+                      ),
+                  ],
                 ),
               ],
             ),
