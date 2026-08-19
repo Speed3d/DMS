@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
@@ -13,9 +14,13 @@ import 'change_password_screen.dart';
 
 /// الملف الشخصي — **ما يخصّ صاحب الجلسة وحده** (ADR-033).
 ///
-/// 🔴 **عرضٌ لا تحرير** (قرار المالك 2026-08-10): لا تعديل للاسم — لا الحسابيّ ولا الرسميّ.
-/// وما يُحرَّر هنا شيئان لا ثالث لهما: **كلمة المرور** و**طلب إجازة**. الصورة تُرفع من
-/// ملفّ الموظف بيد شؤون الموظفين، فتبقى صورةً رسميةً في ملفٍّ لا صورةَ حسابٍ شخصيّة.
+/// 🔴 **الاسم عرضٌ لا تحرير** (قرار المالك 2026-08-10، **مؤكَّدٌ 2026-08-19**): لا تعديل
+/// للاسم — لا الحسابيّ ولا الرسميّ. الحسابيّ تحت قسم «المستخدمون» لأنه **اسم الفاعل في
+/// سجلّ التدقيق**، والرسميّ تحت شؤون الموظفين لأنه اسم الإيصالات والكشوف.
+///
+/// وما يُحرَّر هنا ثلاثة: **كلمة المرور** · **طلب إجازة** · و**الصورة** (ADR-035).
+/// ⚠️ **والصورة تبقى واحدة**: تُكتب على البطاقة نفسها، فما يضعه الموظف هنا تراه شؤون
+/// الموظفين هناك — المتغيّر مَن يملك تحديثها لا عددُها.
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
@@ -26,6 +31,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Uint8List? _photo;
   int? _photoForEmployee;
+  bool _photoBusy = false;
 
   /// يجلب الصورة مرّةً لكل بطاقة — وفشلُها لا يُسقط الشاشة.
   Future<void> _ensurePhoto(MyProfile p) async {
@@ -36,6 +42,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (mounted) setState(() => _photo = bytes);
     } catch (_) {
       // غياب الصورة لا يمنع عرض الملفّ.
+    }
+  }
+
+  /// أُغيّر صورتي بنفسي (ADR-035).
+  ///
+  /// ⚠️ **الحدّ هنا 5 م.ب مطابقةً للخادم** (`EmployeePhotoRules.MaxBytes`): حارسٌ أضيق
+  /// من حارس الخادم يردّ صورةً يقبلها الخادم، وأوسعُ منه يُهدر رفعةً ترتدّ.
+  Future<void> _changePhoto() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await FilePicker.pickFiles(type: FileType.image, withData: true);
+    if (res == null || res.files.single.bytes == null) return;
+    final f = res.files.single;
+
+    if (f.size > 5 * 1024 * 1024) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('حجم الصورة يتجاوز 5 ميغابايت.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => _photoBusy = true);
+    try {
+      await ref.read(apiClientProvider).uploadMyPhoto(f.name, f.bytes!);
+      // ⚠️ **تُبطَل ذاكرةُ البطاقة** وإلا بقيت الصورة القديمة معروضةً فيظنّ الرفعَ فشل.
+      _photoForEmployee = null;
+      if (mounted) setState(() => _photo = f.bytes);
+      invalidateProfile(ref);
+      messenger.showSnackBar(const SnackBar(content: Text('تم تحديث صورتك.')));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _photoBusy = false);
     }
   }
 
@@ -64,7 +102,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           length: tabs.length,
           child: Column(
             children: [
-              _Header(profile: profile, photo: _photo),
+              _Header(
+                profile: profile,
+                photo: _photo,
+                // 🔴 **بلا بطاقةٍ لا صورة**: الصورة تُكتب على البطاقة، فمن لم يُربط بعد
+                //    لا موضعَ لصورته — وزرٌّ يردّ 404 أسوأ من زرٍّ غائب.
+                onChangePhoto: linked ? _changePhoto : null,
+                busy: _photoBusy,
+              ),
               Material(
                 color: Colors.transparent,
                 child: TabBar(
@@ -95,7 +140,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 class _Header extends StatelessWidget {
   final MyProfile profile;
   final Uint8List? photo;
-  const _Header({required this.profile, this.photo});
+  final VoidCallback? onChangePhoto;
+  final bool busy;
+  const _Header({
+    required this.profile,
+    this.photo,
+    this.onChangePhoto,
+    this.busy = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +164,7 @@ class _Header extends StatelessWidget {
           runSpacing: 14,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            _Avatar(photo: photo, fallback: name),
+            _Avatar(photo: photo, fallback: name, onChange: onChangePhoto, busy: busy),
             ConstrainedBox(
               constraints: const BoxConstraints(minWidth: 200),
               child: Column(
@@ -154,10 +206,47 @@ class _Header extends StatelessWidget {
 class _Avatar extends StatelessWidget {
   final Uint8List? photo;
   final String fallback;
-  const _Avatar({this.photo, required this.fallback});
+  final VoidCallback? onChange;
+  final bool busy;
+  const _Avatar({this.photo, required this.fallback, this.onChange, this.busy = false});
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => Stack(
+        clipBehavior: Clip.none,
+        children: [
+          _box(context),
+          if (onChange != null)
+            Positioned(
+              bottom: -6,
+              left: -6,
+              child: Material(
+                color: Theme.of(context).colorScheme.primary,
+                shape: const CircleBorder(),
+                elevation: 2,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: busy ? null : onChange,
+                  child: Tooltip(
+                    message: 'تغيير صورتي',
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: busy
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.photo_camera_rounded,
+                              size: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+
+  Widget _box(BuildContext context) => Container(
         width: 68,
         height: 68,
         decoration: BoxDecoration(

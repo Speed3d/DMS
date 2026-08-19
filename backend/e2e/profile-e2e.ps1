@@ -221,6 +221,53 @@ Expect "🔐 والإجازات صارت محجوبة عن الحساب فورا
 Expect "🔐 والرواتب كذلك"                         (Api GET "/profile/payslips" $null $tok1 $cid).S 404
 Expect "والبروفايل نفسه يبقى مفتوحاً بلا بطاقة"   (Api GET "/profile" $null $tok1 $cid).S 200
 
+Sec "🖼️ الصورة يغيّرها صاحبها (ADR-035)"
+# 🔴 **قرار المالك 2026-08-19 يعكس شرطاً من ADR-033.** والحارس هنا شقّان:
+#    (١) أنه **يستطيع** فعلاً — وإلا فالميزة معلَنةٌ غير عاملة.
+#    (٢) وأن الصورة **واحدة**: ما يرفعه من بروفايله تقرؤه بطاقتُه — لا صورةَ حسابٍ ثانية.
+function UploadPhoto($token,$company,$url,$name){
+  $b=[Guid]::NewGuid().ToString()
+  $png=[Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+  $pre=[Text.Encoding]::UTF8.GetBytes("--$b`r`nContent-Disposition: form-data; name=`"file`"; filename=`"$name`"`r`nContent-Type: image/png`r`n`r`n")
+  $post=[Text.Encoding]::UTF8.GetBytes("`r`n--$b--`r`n")
+  $body=New-Object byte[] ($pre.Length+$png.Length+$post.Length)
+  [Array]::Copy($pre,0,$body,0,$pre.Length)
+  [Array]::Copy($png,0,$body,$pre.Length,$png.Length)
+  [Array]::Copy($post,0,$body,$pre.Length+$png.Length,$post.Length)
+  $h=@{Authorization="Bearer $token"}; if($company){$h.'X-Company-Id'="$company"}
+  try{ $r=Invoke-WebRequest -Uri "$Base$url" -Method Post -Headers $h -ContentType "multipart/form-data; boundary=$b" -Body $body -UseBasicParsing; return [int]$r.StatusCode }
+  catch{ $resp=$_.Exception.Response; if($resp){return [int]$resp.StatusCode} else {return 0} }
+}
+
+# يُعاد الربط ليُختبر الرفع (السطر السابق فكّه).
+$null=Api PUT "/employees/$eid/user" @{userId=$u1.userId} $admin $cid
+$tok1=Login 'prof_emp'
+
+Expect "قبل الرفع: لا صورة (404)" (Api GET "/profile/photo" $null $tok1 $cid).S 404
+Expect "🔴 الموظف يرفع صورته بنفسه" (UploadPhoto $tok1 $cid '/profile/photo' 'me.png') 204
+Expect "ويقرؤها بعدها"             (Api GET "/profile/photo" $null $tok1 $cid).S 200
+
+$idn=(Api GET "/profile" $null $tok1 $cid).B
+if($idn.hasPhoto){ Ok "و`hasPhoto` صارت true في هويّته" } else { Bad "hasPhoto ما زالت false" }
+
+# 🔴 **الصورة واحدة**: بطاقتُه عند شؤون الموظفين تقرأ ما رفعه هو.
+Expect "🔴 والبطاقة تقرأ الصورة نفسها — لا صورةَ حسابٍ ثانية" (Api GET "/employees/$eid/photo" $null $admin $cid).S 200
+$card=(Api GET "/employees/$eid" $null $admin $cid).B
+if($card.hasPhoto){ Ok "والبطاقة تُعلن أن لها صورة" } else { Bad "البطاقة تقول لا صورة" }
+
+# ⚠️ حرّاس الإدخال — القاعدة واحدة في `EmployeePhotoRules` فتنطبق على المسارين.
+Expect "صيغةٌ غير مسموحة تُرفض (400)" (UploadPhoto $tok1 $cid '/profile/photo' 'virus.exe') 400
+
+# 🔐 والحدّ الأهمّ: **لا يكتب على صورة غيره** — النقطة لا تقبل معرّفاً أصلاً،
+#    ونقطةُ البطاقة تبقى محجوبةً عنه.
+Expect "🔐 ولا يرفع على بطاقة غيره عبر نقطة الموظفين (403)" (UploadPhoto $tok1 $cid "/employees/$eid/photo" 'x.png') 403
+
+# ومن لا بطاقةَ له لا موضعَ لصورته — يُردّ ولا يُنشئ شيئاً.
+$null=Api DELETE "/employees/$eid/user" $null $admin $cid
+$tok1=Login 'prof_emp'
+Expect "🔴 وبعد فكّ الربط: الرفع يُردّ (404)" (UploadPhoto $tok1 $cid '/profile/photo' 'me.png') 404
+# ⚠️ **يُترك مفكوكاً هنا عمداً** — فحصُ السجلّ وإعادةِ الربط أدناه يفترضان ذلك.
+
 # والسجلّ يبقى مقروءاً — من يفتح الملفّ يعرف متى فُتحت النافذة ومتى أُغلقت.
 $log=(Api GET "/employees/$eid/log" $null $admin $cid).B
 $linkLogs=@($log | Where-Object { $_.changeType -eq 'UserLinked' -or $_.changeType -eq 'UserUnlinked' })

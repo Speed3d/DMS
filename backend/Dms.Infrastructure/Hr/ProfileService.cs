@@ -35,6 +35,9 @@ public interface IProfileService
 {
     Task<MyIdentity> IdentityAsync(CancellationToken ct = default);
     Task<(byte[] content, string fileName)> PhotoAsync(CancellationToken ct = default);
+
+    /// <summary>أُغيّر صورتي بنفسي — **على بطاقتي أنا** (ADR-035).</summary>
+    Task SetPhotoAsync(string fileName, byte[] content, CancellationToken ct = default);
     Task<List<EmployeeLeave>> MyLeavesAsync(CancellationToken ct = default);
     Task<EmployeeLeave> RequestLeaveAsync(LeaveRequestInput input, CancellationToken ct = default);
     Task CancelLeaveRequestAsync(int leaveId, CancellationToken ct = default);
@@ -109,6 +112,38 @@ public sealed class ProfileService(
         if (string.IsNullOrEmpty(key)) throw new NotFoundException("لا توجد صورة في ملفّك.");
         var bytes = await storage.ReadAsync(key, ct);
         return (bytes, Path.GetFileName(key));
+    }
+
+    /// <remarks>
+    /// 🔴 **قرار المالك (2026-08-19) يعكس شرطاً من ADR-033**: الصورة صار يغيّرها صاحبها.
+    /// و**الصورة تبقى واحدة**: تُكتب على `Employee.PhotoBlobKey` نفسه بالمفتاح نفسه، فما
+    /// يراه في بروفايله هو ما تراه شؤون الموظفين في بطاقته — لا صورةَ حسابٍ ثانية بجانب
+    /// الصورة الرسمية. (مبدأ «صورةٌ واحدة للشخص» **باقٍ**؛ المتغيّر مَن يملك تحديثها.)
+    ///
+    /// 🔐 **ولا معرّفَ من العميل**: البطاقة تُشتقّ من <see cref="RequireLinkAsync"/> كبقية
+    /// نقاط الوحدة — فمن لا بطاقةَ له يُردّ عليه، ولا يكتب أحدٌ على صورة غيره.
+    ///
+    /// ⚠️ **وفعلٌ مستقلٌّ في سجلّ التدقيق** (<c>SetOwnPhoto</c> لا <c>SetPhoto</c>): مَن
+    /// يقرأ السجلّ يحتاج أن يميّز صورةً وضعتها شؤون الموظفين من صورةٍ وضعها صاحبها.
+    /// </remarks>
+    public async Task SetPhotoAsync(string fileName, byte[] content, CancellationToken ct = default)
+    {
+        var link = await RequireLinkAsync(ct);
+        var emp = link.Employee ?? throw new NotFoundException("بطاقتك غير موجودة.");
+
+        var ext = EmployeePhotoRules.Validate(fileName, content.Length);
+
+        var old = emp.PhotoBlobKey;
+        emp.PhotoBlobKey = await storage.SaveAsync(
+            EmployeePhotoRules.BlobKey(emp.EmployeeId, ext), content, ct);
+
+        audit.Add("SetOwnPhoto", nameof(Employee), emp.EmployeeId.ToString(),
+            null, current.ActiveCompanyId);
+        await db.SaveChangesAsync(ct);
+
+        // بعد نجاح الحفظ لا قبله — فلا تضيع القديمة إن فشلت الكتابة (نظير `EmployeeService`).
+        if (!string.IsNullOrEmpty(old) && old != emp.PhotoBlobKey)
+            try { await storage.DeleteAsync(old, ct); } catch { /* تجاهل فشل حذف */ }
     }
 
     public async Task<List<EmployeeLeave>> MyLeavesAsync(CancellationToken ct = default)

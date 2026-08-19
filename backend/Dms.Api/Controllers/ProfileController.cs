@@ -39,17 +39,35 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
             m.NationalId, m.Phone, m.Address, m.HasPhoto);
     }
 
-    /// <summary>صورتي — نفسُ صورة بطاقتي، تُقرأ ولا تُرفع من هنا.</summary>
+    /// <summary>صورتي — نفسُ صورة بطاقتي.</summary>
     /// <remarks>
-    /// ⚠️ **لا نقطةَ رفعٍ في البروفايل** (قرار المالك: «صورةٌ واحدة للشخص» على البطاقة):
-    /// الصورة تُرفع من ملفّ الموظف بيد مَن يملك <c>CanManageEmployees</c>، فتبقى صورةً
-    /// رسميةً في ملفٍّ لا صورةَ حسابٍ يغيّرها صاحبها.
+    /// ⚠️ **الصورة واحدة**: ما يُقرأ هنا هو `Employee.PhotoBlobKey` نفسه الذي تراه شؤون
+    /// الموظفين في البطاقة — لا صورةَ حسابٍ ثانية. (مبدأ «صورةٌ واحدة للشخص» باقٍ.)
     /// </remarks>
     [HttpGet("photo")]
     public async Task<IActionResult> Photo(CancellationToken ct)
     {
         var (content, fileName) = await profile.PhotoAsync(ct);
         return File(content, MimeTypes.For(fileName), fileName);
+    }
+
+    /// <summary>أُغيّر صورتي بنفسي (ADR-035).</summary>
+    /// <remarks>
+    /// 🔴 **يعكس شرطاً من ADR-033 بقرار المالك (2026-08-19)**: كانت الصورة تُرفع من ملفّ
+    /// الموظف وحده بيد <c>CanManageEmployees</c>. والصورة **تبقى واحدة** على البطاقة —
+    /// المتغيّر مَن يملك تحديثها لا عددُها.
+    ///
+    /// 🔐 **ولا يقبل معرّف موظفٍ من العميل**: البطاقة تُشتقّ من الجلسة داخل
+    /// <c>ProfileService</c> كبقية نقاط الوحدة.
+    /// </remarks>
+    [HttpPost("photo")]
+    public async Task<IActionResult> UploadPhoto(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0) throw new ValidationException("الملف مطلوب.");
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        await profile.SetPhotoAsync(file.FileName, ms.ToArray(), ct);
+        return NoContent();
     }
 
     [HttpGet("leaves")]

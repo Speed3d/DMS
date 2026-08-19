@@ -1050,6 +1050,18 @@ class ApiClient {
     }
   }
 
+  /// أُغيّر صورتي بنفسي (ADR-035) — **بلا معرّف**: الخادم يشتقّ بطاقتي من جلستي.
+  Future<void> uploadMyPhoto(String fileName, List<int> bytes) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+    });
+    try {
+      await _dio.post('/profile/photo', data: form);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<List<LeaveModel>> myLeaves() async =>
       (await _get('/profile/leaves') as List).map((e) => LeaveModel.fromJson(e)).toList();
 

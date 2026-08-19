@@ -188,6 +188,25 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(find.text('تغيير كلمة المرور'), findsOneWidget);
     });
+
+    // ── الصورة يغيّرها صاحبها (ADR-035) ──
+    //
+    // 🔴 **الحارس هنا حارسُ مدخلٍ لا حارسُ دالّة**: نمطُ «ميزة بلا مدخل» تكرّر في هذا
+    //    المستودع خمس مرّات (G7 · G8 · G10 · مستمسكات الموظف · إسناد موظفٍ قائم)،
+    //    فنقطةُ رفعٍ في الخادم بلا زرٍّ في الشاشة ميزةٌ ميتة.
+    testWidgets('🔴 المربوط: زرّ تغيير الصورة **موجود**', (tester) async {
+      await pumpProfile(tester, _LinkedApi());
+      expect(find.byIcon(Icons.photo_camera_rounded), findsOneWidget);
+      expect(find.byTooltip('تغيير صورتي'), findsOneWidget);
+    });
+
+    // ⚠️ **بلا بطاقةٍ لا موضعَ للصورة**: الصورة تُكتب على البطاقة، فزرٌّ يردّ 404
+    //    أسوأ من زرٍّ غائب — يوهم صاحبَه أن الميزة معطوبة لا محجوبة.
+    testWidgets('🔴 غير المربوط: لا زرّ صورة أصلاً', (tester) async {
+      await pumpProfile(tester, _UnlinkedApi());
+      expect(find.byIcon(Icons.photo_camera_rounded), findsNothing);
+      expect(find.byTooltip('تغيير صورتي'), findsNothing);
+    });
   });
 
   // ══════════════════ حرّاس الرسم ══════════════════

@@ -104,8 +104,6 @@ public sealed record LinkableUser(int UserId, string FullName, string Username, 
 public sealed class EmployeeService(
     AppDbContext db, ICurrentUser current, IAuditService audit, IFileStorage storage) : IEmployeeService
 {
-    private const long MaxPhotoBytes = 5 * 1024 * 1024;
-    private static readonly string[] PhotoExtensions = [".jpg", ".jpeg", ".png"];
 
     public async Task<List<EmployeeCompany>> ListAsync(
         bool? activeOnly, string? search, CancellationToken ct = default)
@@ -311,13 +309,12 @@ public sealed class EmployeeService(
         RequireWrite();
         var emp = await GetAsync(employeeId, ct);
 
-        if (content.Length == 0) throw new ValidationException("الملف فارغ.");
-        if (content.Length > MaxPhotoBytes) throw new ValidationException("حجم الصورة يتجاوز 5 ميغابايت.");
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        if (!PhotoExtensions.Contains(ext)) throw new ValidationException("صيغة الصورة غير مسموحة (JPG/PNG).");
+        // ⚠️ القاعدة في `EmployeePhotoRules` لا هنا: للصورة **مساران** بعد ADR-035
+        //    (شؤون الموظفين من البطاقة، وصاحبُها من بروفايله) — ونسخُها يجعلهما يفترقان.
+        var ext = EmployeePhotoRules.Validate(fileName, content.Length);
 
         var old = emp.PhotoBlobKey;
-        emp.PhotoBlobKey = await storage.SaveAsync($"emp-{employeeId}{ext}", content, ct);
+        emp.PhotoBlobKey = await storage.SaveAsync(EmployeePhotoRules.BlobKey(employeeId, ext), content, ct);
 
         audit.Add("SetPhoto", nameof(Employee), employeeId.ToString(), null, current.ActiveCompanyId);
         await db.SaveChangesAsync(ct);
