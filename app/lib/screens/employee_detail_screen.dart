@@ -23,6 +23,14 @@ class EmployeeDetailScreen extends ConsumerStatefulWidget {
 class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
   EmployeeDetail? _employee;
   List<SalaryHistoryItem> _history = const [];
+
+  /// سنوات رواتبه (الأحدث أولاً) والسنة المعروضة — الدفعة د.
+  ///
+  /// ⚠️ **الافتراض أحدث سنة لا «الكل»**: الشاشة تُفتح على ما يُسأل عنه غالباً، ولأن
+  /// «الكل» مع تراكم السنين يعيد صفحةً طويلة وهي **عين ما شكا منه المالك**.
+  List<int> _salaryYears = const [];
+  int? _year;
+  bool _salaryBusy = false;
   List<LeaveModel> _leaves = const [];
   List<EmployeeLogItem> _log = const [];
   List<AttachmentModel> _docs = const [];
@@ -33,6 +41,30 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
 
   /// هل تغيّر شيء يستوجب إعادة تحميل القائمة عند الرجوع؟
   bool _changed = false;
+
+  /// يبدّل سنة سجلّ الرواتب — **جلبٌ للسنة وحدها** لا للسجلّ كلّه.
+  Future<void> _selectYear(int year) async {
+    if (year == _year || _salaryBusy) return;
+    setState(() {
+      _year = year;
+      _salaryBusy = true;
+    });
+    try {
+      final rows = await ref.read(apiClientProvider).salaryHistory(
+            widget.employeeId,
+            year: year,
+          );
+      if (mounted) setState(() => _history = rows);
+    } catch (e) {
+      // ⚠️ فشلُ سنةٍ لا يُفرغ ما يُعرض بلا تفسير — يبقى المعروض وتظهر رسالة.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
+      }
+    } finally {
+      if (mounted) setState(() => _salaryBusy = false);
+    }
+  }
 
   @override
   void initState() {
@@ -48,7 +80,11 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
     try {
       final api = ref.read(apiClientProvider);
       final e = await api.employee(widget.employeeId);
-      final h = await api.salaryHistory(widget.employeeId);
+
+      // السنواتُ أولاً لتُبنى منها الأزرار، ثم أشهرُ أحدثها.
+      final years = await api.salaryYears(widget.employeeId);
+      final year = years.isEmpty ? null : years.first;
+      final h = await api.salaryHistory(widget.employeeId, year: year);
       final lv = await api.leaves(widget.employeeId);
       final lg = await api.employeeLog(widget.employeeId);
       // المستمسكات مساعِدةٌ لا حاسمة — فشلُ جلبها لا يُسقط الملفّ كلّه.
@@ -67,6 +103,8 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       if (!mounted) return;
       setState(() {
         _employee = e;
+        _salaryYears = years;
+        _year = year;
         _history = h;
         _leaves = lv;
         _log = lg;
@@ -526,47 +564,83 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.danger)))
-                : ListView(
-                    padding: const EdgeInsets.all(32),
-                    children: [
-                      _Header(
-                        employee: e!,
-                        photo: _photo,
-                        canManage: canManage,
-                        onLinkUser: _linkUser,
-                        onUnlinkUser: _unlinkUser,
-                      ),
-                      const SizedBox(height: 20),
-                      _InfoCard(employee: e),
-                      const SizedBox(height: 20),
-                      _DocumentsCard(
-                        items: _docs,
-                        canManage: canManage,
-                        busy: _docsBusy,
-                        onAdd: _addDoc,
-                        onView: _viewDoc,
-                        onDownload: _downloadDoc,
-                        onDelete: _deleteDoc,
-                      ),
-                      const SizedBox(height: 20),
-                      _LeavesCard(
-                        leaves: _leaves,
-                        canManage: canManage,
-                        onAdd: _addLeave,
-                        onReview: _reviewLeave,
-                        onDelete: _deleteLeave,
-                      ),
-                      const SizedBox(height: 20),
-                      _SalaryHistoryCard(
-                        items: _history,
-                        onPrint: _printReceipt,
-                        onUploadReceipt: _uploadSignedReceipt,
-                        // ⚠️ **صلاحية الرواتب لا الموظفين**: الإيصال وثيقةُ صرفٍ ماليّ.
-                        canManage: ref.watch(sessionProvider).canManagePayroll,
-                      ),
-                      const SizedBox(height: 20),
-                      _ChangeLogCard(items: _log),
-                    ],
+                // 🔴 **تبويباتٌ لا صفحةٌ طويلة** (بلاغ المالك 2026-08-20): الملفّ كان
+                //    ستّ بطاقاتٍ في تمريرةٍ واحدة، وتطول بتراكم السنين والإجازات حتى
+                //    يصير الوصول إلى آخرها تمريراً طويلاً. والشكل هنا **نفسُ شكل
+                //    البروفايل** الذي يراه الموظف — ترويسةٌ ثابتة وتبويبات تحتها،
+                //    فلا يتعلّم المستخدم واجهتين لشيءٍ واحد.
+                : DefaultTabController(
+                    length: 5,
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(32, 32, 32, 8),
+                          child: _Header(
+                            employee: e!,
+                            photo: _photo,
+                            canManage: canManage,
+                            onLinkUser: _linkUser,
+                            onUnlinkUser: _unlinkUser,
+                          ),
+                        ),
+                        const Material(
+                          color: Colors.transparent,
+                          child: TabBar(
+                            isScrollable: true,
+                            tabAlignment: TabAlignment.start,
+                            tabs: [
+                              Tab(text: 'المعلومات'),
+                              Tab(text: 'المستمسكات'),
+                              Tab(text: 'الإجازات'),
+                              Tab(text: 'الرواتب'),
+                              Tab(text: 'سجلّ التغييرات'),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _TabBody(child: _InfoCard(employee: e)),
+                              _TabBody(
+                                child: _DocumentsCard(
+                                  items: _docs,
+                                  canManage: canManage,
+                                  busy: _docsBusy,
+                                  onAdd: _addDoc,
+                                  onView: _viewDoc,
+                                  onDownload: _downloadDoc,
+                                  onDelete: _deleteDoc,
+                                ),
+                              ),
+                              _TabBody(
+                                child: _LeavesCard(
+                                  leaves: _leaves,
+                                  canManage: canManage,
+                                  onAdd: _addLeave,
+                                  onReview: _reviewLeave,
+                                  onDelete: _deleteLeave,
+                                ),
+                              ),
+                              _TabBody(
+                                child: _SalaryHistoryCard(
+                                  items: _history,
+                                  years: _salaryYears,
+                                  selectedYear: _year,
+                                  busy: _salaryBusy,
+                                  onSelectYear: _selectYear,
+                                  onPrint: _printReceipt,
+                                  onUploadReceipt: _uploadSignedReceipt,
+                                  // ⚠️ **صلاحية الرواتب لا الموظفين**: الإيصال وثيقةُ صرفٍ ماليّ.
+                                  canManage:
+                                      ref.watch(sessionProvider).canManagePayroll,
+                                ),
+                              ),
+                              _TabBody(child: _ChangeLogCard(items: _log)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
       ),
     );
@@ -799,11 +873,19 @@ class _InfoCard extends StatelessWidget {
 
 class _SalaryHistoryCard extends StatelessWidget {
   final List<SalaryHistoryItem> items;
+
+  /// سنوات رواتبه (الأحدث أولاً) والسنة المعروضة — الدفعة د.
+  final List<int> years;
+  final int? selectedYear;
+  final bool busy;
+  final ValueChanged<int> onSelectYear;
+
   final ValueChanged<SalaryHistoryItem> onPrint;
   final ValueChanged<SalaryHistoryItem> onUploadReceipt;
   final bool canManage;
   const _SalaryHistoryCard({
-    required this.items, required this.onPrint,
+    required this.items, required this.years, required this.selectedYear,
+    required this.busy, required this.onSelectYear, required this.onPrint,
     required this.onUploadReceipt, required this.canManage,
   });
 
@@ -817,7 +899,33 @@ class _SalaryHistoryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _CardTitle(icon: Icons.receipt_long_rounded, title: 'سجلّ الرواتب'),
-          if (items.isEmpty)
+
+          // 📅 **أزرار السنوات** (بلاغ المالك): تُجلب أشهرُ السنة المختارة وحدها،
+          //    فلا تطول الصفحة بتراكم السنين.
+          // ⚠️ `Wrap` لا `Row` — سنواتٌ كثيرة تفيض في شاشةٍ ضيّقة (درسُ G12).
+          if (years.length > 1) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: years
+                  .map((y) => ChoiceChip(
+                        label: Text('$y'),
+                        selected: y == selectedYear,
+                        // ⚠️ **تُعطَّل أثناء الجلب** لا لتُمنع، بل لئلّا يتراكم
+                        //    طلبان فيصل ردُّ سنةٍ قديمة بعد الجديدة.
+                        onSelected: busy ? null : (_) => onSelectYear(y),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 4),
+          ],
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text('لا توجد رواتب مسجَّلة بعد.',
@@ -1517,4 +1625,19 @@ class _ZoomableAvatar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// محتوى تبويبٍ في ملفّ الموظف — **تمريرٌ مستقلّ لكل تبويب**.
+///
+/// ⚠️ **لولاه لفاض المحتوى الطويل** (سجلّ تغييرات طويل مثلاً) داخل `TabBarView`
+/// بدل أن يُمرَّر، وهو عطبٌ متكرّر في هذا المستودع (G12 وأخواته).
+class _TabBody extends StatelessWidget {
+  final Widget child;
+  const _TabBody({required this.child});
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(32, 20, 32, 32),
+        child: child,
+      );
 }

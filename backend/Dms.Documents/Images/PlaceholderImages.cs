@@ -3,11 +3,20 @@ using SkiaSharp;
 namespace Dms.Documents.Images;
 
 /// <summary>
-/// مولّد صور بديلة (placeholder) للهيدر/الفوتر/العلامة المائية — لمحاكاة الصور التي ستوفّرها الشركة.
-/// نستخدم نصوصاً لاتينية هنا (الشعار/الترويسة صورة جاهزة في الإنتاج)؛
-/// صحّة العربية RTL تُختبر في متن الـ PDF عبر QuestPDF (تشكيل HarfBuzz).
-/// الأبعاد بدقة قريبة من 300DPI لعرض A4 (~2480px).
+/// صور القالب الافتراضي — الهيدر/الفوتر/العلامة المائية حين **لا يرفع المستخدم صوره**.
 /// </summary>
+/// <remarks>
+/// 🔴 **محايدةٌ بلا اسمٍ ولا شعار** (قرار المالك 2026-08-20): كانت ترسم «DEN LAND» و
+/// «Trading & Contracting» ودائرة «DL» وسطر «Baghdad, Iraq | +964 …». وهي بيانات
+/// **مُختلَقة**، وكتابٌ رسميّ يخرج بعنوانٍ وهاتفٍ لا يملكهما أحد **أسوأ من كتابٍ بلا
+/// ترويسة**: القارئ يصدّق ما هو مطبوع.
+///
+/// ⚠️ **الشكل بقي، والهوية سقطت**: الشريط المتدرّج والخطّ الذهبي وخطّ الفوتر باقية
+/// ليبقى للمستند إطارٌ مرتّب — و**كل نصٍّ ورمزٍ يدلّ على جهةٍ بعينها أُزيل**.
+/// ومَن يريد ترويسته يرفع صورته من الإعدادات، وهي تحلّ محلّ هذه كلّها.
+///
+/// الأبعاد بدقة قريبة من 300DPI لعرض A4 (~2480px).
+/// </remarks>
 public static class PlaceholderImages
 {
     private static readonly SKColor Brand = new(0x0B, 0x3D, 0x91);   // أزرق داكن
@@ -33,16 +42,7 @@ public static class PlaceholderImages
         using var goldPaint = new SKPaint { Color = Gold, IsAntialias = true };
         canvas.DrawRect(0, height - 14, width, 14, goldPaint);
 
-        // دائرة الشعار "DL"
-        float cx = 180, cy = height / 2f, r = 110;
-        using var circle = new SKPaint { Color = SKColors.White, IsAntialias = true };
-        canvas.DrawCircle(cx, cy, r, circle);
-        DrawText(canvas, "DL", cx, cy + 38, 110, Brand, SKFontStyle.Bold, center: true);
-
-        // اسم الشركة (لاتيني)
-        DrawText(canvas, "DEN LAND", 360, cy - 10, 120, SKColors.White, SKFontStyle.Bold);
-        DrawText(canvas, "Trading & Contracting", 362, cy + 90, 56, SKColors.White, SKFontStyle.Normal);
-
+        // ⚠️ **بلا شعارٍ ولا اسم** — الشريط وحده (قرار المالك 2026-08-20).
         return Encode(bmp);
     }
 
@@ -55,9 +55,8 @@ public static class PlaceholderImages
         using var line = new SKPaint { Color = Brand, IsAntialias = true, StrokeWidth = 6 };
         canvas.DrawLine(120, 20, width - 120, 20, line);
 
-        DrawText(canvas, "Baghdad, Iraq  |  +964 770 000 0000  |  info@denland.iq",
-            width / 2f, 110, 48, Brand, SKFontStyle.Normal, center: true);
-
+        // ⚠️ **بلا عنوانٍ ولا هاتفٍ ولا بريد** — بياناتٌ مُختلَقة على كتابٍ رسميّ
+        //    أسوأ من فراغ (قرار المالك 2026-08-20).
         return Encode(bmp);
     }
 
@@ -79,20 +78,8 @@ public static class PlaceholderImages
             Color = color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 24
         };
         canvas.DrawCircle(cx, cy, size * 0.34f, ring);
-        DrawText(canvas, "DL", cx, cy + 150, 460, color, SKFontStyle.Bold, center: true);
-
+        // ⚠️ **وحلقةٌ بلا حروف**: «DL» شعارٌ كغيره — والقاعدة واحدة في المواضع الثلاثة.
         return Encode(bmp);
-    }
-
-    private static void DrawText(SKCanvas canvas, string text, float x, float y,
-        float textSize, SKColor color, SKFontStyle style, bool center = false)
-    {
-        using var typeface = SKTypeface.FromFamilyName("Arial", style)
-                             ?? SKTypeface.Default;
-        using var font = new SKFont(typeface, textSize);
-        using var paint = new SKPaint { Color = color, IsAntialias = true };
-        var align = center ? SKTextAlign.Center : SKTextAlign.Left;
-        canvas.DrawText(text, x, y, align, font, paint);
     }
 
     private static byte[] Encode(SKBitmap bmp)

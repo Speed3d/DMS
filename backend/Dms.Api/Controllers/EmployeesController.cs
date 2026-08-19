@@ -252,11 +252,18 @@ public sealed class EmployeesController(
         return File(content, "application/octet-stream", meta.FileName);
     }
 
+    /// <summary>سنوات رواتبه — لأزرار الفلترة (الدفعة د).</summary>
+    [HttpGet("{id:int}/salary-years")]
+    public async Task<ActionResult<List<int>>> SalaryYears(int id, CancellationToken ct)
+        => await employees.SalaryYearsAsync(id, ct);
+
+    /// <param name="year">سنةٌ بعينها ⇒ أشهرها كاملةً؛ وفارغةً ⇒ الأحدث بحدّ <paramref name="take"/>.</param>
     [HttpGet("{id:int}/salary-history")]
     public async Task<ActionResult<List<SalaryHistoryItem>>> SalaryHistory(
-        int id, [FromQuery] int take = 12, CancellationToken ct = default)
+        int id, [FromQuery] int take = 12, [FromQuery] int? year = null,
+        CancellationToken ct = default)
     {
-        var rows = await employees.SalaryHistoryAsync(id, Math.Clamp(take, 1, 60), ct);
+        var rows = await employees.SalaryHistoryAsync(id, Math.Clamp(take, 1, 60), year, ct);
 
         // عدد الإيصالات الموقَّعة لكل سطر — **استعلامٌ واحد** لا واحدٌ لكل شهر.
         var ids = rows.Select(r => r.EntryId).ToList();

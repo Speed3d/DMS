@@ -829,6 +829,29 @@ if($allCo.Count -lt 2){
   $null=Api DELETE "/employees/$fid/employment" $null $admin $cid2
 }
 
+Write-Host "`n=== 📅 سجلّ الرواتب يُفلتَر بالسنة (الدفعة د) ===" -ForegroundColor Cyan
+# 🔴 **النقطة كانت `take=12` بلا فلتر سنة** — فسنةٌ يريدها المستخدم كاملةً تُقصّ،
+#    وصفحةُ الملفّ تطول بتراكم السنين (بلاغ المالك 2026-08-20).
+$yrs=@((Api GET "/employees/$e1/salary-years" $null $admin $cid).B)
+if($yrs.Count -ge 1){ Ok "سنوات الرواتب تُقرأ ($($yrs -join '، '))" } else { Bad "قائمة السنوات فارغة" }
+if($yrs[0] -eq ($yrs | Sort-Object -Descending)[0]){ Ok "والأحدث أولاً — فتُفتح الشاشة عليها" }
+else { Bad "الترتيب ليس تنازلياً: $($yrs -join '،')" }
+
+$ofYear=@((Api GET "/employees/$e1/salary-history?year=$Year" $null $admin $cid).B)
+if($ofYear.Count -ge 1){ Ok "أشهر سنة $Year تُقرأ ($($ofYear.Count) شهراً)" } else { Bad "لا أشهر لسنة $Year" }
+$wrongYear=@($ofYear | Where-Object { $_.year -ne $Year })
+if($wrongYear.Count -eq 0){ Ok "🔐 ولا يتسرّب شهرٌ من سنةٍ أخرى" } else { Bad "$($wrongYear.Count) سطراً من سنةٍ أخرى" }
+
+# سنةٌ لا رواتب فيها ⇒ قائمةٌ فارغة لا خطأ.
+$empty=Api GET "/employees/$e1/salary-history?year=1999" $null $admin $cid
+if($empty.S -eq 200 -and @($empty.B).Count -eq 0){ Ok "سنةٌ بلا رواتب تردّ قائمةً فارغة (200) لا خطأ" }
+else { Bad "ردّ $($empty.S) بـ$(@($empty.B).Count) سطراً" }
+
+# 🔐 وحارس الرؤية نفسه على النقطة الجديدة — لا تُفتح بها نافذةٌ خلفية.
+$blocked=Api GET "/employees/$e1/salary-years" $null $tokRdr $cid
+if($blocked.S -eq 403){ Ok "🔐 القارئ محجوب عن سنوات الرواتب (403) — الحارس نفسه" }
+else { Bad "ردّ $($blocked.S) بدل 403" }
+
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
 Write-Host "فشل: $fail" -ForegroundColor $(if($fail -eq 0){'Green'}else{'Red'})

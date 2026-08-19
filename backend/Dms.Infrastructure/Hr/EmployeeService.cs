@@ -77,7 +77,11 @@ public interface IEmployeeService
 
     Task UnlinkAsync(int employeeId, string? notes, CancellationToken ct = default);
     Task<List<EmployeeCompany>> ListUnlinkedAsync(CancellationToken ct = default);
-    Task<List<PayrollEntry>> SalaryHistoryAsync(int employeeId, int take, CancellationToken ct = default);
+    Task<List<PayrollEntry>> SalaryHistoryAsync(
+        int employeeId, int take, int? year = null, CancellationToken ct = default);
+
+    /// <summary>سنوات رواتبه — الأحدث أولاً (الدفعة د).</summary>
+    Task<List<int>> SalaryYearsAsync(int employeeId, CancellationToken ct = default);
 
     // ─────────────── ربط البطاقة بحساب النظام (ADR-033) ───────────────
 
@@ -621,15 +625,39 @@ public sealed class EmployeeService(
             .ToListAsync(ct);
     }
 
+    /// <remarks>
+    /// ⚠️ **<paramref name="year"/> غير فارغ ⇒ سنةٌ كاملة بلا قصّ** (الدفعة د): الشاشة
+    /// تعرض أشهر السنة المختارة، و«آخر 12» كانت تقصّ أشهراً من سنةٍ يريدها المستخدم
+    /// كاملةً. وفارغاً ⇒ السلوك القديم (الأحدث فالأقدم بحدّ <paramref name="take"/>).
+    /// </remarks>
     public async Task<List<PayrollEntry>> SalaryHistoryAsync(
-        int employeeId, int take, CancellationToken ct = default)
+        int employeeId, int take, int? year = null, CancellationToken ct = default)
     {
         await GetAsync(employeeId, ct); // حارس الرؤية
-        return await db.PayrollEntries
+        var q = db.PayrollEntries
             .Include(e => e.Period)
+            .Where(e => e.EmployeeCompany!.EmployeeId == employeeId);
+
+        if (year is { } y) q = q.Where(e => e.Period!.Year == y);
+
+        q = q.OrderByDescending(e => e.Period!.Year).ThenByDescending(e => e.Period!.Month);
+
+        // سنةٌ محدّدة ⇒ اثنا عشر شهراً على الأكثر أصلاً، فالقصّ لا معنى له.
+        return await (year is null ? q.Take(take) : q).ToListAsync(ct);
+    }
+
+    /// <remarks>
+    /// ⚠️ **استعلامٌ خفيف بلا `Include`**: يُنادى لبناء أزرار السنوات وحدها، ولا حاجة
+    /// فيه إلى سطور الرواتب — وجلبُها كان سيُحضر السنوات كلَّها بتفاصيلها.
+    /// </remarks>
+    public async Task<List<int>> SalaryYearsAsync(int employeeId, CancellationToken ct = default)
+    {
+        await GetAsync(employeeId, ct); // حارس الرؤية نفسه
+        return await db.PayrollEntries
             .Where(e => e.EmployeeCompany!.EmployeeId == employeeId)
-            .OrderByDescending(e => e.Period!.Year).ThenByDescending(e => e.Period!.Month)
-            .Take(take)
+            .Select(e => e.Period!.Year)
+            .Distinct()
+            .OrderByDescending(y => y)
             .ToListAsync(ct);
     }
 

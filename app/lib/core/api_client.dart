@@ -773,9 +773,15 @@ class ApiClient {
     return data == null ? null : ExistingEmployeeHint.fromJson(data);
   }
 
-  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12}) async =>
-      (await _get('/employees/$id/salary-history', query: {'take': take}) as List)
+  /// سجلّ رواتبه — [year] غير فارغة ⇒ **أشهر تلك السنة كاملةً** بلا قصّ (الدفعة د).
+  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12, int? year}) async =>
+      (await _get('/employees/$id/salary-history',
+              query: {'take': take, if (year != null) 'year': year}) as List)
           .map((e) => SalaryHistoryItem.fromJson(e)).toList();
+
+  /// سنوات رواتبه — الأحدث أولاً، لأزرار الفلترة.
+  Future<List<int>> salaryYears(int id) async =>
+      (await _get('/employees/$id/salary-years') as List).map((e) => e as int).toList();
 
   /// صورة الموظف بالتوكن — الويب لا يمرّر الترويسات مع `Image.network`، فتُجلب بايتاتٍ.
   Future<Uint8List> employeePhoto(int id) async {

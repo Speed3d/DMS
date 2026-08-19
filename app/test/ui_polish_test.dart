@@ -4,15 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:dms_app/core/api_client.dart';
 import 'package:dms_app/core/profile_providers.dart';
 import 'package:dms_app/core/session.dart';
 import 'package:dms_app/models.dart';
 import 'package:dms_app/widgets/password_field.dart';
 import 'package:dms_app/widgets/search_field.dart';
+import 'package:dms_app/screens/users_screen.dart';
 import 'package:dms_app/widgets/topbar.dart';
 
-/// حرّاس الدفعة **ب** من ملاحظات المالك (2026-08-20):
-/// البحث الحيّ · إظهار كلمة المرور · الشريط العلوي.
+/// حرّاس الدفعتين **ب** و**د** من ملاحظات المالك (2026-08-20):
+/// البحث الحيّ · إظهار كلمة المرور · الشريط العلوي · **ونقل التفويضات**.
 ///
 /// 🔴 **كلاهما منطقٌ في ودجةٍ مشتركة لا في ثلاث شاشات** — فالحارس هنا يحرس الشاشات
 /// الثلاث معاً، وأيّ شاشةٍ تستعمل الودجة ترث سلوكاً مُثبَتاً.
@@ -183,6 +185,53 @@ void main() {
     });
   });
 
+  // ══════════════════ التفويضات: نُقلت لا حُذفت ══════════════════
+
+  group('🔁 قسم المستخدمين تبويبٌ واحد', () {
+    Future<_UsersApi> pumpUsers(WidgetTester tester) async {
+      final api = _UsersApi();
+      tester.view.physicalSize = const Size(1400, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sessionProvider.overrideWith(() => _FixedSession(_session())),
+        ],
+        child: MaterialApp(
+          locale: const Locale('ar'),
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: const Scaffold(body: UsersScreen()),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      return api;
+    }
+
+    testWidgets('🗑️ لا شريطَ تبويباتٍ بعد الآن', (tester) async {
+      await pumpUsers(tester);
+      expect(find.byType(TabBar), findsNothing,
+          reason: 'ما زال التبويب الثاني قائماً');
+    });
+
+    testWidgets('🔴 والتفويضات **باقيةٌ** خلف زرّ — لا محذوفة', (tester) async {
+      // حذفُها كان سيجعل تغطية سفر المدير **منحاً دائماً** ينتظر أن يتذكّره أحد.
+      final api = await pumpUsers(tester);
+      final btn = find.widgetWithText(OutlinedButton, 'تفويضات الاعتماد');
+      expect(btn, findsOneWidget, reason: 'اختفت الآلية بلا بديل');
+      expect(api.delegationCalls, 0, reason: 'جُلبت قبل فتحها — عملٌ بلا داعٍ');
+
+      await tester.tap(btn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsOneWidget, reason: 'الزرّ لا يفتح شيئاً');
+      expect(api.delegationCalls, 1, reason: 'فُتحت الحوارية بلا جلب بيانات');
+    });
+  });
+
   // ══════════════════ الشريط العلوي ══════════════════
 
   group('🧭 الشريط العلوي', () {
@@ -268,6 +317,25 @@ void main() {
           reason: 'المرسى ليس عند بطاقة المستخدم: $rect');
     });
   });
+}
+
+/// عميلٌ صامت لشاشة المستخدمين.
+class _UsersApi extends ApiClient {
+  _UsersApi()
+      : super(baseUrl: 'http://test/api', token: (() => 't'), companyId: (() => 1));
+  int delegationCalls = 0;
+
+  @override
+  Future<List<UserModel>> users() async => const [];
+
+  @override
+  Future<List<Company>> companies() async => const [];
+
+  @override
+  Future<List<DelegationModel>> delegations() async {
+    delegationCalls++;
+    return const [];
+  }
 }
 
 SessionState _session() => SessionState(

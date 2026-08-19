@@ -58,8 +58,11 @@ class _FakeApi extends ApiClient {
       EmployeeDetail.fromJson(_fixture(detailFixture));
 
   @override
-  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12}) async =>
+  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12, int? year}) async =>
       (_fixture('salary_history') as List).map((e) => SalaryHistoryItem.fromJson(e)).toList();
+
+  @override
+  Future<List<int>> salaryYears(int id) async => const [2026, 2025];
 
   @override
   Future<List<LeaveModel>> leaves(int employeeId) async =>

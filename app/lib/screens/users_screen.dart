@@ -31,20 +31,19 @@ const _roleLabels = {
 };
 const _roleLevels = {'SuperAdmin': 1, 'President': 2, 'Manager': 3, 'Employee': 4, 'Reader': 5};
 
+/// قسم المستخدمين — **تبويبٌ واحد** (قرار المالك 2026-08-20).
+///
+/// 🔴 **ولماذا لم تُحذف التفويضات بل نُقلت؟** لأنها **ليست تكراراً لـ`CanApprove`**:
+/// الصلاحية **دائمة** يدويّة الإلغاء — **وتُنسى**؛ والتفويض **بتاريخَي بداية ونهاية
+/// ينتهي وحده**. فحذفُه يجعل تغطية سفر المدير أسبوعين **منحاً دائماً** ينتظر أن
+/// يتذكّره أحد — وهو توسيعُ صلاحيةٍ صامت.
+///
+/// ⇒ الآلية باقيةٌ **بصلاحياتها نفسها**، والذي تغيّر **موضعها**: زرٌّ في شريط أدوات
+/// المستخدمين بدل تبويبٍ دائم يزاحم ما يُستعمل كل يوم.
 class UsersScreen extends ConsumerWidget {
   const UsersScreen({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          const TabBar(tabs: [Tab(text: 'المستخدمون'), Tab(text: 'التفويضات')]),
-          const Expanded(child: TabBarView(children: [_UsersTab(), _DelegationsTab()])),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) => const _UsersTab();
 }
 
 // ----------------- المستخدمون -----------------
@@ -153,17 +152,41 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ⚠️ `Wrap` لا `Row` — درسُ G12: شريطُ أزرارٍ أفقيّ يفيض تحت ~500 بكسل.
           Align(
             alignment: AlignmentDirectional.centerStart,
-            child: FilledButton.icon(
-              onPressed: _create, 
-              icon: const Icon(Icons.person_add_rounded), 
-              label: const Text('مستخدم جديد', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A8A),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _create,
+                  icon: const Icon(Icons.person_add_rounded),
+                  label: const Text('مستخدم جديد',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A8A),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                // 🔁 **التفويضات هنا لا في تبويبٍ مستقلّ** (قرار المالك): آليةٌ
+                //    تُستعمل عند سفرٍ أو إجازة، لا كل يوم — فموضعها زرٌّ لا تبويب.
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => const _DelegationsDialog(),
+                  ),
+                  icon: const Icon(Icons.how_to_reg_rounded, size: 18),
+                  label: const Text('تفويضات الاعتماد'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 24),
@@ -372,6 +395,51 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
 }
 
 // ----------------- التفويضات -----------------
+
+/// حاضنةُ التفويضات بعد نقلها من تبويبها (قرار المالك 2026-08-20).
+///
+/// ⚠️ **`_DelegationsTab` لم تُمسّ**: نُقل **مدخلها** لا منطقُها — فما كان يعمل يبقى
+/// يعمل، ولا يُعاد اختبار ما لم يتغيّر.
+class _DelegationsDialog extends StatelessWidget {
+  const _DelegationsDialog();
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.how_to_reg_rounded),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text('تفويضات الاعتماد',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w900)),
+                    ),
+                    IconButton(
+                      tooltip: 'إغلاق',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              const Expanded(child: _DelegationsTab()),
+            ],
+          ),
+        ),
+      );
+}
+
 class _DelegationsTab extends ConsumerStatefulWidget {
   const _DelegationsTab();
   @override

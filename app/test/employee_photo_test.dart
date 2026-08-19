@@ -116,6 +116,68 @@ void main() {
     });
   });
 
+  // ══════════════════ الدفعة د: تبويبات وفلتر سنوات ══════════════════
+
+  group('🗂️ ملفّ الموظف تبويباتٌ لا صفحةٌ طويلة', () {
+    testWidgets('🔴 التبويبات الخمسة تظهر', (tester) async {
+      final api = _PhotoApi(png: png, hasPhoto: true);
+      await pump(tester, api, const EmployeeDetailScreen(employeeId: 1));
+
+      // ⚠️ **المطابقة داخل `TabBar` وحده**: بعض العناوين تتكرّر كعناوين بطاقات
+      //    داخل التبويب نفسه، فبحثٌ عامّ يجد اثنين ويفشل بلا عيبٍ في المنتج.
+      for (final t in [
+        'المعلومات', 'المستمسكات', 'الإجازات', 'الرواتب', 'سجلّ التغييرات'
+      ]) {
+        expect(
+            find.descendant(of: find.byType(TabBar), matching: find.text(t)),
+            findsOneWidget,
+            reason: 'تبويب «$t» غائب');
+      }
+    });
+
+    testWidgets('⚠️ ولكل تبويبٍ تمريرُه — فلا يفيض محتوًى طويل', (tester) async {
+      // درسُ G12 وأخواته: محتوًى طويل داخل `TabBarView` بلا تمريرٍ **يفيض** لا يُمرَّر.
+      final api = _PhotoApi(png: png, hasPhoto: true);
+      await pump(tester, api, const EmployeeDetailScreen(employeeId: 1));
+      expect(find.byType(SingleChildScrollView), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('📅 سجلّ الرواتب يُفلتَر بالسنة', () {
+    testWidgets('🔴 أزرار السنوات تظهر، وأحدثُها مختارةٌ ابتداءً', (tester) async {
+      final api = _PhotoApi(png: png, hasPhoto: true);
+      await pump(tester, api, const EmployeeDetailScreen(employeeId: 1));
+
+      await tester.tap(find.text('الرواتب'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ChoiceChip, '2026'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, '2025'), findsOneWidget);
+
+      // 🔴 **الأحدث افتراضاً** — والشاشة تُفتح على ما يُسأل عنه غالباً.
+      final newest =
+          tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, '2026'));
+      expect(newest.selected, isTrue);
+      expect(api.years.first, 2026, reason: 'أوّل جلبٍ لم يكن لأحدث سنة');
+    });
+
+    testWidgets('🔴 والضغط على سنةٍ يجلب **تلك السنة** لا السجلّ كلّه',
+        (tester) async {
+      final api = _PhotoApi(png: png, hasPhoto: true);
+      await pump(tester, api, const EmployeeDetailScreen(employeeId: 1));
+
+      await tester.tap(find.text('الرواتب'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ChoiceChip, '2025'));
+      await tester.pumpAndSettle();
+
+      expect(api.years.last, 2025,
+          reason: 'لم تُطلب سنةٌ بعينها — فالصفحة تعود طويلة كما شكا المالك');
+    });
+  });
+
   group('🔍 الضغط على الصورة يكبّرها', () {
     testWidgets('🔴 صورةٌ موجودة ⇒ مضغوطةٌ وتفتح العارض', (tester) async {
       final api = _PhotoApi(png: png, hasPhoto: true);
@@ -166,11 +228,19 @@ class _PhotoApi extends ApiClient {
     return png;
   }
 
+  /// السنواتُ التي طُلبت فعلاً — ليُثبَت أن الفلترة تصل الخادم لا تُحاكى في العميل.
+  final List<int?> years = [];
+
   @override
-  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12}) async =>
-      (_fixture('salary_history') as List)
-          .map((e) => SalaryHistoryItem.fromJson(e))
-          .toList();
+  Future<List<SalaryHistoryItem>> salaryHistory(int id, {int take = 12, int? year}) async {
+    years.add(year);
+    return (_fixture('salary_history') as List)
+        .map((e) => SalaryHistoryItem.fromJson(e))
+        .toList();
+  }
+
+  @override
+  Future<List<int>> salaryYears(int id) async => const [2026, 2025];
 
   @override
   Future<List<LeaveModel>> leaves(int employeeId) async =>
