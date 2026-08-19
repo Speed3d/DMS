@@ -285,7 +285,13 @@ class _PayrollSheetScreenState extends ConsumerState<PayrollSheetScreen> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('إصدار ${a.versionNo} — ${a.changedBy}',
+                          // ⚠️ اسم المعدِّل قد يصل «—» حين يتعذّر تحديده (ADR-034):
+                          //    السطر يبقى ظاهراً بلقطته وسببه، فلا نلحق به شرطةً معلّقة.
+                          Text(
+                              a.changedBy.trim().isEmpty ||
+                                      a.changedBy.trim() == '—'
+                                  ? 'إصدار ${a.versionNo}'
+                                  : 'إصدار ${a.versionNo} — ${a.changedBy}',
                               style: const TextStyle(
                                   fontSize: 13, fontWeight: FontWeight.w800)),
                           Text(d.format(a.changedAt.toLocal()),

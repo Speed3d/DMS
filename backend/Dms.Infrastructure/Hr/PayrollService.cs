@@ -985,13 +985,34 @@ public sealed class PayrollService(
 
         // ⚠️ الوصول محكومٌ بالفلتر العام على `PayrollPeriods` أعلاه: شهرُ شركةٍ أخرى لا
         //    يُعثر عليه أصلاً، فلا يُقرأ سجلّ تعديلاته.
-        return await db.DocumentVersions
+        var rows = await db.DocumentVersions
             .Where(v => v.DocType == OwnerType.PayrollPeriod && v.DocId == period.PeriodId)
             .OrderByDescending(v => v.VersionNo)
-            .Join(db.Users, v => v.ChangedByUserId, u => u.UserId,
-                (v, u) => new PayrollAmendment(
-                    v.VersionNo, v.ChangeNote ?? "", u.FullName, v.ChangedAt, v.SnapshotJson))
+            .Select(v => new
+            {
+                v.VersionNo, v.ChangeNote, v.ChangedByUserId, v.ChangedAt, v.SnapshotJson,
+            })
             .ToListAsync(ct);
+
+        // 🔴 **الاسم يُقرأ باستعلامٍ ثانٍ لا برَبطٍ داخليّ (ADR-034):** `db.Users` عليه
+        //    فلتر شركة، والسوبر أدمن قد يكون **بلا شركة ولا إسنادات** (ADR-017) فيسقط
+        //    صفُّه منه متى حمل الطلب `X-Company-Id`. والـinner join حينئذٍ لا يمحو **اسم
+        //    الفاعل** وحده بل **قيد التعديل كلّه** — اللقطة والسبب والتاريخ — فيقول
+        //    `AmendmentCount` «١» ويعود السجلّ فارغاً، فيصير أثرُ التعديل على شهرٍ مُسدَّد
+        //    غير قابل للتدقيق. **السطر يبقى ولو تعذّر اسم فاعله** — معلومة ناقصة
+        //    أهون من معلومة كاذبة، وكلتاهما أهون من محو الأثر.
+        //    وهي عائلة ADR-031 نفسها («سطور دخول بلا فاعل») وعلاجها نفسه:
+        //    `ReportService.ActivityAsync` — و`IgnoreQueryFilters` **مقصورٌ على حقل الاسم**
+        //    لا يفتح صفّ المستخدم، والعزل بَعدُ قائمٌ على الشهر نفسه أعلاه.
+        var ids = rows.Select(r => r.ChangedByUserId).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => ids.Contains(u.UserId))
+            .ToDictionaryAsync(u => u.UserId, u => u.FullName, ct);
+
+        return rows.Select(r => new PayrollAmendment(
+            r.VersionNo, r.ChangeNote ?? "",
+            names.TryGetValue(r.ChangedByUserId, out var name) ? name : "—",
+            r.ChangedAt, r.SnapshotJson)).ToList();
     }
 
     /// <summary>لقطة الشهر بسطوره — ما يكفي لمعرفة **مَن كان يستحقّ كم** قبل التعديل.</summary>

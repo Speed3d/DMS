@@ -193,7 +193,10 @@ try{
   $upJson=$up.Content|ConvertFrom-Json
   Ok "رُفع مستمسك ($($upJson.fileSize) بايت)"
 }catch{ Bad "رفع المستمسك فشل: $($_.Exception.Message)"; $upJson=$null }
-$docs=@(Api GET "/employees/$e1/attachments" $null $admin $cid).B
+# ⚠️ **`@(Api ...).B` يضيع معه `.Count`** — التغليف يقع **حول `.B`** لا حولها (التحذير نفسه أدناه).
+#    قائمة **من عنصرٍ واحد** تصل كائناً مفرداً بلا `.Count`، فيقول التحقّق «القائمة فارغة»
+#    والمنتج سليم — **فشلٌ كاذب** يعلّم قارئه تجاهل الفشل.
+$docs=@((Api GET "/employees/$e1/attachments" $null $admin $cid).B)
 if($docs.Count -ge 1){ Ok "قائمة المستمسكات فيها $($docs.Count)" } else { Bad "القائمة فارغة بعد الرفع" }
 if($upJson -and $upJson.attachmentId){
   $dl=Api GET "/employees/$e1/attachments/$($upJson.attachmentId)/download?inline=true" $null $admin $cid
@@ -204,7 +207,7 @@ if($upJson -and $upJson.attachmentId){
 
 # سجلّ التغييرات: يُكتب تلقائياً عند تغيير الراتب
 $null=Api PUT "/employees/$e1/employment" @{position='مهندس أول';positionEn='Senior';hireDate='2020-01-01T00:00:00';salaryCurrency='IQD';baseSalary=1350000;displayOrder=1;isActive=$true} $admin $cid
-$log=@(Api GET "/employees/$e1/log" $null $admin $cid).B
+$log=@((Api GET "/employees/$e1/log" $null $admin $cid).B)
 if($log.Count -ge 2){ Ok "سجلّ التغييرات فيه $($log.Count) سطراً" } else { Bad "السجلّ فيه $($log.Count) سطراً" }
 $hasSalary=@($log | Where-Object { $_.changeType -eq 'SalaryChange' }).Count
 $hasPosition=@($log | Where-Object { $_.changeType -eq 'PositionChange' }).Count
@@ -217,7 +220,7 @@ if($hasLeave -ge 1){ Ok "الإجازات مسجَّلة في السجلّ" } el
 $null=Api PUT "/employees/$e1/employment" @{position='مهندس';positionEn='Engineer';hireDate='2020-01-01T00:00:00';salaryCurrency='IQD';baseSalary=1200000;displayOrder=1;isActive=$true} $admin $cid
 
 Write-Host "`n=== مكافأة نهاية الخدمة ===" -ForegroundColor Cyan
-$eosOff=@(Api GET "/payroll/periods/$Year/$Month/end-of-service" $null $admin $cid).B
+$eosOff=@((Api GET "/payroll/periods/$Year/$Month/end-of-service" $null $admin $cid).B)
 if($eosOff.Count -eq 0){ Ok "مطفأة افتراضياً ⇒ لا اقتراحات" } else { Bad "اقترحت $($eosOff.Count) رغم أنها مطفأة" }
 $null=Api PUT "/hr/settings" @{defaultWorkingDaysMode='Fixed';defaultWorkingDays=30;endOfServiceEnabled=$true;endOfServiceRatio='MonthPerYear';endOfServiceCustomDays=$null} $admin $cid
 $st=(Api GET "/hr/settings" $null $admin $cid).B
@@ -576,10 +579,11 @@ if($allCo.Count -lt 2){
   else { Bad "مرّ التسديد رغم تقادم القرار: $($stillBlocked.S)" }
 
   # ── ٣) «صُرف من شركة أخرى»: يُستثنى من **كل** مخرج ──
-  # ⚠️ إجمالي السنة يُقاس **فرقاً قبل وبعد** لا مقارنةً برقمٍ ثابت: السنة تحوي أشهراً أخرى
-  #    من تشغيلاتٍ سابقة، فمقارنتُه بإجمالي شهرٍ واحد تفشل بلا عيبٍ في المنتج (وقع فعلاً).
-  $yrBefore=[decimal](@((Api GET "/payroll/years" $null $admin $cid2).B) |
-                       Where-Object { $_.year -eq $Year }).totalIqd
+  # ⚠️ **إجمالي السنة يُقاس بعد التسديد لا قبله** (صُحّح 2026-08-19): `YearsAsync` تجمع
+  #    **المُسدَّد وحده** (قرار المالك 2026-08-06 — المسودّة رقمٌ تحت التحرير لا مبلغٌ صُرف)،
+  #    وكشفُ هذه الشركة ما زال مسودّةً هنا. فقياسُ «فرقٍ قبل وبعد» كان يقرأ **صفراً وصفراً**
+  #    على قاعدةٍ نظيفة ويفشل بلا عيبٍ في المنتج، ولا يمرّ إلا على قاعدةٍ فيها أشهرٌ مُسدَّدة
+  #    من تشغيلٍ سابق. التحقّق نفسه انتقل إلى ما بعد التسديد (البند ٣ أدناه).
 
   $ext=Api POST "/payroll/entries/$($mine.entryId)/confirm-external" $null $admin $cid2
   if($ext.S -eq 204){ Ok "تعليم «صُرف من شركة أخرى»" } else { Bad "التعليم ردّ $($ext.S)" }
@@ -601,12 +605,6 @@ if($allCo.Count -lt 2){
   if([math]::Abs([decimal]$mo.totalIqd - $expected) -lt 0.01){ Ok "🔴 (٢) إجمالي الشهر في شبكة الأشهر يستثنيه" }
   else { Bad "إجمالي الشهر $($mo.totalIqd) والمتوقّع $expected" }
 
-  $yrAfter=[decimal](@((Api GET "/payroll/years" $null $admin $cid2).B) |
-                      Where-Object { $_.year -eq $Year }).totalIqd
-  if([math]::Abs(($yrBefore - $yrAfter) - [decimal]$mine.netSalaryIqd) -lt 0.01){
-    Ok "🔴 (٣) إجمالي السنة نقص بمقدار راتبه بالضبط ($yrBefore ← $yrAfter)"
-  } else { Bad "إجمالي السنة: قبل=$yrBefore بعد=$yrAfter والفرق المتوقّع $($mine.netSalaryIqd)" }
-
   $sum=(Api GET "/hr/summary" $null $admin $cid2).B
   if($null -ne $sum.thisYearTotalIqd){ Ok "🔴 (٤) بطاقة لوحة التحكم تُحسب بالقاعدة نفسها" }
   else { Bad "ملخّص لوحة التحكم لم يُحسب" }
@@ -626,6 +624,14 @@ if($allCo.Count -lt 2){
   $payOk=Api POST "/payroll/periods/$Year/$Month/pay" @{rowVersion=$p4b.rowVersion;
         paidAt="$Year-08-01T00:00:00";outgoingBookId=$null;manualBookNumber=$null;notes=$null} $admin $cid2
   if($payOk.S -eq 204){ Ok "بعد الحسم: التسديد يمرّ" } else { Bad "التسديد ردّ $($payOk.S)" }
+
+  # 🔴 (٣) وإجمالي السنة — **الآن** وقد صار الشهر مُسدَّداً — يستثنيه كما يستثنيه الشهر.
+  #    لو تجاهل الإجمالي السنوي قاعدة `PayrollPayable` لجاء $expected + راتبَه.
+  $yrPaid=[decimal](@((Api GET "/payroll/years" $null $admin $cid2).B) |
+                      Where-Object { $_.year -eq $Year }).totalIqd
+  if([math]::Abs($yrPaid - $expected) -lt 0.01){
+    Ok "🔴 (٣) إجمالي السنة يستثنيه كذلك ($yrPaid د.ع لا $([decimal]$expected + [decimal]$mine.netSalaryIqd))"
+  } else { Bad "إجمالي السنة $yrPaid والمتوقّع $expected" }
 
   $p5b=(Api GET "/payroll/periods/$Year/$Month" $null $admin $cid2).B
   $after=@($p5b.entries | Where-Object { $_.entryId -eq $mine.entryId })[0]
