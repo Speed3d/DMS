@@ -78,6 +78,71 @@ void main() {
       expect(book.date.day, 1, reason: 'تحويلُ يومٍ بالمنطقة الزمنية يُنقصه يوماً');
       expect(book.date.month, 8);
     });
+
+    // 🔴 **بقيّة العائلة في وحدة الرواتب (G18، 2026-08-19).** عولجت ستّة حقول في دفعة
+    //    البروفايل وبقيت **ثلاثة** بلا حارسٍ يكشفها — ومنها `changedAt` وهو حقل حواريّة
+    //    سجلّ التعديلات نفسها التي أُصلحت لتوّها في ADR-034. **العيّنات بصيغة الخادم
+    //    الحقيقية** (بلا `Z`) لا بصيغةٍ مثالية، وإلا مرّ الاختبار على كودٍ معطوب.
+    test('🔴 قيد سجلّ التعديلات لحظةٌ — لا نصّاً بلا منطقة', () {
+      final a = PayrollAmendment.fromJson({
+        'versionNo': 1,
+        'reason': 'تصحيح سعر الصرف بعد التسديد',
+        'changedBy': 'مدير النظام',
+        'changedAt': '2026-08-11T21:31:00.8464773',
+      });
+      expect(a.changedAt.isUtc, isTrue, reason: 'لو قُرئ محليّاً لتأخّر ثلاث ساعات');
+      expect(a.changedAt.hour, 21);
+    });
+
+    test('🔴 ووقت رفع الإيصال الموقَّع كذلك', () {
+      final r = SignedReceipt.fromJson({
+        'attachmentId': 3,
+        'fileName': 'ايصال موقع.pdf',
+        'fileSize': 14,
+        'uploadedAt': '2026-08-11T21:31:00.8464773',
+      });
+      expect(r.uploadedAt.isUtc, isTrue);
+      expect(r.uploadedAt.hour, 21);
+    });
+
+    test('🔴 وتاريخ صرف الشركة الأخرى كذلك — والغائب يبقى null لا «الآن»', () {
+      final row = DualCompanyRow.fromJson({
+        'entryId': 7,
+        'employeeName': 'سنان',
+        'otherCompanyId': 2,
+        'otherCompanyName': 'الشركة الثانية',
+        'otherPaidAt': '2026-08-11T21:31:00.8464773',
+        'decision': 'Unpaid',
+        'needsDecision': true,
+        'isStale': false,
+      });
+      expect(row.otherPaidAt!.isUtc, isTrue);
+      expect(row.otherPaidAt!.hour, 21);
+
+      // ⚠️ **غيابه ليس صفراً ولا «الآن»**: `otherHasPaid` يحكم أيّ القرارَين مسموح
+      //    (ADR-028)، فتاريخٌ مُختلَق يعني ادّعاءً على واقعةٍ لم تقع.
+      final none = DualCompanyRow.fromJson({
+        'entryId': 8, 'employeeName': 'سنان',
+        'otherCompanyId': 2, 'otherCompanyName': 'الشركة الثانية',
+        'otherPaidAt': null, 'decision': 'Unpaid',
+        'needsDecision': true, 'isStale': false,
+      });
+      expect(none.otherPaidAt, isNull);
+      expect(none.otherHasPaid, isFalse);
+    });
+
+    test('⚠️ وأيام الإجازة تبقى أياماً — لا تمرّ بالدالّة', () {
+      // الوجه المعكوس للعطل: تحويلُ يومٍ بالمنطقة الزمنية يُنقصه يوماً، فتصير إجازةُ
+      // الأول من الشهر مؤرَّخةً في اليوم الأخير من الشهر السابق.
+      final lv = PendingLeave.fromJson({
+        'leaveId': 1, 'employeeId': 1, 'employeeName': 'سنان', 'position': 'مهندس',
+        'leaveTypeLabel': 'اعتيادية',
+        'fromDate': '2026-08-01T00:00:00', 'toDate': '2026-08-03T00:00:00',
+        'durationDays': 3, 'deductFromSalary': false,
+      });
+      expect(lv.fromDate.day, 1);
+      expect(lv.toDate.day, 3);
+    });
   });
 
   group('🔴 منسدلةٌ لا تسقط بقيمةٍ خارج خياراتها', () {

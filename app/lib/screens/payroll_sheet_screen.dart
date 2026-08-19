@@ -854,7 +854,7 @@ class _Row extends StatelessWidget {
     //    بسجلّه (بلاغ المالك ٢). ويُحذف إن غاب بدل «بتاريخ —» التي توهم أن الصرف بلا تاريخ.
     final where = row.otherHasPaid
         ? 'صُرف من «${row.otherCompanyName}»'
-            ' بتاريخ ${DateFormat('yyyy-MM-dd').format(row.otherPaidAt!)}'
+            ' بتاريخ ${DateFormat('yyyy-MM-dd').format(row.otherPaidAt!.toLocal())}'
         : 'يعمل أيضاً في «${row.otherCompanyName}» — لم تصرف له بعد';
 
     final state = switch (row) {

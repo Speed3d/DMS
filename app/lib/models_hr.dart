@@ -476,7 +476,7 @@ class PayrollAmendment {
         j['versionNo'] ?? 0,
         j['reason'] ?? '',
         j['changedBy'] ?? '',
-        DateTime.tryParse(j['changedAt'] ?? '') ?? DateTime.now(),
+        parseInstant(j['changedAt']),
       );
 }
 
@@ -489,7 +489,7 @@ class SignedReceipt {
   SignedReceipt(this.attachmentId, this.fileName, this.fileSize, this.uploadedAt);
   factory SignedReceipt.fromJson(Map<String, dynamic> j) => SignedReceipt(
         j['attachmentId'], j['fileName'] ?? '', j['fileSize'] ?? 0,
-        DateTime.tryParse(j['uploadedAt'] ?? '') ?? DateTime.now(),
+        parseInstant(j['uploadedAt']),
       );
 }
 
@@ -587,7 +587,7 @@ class DualCompanyRow {
         employeeName: j['employeeName'] ?? '',
         otherCompanyId: j['otherCompanyId'] ?? 0,
         otherCompanyName: j['otherCompanyName'] ?? '',
-        otherPaidAt: DateTime.tryParse(j['otherPaidAt'] ?? ''),
+        otherPaidAt: j['otherPaidAt'] == null ? null : parseInstant(j['otherPaidAt']),
         decision: j['decision'] ?? 'Unpaid',
         needsDecision: j['needsDecision'] ?? false,
         isStale: j['isStale'] ?? false,
