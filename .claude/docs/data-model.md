@@ -27,6 +27,10 @@
 - `Employee`: `EmployeeId, FullName, FullNameEn?, NationalId?, Phone?, Address?, PhotoBlobKey?, Notes?, ReceiptLanguage(enum Arabic/English), CreatedByUserId?, CreatedAt, IsDeleted, DeletedByUserId?, DeletedAt?, Companies (تنقّل)` — **بلا `CompanyId`** ليعمل الشخص في شركتين بلا تكرار ملفّه.
   - 🔐 **العزل بفلترٍ عام عبر الإسناد** (نظير `User` تماماً): `!IsDeleted && (!filter || Companies.Any(c => c.CompanyId == active && !c.IsDeleted))`. **كيانٌ بلا `CompanyId` ليس كياناً بلا عزل** — بدون هذا السطر تُقرأ بياناتُ أي موظف في القاعدة.
   - فهرس فريد مفلتر على `NationalId` (`IS NOT NULL AND IsDeleted = 0`) — يمنع ملفّين لشخص واحد.
+  - 🔐 **`UserId?` — مفتاح البروفايل الشخصي** (ADR-033، migration `AddEmployeeUserLink`). `null` = موظفٌ بلا حساب (عاملٌ لا يستعمل النظام)، وهي الحالة الشائعة.
+    - **فهرس فريد مفلتر** (`UserId IS NOT NULL AND IsDeleted = 0`) يحرس **الاتجاهين**: لا حسابان لبطاقةٍ واحدة (فيقرأ أحدهما راتب الآخر — **تسريبةُ رواتب**)، ولا بطاقتان لحسابٍ واحد (فلا يُعرف أيُّ راتبٍ راتبُه). والقاعدة في **القاعدة** لا في الخدمة وحدها: سباقُ طلبين متزامنين يمرّ من فحص الخدمة ويقف عند الفهرس.
+    - ⚠️ **بلا مفتاح أجنبيّ عمداً**: `User` و`Employee` لهما فلتران عامّان مختلفان، ومفتاحٌ أجنبيّ يجعل حذف المستخدم يتعثّر أو يجرّ البطاقة معه. الربط **مرجعٌ ضعيف** يُفكّ يدوياً.
+    - ⚠️ **على `Employee` لا على `EmployeeCompany`**: الشخص واحد وحسابُه واحد ولو عمل في شركتين (نظير `NationalId`). ولو وُضع على الإسناد لصار للشخص حسابان في شركتين — وهو ما يناقض `User` نفسه (ADR-011).
 - `EmployeeCompany`: `EmployeeCompanyId, EmployeeId→Employee (Cascade), CompanyId, Position, PositionEn?, HireDate, TerminationDate?, TerminationReason?(enum), TerminationNotes?, SalaryCurrency(enum), BaseSalary(18,2), DisplayOrder, IsActive, CreatedByUserId?, CreatedAt, UpdatedAt?, + حقول الحذف الناعم` — شروط العمل **في شركة بعينها**. فريد على `(EmployeeId, CompanyId)` مفلتراً على `IsDeleted = 0`.
 
 ### PayrollPeriod / PayrollEntry (كشوف الرواتب — ADR-023/024)
@@ -48,9 +52,11 @@
 `SettingsId, CompanyId (فريد), DefaultWorkingDaysMode, DefaultWorkingDays, EndOfServiceEnabled, EndOfServiceRatio(enum), EndOfServiceCustomDays?, CreatedAt, UpdatedAt?` — إعدادات الوحدة لكل شركة. مكافأة نهاية الخدمة **مطفأة افتراضياً**.
 
 ### EmployeeLeave / EmployeeLog (الدفعة ٢ — migration `AddHrLeavesAndEndOfService`)
-- `EmployeeLeave`: `LeaveId, EmployeeCompanyId→EmployeeCompany (Cascade), CompanyId (منسوخ), LeaveType(enum), FromDate, ToDate, DurationDays (يحسبه الخادم), RequiresApproval, Status(enum Pending/Approved/Rejected), DeductFromSalary, Notes?, CreatedByUserId, CreatedAt, ReviewedByUserId?, ReviewedAt?, ReviewNotes?, + الحذف الناعم`.
+- `EmployeeLeave`: `LeaveId, EmployeeCompanyId→EmployeeCompany (Cascade), CompanyId (منسوخ), LeaveType(enum), FromDate, ToDate, DurationDays (يحسبه الخادم), RequiresApproval, Status(enum Pending/Approved/Rejected), DeductFromSalary, IsSelfRequested, Notes?, CreatedByUserId, CreatedAt, ReviewedByUserId?, ReviewedAt?, ReviewNotes?, + الحذف الناعم`.
+  - 🔴 **`IsSelfRequested` (ADR-033) ليس حقلَ زينة**: الطلب الذاتيّ يصل بـ`DeductFromSalary = false` **كغيابِ قرار لا كقرار**، والفرق **لا يظهر في نوع البيانات**. بدون هذا العلَم يوافق المراجع ظانّاً أن الحسم مقرَّر، فيمرّ الافتراض صامتاً ⇒ **إجازةُ شهرٍ بلا راتب تُحتسب مدفوعة**. والقاعدة كلُّها في `Dms.Domain/LeaveDecision.cs`.
   - **بلا موافقة ⇒ `Approved` فوراً** (حالة معلّقة بلا مراجعٍ تبقى معلّقة للأبد)، والتداخل مع إجازة غير مرفوضة **يُرفض (409)**، والمراجعة **مرّة واحدة**.
 - `EmployeeLog`: `LogId, EmployeeCompanyId→EmployeeCompany (Cascade), CompanyId, ChangeType(enum), Description (نصّ عربي جاهز), OldValue?, NewValue?, ChangedByUserId, ChangedAt`.
+  - `ChangeType` += `UserLinked = 8` · `UserUnlinked = 9` (ADR-033) — **قيمتان جديدتان في عمودٍ قائم، بلا مهاجرة**. والربط يُسجَّل هنا **وفي سجلّ التدقيق معاً**، لأنه يفتح نافذةً على راتب: من يقرأ الملفّ بعد أشهر يجب أن يرى **متى فُتحت ومتى أُغلقت**.
   - **بلا حذف ناعم عمداً** — السجلّ شاهدٌ يُكتب ولا يُعدَّل ولا يُحذف. يُكتب تلقائياً من `EmployeeService` (الراتب · الصفة · الإيقاف · الإنهاء) و`LeaveService` (الإجازات).
 - `PayrollEntry` += `EndOfServiceAmount?(18,2)` — تُقبل **لمن انتهت خدمته في هذا الشهر وحده** (وإلا 400)، وتدخل الصافي كمكافأة.
 
@@ -129,7 +135,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 18 migration** (بالترتيب):
+**السلسلة الحالية — 24 migration**. 🟠 **ثلاثٌ وعشرون مُطبَّقة على `DmsDb`، والرابعة والعشرون (`AddEmployeeUserLink`) معلّقة حتى دمج فرعها** — القاعدة موردٌ مشترك (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات:
 
 | # | Migration | ما أضافه |
 |---|---|---|

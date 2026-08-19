@@ -1,6 +1,11 @@
 // نماذج وحدة الموظفين والرواتب (ADR-023 + ADR-024).
 // يُعاد تصديرها من `models.dart` فيصل إليها كل من يستورده كالمعتاد.
 
+// 🔴 **استيرادٌ عكسيّ مقصود** (ADR-033): `models.dart` يُعيد تصدير هذا الملف، وهذا يستورد
+//    منه `parseInstant` وحدها. ودورةُ المكتبات مشروعةٌ في Dart، والبديل — نسخُ الدالّة —
+//    هو بالضبط ما جعل هذا الملف يفوت إصلاحَ ADR-032 كلَّه.
+import 'models.dart' show parseInstant;
+
 /// جسم استجابة ككائن، أو `null` إن كان **غائباً بأي صورة**.
 ///
 /// ⚠️ **«لا شيء» يصل بصورتين لا صورة واحدة:** حين يردّ الخادم `Ok(null)` — كما في
@@ -141,12 +146,22 @@ class EmployeeDetail {
   /// الشركات الأخرى التي يعمل فيها — تُعرض في بطاقته ليُرى أثرُ الإسناد (ADR-027).
   final List<OtherCompanyRef> otherCompanies;
 
+  /// حساب النظام المربوط بالبطاقة — `null` إن لم تُربط (ADR-033).
+  final int? userId;
+
+  /// اسمُ ذلك الحساب — يُعرض ليعرف من يفكّ الربط **عمَّن** يفكّه.
+  final String? username;
+
   EmployeeDetail({
     required this.employeeId, required this.fullName, this.fullNameEn,
     this.nationalId, this.phone, this.address, this.notes,
     required this.receiptLanguage, required this.hasPhoto, required this.companies,
     this.otherCompanies = const [],
+    this.userId, this.username,
   });
+
+  /// هل تُفتح لصاحب البطاقة نافذةُ بروفايل؟ (ADR-033)
+  bool get isLinkedToUser => userId != null;
 
   EmploymentModel? get employment => companies.isNotEmpty ? companies.first : null;
 
@@ -164,6 +179,8 @@ class EmployeeDetail {
             .map((e) => EmploymentModel.fromJson(e)).toList(),
         otherCompanies: (j['otherCompanies'] as List? ?? [])
             .map((e) => OtherCompanyRef.fromJson(e)).toList(),
+        userId: j['userId'],
+        username: j['username'],
       );
 }
 
@@ -433,7 +450,7 @@ class PayrollPeriodModel {
         exchangeRate: (j['exchangeRate'] as num?)?.toDouble(),
         workingDaysMode: j['workingDaysMode'] ?? 'Fixed',
         workingDays: j['workingDays'] ?? 30,
-        paidAt: DateTime.tryParse(j['paidAt'] ?? ''),
+        paidAt: j['paidAt'] == null ? null : parseInstant(j['paidAt']),
         outgoingBookId: j['outgoingBookId'],
         manualBookNumber: j['manualBookNumber'],
         notes: j['notes'],
@@ -442,7 +459,7 @@ class PayrollPeriodModel {
         excludedIqd: (j['excludedIqd'] as num?)?.toDouble() ?? 0,
         entries: (j['entries'] as List? ?? [])
             .map((e) => PayrollEntryModel.fromJson(e)).toList(),
-        lastAmendedAt: DateTime.tryParse(j['lastAmendedAt'] ?? ''),
+        lastAmendedAt: j['lastAmendedAt'] == null ? null : parseInstant(j['lastAmendedAt']),
         amendmentCount: j['amendmentCount'] ?? 0,
         canAmend: j['canAmend'] ?? false,
       );
@@ -492,7 +509,7 @@ class ExternalPaymentHint {
 
   factory ExternalPaymentHint.fromJson(Map<String, dynamic> j) => ExternalPaymentHint(
       j['entryId'], j['employeeName'] ?? '', j['paidByCompanyId'], j['paidByCompanyName'] ?? '',
-      paidAt: DateTime.tryParse(j['paidAt'] ?? ''));
+      paidAt: j['paidAt'] == null ? null : parseInstant(j['paidAt']));
 }
 
 /// شروط عمل الموظف في شركةٍ أخرى — **قالبُ تعبئةٍ عند الإسناد** (ADR-028).
@@ -590,11 +607,15 @@ class PendingLeave {
   final bool deductFromSalary;
   final String? notes;
 
+  /// طلبها الموظف بنفسه — **فقرارُ الحسم ينتظر المراجع** (ADR-033).
+  final bool isSelfRequested;
+
   PendingLeave({
     required this.leaveId, required this.employeeId, required this.employeeName,
     required this.position, required this.leaveTypeLabel,
     required this.fromDate, required this.toDate, required this.durationDays,
     required this.deductFromSalary, this.notes,
+    this.isSelfRequested = false,
   });
 
   factory PendingLeave.fromJson(Map<String, dynamic> j) => PendingLeave(
@@ -608,6 +629,7 @@ class PendingLeave {
         durationDays: j['durationDays'] ?? 0,
         deductFromSalary: j['deductFromSalary'] ?? false,
         notes: j['notes'],
+        isSelfRequested: j['isSelfRequested'] ?? false,
       );
 }
 
@@ -683,11 +705,18 @@ class LeaveModel {
   final DateTime? reviewedAt;
   final String? reviewNotes;
 
+  /// طلبها الموظف بنفسه من بروفايله؟ (ADR-033)
+  ///
+  /// ⚠️ **يعني أن قرار الحسم لم يُتَّخذ بعد** — الطلب الذاتيّ يصل بلا قرار، والمراجع
+  /// يبتّ فيه عند الموافقة. وسطرٌ سجّله كاتب الشؤون يأتي بقراره معه.
+  final bool isSelfRequested;
+
   LeaveModel({
     required this.leaveId, required this.leaveType, required this.leaveTypeLabel,
     required this.fromDate, required this.toDate, required this.durationDays,
     required this.requiresApproval, required this.status, required this.deductFromSalary,
     this.notes, required this.createdAt, this.reviewedAt, this.reviewNotes,
+    this.isSelfRequested = false,
   });
 
   bool get isPending => status == 'Pending';
@@ -705,9 +734,10 @@ class LeaveModel {
         status: j['status'] ?? 'Approved',
         deductFromSalary: j['deductFromSalary'] ?? false,
         notes: j['notes'],
-        createdAt: DateTime.tryParse(j['createdAt'] ?? '') ?? DateTime.now(),
-        reviewedAt: DateTime.tryParse(j['reviewedAt'] ?? ''),
+        createdAt: parseInstant(j['createdAt']),
+        reviewedAt: j['reviewedAt'] == null ? null : parseInstant(j['reviewedAt']),
         reviewNotes: j['reviewNotes'],
+        isSelfRequested: j['isSelfRequested'] ?? false,
       );
 }
 
@@ -731,7 +761,7 @@ class EmployeeLogItem {
         description: j['description'] ?? '',
         oldValue: j['oldValue'],
         newValue: j['newValue'],
-        changedAt: DateTime.tryParse(j['changedAt'] ?? '') ?? DateTime.now(),
+        changedAt: parseInstant(j['changedAt']),
       );
 }
 
@@ -755,4 +785,127 @@ class EndOfServiceSuggestion {
         (j['yearsServed'] as num?)?.toDouble() ?? 0,
         j['daysPerYear'] ?? 0,
       );
+}
+
+// ═══════════════════ البروفايل الشخصي (ADR-033) ═══════════════════
+
+/// هويّتي كما أراها — **قراءةٌ خالصة**.
+///
+/// 🔴 **لا حقلَ تحريرٍ واحد هنا** (قرار المالك 2026-08-10): الاسم — الحسابيّ والرسميّ —
+/// يبقى بيد السوبر أدمن ورئيس الشركة وصاحب صلاحية إدارة الموظفين. الاسمُ في الكتب
+/// الرسمية والإيصالات وسجلّ التدقيق، وتغييرُه بيد صاحبه يفصل ما وُقّع باسمٍ عمّن يحمله.
+class MyProfile {
+  final int userId;
+  final String fullName;
+  final String username;
+  final String role;
+  final String? companyName;
+  final String? departmentName;
+
+  /// بطاقة الموظف المربوطة — `null` لمن لا بطاقةَ له (سوبر أدمن · لم يُربط بعد).
+  final int? employeeId;
+  final String? employeeFullName;
+  final String? employeeFullNameEn;
+  final String? position;
+  final DateTime? hireDate;
+  final String? nationalId;
+  final String? phone;
+  final String? address;
+  final bool hasPhoto;
+
+  MyProfile({
+    required this.userId, required this.fullName, required this.username,
+    required this.role, this.companyName, this.departmentName,
+    this.employeeId, this.employeeFullName, this.employeeFullNameEn,
+    this.position, this.hireDate, this.nationalId, this.phone, this.address,
+    this.hasPhoto = false,
+  });
+
+  /// تبويبا الإجازات والرواتب يظهران بهذا وحده — ولا يُسألان عن قسمٍ ولا دور.
+  bool get isLinkedToEmployee => employeeId != null;
+
+  /// ⚠️ `hireDate` **تاريخٌ تقويميّ لا لحظة** — يُقرأ بـ`tryParse` عمداً (ADR-032).
+  factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
+        userId: j['userId'] ?? 0,
+        fullName: j['fullName'] ?? '',
+        username: j['username'] ?? '',
+        role: j['role'] ?? 'Reader',
+        companyName: j['companyName'],
+        departmentName: j['departmentName'],
+        employeeId: j['employeeId'],
+        employeeFullName: j['employeeFullName'],
+        employeeFullNameEn: j['employeeFullNameEn'],
+        position: j['position'],
+        hireDate: DateTime.tryParse(j['hireDate'] ?? ''),
+        nationalId: j['nationalId'],
+        phone: j['phone'],
+        address: j['address'],
+        hasPhoto: j['hasPhoto'] ?? false,
+      );
+}
+
+/// شهرٌ من رواتبي — **مُسدَّدٌ حصراً**، وبتفصيلٍ يُفهم منه الرقم لا برقمٍ مجرَّد.
+class MyPayslip {
+  final int periodId;
+  final int year;
+  final int month;
+  final String monthLabel;
+  final double baseSalary;
+  final int eligibleDays;
+  final int workingDays;
+  final int absenceDays;
+  final double absenceDeduction;
+  final double? bonusAmount;
+  final double? deductionAmount;
+  final double netSalary;
+  final double netSalaryIqd;
+  final String currency;
+  final String paymentStatus;
+  final String paymentStatusLabel;
+  final DateTime? paidAt;
+
+  MyPayslip({
+    required this.periodId, required this.year, required this.month,
+    required this.monthLabel, required this.baseSalary, required this.eligibleDays,
+    required this.workingDays, required this.absenceDays, required this.absenceDeduction,
+    this.bonusAmount, this.deductionAmount,
+    required this.netSalary, required this.netSalaryIqd, required this.currency,
+    required this.paymentStatus, required this.paymentStatusLabel, this.paidAt,
+  });
+
+  /// صرفته شركةٌ أخرى ⇒ يُعرض بحالته ولا إيصالَ له من هنا (ADR-028).
+  bool get paidByOtherCompany => paymentStatus == 'PaidByOtherCompany';
+
+  factory MyPayslip.fromJson(Map<String, dynamic> j) => MyPayslip(
+        periodId: j['periodId'] ?? 0,
+        year: j['year'] ?? 0,
+        month: j['month'] ?? 0,
+        monthLabel: j['monthLabel'] ?? '',
+        baseSalary: (j['baseSalary'] as num?)?.toDouble() ?? 0,
+        eligibleDays: j['eligibleDays'] ?? 0,
+        workingDays: j['workingDays'] ?? 0,
+        absenceDays: j['absenceDays'] ?? 0,
+        absenceDeduction: (j['absenceDeduction'] as num?)?.toDouble() ?? 0,
+        bonusAmount: (j['bonusAmount'] as num?)?.toDouble(),
+        deductionAmount: (j['deductionAmount'] as num?)?.toDouble(),
+        netSalary: (j['netSalary'] as num?)?.toDouble() ?? 0,
+        netSalaryIqd: (j['netSalaryIqd'] as num?)?.toDouble() ?? 0,
+        currency: j['currency'] ?? 'IQD',
+        paymentStatus: j['paymentStatus'] ?? 'Unpaid',
+        paymentStatusLabel: j['paymentStatusLabel'] ?? '',
+        paidAt: j['paidAt'] == null ? null : parseInstant(j['paidAt']),
+      );
+}
+
+/// حسابٌ صالح للربط ببطاقة موظف (ADR-033).
+class LinkableUser {
+  final int userId;
+  final String fullName;
+  final String username;
+  final String role;
+
+  LinkableUser(this.userId, this.fullName, this.username, this.role);
+
+  factory LinkableUser.fromJson(Map<String, dynamic> j) => LinkableUser(
+        j['userId'] ?? 0, j['fullName'] ?? '', j['username'] ?? '', j['role'] ?? 'Reader');
 }

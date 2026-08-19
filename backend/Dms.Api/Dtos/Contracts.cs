@@ -98,7 +98,8 @@ public sealed record EmploymentResponse(
 public sealed record EmployeeDetailResponse(
     int EmployeeId, string FullName, string? FullNameEn, string? NationalId, string? Phone,
     string? Address, string? Notes, ReceiptLanguage ReceiptLanguage, bool HasPhoto,
-    List<EmploymentResponse> Companies, List<OtherCompanyResponse> OtherCompanies);
+    List<EmploymentResponse> Companies, List<OtherCompanyResponse> OtherCompanies,
+    int? UserId, string? Username);
 
 /// <summary>شركة أخرى يعمل فيها الموظف — الاسم فقط (ADR-027).</summary>
 public sealed record OtherCompanyResponse(int CompanyId, string Name);
@@ -241,19 +242,26 @@ public sealed record LeaveRequest(
     LeaveType LeaveType, DateTime FromDate, DateTime ToDate,
     bool RequiresApproval, bool DeductFromSalary, string? Notes);
 
-public sealed record ReviewLeaveRequest(bool Approve, string? Notes);
+/// <remarks>
+/// ⚠️ <c>DeductFromSalary</c> **قابلٌ للإغفال عمداً** (ADR-033): <c>null</c> يُبقي المسجَّل
+/// كما هو — وهو السلوك القديم حرفياً لسطرٍ أدخله كاتب الشؤون بقراره. وقيمةٌ صريحة تُكتب،
+/// وهو المسار الذي يسلكه المراجع لطلبٍ **ذاتيّ** جاء بلا قرار حسم.
+/// </remarks>
+public sealed record ReviewLeaveRequest(bool Approve, string? Notes, bool? DeductFromSalary = null);
 
 public sealed record LeaveResponse(
     int LeaveId, LeaveType LeaveType, string LeaveTypeLabel, DateTime FromDate, DateTime ToDate,
     int DurationDays, bool RequiresApproval, LeaveStatus Status, bool DeductFromSalary,
-    string? Notes, DateTime CreatedAt, DateTime? ReviewedAt, string? ReviewNotes);
+    string? Notes, DateTime CreatedAt, DateTime? ReviewedAt, string? ReviewNotes,
+    bool IsSelfRequested = false);
 
 /// <summary>إجازةٌ معلّقة مع صاحبها — لقائمةٍ واحدة تجيب «مَن ينتظر؟».</summary>
 public sealed record PendingLeaveResponse(
     int LeaveId, int EmployeeId, string EmployeeName, string Position,
     LeaveType LeaveType, string LeaveTypeLabel,
     DateTime FromDate, DateTime ToDate, int DurationDays,
-    bool DeductFromSalary, string? Notes, DateTime CreatedAt);
+    bool DeductFromSalary, string? Notes, DateTime CreatedAt,
+    bool IsSelfRequested = false);
 
 public sealed record EmployeeLogResponse(
     int LogId, EmployeeChangeType ChangeType, string Description,
@@ -478,3 +486,45 @@ public sealed record RestoreBackupRequest(string Confirmation);
 // ----------------- Audit / Verify -----------------
 public sealed record AuditResponse(long LogId, int? UserId, string Action, string EntityType, string? EntityId, string? Details, DateTime Timestamp);
 public sealed record VerifyResponse(bool IsValid, string Message, string? Number, string? Date, string? Entity, string? AmountInIqd, bool FoundInDb);
+
+// ═══════════════ البروفايل الشخصي (ADR-033) ═══════════════
+
+/// <summary>هويّتي كما أراها — **قراءةٌ خالصة، ولا حقلَ تحريرٍ واحد**.</summary>
+/// <remarks>
+/// 🔴 **لا تُضَف هنا نقطةُ تعديلٍ للاسم** (قرار المالك 2026-08-10): لا اسم الحساب ولا
+/// الاسم الرسمي. الاسم في الكتب الرسمية والإيصالات وسجلّ التدقيق، وتغييرُه بيد صاحبه
+/// يفصل ما وُقّع باسمٍ عمّن يحمله اليوم. يبقى بيد السوبر أدمن ورئيس الشركة وصاحب صلاحية
+/// إدارة الموظفين.
+/// </remarks>
+public sealed record MyProfileResponse(
+    int UserId, string FullName, string Username, UserRole Role,
+    string? CompanyName, string? DepartmentName,
+    int? EmployeeId, string? EmployeeFullName, string? EmployeeFullNameEn,
+    string? Position, DateTime? HireDate, string? NationalId, string? Phone,
+    string? Address, bool HasPhoto)
+{
+    /// <summary>هل لحسابي بطاقةُ موظف في هذه الشركة؟ الواجهة تُخفي تبويبَي الإجازات والرواتب إن لا.</summary>
+    public bool IsLinkedToEmployee => EmployeeId is not null;
+}
+
+/// <summary>طلب إجازةٍ لنفسي — **بلا <c>RequiresApproval</c> وبلا <c>DeductFromSalary</c>**.</summary>
+/// <remarks>
+/// 🔴 **غيابُ الحقلين هو الأمان نفسه لا نقصٌ في العقد**: لو قَبِل العقد <c>RequiresApproval</c>
+/// لمنح الموظف نفسه إجازةً مقبولةً فور تسجيلها، ولو قَبِل <c>DeductFromSalary</c> لاختار
+/// «بلا حسم» دائماً. الخادم يفرض الأولى <c>true</c>، والثانية قرارُ المراجع.
+/// </remarks>
+public sealed record MyLeaveRequest(
+    LeaveType LeaveType, DateTime FromDate, DateTime ToDate, string? Notes);
+
+/// <summary>شهرٌ من رواتبي — **مُسدَّدٌ حصراً**، وبتفصيلٍ يُفهم منه الرقم.</summary>
+public sealed record MyPayslipResponse(
+    int PeriodId, int Year, int Month, string MonthLabel,
+    decimal BaseSalary, int EligibleDays, int WorkingDays, int AbsenceDays,
+    decimal AbsenceDeduction, decimal? BonusAmount, decimal? DeductionAmount,
+    decimal NetSalary, decimal NetSalaryIqd, Currency Currency,
+    PayrollPaymentStatus PaymentStatus, string PaymentStatusLabel, DateTime? PaidAt);
+
+/// <summary>حسابٌ صالح للربط ببطاقة موظف (ADR-033).</summary>
+public sealed record LinkableUserResponse(int UserId, string FullName, string Username, UserRole Role);
+
+public sealed record LinkUserRequest(int UserId);

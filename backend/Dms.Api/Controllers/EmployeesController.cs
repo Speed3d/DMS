@@ -36,7 +36,7 @@ public sealed class EmployeesController(
     [HttpPatch("leaves/{leaveId:int}")]
     public async Task<ActionResult<LeaveResponse>> ReviewLeave(
         int leaveId, ReviewLeaveRequest req, CancellationToken ct)
-        => MapLeave(await leaves.ReviewAsync(leaveId, req.Approve, req.Notes, ct));
+        => MapLeave(await leaves.ReviewAsync(leaveId, req.Approve, req.Notes, req.DeductFromSalary, ct));
 
     [HttpDelete("leaves/{leaveId:int}")]
     public async Task<IActionResult> DeleteLeave(int leaveId, CancellationToken ct)
@@ -55,7 +55,7 @@ public sealed class EmployeesController(
     private static LeaveResponse MapLeave(EmployeeLeave l) => new(
         l.LeaveId, l.LeaveType, l.LeaveType.ArabicLabel(), l.FromDate, l.ToDate,
         l.DurationDays, l.RequiresApproval, l.Status, l.DeductFromSalary,
-        l.Notes, l.CreatedAt, l.ReviewedAt, l.ReviewNotes);
+        l.Notes, l.CreatedAt, l.ReviewedAt, l.ReviewNotes, l.IsSelfRequested);
 
     [HttpGet]
     public async Task<ActionResult<List<EmployeeListItem>>> List(
@@ -72,20 +72,23 @@ public sealed class EmployeesController(
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<EmployeeDetailResponse>> Get(int id, CancellationToken ct)
-        => Map(await employees.GetAsync(id, ct), await employees.OtherCompaniesAsync(id, ct));
+        => Map(await employees.GetAsync(id, ct), await employees.OtherCompaniesAsync(id, ct),
+               await employees.LinkedUsernameAsync(id, ct));
 
     [HttpPost]
     public async Task<ActionResult<EmployeeDetailResponse>> Create(CreateEmployeeRequest req, CancellationToken ct)
     {
         var e = await employees.CreateAsync(ToProfile(req.Profile), ToEmployment(req.Employment), ct);
-        return Map(e, await employees.OtherCompaniesAsync(e.EmployeeId, ct));
+        return Map(e, await employees.OtherCompaniesAsync(e.EmployeeId, ct),
+                   await employees.LinkedUsernameAsync(e.EmployeeId, ct));
     }
 
     [HttpPut("{id:int}")]
     public async Task<ActionResult<EmployeeDetailResponse>> Update(
         int id, EmployeeProfileRequest req, CancellationToken ct)
         => Map(await employees.UpdateProfileAsync(id, ToProfile(req), ct),
-               await employees.OtherCompaniesAsync(id, ct));
+               await employees.OtherCompaniesAsync(id, ct),
+               await employees.LinkedUsernameAsync(id, ct));
 
     /// <summary>
     /// إسناد الموظف للشركة **الفعّالة** أو تحديث شروط عمله فيها.
@@ -112,6 +115,34 @@ public sealed class EmployeesController(
             : Ok(new EmploymentTemplateResponse(
                 t.Position, t.PositionEn, t.SalaryCurrency, t.BaseSalary, t.SourceCompanyName));
     }
+
+    // ─────────────── ربط البطاقة بحساب النظام (ADR-033) ───────────────
+
+    /// <summary>الحسابات الصالحة للربط في هذه الشركة.</summary>
+    [HttpGet("linkable-users")]
+    public async Task<ActionResult<List<LinkableUserResponse>>> LinkableUsers(CancellationToken ct)
+        => (await employees.LinkableUsersAsync(ct))
+            .Select(u => new LinkableUserResponse(u.UserId, u.FullName, u.Username, u.Role))
+            .ToList();
+
+    /// <summary>يربط البطاقة بحساب — **فيرى صاحبه راتبه وإجازاته في بروفايله**.</summary>
+    /// <remarks>
+    /// 🔴 **قرارُ صلاحيةٍ لا تحديثُ حقل**، ولذلك يُسجَّل في سجلّ التدقيق وسجلّ تغييرات
+    /// الموظف معاً. ويردّ 409 إن كان الحساب مرتبطاً ببطاقةٍ أخرى **ولو في شركةٍ لا نراها**.
+    /// </remarks>
+    [HttpPut("{id:int}/user")]
+    public async Task<ActionResult<EmployeeDetailResponse>> LinkUser(
+        int id, LinkUserRequest req, CancellationToken ct)
+        => Map(await employees.LinkUserAsync(id, req.UserId, ct),
+               await employees.OtherCompaniesAsync(id, ct),
+               await employees.LinkedUsernameAsync(id, ct));
+
+    /// <summary>يفكّ الربط — يُغلق بروفايل ذلك الحساب فوراً، ويبقى السجلّ.</summary>
+    [HttpDelete("{id:int}/user")]
+    public async Task<ActionResult<EmployeeDetailResponse>> UnlinkUser(int id, CancellationToken ct)
+        => Map(await employees.UnlinkUserAsync(id, ct),
+               await employees.OtherCompaniesAsync(id, ct),
+               await employees.LinkedUsernameAsync(id, ct));
 
     /// <summary>مَن فُكّ إسنادهم عن الشركة الفعّالة — ملفّاتهم وسجلّاتهم تبقى مقروءة.</summary>
     [HttpGet("unlinked")]
@@ -253,11 +284,13 @@ public sealed class EmployeesController(
     /// ومن صنف «الحلقة الناقصة» الذي كلّف هذه الوحدة عيبَين (<c>PaidAt</c> و<c>EntryId</c>).
     /// المترجم الآن يمنع النسيان.
     /// </remarks>
-    private static EmployeeDetailResponse Map(Employee e, List<OtherCompanyRef> others) =>
+    private static EmployeeDetailResponse Map(
+        Employee e, List<OtherCompanyRef> others, string? username) =>
         new(e.EmployeeId, e.FullName, e.FullNameEn, e.NationalId, e.Phone, e.Address, e.Notes,
             e.ReceiptLanguage, !string.IsNullOrEmpty(e.PhotoBlobKey),
             e.Companies.Select(MapEmployment).ToList(),
-            others.Select(o => new OtherCompanyResponse(o.CompanyId, o.Name)).ToList());
+            others.Select(o => new OtherCompanyResponse(o.CompanyId, o.Name)).ToList(),
+            e.UserId, username);
 
     private static EmploymentResponse MapEmployment(EmployeeCompany c) =>
         new(c.EmployeeCompanyId, c.CompanyId, c.Position, c.PositionEn, c.HireDate,

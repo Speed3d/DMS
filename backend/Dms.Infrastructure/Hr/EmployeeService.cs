@@ -78,7 +78,24 @@ public interface IEmployeeService
     Task UnlinkAsync(int employeeId, string? notes, CancellationToken ct = default);
     Task<List<EmployeeCompany>> ListUnlinkedAsync(CancellationToken ct = default);
     Task<List<PayrollEntry>> SalaryHistoryAsync(int employeeId, int take, CancellationToken ct = default);
+
+    // ─────────────── ربط البطاقة بحساب النظام (ADR-033) ───────────────
+
+    /// <summary>حسابات هذه الشركة الصالحة للربط — **غيرُ المرتبطة ببطاقةٍ أخرى**.</summary>
+    Task<List<LinkableUser>> LinkableUsersAsync(CancellationToken ct = default);
+
+    /// <summary>اسمُ الحساب المربوط بالبطاقة — <c>null</c> إن لم تُربط.</summary>
+    Task<string?> LinkedUsernameAsync(int employeeId, CancellationToken ct = default);
+
+    /// <summary>يربط بطاقة موظف بحساب نظام — **قرارُ صلاحيةٍ لا حقلُ بيانات**.</summary>
+    Task<Employee> LinkUserAsync(int employeeId, int userId, CancellationToken ct = default);
+
+    /// <summary>يفكّ الربط — يُغلق بروفايل ذلك الحساب فوراً.</summary>
+    Task<Employee> UnlinkUserAsync(int employeeId, CancellationToken ct = default);
 }
+
+/// <summary>حسابٌ صالح للربط ببطاقة موظف.</summary>
+public sealed record LinkableUser(int UserId, string FullName, string Username, UserRole Role);
 
 /// <summary>
 /// إدارة الموظفين (ADR-023). العزل بين الشركات يفرضه الفلتر العام على <see cref="Employee"/>
@@ -316,6 +333,132 @@ public sealed class EmployeeService(
         if (string.IsNullOrEmpty(emp.PhotoBlobKey)) throw new NotFoundException("لا توجد صورة لهذا الموظف.");
         var bytes = await storage.ReadAsync(emp.PhotoBlobKey, ct);
         return (bytes, Path.GetFileName(emp.PhotoBlobKey));
+    }
+
+    // ─────────────── ربط البطاقة بحساب النظام (ADR-033) ───────────────
+
+    /// <remarks>
+    /// ⚠️ **الفلتر العام على <see cref="User"/> يقصر القائمة على حسابات الشركة الفعّالة** —
+    /// فلا يُربط موظفُنا بحساب شركةٍ أخرى. والمعطَّلون مستثنون: ربطُ حسابٍ لا يستطيع الدخول
+    /// يُنتج بروفايلاً لا يفتحه أحد، ويُوهم أن الموظف صار يرى راتبه.
+    /// </remarks>
+    public async Task<List<LinkableUser>> LinkableUsersAsync(CancellationToken ct = default)
+    {
+        RequireWrite();
+
+        // 🔐 **تجاوزٌ متعمَّد ومحدود**: البطاقة المرتبطة قد تكون في شركةٍ أخرى فيحجبها
+        //    الفلتر، فيبدو الحساب «حرّاً» ثم يرتطم بالفهرس الفريد بخطأ قاعدةٍ خام.
+        //    ولا يُعاد من هنا إلا **معرّفات** — لا اسمَ موظفٍ ولا راتب.
+        var takenUserIds = await db.Employees.IgnoreQueryFilters()
+            .Where(e => !e.IsDeleted && e.UserId != null)
+            .Select(e => e.UserId!.Value)
+            .ToListAsync(ct);
+
+        return await db.Users
+            .Where(u => u.IsActive && !takenUserIds.Contains(u.UserId))
+            .OrderBy(u => u.FullName)
+            .Select(u => new LinkableUser(u.UserId, u.FullName, u.Username, u.Role))
+            .ToListAsync(ct);
+    }
+
+    /// <remarks>
+    /// ⚠️ **تجاوزٌ للفلتر مقصود**: الحساب قد يكون مُسنَداً لشركةٍ أخرى فيحجبه فلتر
+    /// <see cref="User"/>، فتُعرض البطاقة «غير مربوطة» وهي مربوطة — وهي كذبةٌ صامتة
+    /// تدفع المستخدم لربطٍ ثانٍ يرتطم بالفهرس. ولا يُقرأ إلا **اسم الحساب**.
+    /// </remarks>
+    public async Task<string?> LinkedUsernameAsync(int employeeId, CancellationToken ct = default)
+    {
+        var emp = await GetAsync(employeeId, ct);
+        if (emp.UserId is not { } uid) return null;
+        return await db.Users.IgnoreQueryFilters()
+            .Where(u => u.UserId == uid).Select(u => u.Username).FirstOrDefaultAsync(ct);
+    }
+
+    /// <remarks>
+    /// 🔴 **هذا ليس تحديثَ حقل — إنه فتحُ نافذةٍ على راتب**: صاحب الحساب المربوط يقرأ
+    /// بعده صافيَ رواتبه وإجازاته من بروفايله، بلا قسم رواتب ولا قسم موظفين. ولذلك
+    /// يُسجَّل في **سجلّ التدقيق وسجلّ تغييرات الموظف معاً**، فيبقى مقروءاً في ملفّه.
+    ///
+    /// ⚠️ **وثلاثة حرّاس قبل الكتابة**: الحساب موجودٌ وفعّال في هذه الشركة · لم يُربط
+    /// ببطاقةٍ أخرى (**ولو في شركةٍ لا نراها**) · والبطاقة نفسها ليست مرتبطةً بحسابٍ آخر.
+    /// والفهرس الفريد في القاعدة هو الحارس الرابع الذي يمسك ما يفلت من السباق.
+    /// </remarks>
+    public async Task<Employee> LinkUserAsync(int employeeId, int userId, CancellationToken ct = default)
+    {
+        RequireWrite();
+        var emp = await GetAsync(employeeId, ct);
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId, ct)
+                   ?? throw new NotFoundException("الحساب غير موجود في هذه الشركة.");
+        if (!user.IsActive)
+            throw new ValidationException("الحساب معطَّل — فعّله أولاً ثم اربطه.");
+
+        if (emp.UserId is { } currentLink && currentLink != userId)
+            throw new ConflictException("البطاقة مرتبطة بحساب آخر — فُكّ الربط أولاً.");
+
+        var takenByOther = await db.Employees.IgnoreQueryFilters()
+            .AnyAsync(e => !e.IsDeleted && e.UserId == userId && e.EmployeeId != employeeId, ct);
+        if (takenByOther)
+            throw new ConflictException("هذا الحساب مرتبط ببطاقة موظف أخرى.");
+
+        if (emp.UserId == userId) return emp;   // الحالة نفسها ⇒ لا كتابة ولا سطر سجلّ
+
+        emp.UserId = userId;
+        AddLinkLog(emp, EmployeeChangeType.UserLinked,
+            $"رُبطت البطاقة بحساب النظام «{user.Username}»");
+
+        audit.Add("LinkUser", nameof(Employee), employeeId.ToString(),
+            user.Username, RequireCompany());
+        await db.SaveChangesAsync(ct);
+        return emp;
+    }
+
+    /// <remarks>
+    /// ⚠️ **الفكّ لا يمحو شيئاً من الماضي**: الإجازات التي طلبها صاحب الحساب تبقى في ملفّه،
+    /// وسطرا السجلّ (الربط والفكّ) يبقيان — فمن يقرأ الملفّ بعد أشهر يعرف **متى فُتحت
+    /// النافذة ومتى أُغلقت**.
+    /// </remarks>
+    public async Task<Employee> UnlinkUserAsync(int employeeId, CancellationToken ct = default)
+    {
+        RequireWrite();
+        var emp = await GetAsync(employeeId, ct);
+
+        if (emp.UserId is null)
+            throw new ValidationException("البطاقة غير مرتبطة بأي حساب.");
+
+        var username = await db.Users.IgnoreQueryFilters()
+            .Where(u => u.UserId == emp.UserId).Select(u => u.Username).FirstOrDefaultAsync(ct);
+
+        emp.UserId = null;
+        AddLinkLog(emp, EmployeeChangeType.UserUnlinked,
+            $"فُكّ ربط البطاقة عن حساب النظام{(username is null ? "" : $" «{username}»")}");
+
+        audit.Add("UnlinkUser", nameof(Employee), employeeId.ToString(),
+            username, RequireCompany());
+        await db.SaveChangesAsync(ct);
+        return emp;
+    }
+
+    /// <summary>سطر سجلٍّ على إسناد الشركة الفعّالة — الربط على البطاقة والسجلّ على الإسناد.</summary>
+    /// <remarks>
+    /// ⚠️ <see cref="Employee.UserId"/> عابرٌ للشركات و<see cref="EmployeeLog"/> مملوكٌ لشركة،
+    /// فيُكتب السطر في **الشركة التي جرى فيها القرار** — وهي التي يقرؤها من يفتح الملفّ هنا.
+    /// </remarks>
+    private void AddLinkLog(Employee emp, EmployeeChangeType type, string description)
+    {
+        var companyId = RequireCompany();
+        var link = emp.Companies.FirstOrDefault(c => c.CompanyId == companyId);
+        if (link is null) return;
+
+        db.EmployeeLogs.Add(new EmployeeLog
+        {
+            EmployeeCompanyId = link.EmployeeCompanyId,
+            CompanyId = companyId,
+            ChangeType = type,
+            Description = description,
+            ChangedByUserId = current.UserId ?? 0,
+            ChangedAt = DateTime.UtcNow,
+        });
     }
 
     /// <summary>

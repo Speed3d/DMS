@@ -296,9 +296,19 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
     }
   }
 
+  /// 🔴 **الطلب الذاتيّ يصل بلا قرار حسم — والمراجع هو من يبتّ فيه** (ADR-033).
+  ///
+  /// بدون هذا السؤال يمرّ `false` الافتراضيّ صامتاً، فتُحتسب إجازةُ شهرٍ بلا راتب
+  /// **مدفوعةً**. والسؤال لا يُطرح لسطرٍ سجّله كاتب الشؤون: ذاك جاء بقراره معه.
   Future<void> _reviewLeave(LeaveModel leave, bool approve) async {
+    bool? deduct;
+    if (approve && leave.isSelfRequested) {
+      deduct = await _askDeduction(leave);
+      if (deduct == null) return; // تراجع المراجع — لا نبتّ بنصف قرار
+    }
     try {
-      await ref.read(apiClientProvider).reviewLeave(leave.leaveId, approve, null);
+      await ref.read(apiClientProvider)
+          .reviewLeave(leave.leaveId, approve, null, deductFromSalary: deduct);
       _changed = true;
       await _load();
       if (mounted) _snack(approve ? 'قُبلت الإجازة.' : 'رُفضت الإجازة.');
@@ -306,6 +316,127 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
       if (mounted) _snack('$e', error: true);
     }
   }
+
+  /// يربط البطاقة بحساب — **بعد اختيارٍ صريح من قائمة الحسابات الحرّة**.
+  ///
+  /// 🔴 **الاختيار من قائمةٍ لا كتابةُ اسم**: القائمة تأتي من الخادم وقد استبعدت ما
+  /// ارتُبط ببطاقةٍ أخرى **ولو في شركةٍ لا نراها** — فلا يقع المستخدم على خطأ فهرسٍ خام.
+  Future<void> _linkUser() async {
+    List<LinkableUser> users;
+    try {
+      users = await ref.read(apiClientProvider).linkableUsers();
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+      return;
+    }
+    if (!mounted) return;
+    if (users.isEmpty) {
+      _snack('لا توجد حسابات حرّة في هذه الشركة — كل الحسابات مرتبطة ببطاقات.',
+          error: true);
+      return;
+    }
+
+    final chosen = await showDialog<LinkableUser>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('ربط البطاقة بحساب'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text(
+              'صاحب الحساب المربوط سيرى راتبه وإجازاته في ملفّه الشخصي.',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.5,
+                  color: Theme.of(ctx)
+                      .textTheme
+                      .bodyMedium
+                      ?.color
+                      ?.withValues(alpha: 0.7)),
+            ),
+          ),
+          ...users.map((u) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, u),
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.account_circle_rounded),
+                  title: Text(u.fullName),
+                  subtitle: Text(u.username),
+                ),
+              )),
+        ],
+      ),
+    );
+    if (chosen == null) return;
+
+    try {
+      await ref.read(apiClientProvider).linkEmployeeUser(widget.employeeId, chosen.userId);
+      _changed = true;
+      await _load();
+      if (mounted) _snack('رُبطت البطاقة بحساب «${chosen.username}».');
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  /// يفكّ الربط — **يُغلق بروفايل ذلك الحساب فوراً**، والسجلّ يبقى.
+  Future<void> _unlinkUser() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('فكّ الربط'),
+        content: const Text(
+          'لن يعود صاحب الحساب يرى راتبه ولا إجازاته في ملفّه الشخصي. '
+          'وتبقى إجازاته المسجَّلة وسجلّ تغييراته كما هي.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('فكّ الربط')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(apiClientProvider).unlinkEmployeeUser(widget.employeeId);
+      _changed = true;
+      await _load();
+      if (mounted) _snack('فُكّ ربط البطاقة عن الحساب.');
+    } catch (e) {
+      if (mounted) _snack('$e', error: true);
+    }
+  }
+
+  /// «تُحسم؟» — ثلاثةُ مخارج: نعم · لا · تراجع (`null`).
+  Future<bool?> _askDeduction(LeaveModel leave) => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('الموافقة على الطلب'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${leave.leaveTypeLabel} — ${leave.durationDays} يوماً',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              const Text(
+                'طلبها الموظف بنفسه، فقرارُ الحسم من الراتب لم يُتَّخذ بعد. '
+                'هل تُحسم هذه الإجازة من راتبه؟',
+                style: TextStyle(fontSize: 13, height: 1.6),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
+            OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('بلا حسم')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('تُحسم من الراتب')),
+          ],
+        ),
+      );
 
   Future<void> _deleteLeave(LeaveModel leave) async {
     final ok = await showDialog<bool>(
@@ -398,7 +529,13 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(32),
                     children: [
-                      _Header(employee: e!, photo: _photo),
+                      _Header(
+                        employee: e!,
+                        photo: _photo,
+                        canManage: canManage,
+                        onLinkUser: _linkUser,
+                        onUnlinkUser: _unlinkUser,
+                      ),
                       const SizedBox(height: 20),
                       _InfoCard(employee: e),
                       const SizedBox(height: 20),
@@ -439,7 +576,18 @@ class _EmployeeDetailScreenState extends ConsumerState<EmployeeDetailScreen> {
 class _Header extends StatelessWidget {
   final EmployeeDetail employee;
   final Uint8List? photo;
-  const _Header({required this.employee, this.photo});
+
+  /// يملك `CanManageEmployees` — فيرى بطاقة الحساب المربوط ويغيّرها (ADR-033).
+  final bool canManage;
+  final VoidCallback onLinkUser;
+  final VoidCallback onUnlinkUser;
+
+  const _Header({
+    required this.employee, this.photo,
+    required this.canManage,
+    required this.onLinkUser,
+    required this.onUnlinkUser,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -510,6 +658,49 @@ class _Header extends StatelessWidget {
                 //    يُسنِده المحاسب ثم لا يرى في البطاقة أثراً له، فيظنّه لم يقع فيُعيده.
                 // ⚠️ **وأسماءُ شركاتٍ لا شروطُ عملٍ فيها** — الراتب والصفة هناك يحجبهما
                 //    الفلتر العام عمداً (ADR-017)، والمعروض واقعةُ العمل وحدها.
+                // ── الحساب المربوط (ADR-033) ──
+                //
+                // 🔴 **الربط يفتح لصاحب الحساب رؤية راتبه وإجازاته** في بروفايله، بلا
+                //    قسم رواتب ولا قسم موظفين. فيُعرض هنا صريحاً: من يفتح الملفّ يرى
+                //    **أن النافذة مفتوحة وعلى مَن** — لا أن يكتشفها بالمصادفة.
+                if (canManage) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('حساب النظام:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: theme.textTheme.bodyMedium?.color
+                                  ?.withValues(alpha: 0.6))),
+                      if (employee.isLinkedToUser)
+                        _Chip(
+                          icon: Icons.account_circle_rounded,
+                          label: employee.username ?? '—',
+                          color: isDark ? AppColors.successDark : AppColors.success,
+                        )
+                      else
+                        Text('غير مربوط',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: theme.textTheme.bodyMedium?.color
+                                    ?.withValues(alpha: 0.6))),
+                      TextButton.icon(
+                        onPressed: employee.isLinkedToUser ? onUnlinkUser : onLinkUser,
+                        icon: Icon(
+                            employee.isLinkedToUser
+                                ? Icons.link_off_rounded
+                                : Icons.link_rounded,
+                            size: 16),
+                        label: Text(employee.isLinkedToUser ? 'فكّ الربط' : 'ربط بحساب',
+                            style: const TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ],
                 if (employee.otherCompanies.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Wrap(
@@ -892,6 +1083,16 @@ class _LeavesCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 12.5),
                       ),
                     ),
+                    // ⚠️ الطلب الذاتيّ **لم يُبتّ حسمُه بعد** — والشارة تقول ذلك قبل الضغط.
+                    if (l.isSelfRequested)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 8),
+                        child: Text('طلبُ الموظف',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? AppColors.goldBright : AppColors.gold)),
+                      ),
                     if (l.deductFromSalary)
                       Padding(
                         padding: const EdgeInsetsDirectional.only(end: 8),
