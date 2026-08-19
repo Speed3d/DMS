@@ -157,12 +157,33 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
-  void _showProfileMenu() {
+  /// 🔴 **القائمة تُرسى على الزرّ نفسه** (بلاغ المالك 2026-08-20).
+  ///
+  /// كان الموضع مكتوباً أرقاماً ثابتة `RelativeRect.fromLTRB(26, 70, 26, 0)` — و`L`/`R`
+  /// هناك **فيزيائيّان لا منطقيّان**، فبقيت القائمة في يسار الشاشة بينما الزرّ في
+  /// يمينها بواجهةٍ من اليمين لليسار. الآن تُشتقّ من مستطيل الزرّ فتلتصق به مهما
+  /// تغيّر عرض النافذة أو اتجاهها.
+  void _showProfileMenu(BuildContext anchorContext) {
     final auth = ref.read(sessionProvider).auth!;
-    // عرض القائمة أسفل ملف المستخدم
+    final button = anchorContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox?;
+
+    // ⚠️ الاحتياط ليس تجميلاً: `findRenderObject` تعود فارغةً إن نُودي قبل التخطيط.
+    final position = (button == null || overlay == null)
+        ? const RelativeRect.fromLTRB(26, 70, 26, 0)
+        : RelativeRect.fromRect(
+            Rect.fromPoints(
+              button.localToGlobal(Offset.zero, ancestor: overlay),
+              button.localToGlobal(
+                  button.size.bottomRight(Offset.zero), ancestor: overlay),
+            ),
+            Offset.zero & overlay.size,
+          );
+
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(26, 70, 26, 0),
+      position: position,
       items: [
         const PopupMenuItem(value: 'profile', child: Text('الملف الشخصي')),
         const PopupMenuItem(value: 'password', child: Text('تغيير كلمة المرور')),

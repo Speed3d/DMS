@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/password_field.dart';
 
 class ChangePasswordScreen extends ConsumerStatefulWidget {
   final bool forced;
@@ -64,11 +65,11 @@ class _State extends ConsumerState<ChangePasswordScreen> {
                     child: Text('يجب تغيير كلمة المرور المؤقتة قبل المتابعة.',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
-                TextField(controller: _current, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور الحالية')),
+                PasswordField(controller: _current, labelText: 'كلمة المرور الحالية'),
                 const SizedBox(height: 12),
-                TextField(controller: _next, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة')),
+                PasswordField(controller: _next, labelText: 'كلمة المرور الجديدة'),
                 const SizedBox(height: 12),
-                TextField(controller: _confirm, obscureText: true, decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور')),
+                PasswordField(controller: _confirm, labelText: 'تأكيد كلمة المرور'),
                 if (_error != null) ...[const SizedBox(height: 12), Text(_error!, style: const TextStyle(color: Colors.red))],
                 const SizedBox(height: 20),
                 FilledButton(

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models.dart';
 import 'session.dart';
@@ -30,9 +32,25 @@ final myPayslipsProvider = FutureProvider.autoDispose<List<MyPayslip>>((ref) asy
   return ref.read(apiClientProvider).myPayslips();
 });
 
-/// إبطال البروفايل كلّه — بعد طلب إجازة أو سحبها أو تبديل شركة.
+/// صورتي كبايتات — `null` لمن لا صورةَ له أو لا بطاقة (ADR-035).
+///
+/// ⚠️ **يُشتقّ من [myProfileProvider] لا يُجلب مباشرةً**: `hasPhoto` تُخبرنا سلفاً،
+/// فلا نطلب صورةً نعلم أنها غير موجودة ثم نبتلع 404 في كل بناء.
+/// ⚠️ **وفشلُه لا يُسقط شيئاً** — الشريط العلوي يعود للحرف الأول.
+final myPhotoProvider = FutureProvider.autoDispose<Uint8List?>((ref) async {
+  final profile = await ref.watch(myProfileProvider.future);
+  if (profile == null || !profile.hasPhoto) return null;
+  try {
+    return await ref.read(apiClientProvider).myPhoto();
+  } catch (_) {
+    return null;
+  }
+});
+
+/// إبطال البروفايل كلّه — بعد طلب إجازة أو سحبها أو تبديل شركة أو **تغيير الصورة**.
 void invalidateProfile(WidgetRef ref) {
   ref.invalidate(myProfileProvider);
   ref.invalidate(myLeavesProvider);
   ref.invalidate(myPayslipsProvider);
+  ref.invalidate(myPhotoProvider);
 }

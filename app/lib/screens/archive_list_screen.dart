@@ -6,6 +6,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/search_field.dart';
 import 'archive_bulk_import_screen.dart';
 import 'archive_form_screen.dart';
 import 'archive_detail_screen.dart';
@@ -68,31 +69,11 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                 final width = constraints.maxWidth;
                 final isSmall = width < 500;
 
-                final searchWidget = Container(
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: theme.dividerColor, width: 1.5),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search_rounded, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _search,
-                          onSubmitted: (_) => _reload(),
-                          decoration: InputDecoration(
-                            hintText: 'ابحث بعنوان المستند، رقم الكتاب، أو الكلمات المفتاحية...',
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(fontSize: 14, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                // 🔍 **يبحث وأنت تكتب** (بلاغ المالك) — والمهلة والتكرار داخل الودجة.
+                final searchWidget = DebouncedSearchField(
+                  controller: _search,
+                  hintText: 'ابحث بعنوان المستند، رقم الكتاب، أو الكلمات المفتاحية...',
+                  onChanged: (_) => _reload(),
                 );
 
                 final buttonWidget = SizedBox(

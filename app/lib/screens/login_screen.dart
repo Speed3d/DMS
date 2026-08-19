@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/password_field.dart';
 import '../core/theme.dart';
 
 /// Hint: شاشة تسجيل الدخول بتصميم مقسوم (Split Screen) للشاشات العريضة
@@ -216,9 +217,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           
           _buildLabel('كلمة المرور'),
           const SizedBox(height: 8),
-          TextField(
+          PasswordField(
             controller: _pass,
-            obscureText: true,
             onSubmitted: (_) => _login(),
             decoration: _inputDecoration(theme, Icons.lock_outline),
           ),

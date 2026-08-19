@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:typed_data';
+
 import '../core/theme.dart';
+import '../core/profile_providers.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
 import '../models.dart';
@@ -12,7 +15,11 @@ import '../screens/incoming_detail_screen.dart';
 class Topbar extends ConsumerWidget implements PreferredSizeWidget {
   final String title;
   final String subtitle;
-  final VoidCallback onProfileTap;
+
+  /// 🔴 **يُمرَّر سياق الزرّ لا مجرّد نداء** (بلاغ المالك 2026-08-20): القائمة كانت
+  /// تُفتح بموضعٍ ثابت بالأرقام (`RelativeRect.fromLTRB(26, 70, 26, 0)`)، فتظهر في
+  /// الجهة المعاكسة للزرّ في واجهةٍ من اليمين لليسار. الموضع يُشتقّ من الزرّ نفسه.
+  final void Function(BuildContext anchorContext) onProfileTap;
   final VoidCallback onMenuTap;
   final String? logoUrl;
 
@@ -30,6 +37,9 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final auth = ref.watch(sessionProvider).auth;
+    // ⚠️ `valueOrNull` لا `when`: الشريط العلوي يُبنى في كل إطار، وانتظارُ الصورة
+    //    كان سيُظهر دوّارةً مكان الأفاتار عند كل تنقّل.
+    final photo = ref.watch(myPhotoProvider).asData?.value;
 
     return Container(
       height: 70,
@@ -77,33 +87,9 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
               ),
               
               if (!isMedium) ...[
-                // Search Input
-                Container(
-                  width: 260,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: theme.dividerColor, width: 1.5),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search, size: 20, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'ابحث في الكتب، الأرشيف...',
-                            hintStyle: TextStyle(fontSize: 13.5, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 14),
+                // 🗑️ **حُذف حقل البحث العلويّ** (بلاغ المالك 2026-08-20): لم يكن موصولاً
+                //    بشيء — حقلٌ يُكتب فيه ولا يبحث. والبحث الحقيقيّ في كل قسمٍ على حدة،
+                //    وصار **حيّاً وأنت تكتب** (`DebouncedSearchField`).
 
                 // QR Verify Button
                 OutlinedButton.icon(
@@ -291,8 +277,8 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
               ],
 
               // User Profile
-              InkWell(
-                onTap: onProfileTap,
+              Builder(builder: (btnContext) => InkWell(
+                onTap: () => onProfileTap(btnContext),
                 borderRadius: BorderRadius.circular(12),
                 child: Row(
                   children: [
@@ -307,23 +293,12 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                       ),
                       const SizedBox(width: 11),
                     ],
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF1B3A6B), Color(0xFF0C1B33)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        auth?.fullName.isNotEmpty == true ? auth!.fullName[0] : 'U',
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
-                      ),
-                    ),
+                    // 🖼️ **صورته لا حرفُه** (بلاغ المالك 2026-08-20) — والحرف يبقى
+                    //    احتياطاً لمن لا صورةَ له أو لم يُربط ببطاقة.
+                    _TopbarAvatar(photo: photo, fallback: auth?.fullName ?? ''),
                   ],
                 ),
-              ),
+              )),
             ],
           );
         }
@@ -358,4 +333,40 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Size get preferredSize => const Size.fromHeight(70);
+}
+
+/// أفاتار الشريط العلوي — الصورة إن وُجدت، وإلا الحرف الأول.
+class _TopbarAvatar extends StatelessWidget {
+  final Uint8List? photo;
+  final String fallback;
+  const _TopbarAvatar({required this.photo, required this.fallback});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          gradient: photo == null
+              ? const LinearGradient(
+                  colors: [Color(0xFF1B3A6B), Color(0xFF0C1B33)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight)
+              : null,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+          ],
+          image: photo == null
+              ? null
+              : DecorationImage(image: MemoryImage(photo!), fit: BoxFit.cover),
+        ),
+        alignment: Alignment.center,
+        child: photo != null
+            ? null
+            : Text(
+                fallback.isNotEmpty ? fallback[0] : 'U',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+      );
 }
