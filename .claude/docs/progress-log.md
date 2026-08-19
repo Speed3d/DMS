@@ -2,6 +2,16 @@
 
 > يُحدَّث بعد كل خطوة مهمة (الأحدث أعلى). التواريخ ميلادية.
 
+## 2026-08-19 (٣) — دمجٌ ورفعٌ وتطبيق مهاجرة `AddEmployeeUserLink`
+
+دُمج كل ما سبق في `main` ورُفع إلى `origin`، ثم **طُبّقت المهاجرة الرابعة والعشرون على
+`DmsDb`** — **بعد** الدمج لا قبله (`rules/workflow.md`: القاعدة موردٌ مشترك).
+**ونسخةٌ احتياطية سبقتها** (`App_Data/Backups/pre-AddEmployeeUserLink-20260819.bak`).
+⚠️ `dotnet ef` لا يقرأ `appsettings.Development.json` افتراضياً فيحاول
+`localhost,1433` ويفشل — مُرِّرت سلسلة الاتصال بـ`--connection` صراحةً.
+**التحقّق:** 24 قيداً في `__EFMigrationsHistory` · `Employees.UserId` و
+`EmployeeLeaves.IsSelfRequested` والفهرس الفريد المُرشَّح موجودة · والبيانات سليمة.
+
 ## 2026-08-19 (٢) — **تمام عائلة عطل الوقت** (G18): الحقول الثلاثة الباقية
 
 **الفجوة:** ADR-032 عالج ثمانية حقول في `models.dart` **ولم يمسّ `models_hr.dart`** لسببٍ
