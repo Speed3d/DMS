@@ -501,6 +501,10 @@ class ApiClient {
 
   /// يومٌ بلا وقت — عقد التقارير يعامل `from`/`to` **يومين لا لحظتين**، وإرسال الوقت
   /// معهما يجعل «من اليوم» تعني «من هذه اللحظة» فيختفي عملُ الصباح.
+  ///
+  /// 🔴 **وتستعمله المهام كذلك لمواعيدها** (ADR-037): `dueDate` **يومٌ لا لحظة**، و
+  /// `toIso8601String()` على تاريخٍ محليّ يُلحق إزاحةً فيقرؤه الخادم لحظةً ويحوّلها —
+  /// **فينزلق اليوم**. وهذه الصيغة بلا وقتٍ أصلاً، فلا منطقةَ تُلحق بها.
   String _dayOnly(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -1112,6 +1116,152 @@ class ApiClient {
       throw _map(e);
     }
   }
+
+  // ---------- المهام (ADR-037) ----------
+
+  /// قائمة المهام مع فلاترها وترقيم صفحاتها.
+  Future<TaskPage> tasks({
+    String? status, String? priority, int? departmentId, int? assignedTo, int? createdBy,
+    DateTime? dueFrom, DateTime? dueTo, bool? isOverdue, bool mineOnly = false,
+    String? search, int page = 1, int pageSize = 25,
+  }) async {
+    final q = <String, dynamic>{'page': page, 'pageSize': pageSize};
+    if (status != null) q['status'] = status;
+    if (priority != null) q['priority'] = priority;
+    if (departmentId != null) q['departmentId'] = departmentId;
+    if (assignedTo != null) q['assignedTo'] = assignedTo;
+    if (createdBy != null) q['createdBy'] = createdBy;
+    if (dueFrom != null) q['dueFrom'] = _dayOnly(dueFrom);
+    if (dueTo != null) q['dueTo'] = _dayOnly(dueTo);
+    if (isOverdue != null) q['isOverdue'] = isOverdue;
+    if (mineOnly) q['mineOnly'] = true;
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    return TaskPage.fromJson(await _get('/tasks', query: q) as Map<String, dynamic>);
+  }
+
+  Future<TaskPage> myTasks({int page = 1, int pageSize = 25}) async =>
+      TaskPage.fromJson(await _get('/tasks/my',
+          query: {'page': page, 'pageSize': pageSize}) as Map<String, dynamic>);
+
+  Future<List<TaskListItem>> overdueTasks() async =>
+      (await _get('/tasks/overdue') as List).map((e) => TaskListItem.fromJson(e)).toList();
+
+  Future<TaskSummaryModel> taskSummary() async =>
+      TaskSummaryModel.fromJson(await _get('/tasks/summary') as Map<String, dynamic>);
+
+  Future<List<AssignableUser>> assignableUsers() async =>
+      (await _get('/tasks/assignable-users') as List)
+          .map((e) => AssignableUser.fromJson(e)).toList();
+
+  Future<TaskModel> task(int id) async =>
+      TaskModel.fromJson(await _get('/tasks/$id') as Map<String, dynamic>);
+
+  Future<List<TaskUpdateModel>> taskUpdates(int id) async =>
+      (await _get('/tasks/$id/updates') as List)
+          .map((e) => TaskUpdateModel.fromJson(e)).toList();
+
+  /// ⚠️ **التواريخ تُرسَل يوماً بلا منطقةٍ زمنية** — انظر [_dayOnly].
+  Future<TaskModel> createTask({
+    required String title, String? description,
+    required String taskType, required String priority,
+    required DateTime dueDate, DateTime? startDate,
+    int? departmentId, int? assignedToUserId,
+    int? relatedIncomingId, int? relatedOutgoingId,
+    bool isRecurring = false, String? recurrencePattern,
+    int? recurrenceInterval, DateTime? recurrenceEndDate, String? notes,
+  }) async =>
+      TaskModel.fromJson(await _post('/tasks', {
+        'title': title,
+        'description': description,
+        'taskType': taskType,
+        'priority': priority,
+        'dueDate': _dayOnly(dueDate),
+        'startDate': startDate == null ? null : _dayOnly(startDate),
+        'departmentId': departmentId,
+        'assignedToUserId': assignedToUserId,
+        'relatedIncomingId': relatedIncomingId,
+        'relatedOutgoingId': relatedOutgoingId,
+        'isRecurring': isRecurring,
+        'recurrencePattern': recurrencePattern,
+        'recurrenceInterval': recurrenceInterval,
+        'recurrenceEndDate': recurrenceEndDate == null ? null : _dayOnly(recurrenceEndDate),
+        'notes': notes,
+      }) as Map<String, dynamic>);
+
+  Future<TaskModel> updateTask(
+    int id, {
+    required String title, String? description, required String priority,
+    required DateTime dueDate, DateTime? startDate,
+    int? departmentId, int? relatedIncomingId, int? relatedOutgoingId,
+    String? notes, required String rowVersion,
+  }) async =>
+      TaskModel.fromJson(await _put('/tasks/$id', {
+        'title': title,
+        'description': description,
+        'priority': priority,
+        'dueDate': _dayOnly(dueDate),
+        'startDate': startDate == null ? null : _dayOnly(startDate),
+        'departmentId': departmentId,
+        'relatedIncomingId': relatedIncomingId,
+        'relatedOutgoingId': relatedOutgoingId,
+        'notes': notes,
+        'rowVersion': rowVersion,
+      }) as Map<String, dynamic>);
+
+  Future<void> deleteTask(int id) => _delete('/tasks/$id');
+
+  Future<TaskModel> changeTaskStatus(int id, String newStatus, {String? reason}) async =>
+      TaskModel.fromJson(await _post('/tasks/$id/status',
+          {'newStatus': newStatus, 'reason': reason}) as Map<String, dynamic>);
+
+  Future<TaskModel> updateTaskProgress(int id, int percent, {String? comment}) async =>
+      TaskModel.fromJson(await _post('/tasks/$id/progress',
+          {'percent': percent, 'comment': comment}) as Map<String, dynamic>);
+
+  Future<TaskModel> reassignTask(int id, int assignedToUserId) async =>
+      TaskModel.fromJson(await _post('/tasks/$id/reassign',
+          {'assignedToUserId': assignedToUserId}) as Map<String, dynamic>);
+
+  Future<TaskModel> reopenTask(int id, String reason) async =>
+      TaskModel.fromJson(await _post('/tasks/$id/reopen',
+          {'reason': reason}) as Map<String, dynamic>);
+
+  Future<TaskUpdateModel> addTaskComment(int id, String text) async =>
+      TaskUpdateModel.fromJson(await _post('/tasks/$id/comment',
+          {'text': text}) as Map<String, dynamic>);
+
+  Future<List<AttachmentModel>> taskAttachments(int id) async =>
+      (await _get('/tasks/$id/attachments') as List)
+          .map((e) => AttachmentModel.fromJson(e)).toList();
+
+  Future<AttachmentModel> uploadTaskAttachment(
+      int id, String fileName, List<int> bytes) async {
+    try {
+      final form = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      });
+      final res = await _dio.post('/tasks/$id/attachments', data: form);
+      return AttachmentModel.fromJson(res.data);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  /// ⚠️ `inline: true` ⇒ **بلا اسم ملف** فلا يختطفها مدير التحميل (مبدأ ADR-019).
+  Future<List<int>> taskAttachmentBytes(int taskId, int attachmentId,
+      {bool inline = true}) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        '/tasks/$taskId/attachments/$attachmentId/download',
+        queryParameters: {'inline': inline},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return res.data ?? const [];
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
 
   // ---------- مساعدات ----------
   Future<dynamic> _get(String path, {Map<String, dynamic>? query}) async {

@@ -12,6 +12,7 @@ import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/status_pill.dart';
 import 'incoming_form_screen.dart';
+import 'task_form_screen.dart';
 
 /// Hint: شاشة تفاصيل الكتاب الوارد (تعرض المعلومات، المرفقات، سجل الحركة)
 class IncomingDetailScreen extends ConsumerStatefulWidget {
@@ -334,6 +335,28 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
         title: const Text('تفاصيل الكتاب الوارد'),
         centerTitle: true,
         actions: [
+          // 🔴 **مدخلٌ مُسمّى باسم فعله** (درس ADR-027): «ميزة بلا مدخل» تكرّرت سبع مرّات،
+          //    وأخبثُ صورها **مدخلٌ مُسمّى بغير اسمه**. والزرّ يغيب لمن لا يملك المهام
+          //    فلا يقود إلى شاشة تردّ 403.
+          if (ref.watch(sessionProvider).canSeeTasks)
+            IconButton(
+              onPressed: () async {
+                // ⚠️ **المُرسِل يُلتقط قبل الفجوة غير المتزامنة** — قراءتُه بعدها تستعمل
+                //    `context` عبر `await` وهو ما يحذّر منه المحلّل بحقّ.
+                final messenger = ScaffoldMessenger.of(context);
+                final created = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                      builder: (_) => TaskFormScreen(presetIncomingId: widget.id)),
+                );
+                if (created == true) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('أُنشئت المهمة وربطت بهذا الكتاب')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.add_task_rounded),
+              tooltip: 'إنشاء مهمة من هذا الكتاب',
+            ),
           IconButton(
             onPressed: _delete,
             icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),

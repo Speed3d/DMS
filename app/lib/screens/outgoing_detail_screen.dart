@@ -15,6 +15,7 @@ import '../widgets/status_pill.dart';
 import 'incoming_detail_screen.dart';
 import 'outgoing_edit_approved_screen.dart';
 import 'outgoing_edit_draft_screen.dart';
+import 'task_form_screen.dart';
 
 /// إظهار زرّ «تصدير Word» في شاشة تفاصيل الصادر.
 ///
@@ -266,6 +267,26 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
         title: const Text('تفاصيل الكتاب الصادر'),
         centerTitle: true,
         actions: [
+          // 🔴 **مدخلٌ مُسمّى باسم فعله** (درس ADR-027) — ويغيب لمن لا يملك المهام.
+          if (ref.watch(sessionProvider).canSeeTasks)
+            IconButton(
+              onPressed: () async {
+                // ⚠️ **المُرسِل يُلتقط قبل الفجوة غير المتزامنة** — قراءتُه بعدها تستعمل
+                //    `context` عبر `await` وهو ما يحذّر منه المحلّل بحقّ.
+                final messenger = ScaffoldMessenger.of(context);
+                final created = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                      builder: (_) => TaskFormScreen(presetOutgoingId: widget.id)),
+                );
+                if (created == true) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('أُنشئت المهمة وربطت بهذا الكتاب')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.add_task_rounded),
+              tooltip: 'إنشاء مهمة من هذا الكتاب',
+            ),
           IconButton(
             onPressed: _delete,
             icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),

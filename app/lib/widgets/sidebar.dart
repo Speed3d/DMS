@@ -4,6 +4,7 @@ import '../core/theme.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
 import '../core/hr_providers.dart';
+import '../core/task_providers.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -19,6 +20,9 @@ class Sidebar extends ConsumerWidget {
   /// قسم الرواتب — **مستقلٌّ عن الموظفين**: يُمنح أحدهما بلا الآخر.
   final bool canSeePayroll;
 
+  /// قسم المهام — القسم **مع** دورٍ فوق القارئ (ADR-037).
+  final bool canSeeTasks;
+
   const Sidebar({
     super.key,
     required this.selectedIndex,
@@ -28,6 +32,7 @@ class Sidebar extends ConsumerWidget {
     required this.modules,
     this.canSeeEmployees = false,
     this.canSeePayroll = false,
+    this.canSeeTasks = false,
   });
 
   bool get _showSettings => canManageUsers && modules.contains('Settings');
@@ -121,6 +126,18 @@ class Sidebar extends ConsumerWidget {
                 final badge = countAsync.whenOrNull(
                     data: (count) => count > 0 ? count.toString() : null);
                 return _buildItem(10, Icons.payments_rounded, 'الرواتب', badge: badge);
+              },
+            ),
+
+          // ⚠️ **المؤشّر 12** — البند مُلحقٌ في آخر قائمة الشاشات وموضعُه البصري هنا،
+          //    والشارة تعرض **المتأخّرة** لا الإجمالي: رقمٌ يعني «يحتاج تدخّلك الآن».
+          if (canSeeTasks)
+            Consumer(
+              builder: (context, ref, child) {
+                final countAsync = ref.watch(overdueTasksCountProvider);
+                final badge = countAsync.whenOrNull(
+                    data: (count) => count > 0 ? count.toString() : null);
+                return _buildItem(12, Icons.task_alt_rounded, 'المهام', badge: badge);
               },
             ),
 

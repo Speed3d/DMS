@@ -29,6 +29,18 @@ final class PendingLeavesIntent extends NavIntent {
   const PendingLeavesIntent();
 }
 
+/// ما تريده لوحةُ التحكم من شاشة المهام (ADR-037).
+enum TaskIntentKind { mine, overdue, dueToday }
+
+/// افتح قائمة المهام مقصورةً على شريحةٍ بعينها — بطاقاتُ لوحة التحكم.
+///
+/// ⚠️ **نيّةٌ واحدة بثلاث قيم لا ثلاث نيّات**: الثلاث تفتح الشاشة نفسها وتختلف في الفلتر
+/// وحده، وصنفٌ لكلٍّ منها كان سيضاعف `peek<T>()` بلا معنى.
+final class TaskListIntent extends NavIntent {
+  final TaskIntentKind kind;
+  const TaskListIntent(this.kind);
+}
+
 /// النيّة المعلّقة — واحدةٌ في كل مرّة، لأن التنقّل واحد.
 ///
 /// ⚠️ `Notifier` لا `StateProvider`: الأخيرة أُزيلت في Riverpod 3، والمستودع يستعمل
