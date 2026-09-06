@@ -95,6 +95,17 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       return;
     }
 
+    // 🔴 **سببٌ إلزاميّ عند تغيير ما يمسّ غيرك** (قرار المالك): العنوان · الموعد ·
+    //    الأولوية · القسم. وتصحيحُ الوصف أو الملاحظات يمرّ بلا سؤال — فاشتراطُ تعليلٍ لكل
+    //    حرفٍ يدفع الناس إلى كتابة «تعديل»، **فيصير الحقل شكليّاً وهو أسوأ من غيابه**.
+    //    ⚠️ **مرآةٌ لحارس الخادم** (`TaskChangeReason`): يفرض القاعدة نفسها بـ400.
+    String? reason;
+    if (_isEdit && _materialChange()) {
+      reason = await _promptReason();
+      if (reason == null) return;   // ألغى — لا حفظ
+    }
+
+    if (!mounted) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -114,6 +125,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           relatedOutgoingId: widget.existing!.relatedOutgoingId,
           notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
           rowVersion: widget.existing!.rowVersion,
+          reason: reason,
         );
       } else {
         await api.createTask(
@@ -319,6 +331,71 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         ),
       ),
     );
+  }
+
+  /// هل يمسّ هذا التعديل غيرَ صاحبه؟ — **مرآةُ `TaskChangeReason.EditNeedsReason`**.
+  ///
+  /// ⚠️ النسختان تتحرّكان معاً: الخادم يرفض بـ400، وهذه تسأل قبل الإرسال. ولو تباعدتا
+  /// لسأل النموذج عن سببٍ لا يُطلب، أو أرسل بلا سببٍ فارتطم برفضٍ لا يفهمه المستخدم.
+  bool _materialChange() {
+    final e = widget.existing!;
+    return e.title.trim() != _title.text.trim()
+        || e.dueDate.difference(_dueDate!).inDays != 0
+        || e.priority != _priority
+        || e.departmentId != _departmentId;
+  }
+
+  Future<String?> _promptReason() async {
+    final controller = TextEditingController();
+    String? error;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('سبب التعديل'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'غيّرتَ ما يقرؤه غيرُك (العنوان أو الموعد أو الأولوية أو القسم).\n'
+                'اكتب سبباً يُحفظ في سجلّ المهمة.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'مثال: تأجيل الموعد بطلب القسم القانوني',
+                  errorText: error,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(), child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () {
+                if (controller.text.trim().length < 5) {
+                  setLocal(() => error = 'السبب مطلوب (٥ أحرف فأكثر)');
+                  return;
+                }
+                Navigator.of(ctx).pop(controller.text.trim());
+              },
+              child: const Text('حفظ التعديل'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    controller.dispose();
+    return result;
   }
 
   Widget _dueDateField() => InkWell(

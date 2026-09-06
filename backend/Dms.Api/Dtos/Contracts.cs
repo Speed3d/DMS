@@ -572,10 +572,13 @@ public sealed record UpdateTaskRequest(
     string Title, string? Description, DmsTaskPriority Priority,
     DateTime DueDate, DateTime? StartDate,
     int? DepartmentId, int? RelatedIncomingId, int? RelatedOutgoingId,
-    string? Notes, string RowVersion);
+    string? Notes, string RowVersion,
+    /// <summary>سبب التعديل — إلزاميّ عند تغيير العنوان أو الموعد أو الأولوية أو القسم.</summary>
+    string? Reason = null);
 
 public sealed record ChangeTaskStatusRequest(DmsTaskStatus NewStatus, string? Reason);
-public sealed record TaskProgressRequest(int Percent, string? Comment);
+/// <param name="Reason">سبب **تقليل** النسبة — إلزاميّ عند التراجع، ويُتجاهل عند التقدّم.</param>
+public sealed record TaskProgressRequest(int Percent, string? Comment, string? Reason = null);
 public sealed record ReassignTaskRequest(int AssignedToUserId);
 public sealed record ReopenTaskRequest(string Reason);
 public sealed record TaskCommentRequest(string Text);

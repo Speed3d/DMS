@@ -17,7 +17,9 @@ public sealed record UpdateTaskInput(
     string Title, string? Description, DmsTaskPriority Priority,
     DateTime DueDate, DateTime? StartDate,
     int? DepartmentId, int? RelatedIncomingId, int? RelatedOutgoingId,
-    string? Notes, string RowVersion);
+    string? Notes, string RowVersion,
+    /// <summary>سبب التعديل — **إلزاميّ عند تغيير ما يمسّ غيرك** (<see cref="TaskChangeReason"/>).</summary>
+    string? Reason = null);
 
 public sealed record TaskFilters(
     DmsTaskStatus? Status = null, DmsTaskPriority? Priority = null,
@@ -45,7 +47,7 @@ public interface ITaskService
     Task DeleteAsync(int id, CancellationToken ct = default);
 
     Task<DmsTask> ChangeStatusAsync(int id, DmsTaskStatus to, string? reason, CancellationToken ct = default);
-    Task<DmsTask> UpdateProgressAsync(int id, int percent, string? comment, CancellationToken ct = default);
+    Task<DmsTask> UpdateProgressAsync(int id, int percent, string? comment, string? reason, CancellationToken ct = default);
     Task<DmsTask> ReassignAsync(int id, int assignedToUserId, CancellationToken ct = default);
     Task<DmsTask> ReopenAsync(int id, string reason, CancellationToken ct = default);
     Task<DmsTaskUpdate> AddCommentAsync(int id, string text, CancellationToken ct = default);
@@ -142,9 +144,10 @@ public sealed class TaskService(
 
         var total = await q.CountAsync(ct);
 
+        // 🔴 **بلا `Include` على `CreatedByUser`** — انظر `AttachUserNamesAsync`.
+        //    وبوجودها كان **العدّاد يكذب كذلك**: `CountAsync` يعدّ بلا ربطٍ داخليّ، والصفحة
+        //    تُسقط ما يُسقطه الربط ⇒ «13 مهمة» ويُرجع 11.
         var items = await q
-            .Include(t => t.AssignedToUser)
-            .Include(t => t.CreatedByUser)
             .Include(t => t.Department)
             .Include(t => t.RelatedIncoming)
             .Include(t => t.RelatedOutgoing)
@@ -155,18 +158,73 @@ public sealed class TaskService(
             .Take(pageSize)
             .ToListAsync(ct);
 
+        await AttachUserNamesAsync(items, ct);
         return (items, total);
     }
 
     public async Task<DmsTask> GetByIdAsync(int id, CancellationToken ct = default)
-        => await Query()
-               .Include(t => t.AssignedToUser)
-               .Include(t => t.CreatedByUser)
-               .Include(t => t.Department)
-               .Include(t => t.RelatedIncoming)
-               .Include(t => t.RelatedOutgoing)
-               .FirstOrDefaultAsync(t => t.TaskId == id, ct)
-           ?? throw new NotFoundException("المهمة غير موجودة أو لا تملك صلاحية رؤيتها.");
+    {
+        var task = await Query()
+                       .Include(t => t.Department)
+                       .Include(t => t.RelatedIncoming)
+                       .Include(t => t.RelatedOutgoing)
+                       .FirstOrDefaultAsync(t => t.TaskId == id, ct)
+                   ?? throw new NotFoundException("المهمة غير موجودة أو لا تملك صلاحية رؤيتها.");
+
+        await AttachUserNamesAsync([task], ct);
+        return task;
+    }
+
+    /// <summary>
+    /// يملأ أسماء المُنشئ والمسؤول **باستعلامٍ ثانٍ** بدل <c>Include</c>.
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **عطلٌ بلّغ عنه المالك (2026-09-06): «السوبر أدمن لا يستطيع إنشاء مهمة».**
+    /// والحقيقة أن المهمة **تُنشأ** ثم يردّ الخادم 404 عند قراءتها.
+    ///
+    /// السبب: <c>CreatedByUser</c> خاصيةٌ **إلزامية** (<c>CreatedByUserId</c> غير قابل
+    /// للإبطال)، فيولّد لها EF **<c>INNER JOIN</c>** على <c>db.Users</c> وعليه فلتر الشركة.
+    /// والسوبر أدمن **بلا شركة مُسنَدة** فيسقط صفُّه ⇒ **تسقط المهمة كلُّها**.
+    ///
+    /// ⚠️ **وأثرُه أوسع من البلاغ:** كلُّ مهمةٍ أنشأها سوبر أدمن **تختفي من كل قائمة**،
+    /// و<c>CountAsync</c> يعدّها (فهو بلا ربط) ⇒ **العدّاد يقول 13 والقائمة تُرجع 11**.
+    ///
+    /// 🔴 **وهو ADR-034 للمرّة الثالثة في هذه الوحدة** — عولج في <c>GetUpdatesAsync</c>
+    /// وبقي هنا. ⇒ **القاعدة: لا <c>Include</c> على خاصيةٍ إلزامية تشير إلى جدولٍ مفلتَر.**
+    /// والحارس في <c>tasks-e2e</c> يُنشئ مهمةً **بحساب السوبر أدمن** ويطلبها ويعدّها.
+    /// </remarks>
+    private async Task AttachUserNamesAsync(IReadOnlyCollection<DmsTask> tasks, CancellationToken ct)
+    {
+        if (tasks.Count == 0) return;
+
+        var ids = tasks.Select(t => t.CreatedByUserId)
+            .Concat(tasks.Where(t => t.AssignedToUserId is not null)
+                         .Select(t => t.AssignedToUserId!.Value))
+            .Distinct().ToList();
+
+        // `IgnoreQueryFilters` **مقصورٌ على حقل الاسم** — لا يتسرّب منه صفٌّ ولا بيانٌ آخر.
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => ids.Contains(u.UserId))
+            .Select(u => new { u.UserId, u.FullName })
+            .ToDictionaryAsync(x => x.UserId, x => x.FullName, ct);
+
+        foreach (var t in tasks)
+        {
+            // «—» لما لا يُعرَف — **والمهمة تبقى ولو تعذّر اسم مُنشئها**.
+            t.CreatedByUser = new User
+            {
+                UserId = t.CreatedByUserId,
+                FullName = names.GetValueOrDefault(t.CreatedByUserId, "—"),
+            };
+
+            if (t.AssignedToUserId is { } aid)
+                t.AssignedToUser = new User
+                {
+                    UserId = aid,
+                    FullName = names.GetValueOrDefault(aid, "—"),
+                };
+        }
+    }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -297,6 +355,18 @@ public sealed class TaskService(
         if (string.IsNullOrWhiteSpace(input.Title))
             throw new ValidationException("عنوان المهمة مطلوب.");
 
+        // 🔴 **سببٌ إلزاميّ عند تغيير ما يمسّ غيرك** (قرار المالك): العنوان · الموعد ·
+        //    الأولوية · القسم. وتصحيحُ الوصف أو الملاحظات يمرّ بلا سؤال — فاشتراطُ تعليلٍ
+        //    لكل حرفٍ يجعل الحقل شكليّاً. القاعدة في `TaskChangeReason` وحدها.
+        //    ⚠️ **ويُفحص قبل `SetRowVersion`**: رفضٌ بلا سببٍ يجب ألّا يستهلك محاولة تزامن.
+        var needsReason = TaskChangeReason.EditNeedsReason(
+            task.Title, input.Title,
+            task.DueDate, input.DueDate,
+            task.Priority, input.Priority,
+            task.DepartmentId, input.DepartmentId);
+
+        if (needsReason) TaskChangeReason.EnsureReason(input.Reason, "تعديل المهمة");
+
         SetRowVersion(task, input.RowVersion);
 
         // ⚠️ **القسم يُتحقَّق منه ولا يُقلَب نوعُ المهمة**: تحويل فرديةٍ إلى مهمة قسم يغيّر
@@ -348,8 +418,12 @@ public sealed class TaskService(
                 $"تغيّر موعد التسليم من {oldDue:yyyy-MM-dd} إلى {input.DueDate:yyyy-MM-dd}");
 
         if (changes.Count > 0)
-            AddUpdate(task, DmsTaskUpdateType.Edited, null, null, null,
-                $"عُدِّلت المهمة: {string.Join(" · ", changes)}");
+        {
+            var editDesc = $"عُدِّلت المهمة: {string.Join(" · ", changes)}";
+            if (needsReason) editDesc += $" — {input.Reason!.Trim()}";
+            AddUpdate(task, DmsTaskUpdateType.Edited, null, null,
+                needsReason ? input.Reason!.Trim() : null, editDesc);
+        }
 
         audit.Add("Update", nameof(DmsTask), task.TaskId.ToString(), null, task.CompanyId);
         await SaveGuardedAsync(ct);
@@ -415,7 +489,7 @@ public sealed class TaskService(
     }
 
     public async Task<DmsTask> UpdateProgressAsync(
-        int id, int percent, string? comment, CancellationToken ct = default)
+        int id, int percent, string? comment, string? reason, CancellationToken ct = default)
     {
         if (percent is < 0 or > 100)
             throw new ValidationException("نسبة الإنجاز يجب أن تكون بين 0 و100.");
@@ -428,16 +502,29 @@ public sealed class TaskService(
                 $"لا يمكن تحديث نسبة الإنجاز لمهمة في حالة ({TaskWorkflow.ArabicName(task.Status)}).");
 
         var old = task.ProgressPercent;
+
+        // 🔴 **التراجع يحتاج تعليلاً والتقدّم لا** (قرار المالك): من أعاد النسبة من 75% إلى
+        //    25% **نقض إعلاناً سابقاً**، ومن يقرأ الرقم بعد أسبوع لا يعرف أخطأَ إدخالٍ كان
+        //    أم عملاً انكشف نقصُه. القاعدة في `TaskChangeReason` وحدها.
+        var isSetback = TaskChangeReason.ProgressNeedsReason(old, percent);
+        if (isSetback) TaskChangeReason.EnsureReason(reason, "تقليل نسبة الإنجاز");
+
         task.ProgressPercent = percent;
         task.UpdatedAt = DateTime.UtcNow;
 
         // 🔴 **100% لا تُكمل المهمة تلقائياً** — الإكمال قرارٌ يُتّخذ صراحةً وله أثرٌ في
         //    التقرير وفي التصعيد. واشتقاقُ حالةٍ من رقمٍ يجعل نصفَ الحقيقة حكماً.
-        var desc = $"تحدّثت نسبة الإنجاز من {old}% إلى {percent}%";
+        var desc = isSetback
+            ? $"🔻 تراجعت نسبة الإنجاز من {old}% إلى {percent}% — {reason!.Trim()}"
+            : $"تحدّثت نسبة الإنجاز من {old}% إلى {percent}%";
         if (!string.IsNullOrWhiteSpace(comment)) desc += $" — {comment.Trim()}";
 
         AddUpdate(task, DmsTaskUpdateType.ProgressUpdate,
-            $"{old}%", $"{percent}%", comment?.Trim(), desc);
+            $"{old}%", $"{percent}%", isSetback ? reason!.Trim() : comment?.Trim(), desc);
+
+        // التراجع واقعةٌ تستحقّ التدقيق لا مجرّد قيدٍ في سجلّ المهمة.
+        if (isSetback)
+            audit.Add("TaskProgressSetback", nameof(DmsTask), task.TaskId.ToString(), desc, task.CompanyId);
 
         await SaveGuardedAsync(ct);
         return task;

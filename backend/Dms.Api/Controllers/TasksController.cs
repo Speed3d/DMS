@@ -106,7 +106,8 @@ public sealed class TasksController(
     {
         var input = new UpdateTaskInput(
             r.Title, r.Description, r.Priority, r.DueDate, r.StartDate,
-            r.DepartmentId, r.RelatedIncomingId, r.RelatedOutgoingId, r.Notes, r.RowVersion);
+            r.DepartmentId, r.RelatedIncomingId, r.RelatedOutgoingId, r.Notes, r.RowVersion,
+            r.Reason);
 
         await tasks.UpdateAsync(id, input, ct);
         return Map(await tasks.GetByIdAsync(id, ct));
@@ -131,7 +132,7 @@ public sealed class TasksController(
     public async Task<ActionResult<TaskResponse>> Progress(
         int id, TaskProgressRequest r, CancellationToken ct)
     {
-        await tasks.UpdateProgressAsync(id, r.Percent, r.Comment, ct);
+        await tasks.UpdateProgressAsync(id, r.Percent, r.Comment, r.Reason, ct);
         return Map(await tasks.GetByIdAsync(id, ct));
     }
 

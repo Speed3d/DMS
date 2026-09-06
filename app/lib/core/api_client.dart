@@ -1193,7 +1193,7 @@ class ApiClient {
     required String title, String? description, required String priority,
     required DateTime dueDate, DateTime? startDate,
     int? departmentId, int? relatedIncomingId, int? relatedOutgoingId,
-    String? notes, required String rowVersion,
+    String? notes, required String rowVersion, String? reason,
   }) async =>
       TaskModel.fromJson(await _put('/tasks/$id', {
         'title': title,
@@ -1206,6 +1206,7 @@ class ApiClient {
         'relatedOutgoingId': relatedOutgoingId,
         'notes': notes,
         'rowVersion': rowVersion,
+        'reason': reason,
       }) as Map<String, dynamic>);
 
   Future<void> deleteTask(int id) => _delete('/tasks/$id');
@@ -1214,9 +1215,12 @@ class ApiClient {
       TaskModel.fromJson(await _post('/tasks/$id/status',
           {'newStatus': newStatus, 'reason': reason}) as Map<String, dynamic>);
 
-  Future<TaskModel> updateTaskProgress(int id, int percent, {String? comment}) async =>
+  /// ⚠️ [reason] **إلزاميّ عند تقليل النسبة** — والخادم يرفض بـ400 بدونه.
+  Future<TaskModel> updateTaskProgress(int id, int percent,
+          {String? comment, String? reason}) async =>
       TaskModel.fromJson(await _post('/tasks/$id/progress',
-          {'percent': percent, 'comment': comment}) as Map<String, dynamic>);
+          {'percent': percent, 'comment': comment, 'reason': reason})
+          as Map<String, dynamic>);
 
   Future<TaskModel> reassignTask(int id, int assignedToUserId) async =>
       TaskModel.fromJson(await _post('/tasks/$id/reassign',

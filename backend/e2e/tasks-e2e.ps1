@@ -79,8 +79,11 @@ if($g.canEdit -eq $true){ Ok "canEdit تصل — فلا تُعرض أزرارٌ 
 Write-Host "`n=== الموعد الماضي: مرفوضٌ إنشاءً مقبولٌ تعديلاً ===" -ForegroundColor Cyan
 $bad=(Api POST "/tasks" @{title='ماضية';taskType='Individual';priority='Low';dueDate=$past} $tMng $cid)
 if($bad.S -eq 400){ Ok "الإنشاء بموعدٍ ماضٍ مرفوض (400)" } else { Bad "ردّ $($bad.S)" }
-$upd=(Api PUT "/tasks/$id2" @{title='مهمة الاختبار الثانية';priority='Normal';dueDate=$past;rowVersion=$t2.B.rowVersion} $tMng $cid)
-if($upd.S -eq 200){ Ok "والتعديل إليه مقبول — قد يكون تصحيحاً لتاريخٍ خطأ" } else { Bad "التعديل ردّ $($upd.S)" }
+# ⚠️ **بسببٍ الآن**: تغيير الموعد يمسّ غيرك (يحكم التأخّر والتصعيد) فيلزمه تعليل — ADR-037.
+$updNoReason=(Api PUT "/tasks/$id2" @{title='مهمة الاختبار الثانية';priority='Normal';dueDate=$past;rowVersion=$t2.B.rowVersion} $tMng $cid)
+if($updNoReason.S -eq 400){ Ok "🔐 وتعديل الموعد بلا سبب مرفوض" } else { Bad "ردّ $($updNoReason.S)" }
+$upd=(Api PUT "/tasks/$id2" @{title='مهمة الاختبار الثانية';priority='Normal';dueDate=$past;rowVersion=$t2.B.rowVersion;reason='تصحيح تاريخٍ أُدخل خطأً'} $tMng $cid)
+if($upd.S -eq 200){ Ok "والتعديل إليه مقبول بسببٍ — قد يكون تصحيحاً لتاريخٍ خطأ" } else { Bad "التعديل ردّ $($upd.S)" }
 if($upd.B.isOverdue -eq $true){ Ok "وصارت متأخرةً فوراً — «متأخر» محسوبٌ لا مخزَّن" } else { Bad "isOverdue=$($upd.B.isOverdue)" }
 if($upd.B.daysOverdue -eq 3){ Ok "وتأخّرها 3 أيام بالضبط" } else { Bad "daysOverdue=$($upd.B.daysOverdue)" }
 
@@ -163,8 +166,10 @@ if($r.S -eq 404){ Ok "ومَن خارج القسم لا يراها (404 لا 403
 Write-Host "`n=== التزامن المتفائل ===" -ForegroundColor Cyan
 $cur=(Api GET "/tasks/$idD" $null $tMng $cid).B
 $stale=$cur.rowVersion
-$null=Api PUT "/tasks/$idD" @{title='عنوانٌ جديد';priority='High';dueDate=$due;departmentId=$depId;rowVersion=$stale} $tMng $cid
-$r=(Api PUT "/tasks/$idD" @{title='عنوانٌ ثالث';priority='High';dueDate=$due;departmentId=$depId;rowVersion=$stale} $tMng $cid)
+$null=Api PUT "/tasks/$idD" @{title='عنوانٌ جديد';priority='High';dueDate=$due;departmentId=$depId;rowVersion=$stale;reason='تصحيح العنوان'} $tMng $cid
+$r=(Api PUT "/tasks/$idD" @{title='عنوانٌ ثالث';priority='High';dueDate=$due;departmentId=$depId;rowVersion=$stale;reason='تصحيح العنوان ثانيةً'} $tMng $cid)
+# 🔴 **وترتيب الحارسين جزءٌ من العقد**: فحصُ السبب **قبل** `SetRowVersion` — فرفضٌ بلا سببٍ
+#    يجب ألّا يستهلك محاولة تزامن. ولهذا يصل هذا الطلب (وله سبب) إلى حارس التزامن فيردّ 409.
 if($r.S -eq 409){ Ok "الكتابة بنسخةٍ قديمة تُرفض (409)" } else { Bad "ردّ $($r.S)" }
 
 Write-Host "`n=== السجلّ الشاهد ===" -ForegroundColor Cyan
@@ -220,6 +225,63 @@ foreach($ep in @("/tasks","/tasks/summary","/tasks/overdue","/tasks/my","/tasks/
 }
 $r=(Api POST "/tasks" @{title='من قارئ';taskType='Individual';priority='Low';dueDate=$due} $tRdr $cid)
 if($r.S -eq 403){ Ok "ولا يُنشئ مهمة (403)" } else { Bad "ردّ $($r.S)" }
+
+Write-Host "`n=== 🔴 مهمةٌ أنشأها السوبر أدمن (حارس ADR-034) ===" -ForegroundColor Cyan
+# 🔴 **بلاغ المالك 2026-09-06: «السوبر أدمن لا يستطيع إنشاء مهمة».** والحقيقة أن المهمة
+#    تُنشأ ثم يردّ الخادم 404 عند قراءتها — لأن `Include(t => t.CreatedByUser)` على خاصيةٍ
+#    **إلزامية** يولّد INNER JOIN على `Users` المفلتَر، والسوبر أدمن **بلا شركة مُسنَدة**
+#    فيسقط صفُّه ⇒ **تسقط المهمة كلُّها**. وهو ADR-034 للمرّة الثالثة في هذه الوحدة.
+$sa=(Api POST "/tasks" @{title='مهمة أنشأها السوبر أدمن';taskType='Individual';priority='Normal';dueDate=$due} $admin $cid)
+if($sa.S -eq 200 -and $sa.B.taskId){ Ok "السوبر أدمن يُنشئ مهمة ($($sa.B.taskId))" } else { Bad "الإنشاء ردّ $($sa.S)" }
+$idSa=[int]$sa.B.taskId
+if($sa.B.createdByUserName){ Ok "واسم مُنشئها يصل: $($sa.B.createdByUserName)" } else { Bad "اسم المُنشئ فارغ" }
+
+$re=(Api GET "/tasks/$idSa" $null $admin $cid)
+if($re.S -eq 200){ Ok "🔴 وتُقرأ بعد الإنشاء (لا 404) — الربط الداخليّ لم يمحُها" }
+else { Bad "قراءتها ردّت $($re.S) — الربط الداخليّ يمحو المهمة" }
+
+$saList=(Api GET "/tasks?pageSize=200" $null $admin $cid).B
+$found=@(@($saList.items) | Where-Object { [int]$_.taskId -eq $idSa })
+if($found.Count -eq 1){ Ok "وتظهر في القائمة" } else { Bad "سقطت من القائمة" }
+
+# 🔴 **والعدّاد كان يكذب كذلك**: `CountAsync` يعدّ بلا ربط، والصفحة تُسقط ما يُسقطه الربط.
+if($saList.total -eq @($saList.items).Count){ Ok "🔴 والعدّاد يطابق ما تُرجعه القائمة ($($saList.total))" }
+else { Bad "العدّاد $($saList.total) والقائمة $(@($saList.items).Count) — الربط يُسقط صفوفاً يعدّها العدّاد" }
+
+$reassignSa=(Api POST "/tasks/$idSa/reassign" @{assignedToUserId=$mngId} $admin $cid)
+if($reassignSa.S -eq 200){ Ok "وإعادة إسنادها تعمل" } else { Bad "إعادة الإسناد ردّت $($reassignSa.S)" }
+
+Write-Host "`n=== سببٌ عند التراجع وعند التعديل الجوهريّ ===" -ForegroundColor Cyan
+$tr=(Api POST "/tasks" @{title='مهمة لفحص الأسباب';taskType='Individual';priority='Normal';dueDate=$due} $tMng $cid).B
+$idR=[int]$tr.taskId
+$null=Api POST "/tasks/$idR/status" @{newStatus='InProgress'} $tMng $cid
+$null=Api POST "/tasks/$idR/progress" @{percent=75} $tMng $cid
+
+$back=(Api POST "/tasks/$idR/progress" @{percent=25} $tMng $cid)
+if($back.S -eq 400){ Ok "🔐 تقليل النسبة بلا سبب مرفوض (400)" } else { Bad "ردّ $($back.S)" }
+$backShort=(Api POST "/tasks/$idR/progress" @{percent=25;reason='قصير'} $tMng $cid)
+if($backShort.S -eq 400){ Ok "وسببٌ دون خمسة أحرف مرفوض" } else { Bad "ردّ $($backShort.S)" }
+$backOk=(Api POST "/tasks/$idR/progress" @{percent=25;reason='انكشف عملٌ ناقص في التقرير'} $tMng $cid)
+if($backOk.S -eq 200 -and $backOk.B.progressPercent -eq 25){ Ok "وبسببٍ كافٍ يمرّ" } else { Bad "ردّ $($backOk.S)" }
+
+$fwd=(Api POST "/tasks/$idR/progress" @{percent=50} $tMng $cid)
+if($fwd.S -eq 200){ Ok "🔴 والتقدّم لا يحتاج سبباً — القاعدة تفرّق بين النقض والإنجاز" } else { Bad "ردّ $($fwd.S)" }
+
+$cur=(Api GET "/tasks/$idR" $null $tMng $cid).B
+$editNoReason=(Api PUT "/tasks/$idR" @{title='عنوانٌ مختلف تماماً';priority='Normal';dueDate=$due;rowVersion=$cur.rowVersion} $tMng $cid)
+if($editNoReason.S -eq 400){ Ok "🔐 وتغيير العنوان بلا سبب مرفوض" } else { Bad "ردّ $($editNoReason.S)" }
+
+$cur=(Api GET "/tasks/$idR" $null $tMng $cid).B
+$editMinor=(Api PUT "/tasks/$idR" @{title=$cur.title;description='وصفٌ جديد';priority=$cur.priority;dueDate=$due;rowVersion=$cur.rowVersion} $tMng $cid)
+if($editMinor.S -eq 200){ Ok "🔴 وتصحيح الوصف يمرّ بلا سبب — فلا يصير الحقل شكليّاً" } else { Bad "ردّ $($editMinor.S)" }
+
+$cur=(Api GET "/tasks/$idR" $null $tMng $cid).B
+$editOk=(Api PUT "/tasks/$idR" @{title='عنوانٌ مختلف تماماً';priority='Normal';dueDate=$due;rowVersion=$cur.rowVersion;reason='تصحيح العنوان بطلب المدير'} $tMng $cid)
+if($editOk.S -eq 200){ Ok "وبسببٍ كافٍ يمرّ التعديل الجوهريّ" } else { Bad "ردّ $($editOk.S)" }
+
+$upsR=@((Api GET "/tasks/$idR/updates" $null $tMng $cid).B)
+$withReason=@($upsR | Where-Object { $_.comment -and $_.comment -like '*انكشف*' })
+if($withReason.Count -ge 1){ Ok "🔴 وسبب التراجع محفوظٌ في السجلّ يقرؤه غيرُك" } else { Bad "سبب التراجع غير محفوظ" }
 
 Write-Host "`n=== الفلاتر والملخّص ===" -ForegroundColor Cyan
 $lst=(Api GET "/tasks?pageSize=100" $null $tMng $cid).B

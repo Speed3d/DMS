@@ -6,6 +6,7 @@ import '../core/hr_providers.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
 import '../core/nav_intent.dart';
+import '../core/task_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
@@ -51,6 +52,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final showArchive = session.hasModule('Archive');
     final showEmployees = session.canSeeEmployees;
     final showPayroll = session.canSeePayroll;
+    final showTasks = session.canSeeTasks;
 
     // ⚠️ قبل الحكم بـ«لا صلاحيات» نتأكّد أن الجلسة حُمّلت فعلاً: `hasModule` يردّ false
     //    حين تكون `auth` فارغة، فلولا هذا الفحص لومضت رسالة «لا أقسام متاحة» لحظةَ
@@ -59,7 +61,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.gold)));
     }
 
-    if (!showOutgoing && !showIncoming && !showArchive && !showEmployees && !showPayroll) {
+    // ⚠️ **وكلُّ قسمٍ جديد يُضاف إلى هذا الشرط** — وإلا رأى مَن يملكه وحده رسالة «لا أقسام
+    //    متاحة» وهو يملك قسماً. (سقطت المهام منه أول مرّة، وهو **نفسُ العيب** الذي يحذّر
+    //    منه التعليق أعلاه: رسالةٌ كاذبة أسوأ من نقصٍ في العرض.)
+    if (!showOutgoing && !showIncoming && !showArchive &&
+        !showEmployees && !showPayroll && !showTasks) {
       return const _NoModulesView();
     }
 
@@ -198,6 +204,67 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                           onTap: () => _goWithIntent(
                                               9, const PendingLeavesIntent())),
                                     ),
+                                ];
+                              })(),
+
+                            // ── المهام (ADR-037) ──
+                            // ⚠️ `canSeeTasks` لا `hasModule`: القسم **مع الدور** — والقارئ
+                            //    محجوبٌ ولو مُنح القسم، فبطاقةٌ تقود إلى شاشة تردّ 403 أسوأ
+                            //    من بطاقة غائبة. (القاعدة نفسها المكتوبة للموظفين أعلاه.)
+                            if (showTasks)
+                              ...(() {
+                                final ts = ref
+                                    .watch(taskSummaryProvider)
+                                    .whenOrNull(data: (s) => s);
+                                return [
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildStatCard(
+                                        'مهامي النشِطة',
+                                        ts?.mineActive.toString() ?? '…',
+                                        Icons.assignment_ind_rounded,
+                                        const Color(0xFF6366F1),
+                                        // تنقل **بنيّة** لا «افتح المهام» — G11 نفسها.
+                                        onTap: () => _goWithIntent(
+                                            12, const TaskListIntent(TaskIntentKind.mine))),
+                                  ),
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildStatCard(
+                                        'مهامّ قيد العمل',
+                                        ts?.active.toString() ?? '…',
+                                        Icons.task_alt_rounded,
+                                        const Color(0xFF0EA5E9),
+                                        onTap: () => widget.onNavigate?.call(12)),
+                                  ),
+                                  // ⚠️ **تظهر عند وجودها فقط** — بطاقةُ «متأخرة: 0» ضجيجٌ
+                                  //    دائم، وحين تصير 3 لا يلحظها أحد لأنها كانت هناك دوماً.
+                                  if ((ts?.overdue ?? 0) > 0)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard(
+                                          'مهامّ متأخرة', '${ts!.overdue}',
+                                          Icons.running_with_errors_rounded,
+                                          AppColors.danger,
+                                          onTap: () => _goWithIntent(12,
+                                              const TaskListIntent(TaskIntentKind.overdue))),
+                                    ),
+                                  if ((ts?.dueToday ?? 0) > 0)
+                                    SizedBox(
+                                      width: cardWidth,
+                                      child: _buildStatCard(
+                                          'تستحق اليوم', '${ts!.dueToday}',
+                                          Icons.today_rounded, AppColors.warn,
+                                          onTap: () => widget.onNavigate?.call(12)),
+                                    ),
+                                  SizedBox(
+                                    width: cardWidth,
+                                    child: _buildStatCard(
+                                        'أُنجزت هذا الشهر',
+                                        ts?.completedThisMonth.toString() ?? '…',
+                                        Icons.verified_rounded, AppColors.success,
+                                        onTap: () => widget.onNavigate?.call(12)),
+                                  ),
                                 ];
                               })(),
                           ],

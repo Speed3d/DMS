@@ -27,7 +27,14 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
+  final _commentController = TextEditingController();
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
 
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -94,12 +101,17 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           ),
         ),
         data: (t) => DefaultTabController(
-          length: 3,
+          length: 4,
           child: Column(
             children: [
               _header(t),
-              const TabBar(tabs: [
+              // 🔴 **التعليقات تبويبٌ مستقلّ عن السجلّ** (بلاغ المالك: «أين تظهر
+              //    التعليقات؟»). كانت تُحفَظ وتُعرض فعلاً — لكن **مختلطةً بتغييرات الحالة**
+              //    في تبويب السجلّ، فمن يعلّق ثم ينظر في «التفاصيل» لا يرى شيئاً.
+              //    **حوارٌ شيءٌ وأثرُ تدقيقٍ شيءٌ آخر، وخلطُهما يدفن الأول.**
+              const TabBar(isScrollable: true, tabs: [
                 Tab(text: 'التفاصيل'),
+                Tab(text: 'التعليقات'),
                 Tab(text: 'السجلّ'),
                 Tab(text: 'المرفقات'),
               ]),
@@ -108,6 +120,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               Expanded(
                 child: TabBarView(children: [
                   _detailsTab(t),
+                  _commentsTab(t),
                   _logTab(t),
                   _attachmentsTab(t),
                 ]),
@@ -193,12 +206,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               ...[25, 50, 75, 100].map((p) => OutlinedButton(
-                    onPressed: _busy || t.progressPercent == p
-                        ? null
-                        : () => _run(() => ref
-                            .read(apiClientProvider)
-                            .updateTaskProgress(t.taskId, p)),
-                    child: Text('$p%'),
+                    onPressed:
+                        _busy || t.progressPercent == p ? null : () => _setProgress(t, p),
+                    // 🔻 يُميَّز ما يُنقص النسبة — فيعرف الضاغط أنه سيُسأل عن السبب.
+                    child: Text(p < t.progressPercent ? '🔻 $p%' : '$p%'),
                   )),
             ],
           ),
@@ -304,11 +315,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                   label: const Text('إعادة الإسناد'),
                 ),
 
-              OutlinedButton.icon(
-                onPressed: _busy ? null : () => _promptComment(t),
-                icon: const Icon(Icons.comment_outlined, size: 16),
-                label: const Text('تعليق'),
-              ),
+              // ⚠️ **حُذف زرّ «تعليق» من هنا**: صار للتعليقات تبويبٌ بصندوق كتابةٍ ظاهر،
+              //    وزرٌّ يفتح حواريّةً لشيءٍ له مكانٌ واضح **يُشتّت ولا يُضيف**.
             ],
           ),
         ],
@@ -451,6 +459,154 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   // ─────────────────── حواريّات ───────────────────
 
+  /// يضبط النسبة — **ويسأل عن السبب إن كانت تتراجع** (قرار المالك).
+  ///
+  /// 🔴 **التقدّم لا يحتاج تعليلاً والتراجع يحتاجه**: من رفع النسبة إلى 75% أعلن إنجازاً،
+  /// ومن أعادها إلى 25% **نقض إعلاناً سابقاً** — ومن يقرأ الرقم بعد أسبوع لا يعرف أخطأَ
+  /// إدخالٍ كان أم عملاً انكشف نقصُه. والخادم يفرض القاعدة نفسها، وهذه **مرآتُها** فلا
+  /// يُفاجأ المستخدم بـ400 بعد الضغط.
+  Future<void> _setProgress(TaskModel t, int percent) async {
+    String? reason;
+
+    if (percent < t.progressPercent) {
+      reason = await _promptText(
+        title: 'تقليل نسبة الإنجاز من ${t.progressPercent}% إلى $percent%',
+        hint: 'لماذا تراجعت النسبة؟ (٥ أحرف فأكثر)',
+        validator: (v) => v.trim().length < 5 ? 'السبب مطلوب (٥ أحرف فأكثر)' : null,
+      );
+      if (reason == null) return;
+    }
+
+    await _run(() => ref
+        .read(apiClientProvider)
+        .updateTaskProgress(t.taskId, percent, reason: reason));
+  }
+
+  /// تبويب التعليقات — **حوارٌ لا أثرُ تدقيق**: الأقدم أعلى وصندوق الكتابة في أسفله.
+  Widget _commentsTab(TaskModel t) {
+    final updatesAsync = ref.watch(taskUpdatesProvider(t.taskId));
+    final myId = ref.read(sessionProvider).auth?.userId;
+
+    return Column(
+      children: [
+        Expanded(
+          child: updatesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('$e')),
+            data: (rows) {
+              // ⚠️ **التعليقات وحدها** لا تغييرات الحالة. والترتيب **الأقدم أعلى** عكس
+              //    السجلّ: الحوار يُقرأ من أوّله، والأثر يُقرأ من آخره.
+              final comments =
+                  rows.where((u) => u.updateType == 'Comment').toList().reversed.toList();
+
+              if (comments.isEmpty) return _noComments();
+
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: comments.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) => _commentBubble(comments[i], comments[i].updatedByUserId == myId),
+              );
+            },
+          ),
+        ),
+        // 🔴 **صندوق الكتابة في الشاشة نفسها لا خلف زرٍّ في تبويبٍ آخر** — وهذا جوهر
+        //    البلاغ: الميزة كانت تعمل، ومكانها هو الخطأ.
+        _commentComposer(t),
+      ],
+    );
+  }
+
+  Widget _noComments() => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.forum_outlined,
+                size: 48, color: Theme.of(context).dividerColor.withValues(alpha: 0.8)),
+            const SizedBox(height: 10),
+            const Text('لا تعليقات بعد'),
+            const SizedBox(height: 4),
+            Text('اكتب أوّل تعليق في الأسفل',
+                style: TextStyle(
+                    fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color)),
+          ],
+        ),
+      );
+
+  Widget _commentBubble(TaskUpdateModel c, bool mine) {
+    final muted = Theme.of(context).textTheme.bodySmall?.color;
+    return Align(
+      alignment: mine ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: CustomCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(c.comment ?? c.description, style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.person_outline_rounded, size: 12, color: muted),
+                      const SizedBox(width: 3),
+                      Text(c.updatedByUserName,
+                          style: TextStyle(fontSize: 11, color: muted)),
+                    ],
+                  ),
+                  Text(_fmtInstant(c.updatedAt),
+                      style: TextStyle(fontSize: 11, color: muted)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _commentComposer(TaskModel t) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _commentController,
+                minLines: 1,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'اكتب تعليقاً…',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onSubmitted: (_) => _sendComment(t),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              tooltip: 'إرسال',
+              onPressed: _busy ? null : () => _sendComment(t),
+              icon: const Icon(Icons.send_rounded, size: 18),
+            ),
+          ],
+        ),
+      );
+
+  Future<void> _sendComment(TaskModel t) async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty) return;
+
+    await _run(() async {
+      await ref.read(apiClientProvider).addTaskComment(t.taskId, text);
+      _commentController.clear();
+    });
+  }
+
   Future<void> _promptReopen(TaskModel t) async {
     final reason = await _promptText(
       title: 'إعادة فتح المهمة',
@@ -461,16 +617,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
     if (reason == null) return;
     await _run(() => ref.read(apiClientProvider).reopenTask(t.taskId, reason));
-  }
-
-  Future<void> _promptComment(TaskModel t) async {
-    final text = await _promptText(
-      title: 'إضافة تعليق',
-      hint: 'نصّ التعليق',
-      validator: (v) => v.trim().isEmpty ? 'التعليق مطلوب' : null,
-    );
-    if (text == null) return;
-    await _run(() => ref.read(apiClientProvider).addTaskComment(t.taskId, text));
   }
 
   Future<void> _promptReassign(TaskModel t) async {
