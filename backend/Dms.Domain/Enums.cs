@@ -77,6 +77,14 @@ public enum OwnerType
     /// على الموظف كان يخلط إيصالات اثني عشر شهراً في كومةٍ واحدة.
     /// </remarks>
     PayrollEntry = 5,
+
+    /// <summary>مرفقات المهمة (ADR-037).</summary>
+    /// <remarks>
+    /// ⚠️ **القيمة 6 لا 4**: القيمتان 4 و5 مشغولتان بـ<see cref="PayrollPeriod"/> و
+    /// <see cref="PayrollEntry"/>. ولو أُعيد استعمال 4 لاختلطت مرفقات المهام بلقطات كشوف
+    /// الرواتب **صامتاً في قاعدة العمل** — لا خطأ بناءٍ يمنع ذلك ولا رسالة.
+    /// </remarks>
+    Task = 6,
 }
 
 /// <summary>لغة إيصال استلام الراتب — الشركة توظّف عمالاً أجانب لا يقرؤون العربية.</summary>
@@ -263,8 +271,23 @@ public enum AppModule
     /// </remarks>
     All = Outgoing | Archive | Reports | Users | Settings | Backup | Incoming, // 127
 
-    /// <summary>كل شيء بلا استثناء (511) — للأدوار المعفاة وحدها: السوبر أدمن ورئيس الشركة.</summary>
-    AllWithHr = All | Employees | Payroll, // 511
+    /// <summary>المهام والإشعارات المرتبطة بها (ADR-037). **خارج <see cref="All"/> عمداً**.</summary>
+    /// <remarks>
+    /// ⚠️ بتٌّ **جديد** فلا يملكه أحدٌ تلقائياً — ولا مهاجرةَ بياناتٍ تمنحه لأحد، خلافاً لـ
+    /// <see cref="Payroll"/> الذي وُلد من صلاحيةٍ **مقسومة** فورث نصفها.
+    ///
+    /// 🔴 **وبقاؤه خارج <see cref="All"/> هو الحارس الوحيد الباقي**: القارئ محجوبٌ بالدور
+    /// (قرار المالك)، ومن فوقه يناله **بمنحٍ صريح أو لا يناله**.
+    /// </remarks>
+    Tasks = 512,
+
+    /// <summary>كل شيء بلا استثناء (1023) — للأدوار المعفاة وحدها: السوبر أدمن ورئيس الشركة.</summary>
+    /// <remarks>
+    /// ⚠️ **الاسم لم يعد دقيقاً** بعد ضمّ <see cref="Tasks"/> إليه (لم تعد «HR» وحدها)، و**لا
+    /// يُعاد تسميته**: يمسّ تسعة ملفات ولا يضيف معنى. المقصود به: **كلُّ قسمٍ يُمنح صراحةً**،
+    /// مجموعاً للأدوار المعفاة.
+    /// </remarks>
+    AllWithHr = All | Employees | Payroll | Tasks, // 1023
 }
 
 /// <summary>تحويل bitmask الأقسام إلى/من قائمة أسماء (لعقود الـ API).</summary>
@@ -278,7 +301,7 @@ public static class AppModuleExtensions
     {
         AppModule.Outgoing, AppModule.Archive, AppModule.Reports, AppModule.Users,
         AppModule.Settings, AppModule.Backup, AppModule.Incoming,
-        AppModule.Employees, AppModule.Payroll,
+        AppModule.Employees, AppModule.Payroll, AppModule.Tasks,
     };
 
     public static List<string> ToNames(this AppModule m) =>
@@ -293,4 +316,67 @@ public static class AppModuleExtensions
                 result |= v;
         return result;
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  وحدة المهام (ADR-037)
+//  ⚠️ البادئة `Dms` إلزامية: `System.Threading.Tasks.TaskStatus` موجودٌ ومستوردٌ عالمياً
+//     بـ`ImplicitUsings`، فاسمٌ مطابقٌ له يُنتج CS0104 في كل ملفٍ فيه `using Dms.Domain;`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// <summary>نوع المهمة — فرديةٌ لشخص، أو لقسمٍ يراها كلُّ موظفيه ويحدّثونها.</summary>
+public enum DmsTaskType
+{
+    Individual = 0,
+    Department = 1,
+}
+
+/// <summary>أولوية المهمة — تُستعمل في الترتيب واللون وحدّة نبرة التصعيد.</summary>
+public enum DmsTaskPriority
+{
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Urgent = 3,
+}
+
+/// <summary>حالة المهمة — والانتقالات بينها مصفوفةٌ مغلقة في <see cref="TaskWorkflow"/>.</summary>
+public enum DmsTaskStatus
+{
+    New = 0,
+    InProgress = 1,
+    OnHold = 2,
+    Completed = 3,
+
+    /// <summary>ملغاة — **حالة نهائية بلا مخرج**: الإلغاء عدولٌ عن العمل لا تعليقٌ له.</summary>
+    Cancelled = 4,
+
+    /// <summary>أُعيد فتحها بعد الاكتمال — **حالةٌ مستقلّة** لا عودةٌ إلى «قيد التنفيذ».</summary>
+    /// <remarks>
+    /// الفرق بين «لم تبدأ» و«أُعيد فتحها» يجب أن يبقى مقروءاً في السجلّ والتقرير — فمهمةٌ
+    /// أُعيد فتحها مرّتين تقول شيئاً عن جودة إنجازها لا يقوله عدّادُ الحالة.
+    /// </remarks>
+    Reopened = 5,
+}
+
+/// <summary>نوع القيد في سجلّ المهمة الشاهد (<see cref="DmsTaskUpdate"/>).</summary>
+public enum DmsTaskUpdateType
+{
+    Created = 0,
+    ProgressUpdate = 1,
+    StatusChange = 2,
+    Comment = 3,
+    Reassign = 4,
+    PriorityChange = 5,
+    DueDateChange = 6,
+    Reopen = 7,
+    Edited = 8,
+}
+
+/// <summary>نمط تكرار المهمة.</summary>
+public enum DmsRecurrencePattern
+{
+    Daily = 0,
+    Weekly = 1,
+    Monthly = 2,
 }

@@ -27,7 +27,11 @@ public class AppModuleTests
     {
         Assert.True(AppModule.AllWithHr.HasFlag(AppModule.Employees));
         Assert.True(AppModule.AllWithHr.HasFlag(AppModule.Payroll));
-        Assert.Equal(511, (int)AppModule.AllWithHr);
+
+        // ⚠️ **1023 لا 511 منذ ADR-037**: ضُمّ `Tasks = 512`. والاسم لم يعد دقيقاً ولم يُغيَّر
+        //    عمداً — معناه «كلُّ قسمٍ يُمنح صراحةً»، مجموعاً للأدوار المعفاة.
+        Assert.True(AppModule.AllWithHr.HasFlag(AppModule.Tasks));
+        Assert.Equal(1023, (int)AppModule.AllWithHr);
     }
 
     [Fact]
@@ -50,10 +54,14 @@ public class AppModuleTests
     }
 
     [Fact]
-    public void AllNineModules_RoundTripThroughNames()
+    public void AllTenModules_RoundTripThroughNames()
     {
+        // 🔴 **العدد مقصودٌ لا تجميليّ**: قسمٌ غائب عن `AppModuleExtensions.Individual` يُسقَط
+        //    **صامتاً** ذهاباً وإياباً، فلا يظهر مربّعه في شاشة المستخدمين ولا تُحفظ صلاحيته
+        //    أبداً — وهو نمط «ميزة بلا مدخل» الذي كلّف المشروع ثلاث فجوات.
         var names = AppModule.AllWithHr.ToNames();
-        Assert.Equal(9, names.Count);
+        Assert.Equal(10, names.Count);
+        Assert.Contains("Tasks", names);
         Assert.Equal(AppModule.AllWithHr, AppModuleExtensions.FromNames(names));
     }
 
@@ -64,12 +72,29 @@ public class AppModuleTests
     }
 
     [Fact]
-    public void StrippingBothHrModules_LeavesOtherModulesIntact()
+    public void StrippingSensitiveModules_LeavesOtherModulesIntact()
     {
-        // ما يفعله `ResolveModules` للقارئ.
-        var stripped = AppModule.AllWithHr & ~(AppModule.Employees | AppModule.Payroll);
+        // ما يفعله `ResolveModules` للقارئ — و**الأقسام الحسّاسة صارت ثلاثة** بعد ADR-037:
+        // المهام محجوبةٌ عن القارئ بقرار المالك كالموظفين والرواتب.
+        var sensitive = AppModule.Employees | AppModule.Payroll | AppModule.Tasks;
+        var stripped = AppModule.AllWithHr & ~sensitive;
+
         Assert.Equal(AppModule.All, stripped);
         Assert.True(stripped.HasFlag(AppModule.Incoming));
+    }
+
+    [Fact]
+    public void Tasks_StaysOutOfAll_SoItIsNeverGrantedSilently()
+    {
+        // 🔴 **الحارس الوحيد الباقي بعد سقوط حدّ الدور**: `All` هي الافتراض في ثلاثة مواضع
+        //    صامتة (تهيئة `UserCompany.Modules` · `ResolveModules` بلا تحديد · المهاجرة على
+        //    الصفوف القائمة). قسمٌ داخلها = قسمٌ يناله كلُّ مستخدمٍ جديد بلا أن يمنحه أحد.
+        Assert.False(AppModule.All.HasFlag(AppModule.Tasks));
+        Assert.Equal(512, (int)AppModule.Tasks);
+
+        // ولا يُشتقّ أحدهما من الآخر — نظير الفصل بين الموظفين والرواتب.
+        Assert.False(AppModule.Tasks.HasFlag(AppModule.Payroll));
+        Assert.False(AppModule.Payroll.HasFlag(AppModule.Tasks));
     }
 
     [Fact]

@@ -114,10 +114,13 @@ public static class AuditLabels
         ["PayrollEntry"] = "سطر راتب",
         ["HrSettings"] = "إعدادات الموظفين والرواتب",
 
+        ["DmsTask"] = "مهمة",
+
         // قيم OwnerType كما يكتبها AttachmentService
         ["Outgoing"] = "كتاب صادر",
         ["Incoming"] = "كتاب وارد",
         ["Archive"] = "أضبارة أرشيف",
+        ["Task"] = "مهمة",
     };
 
     /// <summary>عربيّة الفعل، أو الفعل نفسه إن لم يُعرف (لا يُخفى أبداً).</summary>

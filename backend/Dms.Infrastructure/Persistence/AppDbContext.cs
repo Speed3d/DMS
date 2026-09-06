@@ -56,6 +56,8 @@ public class AppDbContext : DbContext
     public DbSet<EmployeeLeave> EmployeeLeaves => Set<EmployeeLeave>();
     public DbSet<EmployeeLog> EmployeeLogs => Set<EmployeeLog>();
     public DbSet<EmployeeLeaveSettlement> EmployeeLeaveSettlements => Set<EmployeeLeaveSettlement>();
+    public DbSet<DmsTask> DmsTasks => Set<DmsTask>();
+    public DbSet<DmsTaskUpdate> DmsTaskUpdates => Set<DmsTaskUpdate>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -464,6 +466,82 @@ public class AppDbContext : DbContext
                 .HasForeignKey(x => x.EmployeeCompanyId).OnDelete(DeleteBehavior.Cascade);
 
             // بلا حذف ناعم عمداً: السجلّ شاهدٌ لا سجلّ عمل.
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
+        // ---- DmsTask (وحدة المهام — ADR-037) ----
+        b.Entity<DmsTask>(e =>
+        {
+            e.HasKey(x => x.TaskId);
+
+            e.Property(x => x.Title).IsRequired().HasMaxLength(500);
+            e.Property(x => x.TaskNumber).HasMaxLength(40);
+            e.Property(x => x.RowVersion).IsRowVersion();
+
+            // رقم فريد لكل (شركة + سنة) + رقم رسمي فريد — نمط الصادر والوارد حرفياً.
+            e.HasIndex(x => new { x.CompanyId, x.Year, x.SerialNo })
+                .IsUnique().HasFilter("[SerialNo] IS NOT NULL");
+            e.HasIndex(x => x.TaskNumber).IsUnique().HasFilter("[TaskNumber] IS NOT NULL");
+
+            // 🔴 **حارس التكاثر على مستوى القاعدة**: نسخةٌ واحدة لكل (أمّ × موعد). الخدمة
+            //    الخلفية تعمل كل ساعة، وفحصُ الوجود في التطبيق وحده يُخترق بتشغيلين متزامنين
+            //    أو بإعادة إقلاعٍ في أثناء الدورة — والنتيجة تكاثرٌ أُسّي لا يُلاحَظ إلا بعد أيام.
+            e.HasIndex(x => new { x.ParentRecurringTaskId, x.DueDate })
+                .IsUnique().HasFilter("[ParentRecurringTaskId] IS NOT NULL");
+
+            // مركّب يخدم ثلاثة استعلامات معاً: قائمة المهام · المتأخرة · دورة التصعيد.
+            e.HasIndex(x => new { x.CompanyId, x.Status, x.DueDate });
+            e.HasIndex(x => new { x.CompanyId, x.AssignedToUserId });
+            e.HasIndex(x => new { x.CompanyId, x.DepartmentId });
+
+            // ⚠️ **السلوك صريحٌ في كل علاقة ولا يُترك لسقالة EF**: `DmsTask` يشير إلى `Users`
+            //    مرّتين وإلى `Companies`، وSQL Server يرفض دورات الحذف. و`Cascade` على جدولٍ
+            //    ينمو خطرٌ بلا مقابل — والشركات لا تُحذف فعلياً في هذا النظام أصلاً.
+            e.HasOne(x => x.Company).WithMany()
+                .HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.AssignedToUser).WithMany(u => u.AssignedTasks)
+                .HasForeignKey(x => x.AssignedToUserId).OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.CreatedByUser).WithMany(u => u.CreatedTasks)
+                .HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.RelatedIncoming).WithMany()
+                .HasForeignKey(x => x.RelatedIncomingId).OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.RelatedOutgoing).WithMany()
+                .HasForeignKey(x => x.RelatedOutgoingId).OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.ParentRecurringTask).WithMany(t => t.RecurringInstances)
+                .HasForeignKey(x => x.ParentRecurringTaskId).OnDelete(DeleteBehavior.Restrict);
+
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- DmsTaskUpdate (سجلّ المهمة الشاهد — يُكتب ولا يُعدَّل) ----
+        b.Entity<DmsTaskUpdate>(e =>
+        {
+            e.HasKey(x => x.UpdateId);
+
+            e.Property(x => x.Description).IsRequired().HasMaxLength(1000);
+            e.Property(x => x.OldValue).HasMaxLength(500);
+            e.Property(x => x.NewValue).HasMaxLength(500);
+            e.Property(x => x.Comment).HasMaxLength(2000);
+
+            e.HasIndex(x => new { x.TaskId, x.UpdatedAt });
+
+            e.HasOne(x => x.Task).WithMany(t => t.Updates)
+                .HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.UpdatedByUser).WithMany()
+                .HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ **بلا فلتر حذفٍ ناعم عمداً** — السجلّ شاهدٌ لا سجلّ عمل، ويبقى مقروءاً بعد
+            //    حذف المهمة الناعم. (درس ADR-028: السجلّ اختفى في اللحظة التي صار فيها أهمَّ
+            //    ما يُقرأ.)
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 

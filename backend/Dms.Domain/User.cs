@@ -28,6 +28,12 @@ public class User
 
     /// <summary>الشركات المُسندة — وكلٌّ منها يحمل صلاحيات المستخدم وقسمه **في تلك الشركة**.</summary>
     public ICollection<UserCompany> AssignedCompanies { get; set; } = new List<UserCompany>();
+
+    /// <summary>المهام المُسنَدة إليه (ADR-037).</summary>
+    public ICollection<DmsTask> AssignedTasks { get; set; } = new List<DmsTask>();
+
+    /// <summary>المهام التي أنشأها (ADR-037).</summary>
+    public ICollection<DmsTask> CreatedTasks { get; set; } = new List<DmsTask>();
 }
 
 /// <summary>
@@ -107,6 +113,19 @@ public class UserCompany
     /// في الإصدار (سابقة فكّ الأرشفة — ADR-021).
     /// </remarks>
     public bool CanAmendPaidPayroll { get; set; }
+
+    /// <summary>
+    /// **يدير مهام الآخرين في هذه الشركة** — إسناداً وتعديلاً وإعادةَ فتحٍ وحذفاً (ADR-037).
+    /// </summary>
+    /// <remarks>
+    /// نمط <see cref="CanApprove"/> و<see cref="CanManagePayroll"/>: القسم
+    /// (<c>AppModule.Tasks</c>) يفتح **الرؤية والعمل على مهامي ومهام قسمي**، وهذا العلَم يفتح
+    /// **الإسناد لغيري وإدارة مهامهم**.
+    ///
+    /// ⚠️ **والموظف بلا العلَم ليس بلا وحدة**: يُنشئ مهامّ لنفسه ويحدّثها ويحدّث مهام قسمه —
+    /// وهو قرار المالك (يُنشئ لنفسه ✅ · يوزّع على آخرين ❌).
+    /// </remarks>
+    public bool CanManageTasks { get; set; }
 
     public User? User { get; set; }
     public Department? Department { get; set; }
