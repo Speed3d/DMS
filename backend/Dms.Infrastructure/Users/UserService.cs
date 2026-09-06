@@ -11,7 +11,8 @@ public sealed record UserCompanyInput(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
     bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
     bool CanManageEmployees = false, bool CanManagePayroll = false,
-    bool CanAmendPaidPayroll = false);
+    bool CanAmendPaidPayroll = false,
+    bool CanManageTasks = false);
 
 public sealed record CreateUserInput(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyInput>? Companies);
@@ -156,6 +157,11 @@ public sealed class UserService(
         // المدير فأعلى يعتمد ويدير الوارد بحكم دوره في كل شركاته.
         var byRole = RoleHierarchy.IsManagerOrAbove(role);
 
+        // هل يجوز أن يحمل هذا الدور أعلامَ الأقسام التي **تُمنح صراحةً**؟
+        // مرآةٌ حرفية لشرط التجريد في `ResolveModules` — والاثنان يجب أن يتحرّكا معاً،
+        // وإلا بقي العلَم بلا قسمه (وهو ما كان يقع فعلاً حتى ADR-037).
+        var grantable = RoleHierarchy.IsEmployeeOrAbove(role);
+
         // أقسام الشركات المطلوبة دفعةً واحدة (تفادياً لاستعلام لكل صفّ).
         var wanted = byCompany.Values.Where(c => c.DepartmentId is not null)
             .Select(c => c.DepartmentId!.Value).Distinct().ToList();
@@ -191,11 +197,23 @@ public sealed class UserService(
                 // ⚠️ **لا `byRole` هنا** خلافاً لأخواتها الثلاث: الوحدة كلها للمدير فأعلى،
                 //    لكن ذلك يفتح **الرؤية** لا **الكتابة**. كونُه مديراً لا يعني تلقائياً أنه
                 //    مَن يحرّر الرواتب — وهذا كل معنى فصل العلَم عن القسم.
-                CanManageEmployees = wish?.CanManageEmployees ?? false,
-                CanManagePayroll = wish?.CanManagePayroll ?? false,
+                //
+                // 🔴 **و`grantable` تُصفّرها كلها للقارئ** (ADR-037): `ResolveModules` يجرّد
+                //    القارئ من الأقسام الثلاثة، وكان العلَم **يبقى مخزَّناً `true` بلا قسمٍ
+                //    يراه**. كُشف بالتشغيل الحيّ لا بالمراجعة: `/me` أعاد للقارئ
+                //    `modules=[Outgoing]` **و`canManageTasks=true` معاً**.
+                //    ⚠️ **غيرُ مستغَلٍّ اليوم** — حدُّ الدور في `[RequireGrantedModule]` يحجبه —
+                //    لكنه لغمٌ: أيُّ فحصٍ قادمٍ يسأل عن العلَم وحده يمنح القارئَ إدارةً.
+                //    **علَمٌ جُرِّد قسمُه لا يبقى.**
+                CanManageEmployees = grantable && (wish?.CanManageEmployees ?? false),
+                CanManagePayroll = grantable && (wish?.CanManagePayroll ?? false),
                 // ⚠️ **بلا `byRole`**: الإعفاء يقع في `HttpCurrentUser` بالدور، وإدراجه هنا
                 //    كان يُخزّن `true` لكل مدير فيبدو في الشاشة ممنوحاً وهو ليس كذلك.
-                CanAmendPaidPayroll = wish?.CanAmendPaidPayroll ?? false,
+                CanAmendPaidPayroll = grantable && (wish?.CanAmendPaidPayroll ?? false),
+                // ⚠️ **بلا `byRole` كأخواتها الثلاث أعلاه**: القسم يفتح مهامّه ومهامّ قسمه،
+                //    وهذا العلَم يفتح **الإسناد لغيره**. وكونُه مديراً لا يعني أنه مَن يوزّع
+                //    المهام — قد يكون مديرَ قسمٍ يستلم لا يوزّع (ADR-037).
+                CanManageTasks = grantable && (wish?.CanManageTasks ?? false),
             });
         }
         return links;
@@ -246,8 +264,10 @@ public sealed class UserService(
 
         // ⚠️ **يُجرَّد القارئ وحده** (ADR-025 — كان «مَن دون المدير» في ADR-023).
         //    حارسٌ في الواجهة وحدها يُلتَفّ عليه بطلب HTTP مباشر، فالتجريد يقع هنا.
+        //    🔴 **والمهام معها منذ ADR-037** بقرار المالك: دور القارئ اطّلاعٌ على الوثائق،
+        //    والمهمة **تكليفٌ يُنفَّذ ويُحدَّث** لا وثيقةٌ تُقرأ.
         if (!RoleHierarchy.IsEmployeeOrAbove(targetRole))
-            modules &= ~(AppModule.Employees | AppModule.Payroll);
+            modules &= ~(AppModule.Employees | AppModule.Payroll | AppModule.Tasks);
         return modules;
     }
 }

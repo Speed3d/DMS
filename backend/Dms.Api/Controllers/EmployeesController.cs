@@ -9,12 +9,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace Dms.Api.Controllers;
 
 /// <summary>
-/// الموظفون (ADR-023). <see cref="RequireHrModuleAttribute"/> يفرض **القسم + المدير فأعلى**،
+/// الموظفون (ADR-023). <see cref="RequireGrantedModuleAttribute"/> يفرض **القسم + المدير فأعلى**،
 /// والخدمة تفرض فوقهما <c>CanManageHR</c> على كل كتابة.
 /// </summary>
 [ApiController]
 [Authorize]
-[RequireHrModule(AppModule.Employees)]
+[RequireGrantedModule(AppModule.Employees)]
 [Route("api/employees")]
 public sealed class EmployeesController(
     IEmployeeService employees, ILeaveService leaves,

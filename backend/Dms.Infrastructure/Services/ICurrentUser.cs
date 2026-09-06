@@ -47,6 +47,13 @@ public interface ICurrentUser
     /// </remarks>
     bool CanAmendPaidPayroll { get; }
 
+    /// <summary>هل يملك **إدارة مهام الآخرين** في الشركة الفعّالة؟ (ADR-037)</summary>
+    /// <remarks>
+    /// ⚠️ **ليس شرطاً لرؤية الوحدة**: قسم <c>AppModule.Tasks</c> يفتح مهامّي ومهامّ قسمي،
+    /// وهذا العلَم يفتح **الإسناد لغيري وإدارة مهامهم**. الموظف بلا العلَم يُنشئ لنفسه.
+    /// </remarks>
+    bool CanManageTasks { get; }
+
     /// <summary>قسم المستخدم (من الـ JWT) — يحدّد أي كتب واردة محالة يراها. null إن لم يُسنَد لقسم.</summary>
     int? DepartmentId { get; }
 
@@ -74,6 +81,7 @@ public sealed class SystemUser : ICurrentUser
     public bool CanManageEmployees => true;
     public bool CanManagePayroll => true;
     public bool CanAmendPaidPayroll => true;
+    public bool CanManageTasks => true;
     public int? DepartmentId => null;
     public List<int> AllowedCompanyIds => new();
     public AppModule AllowedModules => AppModule.AllWithHr;

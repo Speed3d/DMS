@@ -29,6 +29,13 @@ public static class DmsClaims
     /// <summary>تعديل شهرٍ مُسدَّد (ADR-026).</summary>
     public const string CanAmendPaidPayroll = "pay_amend";
 
+    /// <summary>إدارة مهام الآخرين — إسناداً وتعديلاً وإعادةَ فتح (ADR-037).</summary>
+    /// <remarks>
+    /// ⚠️ **غيابُها في التوكنات القديمة يُقرأ `null` أي «لا صلاحية»** — فشلٌ **مغلق** لا
+    /// مفتوح، يزول عند أول تجديدٍ للتوكن. نظير ما حدث عند فصل `hr_mng`.
+    /// </remarks>
+    public const string CanManageTasks = "tsk_mng";
+
     public const string DepartmentId = "dept";
 }
 
@@ -77,6 +84,8 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
                 PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanManagePayroll ? 1 : 0))));
             claims.Add(new Claim(DmsClaims.CanAmendPaidPayroll,
                 PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanAmendPaidPayroll ? 1 : 0))));
+            claims.Add(new Claim(DmsClaims.CanManageTasks,
+                PerCompanyClaim.Encode(links.ToDictionary(c => c.CompanyId, c => c.CanManageTasks ? 1 : 0))));
 
             // القسم اختياري — تُدرَج الشركات التي له فيها قسم فقط.
             var depts = links.Where(c => c.DepartmentId is not null)

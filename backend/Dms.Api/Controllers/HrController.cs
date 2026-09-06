@@ -23,7 +23,7 @@ namespace Dms.Api.Controllers;
 public sealed class HrController(
     AppDbContext db, ICurrentUser current, IAuditService audit, ILeaveService leaves) : ControllerBase
 {
-    [RequireHrModule(AppModule.Payroll)]
+    [RequireGrantedModule(AppModule.Payroll)]
     [HttpGet("settings")]
     public async Task<ActionResult<HrSettingsResponse>> Settings(CancellationToken ct)
     {
@@ -36,7 +36,7 @@ public sealed class HrController(
             s?.EndOfServiceCustomDays);
     }
 
-    [RequireHrModule(AppModule.Payroll)]
+    [RequireGrantedModule(AppModule.Payroll)]
     [HttpPut("settings")]
     public async Task<ActionResult<HrSettingsResponse>> UpdateSettings(HrSettingsRequest req, CancellationToken ct)
     {
@@ -78,7 +78,7 @@ public sealed class HrController(
     /// (بلاغ المالك 2026-08-05). و<c>/employees/{id}/leaves</c> لا تجيب لأنها تسأل عن موظفٍ
     /// بعينه، والسؤال هنا معكوس: **مَن ينتظر؟**
     /// </remarks>
-    [RequireHrModule(AppModule.Employees)]
+    [RequireGrantedModule(AppModule.Employees)]
     [HttpGet("leaves/pending")]
     public async Task<ActionResult<List<PendingLeaveResponse>>> PendingLeaves(CancellationToken ct)
         => (await leaves.PendingAsync(ct))
@@ -97,7 +97,7 @@ public sealed class HrController(
     /// و`null` يُقرأ «لا تراه» فتُخفي الواجهة البطاقة. وهذا الدرس نفسه سبق أن كلّف لوحةَ
     /// التحكم بطاقاتٍ بصفرٍ كاذب قبل ADR-017 — **معلومة ناقصة أهون من معلومة كاذبة**.
     /// </remarks>
-    [RequireHrModule(AppModule.Employees, AppModule.Payroll)]
+    [RequireGrantedModule(AppModule.Employees, AppModule.Payroll)]
     [HttpGet("summary")]
     public async Task<ActionResult<HrSummaryResponse>> Summary(CancellationToken ct)
     {

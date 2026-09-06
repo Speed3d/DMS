@@ -126,7 +126,7 @@ public sealed class AttachmentService(
         // ── مستمسكات الموظف: الرؤية بالإسناد لا بالمُنشئ ──
         // ⚠️ Employee **بلا CreatedByUserId يُقاس عليه** (كيان عابر للشركات)، فقاعدة «عنصر
         //    غيرك» أدناه لا تنطبق. والحدّ الحقيقي هو الفلتر العام: موظفٌ غير مُسنَد للشركة
-        //    الفعّالة لا يُرى أصلاً. ونضيف حدّ الدور **مرآةً لـ`[RequireHrModule]`** (ADR-025):
+        //    الفعّالة لا يُرى أصلاً. ونضيف حدّ الدور **مرآةً لـ`[RequireGrantedModule]`** (ADR-025):
         //    القارئ محجوبٌ بدوره، فلا يبلغ المستمسكات من باب المرفقات بعد أن حُجب عن الوحدة.
         if (type == OwnerType.Employee)
         {
@@ -141,7 +141,7 @@ public sealed class AttachmentService(
 
         // ── إيصال الاستلام الموقَّع: مالكُه سطرُ راتبٍ في شهر (ADR-026) ──
         // ⚠️ الحدّ الحقيقي هو الفلتر العام على `PayrollEntries`: سطرُ شركةٍ أخرى لا يُعثر
-        //    عليه أصلاً. ونضيف حدّ الدور مرآةً لـ`[RequireHrModule]` فلا يبلغه القارئ.
+        //    عليه أصلاً. ونضيف حدّ الدور مرآةً لـ`[RequireGrantedModule]` فلا يبلغه القارئ.
         if (type == OwnerType.PayrollEntry)
         {
             if (current.Role is not { } payRole || !RoleHierarchy.IsEmployeeOrAbove(payRole))

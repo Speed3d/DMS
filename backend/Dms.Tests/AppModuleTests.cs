@@ -117,7 +117,7 @@ public class AppModuleTests
     [InlineData(UserRole.Reader, false)]
     public void HrModules_AreOpenToEveryRoleAboveReader(UserRole role, bool allowed)
     {
-        // القاعدة التي تفرضها [RequireHrModule] — قرار المالك 2026-08-05 ناسخاً ADR-023.
+        // القاعدة التي تفرضها [RequireGrantedModule] — قرار المالك 2026-08-05 ناسخاً ADR-023.
         // محاسبٌ أو كاتب شؤون موظفين بدور «موظف» يحتاج الوحدة يومياً، وحصرُها في المدير
         // كان يدفع إلى منح الدور الأعلى للالتفاف — وهو أوسع أثراً من فتح القسم.
         Assert.Equal(allowed, RoleHierarchy.IsEmployeeOrAbove(role));

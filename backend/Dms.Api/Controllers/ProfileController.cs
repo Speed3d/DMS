@@ -10,12 +10,12 @@ namespace Dms.Api.Controllers;
 /// البروفايل الشخصي — **بياناتُ صاحب الجلسة وحده** (ADR-033).
 /// </summary>
 /// <remarks>
-/// 🔐 **<c>[Authorize]</c> وحده، بلا <c>[RequireModule]</c> ولا <c>[RequireHrModule]</c> —
+/// 🔐 **<c>[Authorize]</c> وحده، بلا <c>[RequireModule]</c> ولا <c>[RequireGrantedModule]</c> —
 /// وهذا مقصودٌ لا سهو:**
 /// <list type="bullet">
 /// <item>قسم «الرواتب» يفتح رواتب **الشركة**؛ وهذا المسار يفتح **راتبك أنت**. اشتراطُ الأول
 /// للثاني يعني ألّا يرى الموظف راتبه إلا إذا رأى رواتب زملائه.</item>
-/// <item>حدّ «فوق القارئ» في <see cref="Dms.Api.Auth.RequireHrModuleAttribute"/> يحمي بيانات
+/// <item>حدّ «فوق القارئ» في <see cref="Dms.Api.Auth.RequireGrantedModuleAttribute"/> يحمي بيانات
 /// **الغير** — ولا معنى لحجب بيانات المرء عن نفسه بسبب دوره.</item>
 /// </list>
 ///

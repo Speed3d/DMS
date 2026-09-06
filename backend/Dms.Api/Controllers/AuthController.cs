@@ -42,7 +42,7 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
             User.Identity!.Name ?? "", current.Role!.Value, current.AllowedCompanyIds, current.CanApprove,
             current.AllowedModules.ToNames(), current.DepartmentId, current.CanManageIncoming,
             current.CanViewAllIncoming, current.CanManageEmployees, current.CanManagePayroll,
-            current.CanAmendPaidPayroll);
+            current.CanAmendPaidPayroll, current.CanManageTasks);
 
     [Authorize]
     [HttpPost("change-password")]

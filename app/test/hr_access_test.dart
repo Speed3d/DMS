@@ -191,7 +191,7 @@ void main() {
       // نمط «ميزة بلا مدخل» الذي كلّف المشروع أربع فجوات (G7 · G8 · G10 · المستمسكات).
       expect(kAllModules, containsAll(['Employees', 'Payroll']));
       expect(kAllModules, isNot(contains('HR')), reason: 'الاسم القديم زال بـADR-025');
-      expect(kAllModules.length, 9);
+      expect(kAllModules.length, 10, reason: 'عشرةٌ منذ ADR-037 — انضمّ قسم «المهام»');
       expect(kModuleLabels['Employees'], isNotNull);
       expect(kModuleLabels['Payroll'], isNotNull);
     });
@@ -215,9 +215,12 @@ void main() {
       }
     });
 
-    test('🔴 والفرق بينهما هو القسمان الحسّاسان بالضبط — لا أقلّ ولا أكثر', () {
+    test('🔴 والفرق بينهما هو الأقسام الحسّاسة بالضبط — لا أقلّ ولا أكثر', () {
+      // ✅ **إقرارٌ واعٍ (ADR-037):** «المهام» انضمّت إلى الحسّاسة — خارج `AppModule.All`
+      //    وخارج [kDefaultModules]، فلا تُمنح إلا صراحةً. وهذا الحارس هو ما طالب بالإقرار:
+      //    أطلق عند إضافة القسم قبل أن يصل أحداً.
       final diff = kAllModules.where((m) => !kDefaultModules.contains(m)).toSet();
-      expect(diff, {'Employees', 'Payroll'},
+      expect(diff, {'Employees', 'Payroll', 'Tasks'},
           reason: 'أيُّ قسمٍ جديد خارج AppModule.All يجب أن يُضاف هنا بوعي، '
               'وأيُّ قسمٍ أساسيّ سقط من الافتراض يُعطّل مستخدمين');
     });

@@ -44,7 +44,7 @@ public sealed class UsersController(IUserService users) : ControllerBase
         dtos?.Select(c => new UserCompanyInput(
             c.CompanyId, c.Modules, c.DepartmentId, c.CanApprove, c.CanManageIncoming,
             c.CanViewAllIncoming, c.CanManageEmployees, c.CanManagePayroll,
-            c.CanAmendPaidPayroll)).ToList();
+            c.CanAmendPaidPayroll, c.CanManageTasks)).ToList();
 
     private static UserResponse Map(User u) =>
         new(u.UserId, u.FullName, u.Username, u.Role,
@@ -53,5 +53,5 @@ public sealed class UsersController(IUserService users) : ControllerBase
             u.AssignedCompanies.Select(c => new UserCompanyDto(
                 c.CompanyId, c.Modules.ToNames(), c.DepartmentId, c.CanApprove, c.CanManageIncoming,
                 c.CanViewAllIncoming, c.CanManageEmployees, c.CanManagePayroll,
-                c.CanAmendPaidPayroll)).ToList());
+                c.CanAmendPaidPayroll, c.CanManageTasks)).ToList());
 }

@@ -75,6 +75,16 @@ public sealed class HttpCurrentUser : ICurrentUser
         Role is UserRole.SuperAdmin or UserRole.President
         || PerCompany(DmsClaims.CanAmendPaidPayroll) == 1;
 
+    /// <summary>**إدارة مهام الآخرين** — علَمٌ مستقلّ، والإعفاء بالدور نفسه (ADR-037).</summary>
+    /// <remarks>
+    /// ⚠️ **الإعفاء بالدور إلزاميّ لا تجميليّ**: السوبر أدمن قد يكون **بلا إسناد لأي شركة**
+    /// فلا يحمل توكنه خريطة `tsk_mng` أصلاً وتعود القراءة `null` — وهو بعينه العيب الذي
+    /// انكشف حيّاً في `canManageHR` عند أول تشغيل لوحدة الرواتب.
+    /// </remarks>
+    public bool CanManageTasks =>
+        Role is UserRole.SuperAdmin or UserRole.President
+        || PerCompany(DmsClaims.CanManageTasks) == 1;
+
     public int? DepartmentId => PerCompany(DmsClaims.DepartmentId);
 
     public AppModule AllowedModules

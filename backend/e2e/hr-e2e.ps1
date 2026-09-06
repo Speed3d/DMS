@@ -482,6 +482,15 @@ $rdrMods=$rdr.companies[0].modules
 if($rdrMods -notcontains 'Employees' -and $rdrMods -notcontains 'Payroll'){
   Ok "القسمان **جُرِّدا** من القارئ رغم طلبهما صراحةً ✔ الحارس في الخدمة لا في الواجهة"
 } else { Bad "تسرّب: القارئ احتفظ بـ$($rdrMods -join ',')" }
+
+# 🔴 **وأعلامُهما تُجرَّد معهما** (ADR-037) — عيبٌ كان قائماً كشفه التشغيل الحيّ لا المراجعة:
+#    `ResolveModules` يجرّد **القسم** من القارئ، و`ResolveLinks` كان يُبقي **العلَم** مخزَّناً
+#    `true` بلا قسمٍ يراه. غيرُ مستغَلٍّ وقتها (حدّ الدور يحجبه) لكنه لغم: أيُّ فحصٍ قادمٍ
+#    يسأل عن العلَم وحده يمنح القارئَ إدارةً. **علَمٌ جُرِّد قسمُه لا يبقى.**
+$rdrAcc=$rdr.companies[0]
+if(-not $rdrAcc.canManageEmployees -and -not $rdrAcc.canManagePayroll){
+  Ok "🔐 وعلَما الإدارة جُرِّدا معهما — لا علَمَ يبقى بلا قسمه"
+} else { Bad "تسرّب: القارئ احتفظ بعلَمَي الإدارة (emp=$($rdrAcc.canManageEmployees) pay=$($rdrAcc.canManagePayroll))" }
 $tokRdr=EmpLogin 'rdr_hr'
 foreach($ep in @("/employees","/payroll/years","/hr/summary","/hr/leaves/pending")){
   $r=Api GET $ep $null $tokRdr $cid

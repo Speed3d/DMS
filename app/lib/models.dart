@@ -112,6 +112,10 @@ class AuthResult {
   bool canManagePayrollIn(int? companyId) =>
       _isExempt || (accessIn(companyId)?.canManagePayroll ?? false);
 
+  /// صلاحية **إدارة مهام الآخرين** — علَمٌ مستقلّ (ADR-037).
+  bool canManageTasksIn(int? companyId) =>
+      _isExempt || (accessIn(companyId)?.canManageTasks ?? false);
+
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(
         accessToken: j['accessToken'],
         accessExpires: DateTime.tryParse(j['accessExpires'] ?? '') ?? DateTime.now(),
@@ -141,20 +145,20 @@ class AuthResult {
       };
 }
 
-/// أقسام النظام الثمانية — مصدر واحد بدل تكرار القائمة في الشاشات.
+/// أقسام النظام العشرة — مصدر واحد بدل تكرار القائمة في الشاشات.
 ///
 /// ⚠️ **مرآةٌ لمصفوفة `AppModuleExtensions.Individual` في الباك-إند** — قسمٌ ناقص هنا لا يظهر
 /// مربّعه في شاشة المستخدمين، فتموت صلاحيته بصمت (نمط «ميزة بلا مدخل»).
 const List<String> kAllModules = [
   'Outgoing', 'Incoming', 'Archive', 'Reports', 'Users', 'Settings', 'Backup',
-  'Employees', 'Payroll',
+  'Employees', 'Payroll', 'Tasks',
 ];
 
 /// الأقسام التي تُؤشَّر **افتراضياً** لإسنادٍ جديد — مرآةُ `AppModule.All = 127`.
 ///
 /// 🔴 **الفرق عن [kAllModules] هو جوهر ADR-025، لا تفصيلٌ تجميلي.** «الموظفون» و«الرواتب»
-/// خارج هذه القائمة عمداً: هما **يُمنحان صراحةً أو لا يُمنحان**، والرواتب أحسّ بيانات في
-/// النظام.
+/// **و«المهام»** (ADR-037) خارج هذه القائمة عمداً: تُمنح صراحةً أو لا تُمنح، والرواتب أحسّ
+/// بيانات في النظام.
 ///
 /// ⚠️ **وكان العيب هنا حيّاً:** الشاشة كانت تُهيّئ كل إسنادٍ جديد بـ[kAllModules]، فيبدأ
 /// مربّعا الموظفين والرواتب **مؤشَّرَين**. والخادم يقبل ما يُرسله العميل (`ResolveModules`
@@ -177,6 +181,7 @@ const Map<String, String> kModuleLabels = {
   'Backup': 'النسخ الاحتياطي',
   'Employees': 'الموظفون',
   'Payroll': 'الرواتب',
+  'Tasks': 'المهام',
 };
 
 class Company {
@@ -377,6 +382,12 @@ class CompanyAccess {
   /// ⚠️ التسديد قرارٌ نهائيّ يُقفل الشهر، وفتحُه ثانيةً أخطر من تحرير مسودّة.
   final bool canAmendPaidPayroll;
 
+  /// **يدير مهام الآخرين في هذه الشركة** — إسناداً وتعديلاً وإعادةَ فتح (ADR-037).
+  ///
+  /// ⚠️ ليس شرطاً لرؤية الوحدة: قسم `Tasks` يفتح مهامّه ومهامّ قسمه، وهذا العلَم يفتح
+  /// **الإسناد لغيره**. والموظف بلا العلَم يُنشئ مهامّاً لنفسه ويحدّثها.
+  final bool canManageTasks;
+
   const CompanyAccess({
     required this.companyId,
     required this.modules,
@@ -387,6 +398,7 @@ class CompanyAccess {
     this.canManageEmployees = false,
     this.canManagePayroll = false,
     this.canAmendPaidPayroll = false,
+    this.canManageTasks = false,
   });
 
   factory CompanyAccess.fromJson(Map<String, dynamic> j) => CompanyAccess(
@@ -399,6 +411,7 @@ class CompanyAccess {
         canManageEmployees: j['canManageEmployees'] ?? false,
         canManagePayroll: j['canManagePayroll'] ?? false,
         canAmendPaidPayroll: j['canAmendPaidPayroll'] ?? false,
+        canManageTasks: j['canManageTasks'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -411,6 +424,7 @@ class CompanyAccess {
         'canManageEmployees': canManageEmployees,
         'canManagePayroll': canManagePayroll,
         'canAmendPaidPayroll': canAmendPaidPayroll,
+        'canManageTasks': canManageTasks,
       };
 
   CompanyAccess copyWith({
@@ -423,6 +437,7 @@ class CompanyAccess {
     bool? canManageEmployees,
     bool? canManagePayroll,
     bool? canAmendPaidPayroll,
+    bool? canManageTasks,
   }) =>
       CompanyAccess(
         companyId: companyId,
@@ -434,6 +449,7 @@ class CompanyAccess {
         canManageEmployees: canManageEmployees ?? this.canManageEmployees,
         canManagePayroll: canManagePayroll ?? this.canManagePayroll,
         canAmendPaidPayroll: canAmendPaidPayroll ?? this.canAmendPaidPayroll,
+        canManageTasks: canManageTasks ?? this.canManageTasks,
       );
 }
 

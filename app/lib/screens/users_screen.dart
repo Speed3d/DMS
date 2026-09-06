@@ -659,6 +659,9 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
         'canManagePayroll': _roleMayHaveHr && a.canManagePayroll,
         // ⚠️ **يُشترط معها قسمُ الرواتب**: علَمُ تعديلٍ بلا قسمٍ يراه لا معنى له.
         'canAmendPaidPayroll': _roleMayHaveHr && a.canAmendPaidPayroll,
+        // ⚠️ المهام تتبع القاعدة نفسها: أيُّ دورٍ فوق القارئ يملكها، والعلَم يفصل مَن
+        //    يُنشئ لنفسه عمّن يوزّع على غيره (ADR-037).
+        'canManageTasks': _roleMayHaveHr && a.canManageTasks,
       };
     }).toList();
 
@@ -747,6 +750,11 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                                     modules: next,
                                     canManagePayroll: false,
                                     canAmendPaidPayroll: false),
+                                // ⚠️ إغلاق القسم يُسقط علَمه: علَمٌ باقٍ بلا قسمٍ يراه
+                                //    يُرسَل إلى الخادم فيُحفظ، فيظهر ممنوحاً عند أول
+                                //    إعادة فتحٍ للقسم بلا أن يقصده أحد.
+                                ('Tasks', != true) =>
+                                  access.copyWith(modules: next, canManageTasks: false),
                                 _ => access.copyWith(modules: next),
                               });
                             },
@@ -852,6 +860,26 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                                     style: TextStyle(fontSize: 11, color: AppColors.danger)),
                                 onChanged: (v) =>
                                     update(access.copyWith(canAmendPaidPayroll: v)),
+                              ),
+                            ),
+
+                          // ── الصلاحية الفرعية للمهام — الإسناد لغير النفس (ADR-037) ──
+                          if (m == 'Tasks' && enabled && _roleMayHaveHr)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 28),
+                              child: SwitchListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                value: access.canManageTasks,
+                                activeThumbColor: AppColors.warn,
+                                title: const Text('إدارة مهام الآخرين',
+                                    style:
+                                        TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                subtitle: const Text(
+                                    '⚠️ يُسند المهام لغيره ويعدّلها ويعيد فتحها — '
+                                    'بدونها يُنشئ لنفسه ويحدّث مهامّ قسمه',
+                                    style: TextStyle(fontSize: 11, color: AppColors.warn)),
+                                onChanged: (v) => update(access.copyWith(canManageTasks: v)),
                               ),
                             ),
                         ];

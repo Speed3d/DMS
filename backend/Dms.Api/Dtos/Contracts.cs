@@ -17,7 +17,8 @@ public sealed record MeResponse(
     bool CanApprove, List<string> Modules, int? DepartmentId, bool CanManageIncoming,
     bool CanViewAllIncoming = false,
     bool CanManageEmployees = false, bool CanManagePayroll = false,
-    bool CanAmendPaidPayroll = false);
+    bool CanAmendPaidPayroll = false,
+    bool CanManageTasks = false);
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
@@ -53,7 +54,11 @@ public sealed record UserCompanyDto(
     int CompanyId, List<string>? Modules = null, int? DepartmentId = null,
     bool CanApprove = false, bool CanManageIncoming = false, bool CanViewAllIncoming = false,
     bool CanManageEmployees = false, bool CanManagePayroll = false,
-    bool CanAmendPaidPayroll = false);
+    bool CanAmendPaidPayroll = false,
+    // 🔴 **الحلقة التي تُنسى**: علَمٌ يُحفظ في القاعدة ولا يمرّ من العقد يصل العميلَ فارغاً
+    //    **دائماً** — وقع حرفياً في `PaidAt` (ADR-026) واكتُشف بقراءة الملف لعملٍ آخر لا
+    //    ببلاغٍ ولا باختبار. وحارسُ E2E في هذه الدفعة يسأل `/me` عنه صراحةً.
+    bool CanManageTasks = false);
 
 public sealed record CreateUserRequest(
     string FullName, string Username, string Password, UserRole Role, List<UserCompanyDto>? Companies);

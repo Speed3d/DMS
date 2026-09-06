@@ -10,7 +10,8 @@ public sealed record CompanyAccess(
     int CompanyId, List<string> Modules, int? DepartmentId, bool CanApprove, bool CanManageIncoming,
     bool CanViewAllIncoming = false,
     bool CanManageEmployees = false, bool CanManagePayroll = false,
-    bool CanAmendPaidPayroll = false);
+    bool CanAmendPaidPayroll = false,
+    bool CanManageTasks = false);
 
 public sealed record AuthResult(
     string AccessToken, DateTime AccessExpires, string RefreshToken,
@@ -140,7 +141,8 @@ public sealed class AuthService(
                 exempt || c.CanViewAllIncoming,
                 exempt || c.CanManageEmployees,
                 exempt || c.CanManagePayroll,
-                exempt || c.CanAmendPaidPayroll))
+                exempt || c.CanAmendPaidPayroll,
+                exempt || c.CanManageTasks))
             .ToList();
 
         return new AuthResult(pair.AccessToken, pair.AccessExpires, pair.RefreshToken,

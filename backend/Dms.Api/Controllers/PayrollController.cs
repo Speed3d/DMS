@@ -16,7 +16,7 @@ namespace Dms.Api.Controllers;
 /// <summary>كشوف الرواتب (ADR-023). السنوات مشتقّة من الفترات — لا كيان «سنة».</summary>
 [ApiController]
 [Authorize]
-[RequireHrModule(AppModule.Payroll)]
+[RequireGrantedModule(AppModule.Payroll)]
 [Route("api/payroll")]
 public sealed class PayrollController(
     IPayrollService payroll, AppDbContext db, ICurrentUser current,
