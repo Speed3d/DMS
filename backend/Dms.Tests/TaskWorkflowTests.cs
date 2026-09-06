@@ -93,6 +93,20 @@ public class TaskWorkflowTests
     }
 
     [Fact]
+    public void ActiveStatuses_MatchesIsActive_ForEveryEnumValue()
+    {
+        // 🔴 **القاعدة مكتوبةٌ مرّتين لضرورة**: `IsActive` دالّةٌ يقرؤها الإنسان، و
+        //    `ActiveStatuses` مصفوفةٌ يترجمها EF إلى SQL. والحارس يمرّ على **كل قيمة في
+        //    الـenum** فيكشف التباعد لحظةَ إضافة حالةٍ جديدة — لا بعد أن تُخطئ استعلاماً.
+        foreach (var s in Enum.GetValues<DmsTaskStatus>())
+        {
+            Assert.Equal(
+                TaskWorkflow.IsActive(s),
+                TaskWorkflow.ActiveStatuses.Contains(s));
+        }
+    }
+
+    [Fact]
     public void EveryStatusAndPriority_HasAnArabicName()
     {
         // نظير حارس `AuditLabels`: اسمٌ إنجليزيّ يتسرّب إلى رسالة خطأ أو سجلّ يقرؤه المالك.

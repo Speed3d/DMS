@@ -4,6 +4,7 @@ using Dms.Infrastructure.Incoming;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
+using Dms.Infrastructure.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Infrastructure.Attachments;
@@ -21,12 +22,12 @@ public interface IAttachmentService
 }
 
 /// <remarks>
-/// ⚠️ **يحقن خدمتَي الوارد والصادر ليستدعي `Query()` كلٍّ منهما** بدل نسخ قواعد الرؤية.
-/// لا دورةَ اعتماد: كلتاهما لا تعرف المرفقات.
+/// ⚠️ **يحقن خدمات الوارد والصادر والمهام ليستدعي `Query()` كلٍّ منها** بدل نسخ قواعد الرؤية.
+/// لا دورةَ اعتماد: لا واحدةَ منها تعرف المرفقات.
 /// </remarks>
 public sealed class AttachmentService(
     AppDbContext db, ICurrentUser current, IAuditService audit, IFileStorage storage,
-    IIncomingService incoming, IOutgoingService outgoing) : IAttachmentService
+    IIncomingService incoming, IOutgoingService outgoing, ITaskService tasks) : IAttachmentService
 {
     private const long MaxBytes = 50 * 1024 * 1024; // 50MB
     private static readonly string[] Allowed = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".xlsx", ".zip", ".dwg"];
@@ -118,6 +119,7 @@ public sealed class AttachmentService(
             OwnerType.Incoming => AppModule.Incoming,
             OwnerType.Employee => AppModule.Employees,
             OwnerType.PayrollEntry => AppModule.Payroll,
+            OwnerType.Task => AppModule.Tasks,
             _ => throw new ValidationException("نوع غير معروف")
         };
         if (!current.HasModule(requiredModule))
@@ -150,6 +152,21 @@ public sealed class AttachmentService(
             var seen = await db.PayrollEntries.AnyAsync(e => e.EntryId == ownerId && !e.IsDeleted, ct);
             if (!seen)
                 throw new NotFoundException("سطر الراتب غير موجود أو لا تملك صلاحية رؤيته.");
+            return;
+        }
+
+        // ── المهام: الرؤية قاعدةٌ مركّبة (مهامّي · ما أنشأتُ · مهامّ قسمي) ──
+        // 🔴 **تُستدعى `Query()` ولا تُنسخ** — وهو الدرس الذي كلّف المستودع عيبَين: قاعدة
+        //    رؤية الوارد كُتبت في موضعين فتباعدا، ثم تكرّر الأمر في الصادر مع ADR-030.
+        //    ونضيف حدّ الدور مرآةً لـ`[RequireGrantedModule]` فلا يبلغها القارئ من باب المرفقات.
+        if (type == OwnerType.Task)
+        {
+            if (current.Role is not { } taskRole || !RoleHierarchy.IsEmployeeOrAbove(taskRole))
+                throw new ForbiddenException("المهام غير متاحة لدور القارئ.");
+
+            var seenTask = await tasks.Query().AnyAsync(t => t.TaskId == ownerId, ct);
+            if (!seenTask)
+                throw new NotFoundException("المهمة غير موجودة أو لا تملك صلاحية رؤيتها.");
             return;
         }
 

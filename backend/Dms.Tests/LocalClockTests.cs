@@ -31,6 +31,43 @@ public class LocalClockTests
     }
 
     [Fact]
+    public void Today_CarriesNoTimeZone_SoItSerializesWithoutZ()
+    {
+        // 🔴 **عيبٌ وقع فعلاً وكشفه `tasks-e2e`**: `DateTime.UtcNow + Offset` يرث `Kind=Utc`،
+        //    فعاد `StartDate` بلاحقة `Z` بعد الكتابة وبلا لاحقة بعد القراءة من `datetime2`
+        //    — **صيغتان للحقل الواحد على السلك**. وتاريخٌ تقويميّ بـ`Z` يُنقص يوماً عند
+        //    عميلٍ بإزاحةٍ سالبة، وهو عطل ADR-032 معكوساً.
+        Assert.Equal(DateTimeKind.Unspecified, LocalClock.Today.Kind);
+        Assert.Equal(DateTimeKind.Unspecified, LocalClock.Now.Kind);
+
+        // والبرهان على السلك لا في النوع: التسلسل بلا `Z`.
+        var json = System.Text.Json.JsonSerializer.Serialize(LocalClock.Today);
+        Assert.DoesNotContain("Z", json);
+    }
+
+    [Fact]
+    public void CalendarDate_NormalisesWhateverTheClientSent()
+    {
+        // العميل قد يرسل `Z` أو إزاحةً أو لا شيء — والتخزين يجب أن يكون واحداً.
+        var utc = new DateTime(2026, 9, 13, 21, 30, 0, DateTimeKind.Utc);
+        var local = new DateTime(2026, 9, 13, 21, 30, 0, DateTimeKind.Local);
+        var unspecified = new DateTime(2026, 9, 13, 21, 30, 0, DateTimeKind.Unspecified);
+
+        foreach (var v in new[] { utc, local, unspecified })
+        {
+            var c = LocalClock.CalendarDate(v);
+            Assert.Equal(DateTimeKind.Unspecified, c.Kind);
+            Assert.Equal(TimeSpan.Zero, c.TimeOfDay);
+
+            // 🔴 **واليوم لا يتزحزح**: التطبيع يقصّ الوقت ولا يحوّل المنطقة — فتحويلُ
+            //    **يومٍ** يُنقصه يوماً، وهو العطل المعكوس الذي تحرسه هذه الحالة.
+            Assert.Equal(new DateTime(2026, 9, 13), c.Date);
+        }
+
+        Assert.Null(LocalClock.CalendarDate((DateTime?)null));
+    }
+
+    [Fact]
     public void DaysOverdue_IsZeroForTodayAndTheFuture()
     {
         // 🔴 **موعدُ اليوم ليس متأخراً**: اليوم لم ينتهِ بعد. وهذا هو الفرق كلُّه بين

@@ -548,3 +548,87 @@ public sealed record MyPayslipResponse(
 public sealed record LinkableUserResponse(int UserId, string FullName, string Username, UserRole Role);
 
 public sealed record LinkUserRequest(int UserId);
+
+// ----------------- Tasks (وحدة المهام — ADR-037) -----------------
+
+/// <summary>إنشاء مهمة.</summary>
+/// <remarks>
+/// ⚠️ **<c>AssignedToUserId</c> اقتراحٌ لا أمر**: مَن لا يملك <c>CanManageTasks</c> يُسنَد
+/// لنفسه **قسراً** ويُتجاهَل ما أرسله — لا يُرفض طلبُه. الرفضُ يُفشل النموذج بلا سببٍ مفهوم،
+/// والقسر يُنتج مهمةً صحيحة هي بالضبط ما يستطيعه.
+/// </remarks>
+public sealed record CreateTaskRequest(
+    string Title, string? Description,
+    DmsTaskType TaskType, DmsTaskPriority Priority,
+    DateTime DueDate, DateTime? StartDate,
+    int? DepartmentId, int? AssignedToUserId,
+    int? RelatedIncomingId, int? RelatedOutgoingId,
+    bool IsRecurring = false, DmsRecurrencePattern? RecurrencePattern = null,
+    int? RecurrenceInterval = null, DateTime? RecurrenceEndDate = null,
+    string? Notes = null, int? CompanyId = null);
+
+/// <summary>تعديل مهمة — **<c>RowVersion</c> نصٌّ base64** لا مصفوفةَ أرقام.</summary>
+public sealed record UpdateTaskRequest(
+    string Title, string? Description, DmsTaskPriority Priority,
+    DateTime DueDate, DateTime? StartDate,
+    int? DepartmentId, int? RelatedIncomingId, int? RelatedOutgoingId,
+    string? Notes, string RowVersion);
+
+public sealed record ChangeTaskStatusRequest(DmsTaskStatus NewStatus, string? Reason);
+public sealed record TaskProgressRequest(int Percent, string? Comment);
+public sealed record ReassignTaskRequest(int AssignedToUserId);
+public sealed record ReopenTaskRequest(string Reason);
+public sealed record TaskCommentRequest(string Text);
+
+/// <summary>مهمة كاملة.</summary>
+/// <remarks>
+/// 🔴 **كل حقلٍ تحسبه الخدمة يعبر هنا** — <c>IsOverdue</c> و<c>DaysRemaining</c> والأسماء
+/// المشتقّة. وسقوطُ حقلٍ محسوبٍ من العقد يجعله **فارغاً دائماً** عند العميل بلا خطأ بناء
+/// ولا اختبارٍ يكشفه: وقع حرفياً في <c>PaidAt</c> فكلّف ميزةً ميتة أسبوعاً (ADR-026).
+/// </remarks>
+public sealed record TaskResponse(
+    int TaskId, string? TaskNumber, string Title, string? Description,
+    DmsTaskType TaskType, string TaskTypeLabel,
+    DmsTaskPriority Priority, string PriorityLabel,
+    DmsTaskStatus Status, string StatusLabel,
+    int ProgressPercent,
+    DateTime DueDate, DateTime? StartDate, DateTime? CompletedDate,
+    bool IsOverdue, int DaysOverdue, int DaysRemaining,
+    int? DepartmentId, string? DepartmentName,
+    int? AssignedToUserId, string? AssignedToUserName,
+    int CreatedByUserId, string CreatedByUserName,
+    int? RelatedIncomingId, string? RelatedIncomingNumber,
+    int? RelatedOutgoingId, string? RelatedOutgoingNumber,
+    bool IsRecurring, DmsRecurrencePattern? RecurrencePattern, int? RecurrenceInterval,
+    DateTime? RecurrenceEndDate, int? ParentRecurringTaskId,
+    string? Notes, DateTime CreatedAt, DateTime? UpdatedAt,
+    string RowVersion,
+    /// <summary>الحالات المسموح الانتقال إليها — **من مصفوفة المجال** لا من تخمين الواجهة.</summary>
+    List<DmsTaskStatus> NextStatuses,
+    /// <summary>هل يملك الطالبُ تعديلَ هذه المهمة؟ — فلا تُعرض أزرارٌ تردّ 403.</summary>
+    bool CanEdit);
+
+/// <summary>صفٌّ في قائمة المهام — أخفُّ من <see cref="TaskResponse"/>.</summary>
+public sealed record TaskListItemResponse(
+    int TaskId, string? TaskNumber, string Title,
+    DmsTaskType TaskType, DmsTaskPriority Priority, string PriorityLabel,
+    DmsTaskStatus Status, string StatusLabel,
+    int ProgressPercent, DateTime DueDate,
+    bool IsOverdue, int DaysOverdue, int DaysRemaining,
+    int? DepartmentId, string? DepartmentName,
+    int? AssignedToUserId, string? AssignedToUserName,
+    int AttachmentCount);
+
+public sealed record TaskListResponse(List<TaskListItemResponse> Items, int Total, int Page, int PageSize);
+
+/// <summary>قيدٌ في سجلّ المهمة الشاهد.</summary>
+public sealed record TaskUpdateResponse(
+    int UpdateId, DmsTaskUpdateType UpdateType, string Description,
+    string? OldValue, string? NewValue, string? Comment,
+    int UpdatedByUserId, string UpdatedByUserName, DateTime UpdatedAt);
+
+public sealed record TaskSummaryResponse(
+    int Total, int Active, int Overdue, int DueToday, int CompletedThisMonth, int MineActive);
+
+/// <summary>مستخدمٌ يصلح مسؤولاً عن مهمة.</summary>
+public sealed record AssignableUserResponse(int UserId, string FullName, string Username, UserRole Role);

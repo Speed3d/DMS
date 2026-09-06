@@ -60,6 +60,20 @@ public static class TaskWorkflow
             or DmsTaskStatus.OnHold
             or DmsTaskStatus.Reopened;
 
+    /// <summary>
+    /// الحالات النشِطة **كمصفوفة** — لأن <see cref="IsActive"/> دالّةٌ لا يترجمها EF إلى SQL.
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **نسختان للقاعدة نفسها، وحارسٌ يثبّت تطابقهما**: الاستعلامات تحتاج شيئاً يُترجَم،
+    /// والقارئ يحتاج شرطاً يُقرأ. وموضعُهما **معاً في المجال** لا في الخدمة — فالخدمة لا
+    /// تُختبَر بالوحدة (تراجع `Dms.Domain` و`Dms.Documents` وحدهما)، ونسخةٌ هناك تعني قاعدةً
+    /// بلا حارس. واختبارٌ يمرّ على **كل قيمة في الـenum** يكشف أي تباعدٍ عند أول حالةٍ جديدة.
+    /// </remarks>
+    public static readonly DmsTaskStatus[] ActiveStatuses =
+    [
+        DmsTaskStatus.New, DmsTaskStatus.InProgress, DmsTaskStatus.OnHold, DmsTaskStatus.Reopened,
+    ];
+
     /// <summary>هل المهمة متأخّرة؟ — **نشِطةٌ ومضى يومُها كاملاً** (قاعدة <see cref="LocalClock"/>).</summary>
     public static bool IsOverdue(DmsTaskStatus status, DateTime dueDate) =>
         IsActive(status) && dueDate.Date < LocalClock.Today;

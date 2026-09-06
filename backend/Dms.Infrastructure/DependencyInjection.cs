@@ -9,6 +9,7 @@ using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Reports;
 using Dms.Infrastructure.Services;
+using Dms.Infrastructure.Tasks;
 using Dms.Infrastructure.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -47,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IPayrollService, PayrollService>();
         services.AddScoped<ILeaveService, LeaveService>();
         services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<ITaskService, TaskService>();
         // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();
