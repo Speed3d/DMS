@@ -19,6 +19,7 @@ import 'backup_screen.dart';
 import 'employee_list_screen.dart';
 import 'payroll_years_screen.dart';
 import 'profile_screen.dart';
+import 'task_board_screen.dart';
 import 'task_list_screen.dart';
 
 import '../models.dart';
@@ -86,6 +87,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const PayrollYearsScreen(),   // 10 — الرواتب
       const ProfileScreen(),        // 11 — الملف الشخصي (ADR-033)
       const TaskListScreen(),       // 12 — المهام (ADR-037)
+      const TaskBoardScreen(),      // 13 — لوحة المهام (الدفعة ٧)
     ];
 
     if (_index >= pages.length) _index = 0;
@@ -259,6 +261,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         // ⚠️ **الحدّان معاً** (ADR-037): القسم **ودورٌ فوق القارئ** — مرآةُ
         //    `[RequireGrantedModule]`، فبندٌ يقود إلى شاشة تردّ 403 أسوأ من إخفائه.
         12 => session.canSeeTasks,
+        // اللوحة عرضٌ آخر للمهام — **حارسُها هو حارسُها** لا حارسٌ أضعف.
+        13 => session.canSeeTasks,
         _ => false,
       };
 
@@ -276,6 +280,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         10 => 'الرواتب',
         11 => 'الملف الشخصي',
         12 => 'المهام',
+        13 => 'لوحة المهام',
         _ => '',
       };
 
@@ -293,6 +298,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         10 => 'كشوف الرواتب الشهرية وإيصالات الاستلام',
         11 => 'بياناتك وإجازاتك ورواتبك',
         12 => 'متابعة المهام والتكليفات ومواعيدها',
+        13 => 'اسحب المهمة بين الحالات — والأعمدة المسموحة وحدها تُبرَز',
         _ => '',
       };
 }

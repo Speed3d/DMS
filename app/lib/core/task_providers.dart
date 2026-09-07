@@ -96,6 +96,33 @@ final tasksPageProvider = FutureProvider.autoDispose<TaskPage>((ref) async {
       );
 });
 
+/// أقصى ما تحمله لوحة الكانبان دفعةً واحدة.
+///
+/// ⚠️ **اللوحة لا تُقسَّم صفحات**: عمودٌ يعرض «صفحةً أولى» من حالته يكذب في عدده، وسحبُ
+/// بطاقةٍ بين صفحتين لا معنى له. فتُحمَّل دفعةً واحدة، **ويُعلَن صراحةً** إن تجاوز العدد
+/// هذا الحدّ بدل أن تُحذَف البقيّة صامتةً.
+const int kTaskBoardLimit = 200;
+
+/// مهام **لوحة الكانبان** — بفلاتر الشاشة نفسها **عدا الحالة**.
+///
+/// 🔴 **الحالة مستثناةٌ عمداً**: اللوحة **هي** عرضُ الحالات، ففلترتُها بحالةٍ واحدة تُفرغ
+/// أربعة أعمدة من خمسة وتبدو اللوحة معطوبة.
+final taskBoardProvider = FutureProvider.autoDispose<TaskPage>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (!session.canSeeTasks) return TaskPage.empty;
+
+  final f = ref.watch(taskFilterProvider);
+  return ref.read(apiClientProvider).tasks(
+        priority: f.priority,
+        departmentId: f.departmentId,
+        mineOnly: f.mineOnly,
+        isOverdue: f.isOverdue,
+        search: f.search,
+        page: 1,
+        pageSize: kTaskBoardLimit,
+      );
+});
+
 /// مهمةٌ بعينها.
 final taskDetailProvider =
     FutureProvider.autoDispose.family<TaskModel, int>((ref, id) async {

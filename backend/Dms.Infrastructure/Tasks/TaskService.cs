@@ -37,6 +37,14 @@ public interface ITaskService
     /// <summary>🔴 **مصدر الحقيقة الوحيد لقاعدة رؤية المهام** — يستدعيه غيرُه ولا ينسخه.</summary>
     IQueryable<DmsTask> Query();
 
+    /// <summary><see cref="Query"/> بعد تطبيق الفلاتر — **بلا ترتيبٍ ولا تقسيمِ صفحات**.</summary>
+    /// <remarks>
+    /// 🔴 **استُخرجت من <c>QueryAsync</c> ليناديها التقرير** بدل نسخ كتلة الشروط (الدفعة ٧).
+    /// نسخةٌ ثانية منها كانت ستعني أن **الشاشة تفلتر بشرطٍ والتقرير بآخر** عند أول تعديل —
+    /// وهو بعينه عطلُ ADR-030 الذي جعل التقرير يُظهر غير ما تُظهره الشاشة.
+    /// </remarks>
+    IQueryable<DmsTask> Filtered(TaskFilters filters);
+
     Task<(List<DmsTask> Items, int Total)> QueryAsync(
         TaskFilters filters, int page, int pageSize, CancellationToken ct = default);
 
@@ -131,8 +139,7 @@ public sealed class TaskService(
                                                   || (dept != null && p.DepartmentId == dept))));
     }
 
-    public async Task<(List<DmsTask> Items, int Total)> QueryAsync(
-        TaskFilters f, int page, int pageSize, CancellationToken ct = default)
+    public IQueryable<DmsTask> Filtered(TaskFilters f)
     {
         var q = Query();
 
@@ -163,6 +170,14 @@ public sealed class TaskService(
                 ? q.Where(t => t.DueDate < today && TaskWorkflow.ActiveStatuses.Contains(t.Status))
                 : q.Where(t => !(t.DueDate < today && TaskWorkflow.ActiveStatuses.Contains(t.Status)));
         }
+
+        return q;
+    }
+
+    public async Task<(List<DmsTask> Items, int Total)> QueryAsync(
+        TaskFilters f, int page, int pageSize, CancellationToken ct = default)
+    {
+        var q = Filtered(f);
 
         var total = await q.CountAsync(ct);
 

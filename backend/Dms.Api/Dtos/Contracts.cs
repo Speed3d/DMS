@@ -480,6 +480,18 @@ public sealed record ArchiveDetailRowDto(
 public sealed record ArchiveDetailReportDto(
     List<ArchiveDetailRowDto> Rows, int Count, int IncomingCount, int PaperCount, decimal TotalIqd);
 
+/// <param name="DaysOverdue">أيام التأخّر — **صفرٌ لغير المتأخّرة** (والعميل يعرضها «—»).</param>
+public sealed record TaskDetailRowDto(
+    int TaskId, string Number, string Title, string TypeLabel, string PriorityLabel,
+    DmsTaskStatus Status, string StatusLabel, int ProgressPercent, DateTime DueDate,
+    string DepartmentName, string AssignedTo, string CreatedBy,
+    bool IsOverdue, int DaysOverdue, DateTime? CompletedDate);
+
+/// <param name="AverageProgress">متوسّط إنجاز **النشِطة وحدها** — ضمُّ المكتملة يرفعه كذباً.</param>
+public sealed record TaskDetailReportDto(
+    List<TaskDetailRowDto> Rows, int Count, int Active, int Overdue, int Completed,
+    int AverageProgress, List<CountRowDto> ByStatus);
+
 // ----------------- Backup -----------------
 public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupScope Scope, RetentionCategory Category, BackupStatus Status, string? Note);
 
@@ -638,7 +650,16 @@ public sealed record TaskListItemResponse(
     bool IsOverdue, int DaysOverdue, int DaysRemaining,
     int? DepartmentId, string? DepartmentName,
     int? AssignedToUserId, string? AssignedToUserName,
-    int AttachmentCount);
+    int AttachmentCount,
+
+    /// <summary>الحالات المسموح الانتقال إليها — **من مصفوفة `TaskWorkflow` لا من العميل**.</summary>
+    /// <remarks>
+    /// 🔴 أُضيفت للوحة الكانبان (الدفعة ٧): اللوحة تُبرز **أعمدة الإفلات الصالحة وحدها**،
+    /// ومعرفةُ ذلك تحتاج المصفوفة. ونسخُها في Dart كان يعني **مصفوفتين تتباعدان** — فأوّل
+    /// تعديلٍ على الانتقالات يجعل اللوحة تَعِد بإفلاتٍ يرفضه الخادم.
+    /// ⚠️ **وقائمةٌ فارغة تعني حالةً نهائية** (ملغاة) — لا «لم تُحسب بعد».
+    /// </remarks>
+    List<DmsTaskStatus> NextStatuses);
 
 public sealed record TaskListResponse(List<TaskListItemResponse> Items, int Total, int Page, int PageSize);
 

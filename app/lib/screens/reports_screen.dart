@@ -7,6 +7,7 @@ import '../core/session.dart';
 import '../models.dart';
 import 'reports_activity_tab.dart';
 import 'reports_detail_tabs.dart';
+import 'reports_tasks_tab.dart';
 
 /// شاشة التقارير — **تبويبات تتبع صلاحيات المستخدم** (ADR-031).
 ///
@@ -45,6 +46,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         (title: 'الصادر التفصيلي', icon: Icons.outbox_outlined, body: const OutgoingDetailTab()),
       if (s.canSeeArchiveDetailReport)
         (title: 'الأرشيف التفصيلي', icon: Icons.inventory_2_outlined, body: const ArchiveDetailTab()),
+      if (s.canSeeTasksReport)
+        (title: 'المهام', icon: Icons.task_alt, body: const TasksDetailTab()),
       if (s.canSeeActivityReport)
         (title: 'النشاط', icon: Icons.history, body: const ActivityReportTab()),
     ];

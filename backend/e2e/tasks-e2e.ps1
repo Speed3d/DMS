@@ -559,6 +559,118 @@ if($cid2 -gt 0){
   if($leak.Count -eq 0){ Ok "ولا تظهر في قائمتها" } else { Bad "تسرّبت إلى قائمة الشركة الثانية" }
 } else { Write-Host "  [تخطّي] لا شركة ثانية" -ForegroundColor DarkYellow }
 
+Write-Host "`n=== تقرير المهام (الدفعة ٧) ===" -ForegroundColor Cyan
+
+# ⚠️ **بايتات لا JSON**: نقطتا PDF/Excel تُعيدان ملفاً، فتُقرأ بايتاته للتحقّق من نوعه.
+function ApiBytes($u,$t,$c){ $h=@{Authorization="Bearer $t"}; if($c){$h."X-Company-Id"="$c"}
+  try{ $r=Invoke-WebRequest -Uri "$Base$u" -Headers $h -UseBasicParsing
+       return @{S=[int]$r.StatusCode; D=$r.Content} }
+  catch{ $resp=$_.Exception.Response; $code=if($resp){[int]$resp.StatusCode}else{0}; return @{S=$code;D=$null} }
+}
+
+# 🔐 مستخدمو الحدّ المزدوج: التقارير+المهام · التقارير وحدها · قارئٌ بالاثنين.
+$rep=UpsertUser 'tsk_rep' 'موظف التقارير والمهام' 'Employee' @('Outgoing','Tasks','Reports') $false $depId
+$ronly=UpsertUser 'tsk_ronly' 'موظف التقارير وحدها' 'Employee' @('Outgoing','Reports') $false $depId
+$rrd=UpsertUser 'tsk_rrd' 'قارئ بالتقارير والمهام' 'Reader' @('Outgoing','Tasks','Reports') $false $depId
+$tRep=UserLogin 'tsk_rep'; $tRonly=UserLogin 'tsk_ronly'; $tRrd=UserLogin 'tsk_rrd'
+if($tRep -and $tRonly -and $tRrd){ Ok "دخول مستخدمي التقارير الثلاثة" } else { Bad "تعذّر دخول أحدهم" }
+
+# 🔐 ── الحدّ المزدوج في الاتجاهين ──
+$r=(Api GET "/reports/tasks-detail" $null $tMng $cid)
+if($r.S -eq 403){ Ok "🔐 قسم المهام بلا التقارير ⇒ 403 (الحدّ الأول)" } else { Bad "ردّ $($r.S) لمن لا يملك التقارير" }
+
+$r=(Api GET "/reports/tasks-detail" $null $tRonly $cid)
+if($r.S -eq 403){ Ok "🔐 وقسم التقارير بلا المهام ⇒ 403 (الحدّ الثاني) — فالتقرير ليس باباً خلفياً" }
+else { Bad "ردّ $($r.S) لمن لا يملك المهام" }
+
+$r=(Api GET "/reports/tasks-detail" $null $tRrd $cid)
+if($r.S -eq 403){ Ok "🔐 والقارئ محجوبٌ ولو مُنح القسمين — «RequireGrantedModule» لا «RequireModule»" }
+else { Bad "ردّ $($r.S) للقارئ" }
+
+# ── التقرير يعمل لمن يملك الحدَّين ──
+$rep1=(Api GET "/reports/tasks-detail" $null $tRep $cid)
+if($rep1.S -eq 200){ Ok "والتقرير يستجيب لمن يملك القسمين مع دورٍ فوق القارئ" } else { Bad "ردّ $($rep1.S)" }
+$repRows=@($rep1.B.rows)
+
+# 🔴 ── **الرؤية واحدة: ما يُطبَع عين ما يُرى** ──
+$listTotal=[int](Api GET "/tasks?pageSize=200" $null $tRep $cid).B.total
+if([int]$rep1.B.count -eq $listTotal){
+  Ok "🔴 عدد صفوف التقرير = عدد قائمة الشاشة ($listTotal) — «Filtered()» واحدة لا نسختان" }
+else { Bad "التقرير $($rep1.B.count) والقائمة $listTotal — قاعدتا رؤيةٍ تباعدتا" }
+
+# 🔴 وكل صفٍّ في التقرير **يُفتح** بمعرّفه من صاحبه نفسه — برهانٌ مباشر لا استنتاج.
+$unseen=0
+foreach($row in ($repRows | Select-Object -First 5)){
+  $one=(Api GET "/tasks/$([int]$row.taskId)" $null $tRep $cid)
+  if($one.S -ne 200){ $unseen++ }
+}
+if($unseen -eq 0){ Ok "وكل صفٍّ مفحوصٍ يُفتح بمعرّفه من صاحب التقرير — لا صفَّ لا يراه" }
+else { Bad "$unseen صفّاً في التقرير لا يستطيع صاحبه فتحه — تسريب رؤية" }
+
+# ── الفلاتر تُطبَّق ──
+#
+# 🔴 **تُصنَع مهمةٌ متأخّرة أولاً**: حارسٌ يفحص «لا صفَّ غير متأخّر» على نتيجةٍ فارغة
+#    **ينجح دائماً ولا يحرس شيئاً** — درسُ «حارسٌ يقيس قيمةً لم تصل يكذب» (الدفعة ٥).
+# ⚠️ **الإنشاء بموعدٍ ماضٍ مرفوضٌ بالتصميم** (حارسٌ في السطر 80) — فتُنشأ بموعدٍ صالح
+#    **ثم يُؤجَّل موعدها إلى الماضي بسببٍ مكتوب**، وهو المسار الحقيقيّ لكل مهمةٍ تتأخّر.
+$ovTask=(Api POST "/tasks" @{title='مهمة متأخّرة للتقرير';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$rep.userId} $admin $cid).B
+$idOv=[int]$ovTask.taskId
+$ovUpd=(Api PUT "/tasks/$idOv" @{title='مهمة متأخّرة للتقرير';priority='Normal';dueDate=$past;rowVersion=$ovTask.rowVersion;reason='ضبط الموعد ليصير متأخّراً لاختبار الفلتر'} $admin $cid)
+if($ovUpd.S -eq 200){ Ok "أُنشئت مهمةٌ ثم أُرجع موعدُها فصارت متأخّرة" } else { Bad "تعذّر ضبط الموعد: $($ovUpd.S)" }
+$ovRep=(Api GET "/reports/tasks-detail?isOverdue=true" $null $tRep $cid)
+$ovRows=@($ovRep.B.rows)
+$notOverdue=@($ovRows | Where-Object { -not $_.isOverdue })
+if($ovRows.Count -ge 1 -and $notOverdue.Count -eq 0){
+  Ok "فلتر «المتأخّرة» يُعيد متأخّراتٍ فقط ($($ovRows.Count) صفّاً) — وقد صُنعت واحدة ليحرس فعلاً" }
+elseif($ovRows.Count -eq 0){ Bad "الفلتر أعاد صفراً رغم وجود متأخّرة — حارسٌ لا يقيس شيئاً" }
+else { Bad "$($notOverdue.Count) صفٍّ غير متأخّر ضمن فلتر المتأخّرة" }
+
+$mine=@($ovRows | Where-Object { [int]$_.taskId -eq $idOv })
+if($mine.Count -eq 1 -and [int]$mine[0].daysOverdue -ge 1){
+  Ok "والمتأخّرة تحمل عدد أيامها ($([int]$mine[0].daysOverdue) يوماً) لا صفراً" }
+else { Bad "لم تظهر المتأخّرة المصنوعة أو أيامها صفر" }
+
+$repByStatus=(Api GET "/reports/tasks-detail?status=Completed" $null $tRep $cid)
+$wrongStatus=@(@($repByStatus.B.rows) | Where-Object { $_.status -ne 'Completed' })
+if($wrongStatus.Count -eq 0){ Ok "وفلتر الحالة كذلك" } else { Bad "$($wrongStatus.Count) صفٍّ بحالةٍ أخرى" }
+
+# 🔴 ── الملخّص صادق ──
+if([int]$rep1.B.averageProgress -ge 0 -and [int]$rep1.B.averageProgress -le 100){
+  Ok "متوسّط الإنجاز ضمن [0،100]: $($rep1.B.averageProgress)% — وعلى النشِطة وحدها" }
+else { Bad "متوسّطٌ خارج المدى: $($rep1.B.averageProgress)" }
+
+$sumByStatus=0; foreach($s in @($rep1.B.byStatus)){ $sumByStatus += [int]$s.count }
+if($sumByStatus -eq [int]$rep1.B.count){ Ok "وتوزيع الحالات يجمع إلى العدد الكلّي ($sumByStatus)" }
+else { Bad "التوزيع $sumByStatus والعدد $($rep1.B.count)" }
+
+# ── المخرجان ──
+$pdf=ApiBytes "/reports/tasks-detail/pdf" $tRep $cid
+if($pdf.S -eq 200 -and $pdf.D -and $pdf.D.Length -gt 1000 -and $pdf.D[0] -eq 0x25 -and $pdf.D[1] -eq 0x50){
+  Ok "PDF المهام يُولَّد ($($pdf.D.Length) بايت، ويبدأ بـ%PDF)" }
+else { Bad "PDF: الحالة $($pdf.S)" }
+
+$xls=ApiBytes "/reports/tasks-detail/excel" $tRep $cid
+if($xls.S -eq 200 -and $xls.D -and $xls.D.Length -gt 500 -and $xls.D[0] -eq 0x50 -and $xls.D[1] -eq 0x4B){
+  Ok "و Excel كذلك ($($xls.D.Length) بايت، ويبدأ بـPK)" }
+else { Bad "Excel: الحالة $($xls.S)" }
+
+# 🔐 والمخرجان محروسان كالتقرير — لا يكفي حجب الجدول وترك ملفّه.
+$p403=ApiBytes "/reports/tasks-detail/pdf" $tRonly $cid
+$x403=ApiBytes "/reports/tasks-detail/excel" $tRonly $cid
+if($p403.S -eq 403 -and $x403.S -eq 403){ Ok "🔐 والمخرجان محروسان بالحدّ نفسه (403 لمن لا يملك المهام)" }
+else { Bad "PDF=$($p403.S) Excel=$($x403.S) — بابٌ خلفيّ في المخرجات" }
+
+# 🔴 ── سطرٌ أنشأه السوبر أدمن لا يسقط من التقرير (ADR-034) ──
+$adminTask=(Api POST "/tasks" @{title='مهمة أنشأها السوبر أدمن للتقرير';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$rep.userId} $admin $cid).B
+$idAdm=[int]$adminTask.taskId
+$repAfter=(Api GET "/reports/tasks-detail" $null $tRep $cid)
+$found=@(@($repAfter.B.rows) | Where-Object { [int]$_.taskId -eq $idAdm })
+if($found.Count -eq 1){ Ok "🔴 ومهمةٌ أنشأها سوبر أدمن غير مُسنَد **تظهر في التقرير** (حارس ADR-034)" }
+else { Bad "سقطت من التقرير — «Include» على علاقةٍ مطلوبة عاد" }
+if($found.Count -eq 1 -and $found[0].createdBy -and $found[0].createdBy -ne '—'){
+  Ok "وسطرُها يحمل اسم مُنشئه: $($found[0].createdBy)" }
+else { Bad "سطرُ السوبر أدمن بلا اسم مُنشئ" }
+
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
 Write-Host "فشل: $fail" -ForegroundColor $(if($fail -gt 0){'Red'}else{'Green'})

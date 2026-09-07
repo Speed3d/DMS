@@ -105,6 +105,14 @@ class SessionState {
   /// الأرشيف التفصيلي: قسم التقارير **مع** قسم الأرشيف (حدٌّ مزدوج — ADR-031).
   bool get canSeeArchiveDetailReport => hasModule('Reports') && hasModule('Archive');
 
+  /// تقرير المهام: قسم التقارير **مع** `canSeeTasks` (الدفعة ٧).
+  ///
+  /// ⚠️ **و`canSeeTasks` لا `hasModule('Tasks')`** — لأن المهام قسمٌ **لا يبلغه القارئ**
+  /// (ADR-037)، فالحدّ الثاني هنا **قسمٌ ودورٌ معاً** مرآةً لـ`RequireGrantedModule` على
+  /// الخادم. ولو اكتُفي بالقسم لظهر التبويب لقارئٍ يردّه الخادم بـ403 — **وواجهةٌ تَعِد بما
+  /// يمنعه الخادم أسوأ من واجهةٍ تحجب**.
+  bool get canSeeTasksReport => hasModule('Reports') && canSeeTasks;
+
   SessionState copyWith({AuthResult? auth, int? activeCompanyId, bool? loaded, bool? bypassCompanySelection, bool clearAuth = false, bool clearCompany = false}) =>
       SessionState(
         auth: clearAuth ? null : (auth ?? this.auth),

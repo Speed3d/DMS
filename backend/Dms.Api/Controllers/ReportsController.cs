@@ -3,6 +3,7 @@ using Dms.Api.Dtos;
 using Dms.Domain;
 using Dms.Infrastructure.Archive;
 using Dms.Infrastructure.Reports;
+using Dms.Infrastructure.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -179,6 +180,74 @@ public sealed class ReportsController(IReportService reports) : ControllerBase
         [FromQuery] int? departmentId, [FromQuery] string? source, CancellationToken ct = default)
         => File(await reports.ArchiveDetailExcelAsync(new ArchiveLensFilter(search, year, month, departmentId, source), ct),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    // ══════════════════ تقرير المهام (الدفعة ٧) ══════════════════
+    //
+    // 🔐 **حدٌّ مزدوج كنظيرَيه**: قسم **التقارير** من الصنف، وقسم **المهام** من الوسم أدناه.
+    //    وهو `RequireGrantedModule` لا `RequireModule` لأن المهام قسمٌ **يُمنح صراحةً ولا
+    //    يبلغه القارئ** (ADR-037) — فحارسُ التقارير وحده كان سيفتح مهامّ الشركة لقارئٍ
+    //    يملك التقارير. **وهذا بعينه «الباب الخلفي» الذي عالجته ADR-031.**
+    //
+    // 🔴 **ورؤية الصفوف تُحسم داخل `tasks.Filtered()`** — بقاعدة الرؤية نفسها التي تغذّي
+    //    الشاشة (ADR-037)، فمَن يرى المهمة على الشاشة يجدها في تقريره ولا يجد سواها.
+
+    /// <summary>تقرير المهام التفصيلي — بفلاتر الشاشة نفسها.</summary>
+    [HttpGet("tasks-detail")]
+    [RequireGrantedModule(AppModule.Tasks)]
+    public async Task<ActionResult<TaskDetailReportDto>> TasksDetail(
+        [FromQuery] DmsTaskStatus? status, [FromQuery] DmsTaskPriority? priority,
+        [FromQuery] int? departmentId, [FromQuery] int? assignedTo, [FromQuery] int? createdBy,
+        [FromQuery] DateTime? dueFrom, [FromQuery] DateTime? dueTo,
+        [FromQuery] bool? isOverdue, [FromQuery] bool mineOnly = false,
+        [FromQuery] string? search = null, CancellationToken ct = default)
+    {
+        var r = await reports.TaskDetailAsync(
+            TaskReportFilter(status, priority, departmentId, assignedTo, createdBy,
+                dueFrom, dueTo, isOverdue, mineOnly, search), ct);
+
+        return new TaskDetailReportDto(
+            r.Rows.Select(x => new TaskDetailRowDto(
+                x.TaskId, x.Number, x.Title, x.TypeLabel, x.PriorityLabel,
+                x.Status, x.StatusLabel, x.ProgressPercent, x.DueDate,
+                x.DepartmentName, x.AssignedTo, x.CreatedBy,
+                x.IsOverdue, x.DaysOverdue, x.CompletedDate)).ToList(),
+            r.Count, r.Active, r.Overdue, r.Completed, r.AverageProgress,
+            r.ByStatus.Select(s => new CountRowDto(s.Label, s.Count)).ToList());
+    }
+
+    [HttpGet("tasks-detail/pdf")]
+    [RequireGrantedModule(AppModule.Tasks)]
+    public async Task<IActionResult> TasksDetailPdf(
+        [FromQuery] DmsTaskStatus? status, [FromQuery] DmsTaskPriority? priority,
+        [FromQuery] int? departmentId, [FromQuery] int? assignedTo, [FromQuery] int? createdBy,
+        [FromQuery] DateTime? dueFrom, [FromQuery] DateTime? dueTo,
+        [FromQuery] bool? isOverdue, [FromQuery] bool mineOnly = false,
+        [FromQuery] string? search = null, CancellationToken ct = default)
+        => File(await reports.TaskDetailPdfAsync(
+                    TaskReportFilter(status, priority, departmentId, assignedTo, createdBy,
+                        dueFrom, dueTo, isOverdue, mineOnly, search), ct),
+                "application/pdf");
+
+    [HttpGet("tasks-detail/excel")]
+    [RequireGrantedModule(AppModule.Tasks)]
+    public async Task<IActionResult> TasksDetailExcel(
+        [FromQuery] DmsTaskStatus? status, [FromQuery] DmsTaskPriority? priority,
+        [FromQuery] int? departmentId, [FromQuery] int? assignedTo, [FromQuery] int? createdBy,
+        [FromQuery] DateTime? dueFrom, [FromQuery] DateTime? dueTo,
+        [FromQuery] bool? isOverdue, [FromQuery] bool mineOnly = false,
+        [FromQuery] string? search = null, CancellationToken ct = default)
+        => File(await reports.TaskDetailExcelAsync(
+                    TaskReportFilter(status, priority, departmentId, assignedTo, createdBy,
+                        dueFrom, dueTo, isOverdue, mineOnly, search), ct),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    /// <summary>الفلتر نفسه للنقاط الثلاث — **مصدرٌ واحد** فلا تتباعد الشاشةُ عن مطبوعتها.</summary>
+    private static TaskFilters TaskReportFilter(
+        DmsTaskStatus? status, DmsTaskPriority? priority, int? departmentId, int? assignedTo,
+        int? createdBy, DateTime? dueFrom, DateTime? dueTo, bool? isOverdue,
+        bool mineOnly, string? search)
+        => new(status, priority, departmentId, assignedTo, createdBy,
+               dueFrom, dueTo, isOverdue, mineOnly, search);
 
     /// <summary>مفردات سجلّ التدقيق (الأفعال والأنواع) بعربيّتها — لتملأ قوائم الفلترة.</summary>
     /// <remarks>

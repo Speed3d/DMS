@@ -141,6 +141,12 @@ class Sidebar extends ConsumerWidget {
               },
             ),
 
+          // ⚠️ **المؤشّر 13** — لوحة الكانبان (الدفعة ٧). بندٌ ثانٍ لا تبويبٌ داخل القائمة
+          //    لأن اللوحة **عرضٌ مستقلّ بحجم الشاشة** لا وجهٌ آخر للقائمة، وحارسُها هو
+          //    حارسُ المهام نفسه — قسمٌ ودورٌ فوق القارئ.
+          if (canSeeTasks)
+            _buildItem(13, Icons.view_kanban_outlined, 'لوحة المهام'),
+
           const SizedBox(height: 18),
 
           // Admin Menu

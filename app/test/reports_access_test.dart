@@ -116,22 +116,46 @@ void main() {
     Finder tabNamed(String t) =>
         find.descendant(of: find.byType(TabBar), matching: find.text(t));
 
-    testWidgets('سوبر أدمن بكل الأقسام: ثلاثة تبويبات **بلا المالي**', (tester) async {
+    testWidgets('سوبر أدمن بكل الأقسام: أربعة تبويبات **بلا المالي**', (tester) async {
       await pumpReports(tester, sessionWith(modules: kAllModules, role: 'SuperAdmin'));
       expect(tabNamed('الصادر التفصيلي'), findsOneWidget);
       expect(tabNamed('الأرشيف التفصيلي'), findsOneWidget);
+      expect(tabNamed('المهام'), findsOneWidget);
       expect(tabNamed('النشاط'), findsOneWidget);
       // 🔴 المالي مخفيّ بقرار المالك — تقريران يقولان الشيء نفسه أسوأ من واحد.
       expect(find.text('المالي'), findsNothing);
-      expect(find.byType(Tab), findsNWidgets(3));
+      expect(find.byType(Tab), findsNWidgets(4));
     });
 
-    testWidgets('🔐 رئيس بكل الأقسام: تبويبان — **لا نشاط**', (tester) async {
+    testWidgets('🔐 رئيس بكل الأقسام: ثلاثة — **لا نشاط**', (tester) async {
       await pumpReports(tester, sessionWith(modules: kAllModules, role: 'President'));
       expect(tabNamed('الصادر التفصيلي'), findsOneWidget);
       expect(tabNamed('الأرشيف التفصيلي'), findsOneWidget);
+      expect(tabNamed('المهام'), findsOneWidget);
       expect(tabNamed('النشاط'), findsNothing);
-      expect(find.byType(Tab), findsNWidgets(2));
+      expect(find.byType(Tab), findsNWidgets(3));
+    });
+
+    // 🔐 **حدّ تقرير المهام المزدوج — والقارئ محجوبٌ ولو مُنح القسمين** (الدفعة ٧).
+    testWidgets('🔐 قارئٌ بالتقارير والمهام: لا تبويب مهام — مرآةُ `RequireGrantedModule`',
+        (tester) async {
+      await pumpReports(tester, sessionWith(modules: ['Reports', 'Tasks'], role: 'Reader'));
+      expect(find.text('المهام'), findsNothing,
+          reason: 'المهام قسمٌ لا يبلغه القارئ — وتبويبٌ يقود إلى 403 أسوأ من إخفائه');
+      expect(find.textContaining('لا تقارير متاحة'), findsOneWidget);
+    });
+
+    testWidgets('🔐 موظفٌ بالمهام بلا التقارير: لا تبويب مهام', (tester) async {
+      await pumpReports(tester, sessionWith(modules: ['Tasks'], role: 'Employee'));
+      expect(find.text('المهام'), findsNothing,
+          reason: 'قسم التقارير هو الحدّ الأول — وبدونه لا تقرير مهما مُلك قسم الوحدة');
+    });
+
+    testWidgets('✅ موظفٌ بالتقارير والمهام: تبويبٌ واحد هو المهام', (tester) async {
+      await pumpReports(tester, sessionWith(modules: ['Reports', 'Tasks'], role: 'Employee'));
+      // تبويبٌ واحد لا يستحقّ شريطاً — تُعرض الشاشة مباشرةً، فيُبحث عن عنوانها لا عن تبويبها.
+      expect(find.byType(TabBar), findsNothing);
+      expect(find.text('تقرير المهام'), findsOneWidget);
     });
 
     testWidgets('مدير بالتقارير والصادر: تبويبٌ واحد بلا شريط', (tester) async {
@@ -315,6 +339,21 @@ class _SilentApi extends ApiClient {
 
   @override
   Future<AuditVocabulary> auditVocabulary() async => AuditVocabulary(const [], const []);
+
+  // ⚠️ **تبويب المهام ينادي نقطتين لا واحدة**: التقرير **وقائمة الأقسام** (لمنسدلة الفلتر).
+  //    وترْكُ الثانية بلا تزييف يُبقي مؤقّت الشبكة معلّقاً فيفشل الاختبار بلا عيبٍ في الشاشة —
+  //    نفس درس «الجرس يستطلع في اختبارٍ بلا خادم» (الدفعة ٥).
+  @override
+  Future<List<DepartmentModel>> departments({int? companyId}) async => const [];
+
+  @override
+  Future<TaskDetailReport> tasksDetailReport({
+    String? status, String? priority, int? departmentId, int? assignedTo,
+    DateTime? dueFrom, DateTime? dueTo, bool? isOverdue, String? search,
+  }) async =>
+      TaskDetailReport(
+          rows: const [], count: 0, active: 0, overdue: 0,
+          completed: 0, averageProgress: 0, byStatus: const []);
 
   @override
   Future<OutgoingDetailReport> outgoingDetailReport(

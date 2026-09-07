@@ -46,6 +46,13 @@ class TaskListItem {
   final String? assignedToUserName;
   final int attachmentCount;
 
+  /// الحالات المسموح الانتقال إليها — **يرسلها الخادم من `TaskWorkflow`**.
+  ///
+  /// 🔴 تستعملها لوحة الكانبان لإبراز **أعمدة الإفلات الصالحة وحدها**. ومصفوفةُ انتقالٍ
+  /// ثانيةٌ مكتوبةٌ هنا كانت ستتباعد عن الخادم عند أول تعديل، **فتَعِد اللوحة بإفلاتٍ يُرفض**.
+  /// ⚠️ **وقائمةٌ فارغة = حالةٌ نهائية** (ملغاة) لا «لم تصل بعد».
+  final List<String> nextStatuses;
+
   TaskListItem({
     required this.taskId, this.taskNumber, required this.title,
     required this.taskType, required this.priority, required this.priorityLabel,
@@ -55,6 +62,7 @@ class TaskListItem {
     this.departmentId, this.departmentName,
     this.assignedToUserId, this.assignedToUserName,
     required this.attachmentCount,
+    this.nextStatuses = const [],
   });
 
   bool get isDepartmentTask => taskType == 'Department';
@@ -78,6 +86,8 @@ class TaskListItem {
         assignedToUserId: j['assignedToUserId'],
         assignedToUserName: j['assignedToUserName'],
         attachmentCount: j['attachmentCount'] ?? 0,
+        nextStatuses:
+            ((j['nextStatuses'] ?? const []) as List).map((e) => '$e').toList(),
       );
 }
 
@@ -434,4 +444,96 @@ class NotificationPage {
 
   static NotificationPage get empty =>
       NotificationPage(items: const [], total: 0, page: 1, pageSize: 25);
+}
+
+// ═══════════════════════ تقرير المهام (الدفعة ٧) ═══════════════════════
+
+/// صفٌّ في تقرير المهام التفصيلي.
+///
+/// 📅 **`dueDate` و`completedDate` تواريخ تقويمية** — `parseCalendarDate` لا `parseInstant`،
+/// وإلا انزاح اليوم عند من توقيتُه سالب (قاعدة `LocalClock` وعائلة ADR-032).
+class TaskReportRow {
+  final int taskId;
+  final String number;
+  final String title;
+  final String typeLabel;
+  final String priorityLabel;
+
+  /// ⚠️ نصٌّ لا رقم — الخادم يسلسل الـenums بأسمائها.
+  final String status;
+  final String statusLabel;
+  final int progressPercent;
+  final DateTime dueDate;
+  final String departmentName;
+  final String assignedTo;
+  final String createdBy;
+  final bool isOverdue;
+
+  /// **صفرٌ لغير المتأخّرة** — وتُعرض «—» لا «0 يوم» (صفرٌ هنا يُقرأ «تأخّرت اليوم»).
+  final int daysOverdue;
+  final DateTime? completedDate;
+
+  TaskReportRow({
+    required this.taskId, required this.number, required this.title,
+    required this.typeLabel, required this.priorityLabel,
+    required this.status, required this.statusLabel, required this.progressPercent,
+    required this.dueDate, required this.departmentName,
+    required this.assignedTo, required this.createdBy,
+    required this.isOverdue, required this.daysOverdue, this.completedDate,
+  });
+
+  factory TaskReportRow.fromJson(Map<String, dynamic> j) => TaskReportRow(
+        taskId: j['taskId'] ?? 0,
+        number: j['number'] ?? '',
+        title: j['title'] ?? '',
+        typeLabel: j['typeLabel'] ?? '',
+        priorityLabel: j['priorityLabel'] ?? '',
+        status: '${j['status'] ?? ''}',
+        statusLabel: j['statusLabel'] ?? '',
+        progressPercent: j['progressPercent'] ?? 0,
+        dueDate: parseCalendarDate(j['dueDate']),
+        departmentName: j['departmentName'] ?? '—',
+        assignedTo: j['assignedTo'] ?? '—',
+        createdBy: j['createdBy'] ?? '—',
+        isOverdue: j['isOverdue'] ?? false,
+        daysOverdue: j['daysOverdue'] ?? 0,
+        completedDate: parseCalendarDateOrNull(j['completedDate']),
+      );
+}
+
+class TaskStatusCount {
+  final String label;
+  final int count;
+  TaskStatusCount(this.label, this.count);
+  factory TaskStatusCount.fromJson(Map<String, dynamic> j) =>
+      TaskStatusCount(j['label'] ?? '', j['count'] ?? 0);
+}
+
+class TaskDetailReport {
+  final List<TaskReportRow> rows;
+  final int count;
+  final int active;
+  final int overdue;
+  final int completed;
+
+  /// متوسّط إنجاز **النشِطة وحدها** — ضمُّ المكتملة والملغاة يرفعه كذباً.
+  final int averageProgress;
+  final List<TaskStatusCount> byStatus;
+
+  TaskDetailReport({
+    required this.rows, required this.count, required this.active,
+    required this.overdue, required this.completed,
+    required this.averageProgress, required this.byStatus,
+  });
+
+  factory TaskDetailReport.fromJson(Map<String, dynamic> j) => TaskDetailReport(
+        rows: ((j['rows'] ?? []) as List).map((e) => TaskReportRow.fromJson(e)).toList(),
+        count: j['count'] ?? 0,
+        active: j['active'] ?? 0,
+        overdue: j['overdue'] ?? 0,
+        completed: j['completed'] ?? 0,
+        averageProgress: j['averageProgress'] ?? 0,
+        byStatus: ((j['byStatus'] ?? []) as List)
+            .map((e) => TaskStatusCount.fromJson(e)).toList(),
+      );
 }

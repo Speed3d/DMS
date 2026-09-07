@@ -272,7 +272,8 @@ public sealed class TasksController(
         DaysRemaining(t.DueDate),
         t.DepartmentId, t.Department?.Name,
         t.AssignedToUserId, t.AssignedToUser?.FullName,
-        attachmentCount);
+        attachmentCount,
+        TaskWorkflow.NextStatuses(t.Status).ToList());
 
     /// <summary>يحوّل المشاركين — **والأسماء محلولةٌ في الخدمة** لا هنا.</summary>
     private static TaskParticipantResponse MapParticipant(DmsTaskParticipant p)

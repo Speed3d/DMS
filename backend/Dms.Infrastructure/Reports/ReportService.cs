@@ -5,6 +5,7 @@ using Dms.Infrastructure.Archive;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
+using Dms.Infrastructure.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Infrastructure.Reports;
@@ -60,6 +61,19 @@ public sealed record ArchiveDetailResult(
 public sealed record OutgoingDetailFilter(
     DateTime? From = null, DateTime? To = null, int? EntityId = null, BookStatus? Status = null);
 
+/// <param name="Number">رقم المهمة، أو «— بلا رقم —» لمن لم تُرقَّم بعد.</param>
+/// <param name="DaysOverdue">أيام التأخّر — **صفرٌ لغير المتأخّرة**، محسوبةٌ بقاعدة المجال.</param>
+public sealed record TaskDetailRow(
+    int TaskId, string Number, string Title, string TypeLabel, string PriorityLabel,
+    DmsTaskStatus Status, string StatusLabel, int ProgressPercent,
+    DateTime DueDate, string DepartmentName, string AssignedTo, string CreatedBy,
+    bool IsOverdue, int DaysOverdue, DateTime? CompletedDate);
+
+/// <param name="ByStatus">توزيع المهام على الحالات — لصدر التقرير.</param>
+public sealed record TaskDetailResult(
+    List<TaskDetailRow> Rows, int Count, int Active, int Overdue, int Completed,
+    int AverageProgress, List<CountRow> ByStatus);
+
 public interface IReportService
 {
     Task<FinancialReportResult> FinancialAsync(DateTime? from, DateTime? to, int? entityId, string source, CancellationToken ct = default);
@@ -77,11 +91,15 @@ public interface IReportService
     Task<ArchiveDetailResult> ArchiveDetailAsync(ArchiveLensFilter filter, CancellationToken ct = default);
     Task<byte[]> ArchiveDetailPdfAsync(ArchiveLensFilter filter, CancellationToken ct = default);
     Task<byte[]> ArchiveDetailExcelAsync(ArchiveLensFilter filter, CancellationToken ct = default);
+
+    Task<TaskDetailResult> TaskDetailAsync(TaskFilters filter, CancellationToken ct = default);
+    Task<byte[]> TaskDetailPdfAsync(TaskFilters filter, CancellationToken ct = default);
+    Task<byte[]> TaskDetailExcelAsync(TaskFilters filter, CancellationToken ct = default);
 }
 
 public sealed class ReportService(
     AppDbContext db, ICurrentUser current,
-    IOutgoingService outgoing, IArchiveService archive) : IReportService
+    IOutgoingService outgoing, IArchiveService archive, ITaskService tasks) : IReportService
 {
     // 🔴 **لا قاعدةَ رؤيةٍ مكتوبة هنا (ADR-030).** كان هذا الملفّ يحمل نسختَه الخاصة
     //    («المُنشئ وحده») للصادر والأرشيف معاً، فتباعدت عن الشاشتين:
@@ -443,6 +461,117 @@ public sealed class ReportService(
             x.EntityName ?? "", x.DocumentType ?? "", x.Departments,
         }).ToList();
         return ExcelExporter.Create("الأرشيف التفصيلي", headers, rows);
+    }
+
+    // ══════════════════ تقرير المهام ══════════════════
+    //
+    // 🔴 **ينادي `tasks.Filtered()` — لا نسخةً منها ولا فلترةً موازية.** فقاعدة الرؤية
+    //    وكتلةُ الشروط كلتاهما في `TaskService`، **فما يُطبَع عين ما يُرى** (ADR-030 وADR-037).
+    //    ولهذا استُخرجت `Filtered` من `QueryAsync` بدل نسخ شروطها هنا.
+    //
+    // 🔴 **وبلا `Include` على `AssignedToUser`/`CreatedByUser`**: العلاقة نحو `Users` المفلتر
+    //    مطلوبةٌ، فـ`Include` عليها يُنتج `INNER JOIN` **يحذف صفوف مَن أنشأها سوبر أدمن غير
+    //    مُسنَد** (ADR-034 — وقع ثلاث مرات في هذه الوحدة). الأسماء تُقرأ باستعلامٍ ثانٍ،
+    //    **والصفّ يبقى ولو تعذّر اسم فاعله**.
+
+    public async Task<TaskDetailResult> TaskDetailAsync(TaskFilters f, CancellationToken ct = default)
+    {
+        var raw = await tasks.Filtered(f)
+            .OrderByDescending(t => t.Priority)
+            .ThenBy(t => t.DueDate)
+            .ThenByDescending(t => t.TaskId)
+            .Select(t => new
+            {
+                t.TaskId, t.TaskNumber, t.Title, t.TaskType, t.Priority, t.Status,
+                t.ProgressPercent, t.DueDate, t.CompletedDate,
+                DepartmentName = t.Department != null ? t.Department.Name : null,
+                t.AssignedToUserId, t.CreatedByUserId,
+            })
+            .ToListAsync(ct);
+
+        var ids = raw.SelectMany(t => new[] { t.AssignedToUserId, (int?)t.CreatedByUserId })
+            .Where(x => x is not null).Select(x => x!.Value).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => ids.Contains(u.UserId))
+            .ToDictionaryAsync(u => u.UserId, u => u.FullName, ct);
+        string NameOf(int? id) => id is not null && names.TryGetValue(id.Value, out var n) ? n : "—";
+
+        var rows = raw.Select(t =>
+        {
+            var overdue = TaskWorkflow.IsOverdue(t.Status, t.DueDate);
+            return new TaskDetailRow(
+                t.TaskId, t.TaskNumber ?? "— بلا رقم —", t.Title,
+                TaskWorkflow.ArabicName(t.TaskType), TaskWorkflow.ArabicName(t.Priority),
+                t.Status, TaskWorkflow.ArabicName(t.Status), t.ProgressPercent, t.DueDate,
+                t.DepartmentName ?? "—", NameOf(t.AssignedToUserId), NameOf(t.CreatedByUserId),
+                overdue, overdue ? LocalClock.DaysOverdue(t.DueDate) : 0, t.CompletedDate);
+        }).ToList();
+
+        // ⚠️ **متوسّط الإنجاز على النشِطة وحدها**: ضمُّ المكتملة (100%) والملغاة يرفع الرقم
+        //    فيبدو العمل متقدّماً لأن كثيراً منه أُلغي — **متوسّطٌ يُطمئن كذباً**.
+        var active = rows.Where(r => TaskWorkflow.IsActive(r.Status)).ToList();
+
+        return new TaskDetailResult(
+            rows, rows.Count, active.Count,
+            rows.Count(r => r.IsOverdue),
+            rows.Count(r => r.Status == DmsTaskStatus.Completed),
+            active.Count == 0 ? 0 : (int)Math.Round(active.Average(r => r.ProgressPercent)),
+            rows.GroupBy(r => r.StatusLabel)
+                .Select(g => new CountRow(g.Key, g.Count()))
+                .OrderByDescending(x => x.Count).ToList());
+    }
+
+    public async Task<byte[]> TaskDetailPdfAsync(TaskFilters f, CancellationToken ct = default)
+    {
+        var r = await TaskDetailAsync(f, ct);
+        var model = new TableReportModel(
+            "تقرير المهام التفصيلي", await CompanyNameAsync(ct), PeriodLabel(f.DueFrom, f.DueTo),
+            [
+                new TableReportColumn("الرقم", 2.2f),
+                new TableReportColumn("العنوان", 5f),
+                new TableReportColumn("القسم", 2.2f),
+                new TableReportColumn("المسؤول", 2.4f),
+                new TableReportColumn("الأولوية", 1.4f),
+                new TableReportColumn("الحالة", 1.6f),
+                new TableReportColumn("الإنجاز", 1.2f),
+                new TableReportColumn("الموعد", 1.6f),
+                new TableReportColumn("التأخّر", 1.2f),
+            ],
+            r.Rows.Select(x => (IReadOnlyList<string>)new[]
+            {
+                x.Number, x.Title, x.DepartmentName, x.AssignedTo, x.PriorityLabel,
+                x.StatusLabel, $"{x.ProgressPercent}%",
+                x.DueDate.ToString("yyyy-MM-dd"),
+
+                // «—» لا «0 يوم» لغير المتأخّرة: صفرٌ في عمود التأخّر يُقرأ «تأخّرت اليوم».
+                x.IsOverdue ? $"{x.DaysOverdue} يوم" : "—",
+            }).ToList(),
+            [
+                $"عدد المهام: {r.Count}",
+                $"نشِطة: {r.Active} · مكتملة: {r.Completed} · **متأخرة: {r.Overdue}**",
+                $"متوسّط إنجاز النشِطة: {r.AverageProgress}%",
+                string.Join(" · ", r.ByStatus.Select(s => $"{s.Label}: {s.Count}")),
+            ]);
+        return TableReportPdf.Generate(model);
+    }
+
+    public async Task<byte[]> TaskDetailExcelAsync(TaskFilters f, CancellationToken ct = default)
+    {
+        var r = await TaskDetailAsync(f, ct);
+        var headers = new[]
+        {
+            "الرقم", "العنوان", "النوع", "القسم", "المسؤول", "أنشأها",
+            "الأولوية", "الحالة", "الإنجاز %", "الموعد", "أيام التأخّر", "تاريخ الإنجاز",
+        };
+        var rows = r.Rows.Select(x => (IReadOnlyList<string>)new[]
+        {
+            x.Number, x.Title, x.TypeLabel, x.DepartmentName, x.AssignedTo, x.CreatedBy,
+            x.PriorityLabel, x.StatusLabel, x.ProgressPercent.ToString(CultureInfo.InvariantCulture),
+            x.DueDate.ToString("yyyy-MM-dd"),
+            x.IsOverdue ? x.DaysOverdue.ToString(CultureInfo.InvariantCulture) : "",
+            x.CompletedDate?.ToString("yyyy-MM-dd") ?? "",
+        }).ToList();
+        return ExcelExporter.Create("المهام التفصيلي", headers, rows);
     }
 
     private static string StatusLabel(BookStatus s) => s switch

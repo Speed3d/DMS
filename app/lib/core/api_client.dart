@@ -1139,6 +1139,45 @@ class ApiClient {
     return TaskPage.fromJson(await _get('/tasks', query: q) as Map<String, dynamic>);
   }
 
+  /// فلتر تقرير المهام — **نفسُ فلتر القائمة** بلا تقسيم صفحات (الدفعة ٧).
+  Map<String, dynamic> _taskReportQuery(
+      String? status, String? priority, int? departmentId, int? assignedTo,
+      DateTime? dueFrom, DateTime? dueTo, bool? isOverdue, String? search) {
+    final q = <String, dynamic>{};
+    if (status != null) q['status'] = status;
+    if (priority != null) q['priority'] = priority;
+    if (departmentId != null) q['departmentId'] = departmentId;
+    if (assignedTo != null) q['assignedTo'] = assignedTo;
+    if (dueFrom != null) q['dueFrom'] = _dayOnly(dueFrom);
+    if (dueTo != null) q['dueTo'] = _dayOnly(dueTo);
+    if (isOverdue != null) q['isOverdue'] = isOverdue;
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    return q;
+  }
+
+  Future<TaskDetailReport> tasksDetailReport({
+    String? status, String? priority, int? departmentId, int? assignedTo,
+    DateTime? dueFrom, DateTime? dueTo, bool? isOverdue, String? search,
+  }) async =>
+      TaskDetailReport.fromJson(await _get('/reports/tasks-detail',
+          query: _taskReportQuery(status, priority, departmentId, assignedTo,
+              dueFrom, dueTo, isOverdue, search)) as Map<String, dynamic>);
+
+  Future<Uint8List> tasksDetailFile(String format, {
+    String? status, String? priority, int? departmentId, int? assignedTo,
+    DateTime? dueFrom, DateTime? dueTo, bool? isOverdue, String? search,
+  }) async {
+    try {
+      final res = await _dio.get<List<int>>('/reports/tasks-detail/$format',
+          queryParameters: _taskReportQuery(status, priority, departmentId, assignedTo,
+              dueFrom, dueTo, isOverdue, search),
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(res.data ?? <int>[]);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
   Future<TaskPage> myTasks({int page = 1, int pageSize = 25}) async =>
       TaskPage.fromJson(await _get('/tasks/my',
           query: {'page': page, 'pageSize': pageSize}) as Map<String, dynamic>);

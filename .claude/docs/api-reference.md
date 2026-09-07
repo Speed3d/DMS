@@ -131,6 +131,29 @@
 - التجميع يُحسب على **كامل النطاق المفلتَر** لا على السطور المقصوصة.
 - الأوقات تُخزَّن UTC وتُعرض في PDF/Excel بتوقيت بغداد (‎+03:00‎ ثابتة).
 
+### تقرير المهام — 🔐 **حدٌّ مزدوج، وحارسُه `RequireGrantedModule`** (ADR-040)
+
+| الطريقة | المسار | الوصف |
+|---|---|---|
+| GET | `/reports/tasks-detail` | جدولٌ + ملخّص: `{rows, count, active, overdue, completed, averageProgress, byStatus}` |
+| GET | `/reports/tasks-detail/pdf` | مولّد الجدول الموحّد نفسه (`TableReportPdf`) |
+| GET | `/reports/tasks-detail/excel` | `ExcelExporter` |
+
+**الفلاتر — نفسُ فلاتر `/tasks`:** `status, priority, departmentId, assignedTo, createdBy,
+dueFrom, dueTo, isOverdue, mineOnly, search`.
+
+🔐 **قسم التقارير (على الصنف) مع `[RequireGrantedModule(AppModule.Tasks)]` على كل نقطة** —
+وهو **ليس `RequireModule`**: المهام قسمٌ **لا يبلغه القارئ**، فحارسُ التقارير وحده كان
+سيفتح مهامّ الشركة لقارئٍ يملك التقارير. ⚠️ **والمخرجان محروسان بالحدّ نفسه** — حجبُ
+الجدول وترك ملفّه بابٌ خلفيّ كامل.
+
+🔴 **ويقرأ من `ITaskService.Filtered(filters)`** — قاعدةُ الرؤية **وكتلةُ الفلترة** اللتان
+تغذّيان الشاشة، فما يُطبَع **عين ما يُرى**. (استُخرجت `Filtered` من `QueryAsync` لهذا الغرض
+بدل نسخ الشروط — علاجُ ADR-030 نفسه.)
+
+⚠️ **و`averageProgress` على النشِطة وحدها** — ضمُّ المكتملة (100%) والملغاة يرفعه كذباً.
+⚠️ **و`daysOverdue = 0` لغير المتأخّرة** — والعميل يعرضها «—» لا «0 يوم».
+
 ### التقارير التفصيلية — 🔐 **حدٌّ مزدوج بالقسم**
 
 > 🔐 كل نقطة تتطلّب **قسم التقارير مع قسم وحدتها**: `outgoing-detail` ⟵ `Outgoing`،
