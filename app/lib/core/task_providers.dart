@@ -112,6 +112,14 @@ final taskUpdatesProvider =
   return ref.read(apiClientProvider).taskUpdates(id);
 });
 
+/// مشاركو مهمةٍ بعينها — **مَن يراها غير مسؤولها**.
+final taskParticipantsProvider =
+    FutureProvider.autoDispose.family<List<TaskParticipant>, int>((ref, id) async {
+  final session = ref.watch(sessionProvider);
+  if (!session.canSeeTasks) return const <TaskParticipant>[];
+  return ref.read(apiClientProvider).taskParticipants(id);
+});
+
 /// مرفقات مهمةٍ بعينها.
 final taskAttachmentsProvider =
     FutureProvider.autoDispose.family<List<AttachmentModel>, int>((ref, id) async {
@@ -155,4 +163,5 @@ void invalidateTasks(WidgetRef ref) {
   ref.invalidate(taskDetailProvider);
   ref.invalidate(taskUpdatesProvider);
   ref.invalidate(taskAttachmentsProvider);
+  ref.invalidate(taskParticipantsProvider);
 }

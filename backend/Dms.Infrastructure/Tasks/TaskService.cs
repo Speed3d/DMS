@@ -48,7 +48,18 @@ public interface ITaskService
 
     Task<DmsTask> ChangeStatusAsync(int id, DmsTaskStatus to, string? reason, CancellationToken ct = default);
     Task<DmsTask> UpdateProgressAsync(int id, int percent, string? comment, string? reason, CancellationToken ct = default);
-    Task<DmsTask> ReassignAsync(int id, int assignedToUserId, CancellationToken ct = default);
+    /// <param name="keepPreviousAsParticipant">
+    /// هل يبقى المسؤول السابق **مشاركاً يرى المهمة**؟ (قرار المالك — يُسأل صراحةً)
+    /// </param>
+    Task<DmsTask> ReassignAsync(int id, int assignedToUserId,
+        bool keepPreviousAsParticipant, CancellationToken ct = default);
+
+    Task<List<DmsTaskParticipant>> GetParticipantsAsync(int id, CancellationToken ct = default);
+
+    Task<DmsTaskParticipant> AddParticipantAsync(
+        int id, int? userId, int? departmentId, string? note, CancellationToken ct = default);
+
+    Task RemoveParticipantAsync(int id, int participantId, CancellationToken ct = default);
     Task<DmsTask> ReopenAsync(int id, string reason, CancellationToken ct = default);
     Task<DmsTaskUpdate> AddCommentAsync(int id, string text, CancellationToken ct = default);
 
@@ -103,10 +114,19 @@ public sealed class TaskService(
         var uid = current.UserId;
         var dept = current.DepartmentId;
 
-        // مهامّه · ما أنشأه · ومهامّ قسمه (مهمة القسم يراها كل موظفيه ويحدّثونها).
+        // مهامّه · ما أنشأه · مهامّ قسمه · **وما أُشرك فيه شخصاً أو قسماً** (ADR-037).
+        //
+        // 🔴 **شرط `!p.IsRemoved` هو الفرق بين «شارك يوماً» و«يرى الآن»** — ونسيانُه يعني
+        //    أن مَن أُزيل يبقى يرى، وهو **تسريبُ رؤيةٍ صامت** لا يشتكي منه أحد.
+        //
+        // ⚠️ **والفلتر العام على `DmsTaskParticipants` لا يغني عنه**: ذاك يعزل الشركات،
+        //    وهذا يعزل **مَن أُزيل من المهمة**. حارسان مختلفان لا يُغني أحدهما عن الآخر.
         return q.Where(t => t.AssignedToUserId == uid
                          || t.CreatedByUserId == uid
-                         || (dept != null && t.DepartmentId == dept));
+                         || (dept != null && t.DepartmentId == dept)
+                         || t.Participants.Any(p => !p.IsRemoved
+                                                 && (p.UserId == uid
+                                                  || (dept != null && p.DepartmentId == dept))));
     }
 
     public async Task<(List<DmsTask> Items, int Total)> QueryAsync(
@@ -530,7 +550,8 @@ public sealed class TaskService(
         return task;
     }
 
-    public async Task<DmsTask> ReassignAsync(int id, int assignedToUserId, CancellationToken ct = default)
+    public async Task<DmsTask> ReassignAsync(
+        int id, int assignedToUserId, bool keepPreviousAsParticipant, CancellationToken ct = default)
     {
         if (!current.CanManageTasks)
             throw new ForbiddenException("لا تملك صلاحية إسناد المهام لغيرك.");
@@ -542,7 +563,8 @@ public sealed class TaskService(
                 $"لا يمكن إسناد مهمة في حالة ({TaskWorkflow.ArabicName(task.Status)}).");
 
         var target = await EnsureAssignableAsync(task.CompanyId, assignedToUserId, ct);
-        var oldName = await UserNameAsync(task.AssignedToUserId, ct);
+        var previousId = task.AssignedToUserId;
+        var oldName = await UserNameAsync(previousId, ct);
 
         task.AssignedToUserId = assignedToUserId;
         task.UpdatedAt = DateTime.UtcNow;
@@ -551,12 +573,166 @@ public sealed class TaskService(
         //    المستوى يعني أن أول تصعيدٍ يقع عليه يذهب مباشرةً إلى الرئاسة.
         ResetEscalation(task);
 
-        var desc = $"أُسندت المهمة من ({oldName}) إلى ({target.FullName})";
+        // 🔴 **السؤال الذي بلّغ عنه المالك**: مَن أُسندت إليه المهمة أوّلاً كان **يفقد رؤيتها
+        //    صامتاً** عند نقلها. الآن يُسأل صراحةً، **والافتراض الإبقاء** — لأن مَن عمل على
+        //    مهمةٍ يبقى اسمُه في سجلّها، ونزعُ رؤيته يجعله يقرأ اسمه في مكانٍ لا يبلغه.
+        if (keepPreviousAsParticipant
+            && previousId is { } prev
+            && prev != assignedToUserId)
+        {
+            await EnsureParticipantRowAsync(task, prev, null, "المسؤول السابق", ct);
+        }
+
+        var desc = TaskParticipation.DescribeHandover(
+            oldName, target.FullName, keepPreviousAsParticipant && previousId is not null);
+
         AddUpdate(task, DmsTaskUpdateType.Reassign, oldName, target.FullName, null, desc);
         audit.Add("Reassign", nameof(DmsTask), task.TaskId.ToString(), desc, task.CompanyId);
 
         await SaveGuardedAsync(ct);
         return task;
+    }
+
+    // ─────────────────────────── المشاركون (ADR-037) ───────────────────────────
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// ⚠️ **يُرجع المُزالين كذلك** — القائمة تُعلن مَن كان مشاركاً ومتى خرج. و**فلتر الرؤية
+    /// ليس هنا** بل في <see cref="Query"/> وحدها: قاعدةُ رؤيةٍ في موضعين تتباعد (درس ADR-030).
+    /// </remarks>
+    public async Task<List<DmsTaskParticipant>> GetParticipantsAsync(
+        int id, CancellationToken ct = default)
+    {
+        _ = await GetByIdAsync(id, ct);
+
+        // 🔴 **بلا `Include(p => p.User)`** — الاسم يُقرأ من `Users` المفلتَر فيصل فارغاً
+        //    لمشاركٍ سوبر أدمن. والأسماء تُحلّ **هنا** باستعلامٍ ثانٍ (نمط ADR-034)، لا في
+        //    الـcontroller: ⚠️ **وصول البيانات عبر `AppDbContext` من طبقة Infrastructure
+        //    وحدها** (`rules/architecture.md`) — والـcontroller عرضٌ رفيع.
+        var rows = await db.DmsTaskParticipants
+            .Include(p => p.Department)
+            .Where(p => p.TaskId == id)
+            .OrderBy(p => p.IsRemoved)
+            .ThenBy(p => p.AddedAt)
+            .ToListAsync(ct);
+
+        if (rows.Count == 0) return rows;
+
+        var ids = rows.Select(p => p.AddedByUserId)
+            .Concat(rows.Where(p => p.UserId is not null).Select(p => p.UserId!.Value))
+            .Distinct().ToList();
+
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => ids.Contains(u.UserId))
+            .Select(u => new { u.UserId, u.FullName })
+            .ToDictionaryAsync(x => x.UserId, x => x.FullName, ct);
+
+        foreach (var p in rows)
+        {
+            if (p.UserId is { } uid)
+                p.User = new User { UserId = uid, FullName = names.GetValueOrDefault(uid, "—") };
+
+            // اسمُ المُضيف يُحمَل في `Note` لا؛ يُمرَّر عبر خاصيةٍ مؤقّتة على الصفّ نفسه.
+            p.AddedByUserName = names.GetValueOrDefault(p.AddedByUserId, "—");
+        }
+
+        return rows;
+    }
+
+    public async Task<DmsTaskParticipant> AddParticipantAsync(
+        int id, int? userId, int? departmentId, string? note, CancellationToken ct = default)
+    {
+        TaskParticipation.EnsureValid(userId, departmentId);
+
+        var task = await GetForWriteAsync(id, ct);
+        RequireCanEdit(task);
+
+        string who;
+        if (userId is { } uid)
+        {
+            var user = await EnsureAssignableAsync(task.CompanyId, uid, ct);
+            who = user.FullName;
+        }
+        else
+        {
+            await EnsureDepartmentAsync(task.CompanyId, departmentId!.Value, ct);
+            var name = await db.Departments
+                .Where(d => d.DepartmentId == departmentId.Value)
+                .Select(d => d.Name).FirstOrDefaultAsync(ct);
+            who = $"قسم {name ?? "—"}";
+        }
+
+        var row = await EnsureParticipantRowAsync(task, userId, departmentId, note, ct);
+        AddUpdate(task, DmsTaskUpdateType.Reassign, null, who, note?.Trim(),
+            TaskParticipation.DescribeAdded(who, note));
+        audit.Add("AddTaskParticipant", nameof(DmsTask), task.TaskId.ToString(), who, task.CompanyId);
+
+        await SaveGuardedAsync(ct);
+        return row;
+    }
+
+    public async Task RemoveParticipantAsync(int id, int participantId, CancellationToken ct = default)
+    {
+        var task = await GetForWriteAsync(id, ct);
+        RequireCanEdit(task);
+
+        var row = await db.DmsTaskParticipants
+            .FirstOrDefaultAsync(p => p.ParticipantId == participantId && p.TaskId == id, ct)
+            ?? throw new NotFoundException("المشارك غير موجود في هذه المهمة.");
+
+        if (row.IsRemoved) return;   // إزالةُ المُزال ليست خطأً — تُقبَل صامتةً.
+
+        row.IsRemoved = true;
+        row.RemovedByUserId = current.UserId;
+        row.RemovedAt = DateTime.UtcNow;
+
+        var who = row.UserId is { } uid
+            ? await UserNameAsync(uid, ct)
+            : $"قسم {await db.Departments.Where(d => d.DepartmentId == row.DepartmentId)
+                        .Select(d => d.Name).FirstOrDefaultAsync(ct) ?? "—"}";
+
+        var desc = TaskParticipation.DescribeRemoved(who);
+        AddUpdate(task, DmsTaskUpdateType.Reassign, who, null, null, desc);
+        audit.Add("RemoveTaskParticipant", nameof(DmsTask), task.TaskId.ToString(), who, task.CompanyId);
+
+        await SaveGuardedAsync(ct);
+    }
+
+    /// <summary>يُنشئ صفّ مشاركةٍ أو **يُحيي مُزالاً** — بلا تكرار.</summary>
+    /// <remarks>
+    /// ⚠️ **الإحياء لا الإنشاء**: لو أُنشئ صفٌّ جديد لمن أُزيل ثم أُعيد، لصار له سطران في
+    /// القائمة — والفهرس الفريد المُرشَّح يرفض الثاني أصلاً. والإحياء يُبقي **تاريخ الدخول
+    /// الأول** مقروءاً في السجلّ.
+    /// </remarks>
+    private async Task<DmsTaskParticipant> EnsureParticipantRowAsync(
+        DmsTask task, int? userId, int? departmentId, string? note, CancellationToken ct)
+    {
+        var existing = await db.DmsTaskParticipants.FirstOrDefaultAsync(
+            p => p.TaskId == task.TaskId
+              && p.UserId == userId
+              && p.DepartmentId == departmentId, ct);
+
+        if (existing is not null)
+        {
+            existing.IsRemoved = false;
+            existing.RemovedByUserId = null;
+            existing.RemovedAt = null;
+            if (!string.IsNullOrWhiteSpace(note)) existing.Note = Trim(note, 500);
+            return existing;
+        }
+
+        var row = new DmsTaskParticipant
+        {
+            TaskId = task.TaskId,
+            CompanyId = task.CompanyId,
+            UserId = userId,
+            DepartmentId = departmentId,
+            AddedByUserId = current.UserId!.Value,
+            AddedAt = DateTime.UtcNow,
+            Note = Trim(note, 500),
+        };
+        db.DmsTaskParticipants.Add(row);
+        return row;
     }
 
     public async Task<DmsTask> ReopenAsync(int id, string reason, CancellationToken ct = default)
@@ -644,10 +820,28 @@ public sealed class TaskService(
         if (task.AssignedToUserId is { } a) ids.Add(a);
         ids.Add(task.CreatedByUserId);
 
-        if (task.TaskType == DmsTaskType.Department && task.DepartmentId is { } dep)
+        // الأقسام المعنيّة: قسم المهمة **وأقسام المشاركين** — ومَن فيها يُشعَر.
+        var deptIds = new List<int>();
+        if (task.TaskType == DmsTaskType.Department && task.DepartmentId is { } dep) deptIds.Add(dep);
+
+        // 🔴 **والمشاركون يُشعَرون** — وإلا صار مَن أُضيف ليتابع لا يُخطَر بشيءٍ يتابعه.
+        var participants = await db.DmsTaskParticipants
+            .Where(p => p.TaskId == task.TaskId && !p.IsRemoved)
+            .Select(p => new { p.UserId, p.DepartmentId })
+            .ToListAsync(ct);
+
+        foreach (var p in participants)
+        {
+            if (p.UserId is { } pu) ids.Add(pu);
+            if (p.DepartmentId is { } pd) deptIds.Add(pd);
+        }
+
+        if (deptIds.Count > 0)
         {
             var members = await db.UserCompanies
-                .Where(uc => uc.CompanyId == task.CompanyId && uc.DepartmentId == dep)
+                .Where(uc => uc.CompanyId == task.CompanyId
+                          && uc.DepartmentId != null
+                          && deptIds.Contains(uc.DepartmentId.Value))
                 .Select(uc => uc.UserId)
                 .ToListAsync(ct);
             foreach (var m in members) ids.Add(m);

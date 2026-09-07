@@ -298,6 +298,85 @@ if($notMine.Count -eq 0){ Ok "و(مهامي) لا تُرجع مهامّ غيري
 $sm=(Api GET "/tasks/summary" $null $tMng $cid).B
 if($null -ne $sm.total -and $null -ne $sm.overdue){ Ok "الملخّص يصل (إجمالي=$($sm.total) متأخر=$($sm.overdue))" } else { Bad "الملخّص ناقص" }
 
+Write-Host "`n=== 👥 المشاركون: مَن يرى المهمة غير مسؤولها (ADR-037) ===" -ForegroundColor Cyan
+# 🔴 **بلاغ المالك**: إعادة الإسناد كانت **تستبدل** فيفقد السابقُ رؤية المهمة صامتاً، ولم
+#    يكن ثمّة سبيلٌ لإشراك قسمٍ ثانٍ أو شخصٍ ثانٍ. والنموذج المُعتمَد: **مسؤولٌ واحد محاسَب
+#    + مشاركون كُثر**.
+$tp=(Api POST "/tasks" @{title='مهمة المشاركين';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=$mngId} $tMng $cid).B
+$idP=[int]$tp.taskId
+$outId=[int]$out.userId
+
+# ── العزل قبل الإشراك ──
+$r=(Api GET "/tasks/$idP" $null $tOut $cid)
+if($r.S -eq 404){ Ok "🔐 مَن خارج المهمة لا يراها قبل إشراكه (404)" } else { Bad "ردّ $($r.S)" }
+
+# ── إشراك شخص ──
+$add=(Api POST "/tasks/$idP/participants" @{userId=$outId;note='للمتابعة'} $tMng $cid)
+if($add.S -eq 200){ Ok "أُشرِك شخصٌ في المهمة" } else { Bad "الإشراك ردّ $($add.S)" }
+$r=(Api GET "/tasks/$idP" $null $tOut $cid)
+if($r.S -eq 200){ Ok "🔴 وصار يراها فوراً — وهذا جوهر الطلب" } else { Bad "ردّ $($r.S)" }
+$lstOut=(Api GET "/tasks?pageSize=200" $null $tOut $cid).B
+if(@(@($lstOut.items) | Where-Object { [int]$_.taskId -eq $idP }).Count -eq 1){ Ok "وتظهر في قائمته" } else { Bad "لا تظهر في قائمته" }
+
+# ── الإزالة تنزع الرؤية ──
+$plist=@((Api GET "/tasks/$idP/participants" $null $tMng $cid).B)
+$partId=[int](@($plist | Where-Object { [int]$_.userId -eq $outId })[0].participantId)
+$rm=(Api DELETE "/tasks/$idP/participants/$partId" $null $tMng $cid)
+if($rm.S -eq 204){ Ok "وأُزيل من المشاركين (204)" } else { Bad "الإزالة ردّت $($rm.S)" }
+$r=(Api GET "/tasks/$idP" $null $tOut $cid)
+if($r.S -eq 404){ Ok "🔴 وفقد رؤيتها فوراً — شرط `!IsRemoved` يحرس" } else { Bad "تسرّب: ردّ $($r.S)" }
+
+# ── وسطرُه يبقى شاهداً ──
+$plist2=@((Api GET "/tasks/$idP/participants" $null $tMng $cid).B)
+$removedRow=@($plist2 | Where-Object { [int]$_.participantId -eq $partId })
+if($removedRow.Count -eq 1 -and $removedRow[0].isRemoved){ Ok "وسطرُه باقٍ شاهداً على مشاركةٍ وقعت" } else { Bad "سطر المُزال اختفى" }
+
+# ── إعادة الإشراك تُحيي ولا تُكرّر ──
+$again=(Api POST "/tasks/$idP/participants" @{userId=$outId} $tMng $cid)
+$plist3=@((Api GET "/tasks/$idP/participants" $null $tMng $cid).B)
+$forUser=@($plist3 | Where-Object { [int]$_.userId -eq $outId })
+if($forUser.Count -eq 1){ Ok "🔴 وإعادة الإشراك **تُحيي السطر ولا تُكرّره** (فهرسٌ فريد مُرشَّح)" } else { Bad "صار له $($forUser.Count) سطراً" }
+
+# ── إشراك قسم ──
+$addDep=(Api POST "/tasks/$idP/participants" @{departmentId=$depId} $tMng $cid)
+if($addDep.S -eq 200){ Ok "وأُشرِك قسمٌ كذلك" } else { Bad "ردّ $($addDep.S)" }
+$r=(Api GET "/tasks/$idP" $null $tWrk $cid)
+if($r.S -eq 200){ Ok "🔴 وموظف ذلك القسم صار يراها — وهو طلبك الثاني بعينه" } else { Bad "ردّ $($r.S)" }
+
+# ── أحدُ الحقلين لا كلاهما ──
+$bad1=(Api POST "/tasks/$idP/participants" @{} $tMng $cid)
+if($bad1.S -eq 400){ Ok "🔐 مشاركٌ بلا مستخدمٍ ولا قسم مرفوض" } else { Bad "ردّ $($bad1.S)" }
+$bad2=(Api POST "/tasks/$idP/participants" @{userId=$outId;departmentId=$depId} $tMng $cid)
+if($bad2.S -eq 400){ Ok "🔐 والاثنان معاً مرفوضان" } else { Bad "ردّ $($bad2.S)" }
+
+Write-Host "`n=== 🔁 نقل المسؤولية: يُسأل عمّا يحلّ بالسابق ===" -ForegroundColor Cyan
+$th=(Api POST "/tasks" @{title='مهمة نقل المسؤولية';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$wrk.userId} $tMng $cid).B
+$idH=[int]$th.taskId
+$r=(Api GET "/tasks/$idH" $null $tWrk $cid)
+if($r.S -eq 200){ Ok "المسؤول الأول يراها" } else { Bad "ردّ $($r.S)" }
+
+# ── الإبقاء (الافتراض) ──
+$keep=(Api POST "/tasks/$idH/reassign" @{assignedToUserId=$mngId;keepPreviousAsParticipant=$true} $tMng $cid)
+if($keep.S -eq 200 -and [int]$keep.B.assignedToUserId -eq $mngId){ Ok "نُقلت المسؤولية" } else { Bad "ردّ $($keep.S)" }
+$r=(Api GET "/tasks/$idH" $null $tWrk $cid)
+if($r.S -eq 200){ Ok "🔴 والسابق **بقي يراها** — كان يفقدها صامتاً قبل هذا" } else { Bad "تسرّب: فقد الرؤية رغم الإبقاء ($($r.S))" }
+$hist=@((Api GET "/tasks/$idH/updates" $null $tMng $cid).B)
+if(@($hist | Where-Object { $_.description -like '*بقي*' }).Count -ge 1){ Ok "والسجلّ يقول صراحةً إنه بقي — لا يُستنتج" } else { Bad "السجلّ لا يذكر مصير السابق" }
+
+# ── النزع ──
+$th2=(Api POST "/tasks" @{title='مهمة نزع الرؤية';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$wrk.userId} $tMng $cid).B
+$idH2=[int]$th2.taskId
+$drop=(Api POST "/tasks/$idH2/reassign" @{assignedToUserId=$mngId;keepPreviousAsParticipant=$false} $tMng $cid)
+if($drop.S -eq 200){ Ok "ونقلٌ آخر بنزع الرؤية" } else { Bad "ردّ $($drop.S)" }
+$r=(Api GET "/tasks/$idH2" $null $tWrk $cid)
+if($r.S -eq 404){ Ok "🔐 والسابق فقد الرؤية — بقرارٍ صريح لا صمتاً" } else { Bad "ردّ $($r.S)" }
+$hist2=@((Api GET "/tasks/$idH2/updates" $null $tMng $cid).B)
+if(@($hist2 | Where-Object { $_.description -like '*نُزعت*' }).Count -ge 1){ Ok "والسجلّ يقول صراحةً إنها نُزعت" } else { Bad "السجلّ لا يذكر النزع" }
+
+# ── القارئ لا يُشرَك ──
+$rdrP=(Api POST "/tasks/$idP/participants" @{userId=[int]$rdr.userId} $tMng $cid)
+if($rdrP.S -eq 400){ Ok "🔐 ولا يُشرَك قارئ — لا يرى الوحدة فلا يبلغه عملُه" } else { Bad "ردّ $($rdrP.S)" }
+
 Write-Host "`n=== الحذف الناعم ===" -ForegroundColor Cyan
 $td2=(Api POST "/tasks" @{title='ستُحذف';taskType='Individual';priority='Low';dueDate=$due} $tMng $cid).B
 $idDel=[int]$td2.taskId

@@ -113,5 +113,8 @@ public class DmsTask
     public DmsTask? ParentRecurringTask { get; set; }
 
     public ICollection<DmsTaskUpdate> Updates { get; set; } = new List<DmsTaskUpdate>();
+
+    /// <summary>مَن يرى المهمة غير مسؤولها — أشخاصٌ وأقسام (ADR-037).</summary>
+    public ICollection<DmsTaskParticipant> Participants { get; set; } = new List<DmsTaskParticipant>();
     public ICollection<DmsTask> RecurringInstances { get; set; } = new List<DmsTask>();
 }

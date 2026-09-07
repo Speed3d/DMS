@@ -1222,9 +1222,28 @@ class ApiClient {
           {'percent': percent, 'comment': comment, 'reason': reason})
           as Map<String, dynamic>);
 
-  Future<TaskModel> reassignTask(int id, int assignedToUserId) async =>
-      TaskModel.fromJson(await _post('/tasks/$id/reassign',
-          {'assignedToUserId': assignedToUserId}) as Map<String, dynamic>);
+  /// ⚠️ [keepPreviousAsParticipant] **الافتراض `true`**: مَن عمل على مهمةٍ يبقى اسمُه في
+  /// سجلّها، ونزعُ رؤيته يجعله يقرأ اسمه في مكانٍ لا يبلغه — فالنزع **قرارٌ يُتّخذ**.
+  Future<TaskModel> reassignTask(int id, int assignedToUserId,
+          {bool keepPreviousAsParticipant = true}) async =>
+      TaskModel.fromJson(await _post('/tasks/$id/reassign', {
+        'assignedToUserId': assignedToUserId,
+        'keepPreviousAsParticipant': keepPreviousAsParticipant,
+      }) as Map<String, dynamic>);
+
+  Future<List<TaskParticipant>> taskParticipants(int id) async =>
+      (await _get('/tasks/$id/participants') as List)
+          .map((e) => TaskParticipant.fromJson(e)).toList();
+
+  /// ⚠️ **مستخدمٌ أو قسم، لا الاثنان** — والخادم يرفض غير ذلك بـ400.
+  Future<List<TaskParticipant>> addTaskParticipant(int id,
+          {int? userId, int? departmentId, String? note}) async =>
+      (await _post('/tasks/$id/participants',
+              {'userId': userId, 'departmentId': departmentId, 'note': note}) as List)
+          .map((e) => TaskParticipant.fromJson(e)).toList();
+
+  Future<void> removeTaskParticipant(int id, int participantId) =>
+      _delete('/tasks/$id/participants/$participantId');
 
   Future<TaskModel> reopenTask(int id, String reason) async =>
       TaskModel.fromJson(await _post('/tasks/$id/reopen',

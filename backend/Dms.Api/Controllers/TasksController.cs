@@ -140,8 +140,31 @@ public sealed class TasksController(
     public async Task<ActionResult<TaskResponse>> Reassign(
         int id, ReassignTaskRequest r, CancellationToken ct)
     {
-        await tasks.ReassignAsync(id, r.AssignedToUserId, ct);
+        await tasks.ReassignAsync(id, r.AssignedToUserId, r.KeepPreviousAsParticipant, ct);
         return Map(await tasks.GetByIdAsync(id, ct));
+    }
+
+    // ── المشاركون: مَن يرى المهمة غير مسؤولها (ADR-037) ──
+
+    [HttpGet("{id:int}/participants")]
+    public async Task<ActionResult<List<TaskParticipantResponse>>> Participants(
+        int id, CancellationToken ct)
+        => (await tasks.GetParticipantsAsync(id, ct)).Select(MapParticipant).ToList();
+
+    [HttpPost("{id:int}/participants")]
+    public async Task<ActionResult<List<TaskParticipantResponse>>> AddParticipant(
+        int id, AddParticipantRequest r, CancellationToken ct)
+    {
+        await tasks.AddParticipantAsync(id, r.UserId, r.DepartmentId, r.Note, ct);
+        return (await tasks.GetParticipantsAsync(id, ct)).Select(MapParticipant).ToList();
+    }
+
+    [HttpDelete("{id:int}/participants/{participantId:int}")]
+    public async Task<IActionResult> RemoveParticipant(
+        int id, int participantId, CancellationToken ct)
+    {
+        await tasks.RemoveParticipantAsync(id, participantId, ct);
+        return NoContent();
     }
 
     [HttpPost("{id:int}/reopen")]
@@ -227,6 +250,23 @@ public sealed class TasksController(
         t.DepartmentId, t.Department?.Name,
         t.AssignedToUserId, t.AssignedToUser?.FullName,
         attachmentCount);
+
+    /// <summary>يحوّل المشاركين — **والأسماء محلولةٌ في الخدمة** لا هنا.</summary>
+    private static TaskParticipantResponse MapParticipant(DmsTaskParticipant p)
+    {
+        var userName = p.User?.FullName;
+        var deptName = p.Department?.Name;
+
+        return new TaskParticipantResponse(
+            p.ParticipantId,
+            p.UserId, userName,
+            p.DepartmentId, deptName,
+            // اسمٌ واحدٌ جاهزٌ للعرض — فلا يركّبه كلُّ عميلٍ بطريقته.
+            userName ?? $"قسم {deptName ?? "—"}",
+            p.Note,
+            p.AddedByUserId, p.AddedByUserName ?? "—", p.AddedAt,
+            p.IsRemoved, p.RemovedAt);
+    }
 
     private static TaskUpdateResponse MapUpdate(DmsTaskUpdate u) => new(
         u.UpdateId, u.UpdateType, u.Description, u.OldValue, u.NewValue, u.Comment,

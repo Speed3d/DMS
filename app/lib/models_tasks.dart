@@ -247,6 +247,52 @@ class TaskUpdateModel {
       );
 }
 
+/// مشاركٌ في مهمة — **شخصٌ أو قسم** يرى المهمة ويعمل عليها بلا أن يكون مسؤولها (ADR-037).
+class TaskParticipant {
+  final int participantId;
+  final int? userId;
+  final String? userName;
+  final int? departmentId;
+  final String? departmentName;
+
+  /// اسمٌ واحدٌ **جاهزٌ من الخادم** — فلا يركّبه كلُّ عميلٍ بطريقته.
+  final String displayName;
+
+  final String? note;
+  final int addedByUserId;
+  final String addedByUserName;
+  final DateTime addedAt;
+
+  /// أُزيل — **فلا يرى المهمة بعدها**، ويبقى سطرُه شاهداً على مشاركةٍ وقعت.
+  final bool isRemoved;
+  final DateTime? removedAt;
+
+  TaskParticipant({
+    required this.participantId, this.userId, this.userName,
+    this.departmentId, this.departmentName, required this.displayName,
+    this.note, required this.addedByUserId, required this.addedByUserName,
+    required this.addedAt, required this.isRemoved, this.removedAt,
+  });
+
+  bool get isDepartment => departmentId != null;
+
+  factory TaskParticipant.fromJson(Map<String, dynamic> j) => TaskParticipant(
+        participantId: j['participantId'],
+        userId: j['userId'],
+        userName: j['userName'],
+        departmentId: j['departmentId'],
+        departmentName: j['departmentName'],
+        displayName: j['displayName'] ?? '—',
+        note: j['note'],
+        addedByUserId: j['addedByUserId'] ?? 0,
+        addedByUserName: j['addedByUserName'] ?? '—',
+        // **لحظة** لا تاريخٌ تقويميّ.
+        addedAt: parseInstant(j['addedAt']),
+        isRemoved: j['isRemoved'] ?? false,
+        removedAt: j['removedAt'] == null ? null : parseInstant(j['removedAt']),
+      );
+}
+
 /// ملخّص المهام للوحة التحكم.
 class TaskSummaryModel {
   final int total;

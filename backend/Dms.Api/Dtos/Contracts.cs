@@ -579,7 +579,25 @@ public sealed record UpdateTaskRequest(
 public sealed record ChangeTaskStatusRequest(DmsTaskStatus NewStatus, string? Reason);
 /// <param name="Reason">سبب **تقليل** النسبة — إلزاميّ عند التراجع، ويُتجاهل عند التقدّم.</param>
 public sealed record TaskProgressRequest(int Percent, string? Comment, string? Reason = null);
-public sealed record ReassignTaskRequest(int AssignedToUserId);
+/// <param name="KeepPreviousAsParticipant">
+/// هل يبقى المسؤول السابق **مشاركاً يرى المهمة**؟ (ADR-037 — يُسأل صراحةً)
+/// 🔴 **الافتراض `true`**: مَن عمل على مهمةٍ يبقى اسمُه في سجلّها، ونزعُ رؤيته يجعله يقرأ
+/// اسمه في مكانٍ لا يبلغه. والنزع **قرارٌ يُتّخذ** لا سلوكٌ صامت.
+/// </param>
+public sealed record ReassignTaskRequest(int AssignedToUserId, bool KeepPreviousAsParticipant = true);
+
+/// <summary>إضافة مشارك — **مستخدمٌ أو قسم، لا الاثنان**.</summary>
+public sealed record AddParticipantRequest(int? UserId, int? DepartmentId, string? Note);
+
+/// <summary>مشاركٌ في مهمة.</summary>
+public sealed record TaskParticipantResponse(
+    int ParticipantId,
+    int? UserId, string? UserName,
+    int? DepartmentId, string? DepartmentName,
+    string DisplayName,
+    string? Note,
+    int AddedByUserId, string AddedByUserName, DateTime AddedAt,
+    bool IsRemoved, DateTime? RemovedAt);
 public sealed record ReopenTaskRequest(string Reason);
 public sealed record TaskCommentRequest(string Text);
 

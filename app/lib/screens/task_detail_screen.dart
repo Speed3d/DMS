@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/incoming_providers.dart';
 import '../core/session.dart';
 import '../core/task_providers.dart';
 import '../core/theme.dart';
@@ -224,6 +225,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           if (t.isActive || t.isCompleted) _actionsCard(t),
+          const SizedBox(height: 12),
+          _participantsCard(t),
           if (t.description != null && t.description!.isNotEmpty) ...[
             const SizedBox(height: 12),
             CustomCard(
@@ -619,6 +622,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     await _run(() => ref.read(apiClientProvider).reopenTask(t.taskId, reason));
   }
 
+  /// إعادة الإسناد — **وتسأل صراحةً عمّا يحلّ بالمسؤول السابق** (بلاغ المالك).
+  ///
+  /// 🔴 كان السابق **يفقد رؤية المهمة صامتاً** عند نقلها، ويبقى اسمُه في سجلّها لا يستطيع
+  /// فتحه ليقرأ ما كتب. والافتراض الآن **الإبقاء**، والنزع قرارٌ يُتّخذ لا سلوكٌ ضمنيّ.
   Future<void> _promptReassign(TaskModel t) async {
     final users = await ref.read(assignableUsersProvider.future);
     if (!mounted || users.isEmpty) return;
@@ -628,6 +635,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       builder: (ctx) => SimpleDialog(
         title: const Text('إعادة إسناد المهمة'),
         children: users
+            .where((u) => u.userId != t.assignedToUserId)
             .map((u) => SimpleDialogOption(
                   onPressed: () => Navigator.of(ctx).pop(u.userId),
                   child: Text(u.fullName),
@@ -635,8 +643,171 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             .toList(),
       ),
     );
-    if (picked == null) return;
-    await _run(() => ref.read(apiClientProvider).reassignTask(t.taskId, picked));
+    if (picked == null || !mounted) return;
+
+    // ⚠️ **السؤال يُطرح فقط إن كان ثمّة مسؤولٌ سابق** — ومهمةٌ بلا مسؤول لا سابقَ لها.
+    var keepPrevious = true;
+    if (t.assignedToUserId != null) {
+      final answer = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            title: const Text('ماذا عن المسؤول السابق؟'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('المسؤول الحالي: ${t.assignedToUserName ?? "—"}',
+                    style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: keepPrevious,
+                  onChanged: (v) => setLocal(() => keepPrevious = v ?? true),
+                  title: const Text('أبقِه مشاركاً يرى المهمة ويتابعها'),
+                  subtitle: const Text(
+                      'إن أزلته فلن يراها بعد الآن — واسمُه يبقى في سجلّها',
+                      style: TextStyle(fontSize: 11)),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(), child: const Text('إلغاء')),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(keepPrevious),
+                child: const Text('نقل المسؤولية'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (answer == null) return;   // ألغى
+      keepPrevious = answer;
+    }
+
+    await _run(() => ref
+        .read(apiClientProvider)
+        .reassignTask(t.taskId, picked, keepPreviousAsParticipant: keepPrevious));
+  }
+
+  /// بطاقة المشاركين — **مَن يرى المهمة غير مسؤولها**.
+  Widget _participantsCard(TaskModel t) {
+    final async = ref.watch(taskParticipantsProvider(t.taskId));
+
+    return CustomCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('المشاركون',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('مَن يرى هذه المهمة غير مسؤولها',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).textTheme.bodySmall?.color)),
+              ),
+              if (t.canEdit)
+                TextButton.icon(
+                  onPressed: _busy ? null : () => _promptAddParticipant(t),
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                  label: const Text('إضافة'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          async.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (e, _) => Text('$e', style: const TextStyle(color: AppColors.danger)),
+            data: (rows) {
+              final active = rows.where((p) => !p.isRemoved).toList();
+              if (active.isEmpty) {
+                return Text('لا مشاركين — المهمة يراها مسؤولها ومُنشئها وقسمها',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).textTheme.bodySmall?.color));
+              }
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: active
+                    .map((p) => Chip(
+                          avatar: Icon(
+                              p.isDepartment
+                                  ? Icons.groups_2_outlined
+                                  : Icons.person_outline_rounded,
+                              size: 16),
+                          label: Text(p.displayName, style: const TextStyle(fontSize: 12)),
+                          onDeleted: t.canEdit && !_busy
+                              ? () => _run(() => ref
+                                  .read(apiClientProvider)
+                                  .removeTaskParticipant(t.taskId, p.participantId))
+                              : null,
+                        ))
+                    .toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _promptAddParticipant(TaskModel t) async {
+    final users = await ref.read(assignableUsersProvider.future);
+    final departments = await ref.read(departmentsListProvider.future);
+    if (!mounted) return;
+
+    final choice = await showDialog<({int? userId, int? departmentId})>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('إضافة مشارك'),
+        children: [
+          if (departments.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+              child: Text('الأقسام',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+            ...departments.map((d) => SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx)
+                      .pop((userId: null, departmentId: d.departmentId)),
+                  child: Row(children: [
+                    const Icon(Icons.groups_2_outlined, size: 16),
+                    const SizedBox(width: 8),
+                    Text(d.name),
+                  ]),
+                )),
+          ],
+          if (users.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+              child: Text('الأشخاص',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+            ...users.map((u) => SimpleDialogOption(
+                  onPressed: () =>
+                      Navigator.of(ctx).pop((userId: u.userId, departmentId: null)),
+                  child: Row(children: [
+                    const Icon(Icons.person_outline_rounded, size: 16),
+                    const SizedBox(width: 8),
+                    Text(u.fullName),
+                  ]),
+                )),
+          ],
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+    await _run(() => ref.read(apiClientProvider).addTaskParticipant(
+          t.taskId,
+          userId: choice.userId,
+          departmentId: choice.departmentId,
+        ));
   }
 
   Future<String?> _promptText({

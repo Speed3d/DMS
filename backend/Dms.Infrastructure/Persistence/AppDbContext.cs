@@ -58,6 +58,7 @@ public class AppDbContext : DbContext
     public DbSet<EmployeeLeaveSettlement> EmployeeLeaveSettlements => Set<EmployeeLeaveSettlement>();
     public DbSet<DmsTask> DmsTasks => Set<DmsTask>();
     public DbSet<DmsTaskUpdate> DmsTaskUpdates => Set<DmsTaskUpdate>();
+    public DbSet<DmsTaskParticipant> DmsTaskParticipants => Set<DmsTaskParticipant>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -542,6 +543,40 @@ public class AppDbContext : DbContext
             // ⚠️ **بلا فلتر حذفٍ ناعم عمداً** — السجلّ شاهدٌ لا سجلّ عمل، ويبقى مقروءاً بعد
             //    حذف المهمة الناعم. (درس ADR-028: السجلّ اختفى في اللحظة التي صار فيها أهمَّ
             //    ما يُقرأ.)
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
+        // ---- DmsTaskParticipant (مَن يرى المهمة غير مسؤولها — ADR-037) ----
+        b.Entity<DmsTaskParticipant>(e =>
+        {
+            e.HasKey(x => x.ParticipantId);
+            e.Property(x => x.Note).HasMaxLength(500);
+
+            // 🔴 **فهرسان فريدان مُرشَّحان — حارس التكرار على مستوى القاعدة.** بدونهما تصير
+            //    ضغطتان متسارعتان على «إضافة» صفَّين للشخص نفسه، فيظهر مرّتين في القائمة
+            //    وتُحسب إزالتُه مرّةً فيبقى يرى. والمُرشَّح يستثني **المُزال** فتصحّ إعادة
+            //    الإضافة بعد الإزالة.
+            e.HasIndex(x => new { x.TaskId, x.UserId })
+                .IsUnique().HasFilter("[UserId] IS NOT NULL AND [IsRemoved] = 0");
+            e.HasIndex(x => new { x.TaskId, x.DepartmentId })
+                .IsUnique().HasFilter("[DepartmentId] IS NOT NULL AND [IsRemoved] = 0");
+
+            e.HasIndex(x => new { x.CompanyId, x.UserId });
+            e.HasIndex(x => new { x.CompanyId, x.DepartmentId });
+
+            e.HasOne(x => x.Task).WithMany(t => t.Participants)
+                .HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+
+            // ⚠️ `Restrict` لا `Cascade`: حذفُ مستخدمٍ أو قسمٍ لا يحذف صفوفاً تشهد على
+            //    مشاركةٍ وقعت. والحذف في هذا النظام ناعمٌ أصلاً.
+            e.HasOne(x => x.User).WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Department).WithMany()
+                .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+
+            // ⚠️ **بلا فلتر `IsRemoved` هنا عمداً**: قائمة المشاركين تحتاج المُزالين أحياناً
+            //    (لعرض «أُزيل» في السجلّ)، و**فلتر الرؤية موضعُه `TaskService.Query()` وحدها**
+            //    — فقاعدةُ رؤيةٍ في موضعين تتباعد (درس ADR-030).
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 
