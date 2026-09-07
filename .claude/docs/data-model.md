@@ -110,7 +110,7 @@
 `ArchiveId, CompanyId, ArchiveNumber, Title, BookNumber?, BookDate?, FromEntityId?, ToEntityId?, DocumentTypeId?, Amount?, Currency?, ExchangeRate?, AmountInIqd?, Keywords?, Notes?, CreatedByUserId, CreatedAt, IsDeleted, DeletedBy/At?`.
 
 ### Attachment / DocumentVersion
-- `Attachment`: `AttachmentId, OwnerType(Outgoing/Archive/Incoming/**Employee**), OwnerId, FileName, BlobKey, FileType, FileSize, UploadedByUserId, UploadedAt`. الحد 50 ميغابايت، والصيغ: PDF/JPG/JPEG/PNG/DOCX/XLSX/ZIP/DWG.
+- `Attachment`: `AttachmentId, OwnerType(Outgoing/Archive/Incoming/**Employee**/**Task**), OwnerId, FileName, BlobKey, FileType, FileSize, UploadedByUserId, UploadedAt`. الحد 50 ميغابايت، والصيغ: PDF/JPG/JPEG/PNG/DOCX/XLSX/ZIP/DWG.
   - ⚠️ **`OwnerType` عمودٌ رقميّ بلا قيدٍ في القاعدة** ⇒ نوعٌ جديد **لا يحتاج مهاجرة** لهذا الجدول.
     وأُضيف `Employee = 3` مع بناء الوحدة، لكن **نقطتَي القائمة والرفع لم تُبنيا إلا في 2026-08-05**
     (بلاغ المالك ٧) — فبقيت الميزة ميتةً صامتةً رغم جهوز الكيان والحارس.
@@ -124,6 +124,52 @@
 - `Counter`: مفتاح مركّب `(CompanyId, Year, Type)` + `LastNumber` — ترقيم آمن.
 - `AuditLog`: `LogId, UserId?, CompanyId?, Action, EntityType, EntityId?, Details?, Timestamp`.
 
+### DmsTask (المهام — ADR-037، migration `AddTasksModule`)
+> 🔴 **الاسم `DmsTask` لا `Task`** — لأن `System.Threading.Tasks.Task` مستورَدٌ عالمياً بـ
+> `ImplicitUsings`، فكيانٌ باسم `Task` يُنتج `CS0104` في كل ملفٍ فيه `async`. **قرارٌ لا ذوق.**
+
+`TaskId, CompanyId, TaskNumber?, Year?, SerialNo?, Title, Description?, TaskType, Priority, Status, ProgressPercent(0-100), DueDate, StartDate?, CompletedDate?, DepartmentId?, AssignedToUserId?, CreatedByUserId, RelatedIncomingId?, RelatedOutgoingId?, IsRecurring, RecurrencePattern?, RecurrenceInterval?, RecurrenceEndDate?, ParentRecurringTaskId?, LastEscalationLevel, LastEscalatedAt?, DueSoonNotifiedAt?, Notes?, RowVersion, IsDeleted, DeletedByUserId?, DeletedAt?, CreatedAt, UpdatedAt?`
+
+- 📅 **الحقول الثلاثة `DueDate`/`StartDate`/`CompletedDate` تواريخ تقويمية لا لحظات** —
+  `Kind = Unspecified` عبر `Dms.Domain/LocalClock.cs`. **«٣٠ أيلول» هو ٣٠ أيلول في كل جهاز**؛
+  ولو خُزّنت لحظةً لصارت «٢٩ أيلول ٢١:٠٠» لمن جهازُه متأخّر فعُدّت المهمة متأخّرة قبل أوانها.
+  ⚠️ وفي العميل تُقرأ بـ`parseCalendarDate` **لا `parseInstant`** (عائلة ADR-032 مقلوبةً).
+- ⚙️ **الأعمدة الثلاثة `LastEscalationLevel`/`LastEscalatedAt`/`DueSoonNotifiedAt` ذاكرةُ إشعار
+  لا حالةَ مهمة** (ADR-039) — في القاعدة لا في الذاكرة، وإلا أعادت الخدمة إرسال كل التصعيدات
+  بعد كل إقلاع. تُصفَّر عند **تأجيل الموعد وإعادة الإسناد وإعادة الفتح**.
+- `RowVersion` **يصل العميلَ نصّاً base64** لا مصفوفةَ أرقام (الدرس نفسه من وحدة الرواتب).
+- **الانتقالات بمصفوفةٍ مغلقة** في `Dms.Domain/TaskWorkflow.cs` (سابقة `IncomingWorkflow`/ADR-013):
+  «ملغاة» نهائية، و«مكتملة» لا تُغادَر إلا بإعادة فتحٍ صريحة.
+- **التكرار:** الأمّ وحدها `IsRecurring`، والنسخ المولَّدة تحمل `ParentRecurringTaskId` **ولا
+  ترث ربط الوثائق** (كتاب الشهر الماضي ليس كتاب هذا الشهر). فهرسٌ **فريد مُرشَّح** على
+  `(ParentRecurringTaskId, DueDate)` يمنع التكاثر على مستوى القاعدة.
+
+### DmsTaskUpdate (سجلّ المهمة — يُكتب ولا يُعدَّل)
+`UpdateId, TaskId, CompanyId, UpdateType, OldValue?, NewValue?, Comment?, Description, UpdatedByUserId, UpdatedAt`
+
+- **`CompanyId` منسوخٌ فيه عمداً** ليُفلتَر مباشرةً بلا مرورٍ بالمهمة.
+- 🔴 **يُستعلَم عنه مباشرةً، ولا يُجلَب اسم فاعله بـ`Include`** — العلاقة نحو `Users` **مطلوبة**،
+  و`Include` عليها يُنتج `INNER JOIN` على جدولٍ مفلتر **فيحذف الصفَّ كلَّه** لا اسمَه (ADR-034).
+  الأسماء تُقرأ باستعلامٍ ثانٍ. **تكرّر هذا العيب ثلاث مرات في هذه الوحدة وحدها.**
+
+### DmsTaskParticipant (المشاركون — ADR-037، migration `AddTaskParticipants`)
+`ParticipantId, TaskId, CompanyId, UserId?, DepartmentId?, AddedByUserId, AddedAt, Note?, IsRemoved, RemovedByUserId?, RemovedAt?`
+
+- **مستخدمٌ أو قسم — لا كلاهما ولا لا شيء** (`CHECK` في القاعدة + حارسٌ في المجال).
+- **الإزالة ناعمة** (`IsRemoved`) لأن السجلّ يقول «مَن أُضيف ومتى ومَن أزاله».
+- **مسؤولٌ واحد ومشاركون** (قرار المالك): إعادة الإسناد تُبقي السابق مشاركاً بعلَم
+  `KeepPreviousAsParticipant` — فالمسؤولية إذا توزّعت ضاعت، والرؤية إذا انقطعت ضاع السياق.
+
+### Notification (الإشعارات — ADR-038، migration `AddNotifications`)
+`NotificationId (long), CompanyId, RecipientUserId, Title, Body, Category, EntityType?, EntityId?, Priority, IsRead, ReadAt?, CreatedByUserId?, CreatedAt, DedupKey?`
+
+- **كيانٌ عامّ لا خاصّ بالمهام** — `Category` و`EntityType` يفتحانه لأي وحدة لاحقاً.
+- 🔐 **الإشعار ملكُ صاحبه:** القراءة تتجاوز فلتر الشركة بشرطٍ **أضيق** — `RecipientUserId == me`.
+  ولو بقي فلتر الشركة لَما رأى مستخدمٌ متعدّد الشركات إشعاراتِ شركته الأخرى.
+- **`DedupKey` بفهرسٍ فريد مُرشَّح** — منعُ الإغراق **حارسٌ في القاعدة لا نيّةٌ في الكود**.
+- ⚠️ **الحذف صلبٌ — استثناءٌ موثَّق من قاعدة الحذف الناعم**: الإشعار ليس سجلّاً تدقيقياً
+  (السجلّ في `AuditLog`)، والتنظيف الدوريّ يمحو ما مضى عليه 90 يوماً بـ`ExecuteDeleteAsync`.
+
 ## قواعد عرضية
 - **عزل الشركة:** Global Query Filter على كل كيان له `CompanyId`. لكيان `User` الفلتر يشمل الشركات المُسندة أيضاً: `CompanyId == cid || AssignedCompanies.Any(c => c.CompanyId == cid)` (fail-closed: بلا شركة قابلة للتحديد ⇒ لا يرى شيئاً).
 - **الحذف الناعم:** `OutgoingBook` و `ArchiveDoc` و `IncomingBook` (مع DeletedBy/At) — مُدمج في الفلتر العام.
@@ -135,7 +181,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 24 migration**. 🟠 **ثلاثٌ وعشرون مُطبَّقة على `DmsDb`، والرابعة والعشرون (`AddEmployeeUserLink`) معلّقة حتى دمج فرعها** — القاعدة موردٌ مشترك (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات:
+**السلسلة الحالية — 28 migration** (آخرها `AddNotifications`، 2026-09-07). ✅ **كلُّها مُطبَّقة على `DmsDb`** — ولا شيء معلّق. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
 
 | # | Migration | ما أضافه |
 |---|---|---|
@@ -158,6 +204,16 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 17 | `AddArchiveDepartmentAndUnarchive` | `ArchiveDoc.DepartmentId` **اختياري** + فهرس `(CompanyId, DepartmentId)` + FK بـ`SetNull` — ADR-021. ⚠️ العلاقة مضبوطة صراحةً (EF يولّد عموداً شبحاً إن تُركت ضمنية — حدث في `MovementLog`)، و`SetNull` مقصود: حذف قسم لا يجوز أن يمحو أضبارة بل يتركها «بلا قسم». **إضافة بحتة**. طُبِّقت 2026-07-28 |
 | 18 | `AddCanViewAllIncoming` | `UserCompany.CanViewAllIncoming` (`bit`، افتراضه `false`) — ADR-022. **إضافة بحتة** ⇒ لا يتغيّر سلوك أي مستخدم قائم. طُبِّقت 2026-07-29 |
 
+| … | *(19–25: وحدة الموظفين والرواتب ودفعاتها — `AddHrModule` · `AddHrLeavesAndEndOfService` · `SplitHrPermissions` · `AddPayrollAmendments` · `AddEmployeeUserLink` · `AddLeaveSettlements`)* | تفصيلها في `progress-log.md` |
+| 26 | `AddTasksModule` | جدولا `DmsTasks` و`DmsTaskUpdates` + `UserCompany.CanManageTasks` — ADR-037. **إضافة بحتة**. طُبِّقت على `DmsDb` بتاريخ **2026-09-06** بعد الدمج |
+| 27 | `AddTaskParticipants` | جدول `DmsTaskParticipants` + قيد `CHECK` (مستخدمٌ **أو** قسم لا كلاهما) + فهرسٌ فريد مُرشَّح يمنع تكرار المشارك الفعّال — ADR-037. **إضافة بحتة**. طُبِّقت **2026-09-07** |
+| 28 | `AddNotifications` | جدول `Notifications` (مفتاحه `long`) + **فهرسٌ فريد مُرشَّح على `(RecipientUserId, DedupKey)`** يمنع الإغراق على مستوى القاعدة — ADR-038. **إضافة بحتة**. طُبِّقت **2026-09-07** |
+
 > **ملاحظات:**
+> - 🔴 **الدفعة ٦ (الخدمة الخلفية — ADR-039) بلا مهاجرة** — أعمدةُ حالة التصعيد الثلاثة
+>   أُضيفت في `AddTasksModule` منذ الدفعة ١ تحسّباً، فلم تحتج الخدمةُ تغييراً في المخطّط.
 > - تعدد الشركات (ADR-011) لم يتطلّب migration (جدول `UserCompany` أُنشئ في `InitialCreate`، وتغيير الـ Query Filter لا يمسّ السكيمة).
 > - `AppModule.All` صار **127** (سبعة أقسام) بعد إضافة `Incoming`. من يقرأ الرقم 63 في migration رقم 8 فذلك هو تعريف `All` وقتها؛ الترقية تمّت في migration رقم 10 فلا يوجد مستخدم عالق بلا صلاحية الوارد.
+> - 🔴 **و`All` تبقى 127 عمداً وإن صارت الأقسام عشرة**: الثلاثة الحسّاسة — `Employees = 128`
+>   و`Payroll = 256` و**`Tasks = 512`** — **لا تُمنح تلقائياً في أي موضعٍ صامت**، بل صراحةً
+>   لكل مستخدم. والمعفَون بالدور (سوبر أدمن/رئيس) يأخذون **`AllWithHr = 1023`**.

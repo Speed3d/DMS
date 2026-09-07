@@ -5,7 +5,8 @@
 ## 📍 أين وصلنا؟ → [`.claude/docs/status-report.md`](.claude/docs/status-report.md)
 
 > 📖 **وسجلّ آخر جلسة بالتفصيل** (ماذا عملنا · لماذا · والدروس):
-> [`.claude/docs/session-log-2026-08-19-20.md`](.claude/docs/session-log-2026-08-19-20.md)
+> [`.claude/docs/session-log-2026-09-06-07.md`](.claude/docs/session-log-2026-09-06-07.md) — **وحدة المهام** (٦ دفعات من ٧)
+> والسجلّ الذي قبله: [`.claude/docs/session-log-2026-08-19-20.md`](.claude/docs/session-log-2026-08-19-20.md)
 المرجع الحيّ لحالة المشروع (حالة كل وحدة · الفجوات المفتوحة · ما تبقّى بالأولوية · أوامر التشغيل).
 **اقرأه في بداية كل جلسة، وحدّثه بعد كل دفعة عمل مهمة.**
 
