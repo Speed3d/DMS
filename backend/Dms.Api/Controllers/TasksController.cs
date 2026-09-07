@@ -18,8 +18,31 @@ namespace Dms.Api.Controllers;
 [Authorize]
 [RequireGrantedModule(AppModule.Tasks)]
 public sealed class TasksController(
-    ITaskService tasks, IAttachmentService attachmentService) : ControllerBase
+    ITaskService tasks, IAttachmentService attachmentService,
+    ITaskJobRunner jobs, IWebHostEnvironment env) : ControllerBase
 {
+    /// <summary>
+    /// يُشغّل دورة المهام الخلفية **مرّةً واحدة** — للتحقّق لا للتشغيل.
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **حارسان لا واحد: السوبر أدمن وحده، وبيئة التطوير وحدها** (سابقة
+    /// <c>reset-db</c> حرفياً). فنقطةٌ تُطلق التصعيد يدوياً في الإنتاج تعني **إشعاراتٍ
+    /// تُرسَل بأمرِ من يضغط** لا بحلول موعدها.
+    ///
+    /// ⚠️ **ولماذا أصلاً؟** لأن «انتظر ساعةً ثم تحقّق» **ليست خطة تحقّق**: لا تُعاد ولا
+    /// تُدرَج في سكربت، والدورة التي لا تُختبَر تُكتشف أخطاؤها في الإنتاج.
+    /// </remarks>
+    [HttpPost("run-jobs")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<ActionResult<TaskJobResult>> RunJobs(
+        [FromQuery] bool purge = false, CancellationToken ct = default)
+    {
+        if (!env.IsDevelopment())
+            throw new ForbiddenException("تشغيل الدورة يدوياً غير متاح في بيئة الإنتاج.");
+
+        return await jobs.RunOnceAsync(purge, ct);
+    }
+
     // ─────────────────────────── قراءة ───────────────────────────
 
     [HttpGet]

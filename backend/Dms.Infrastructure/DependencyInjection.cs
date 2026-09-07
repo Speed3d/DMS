@@ -51,6 +51,11 @@ public static class DependencyInjection
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ITaskJobRunner, TaskJobRunner>();
+
+        // ⚠️ **خدمةٌ واحدة لا اثنتان** (ADR-039): التصعيد والتذكير والتوليد على الجدول نفسه
+        //    بالإيقاع نفسه — وثانيةٌ تعني حلقتين وحارسَي صيانة و**نقطتَي فشل** بلا مقابل.
+        services.AddHostedService<TaskBackgroundService>();
         // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();

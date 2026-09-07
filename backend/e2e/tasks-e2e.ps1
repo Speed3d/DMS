@@ -444,6 +444,104 @@ $null=Api POST "/tasks/$idN/participants" @{userId=[int]$out.userId} $tMng $cid
 $cntOut2=(Api GET "/notifications/unread-count" $null $tOut $cid).B
 if([int]$cntOut2 -gt [int]$cntOut){ Ok "🔴 ومَن أُشرك يُخطَر بما يتابعه" } else { Bad "لم يُخطَر: $cntOut ثم $cntOut2" }
 
+Write-Host "`n=== ⚙️ الخدمة الخلفية: التصعيد والتذكير والتوليد (ADR-039) ===" -ForegroundColor Cyan
+# 🔴 **لا يُقبل «انتظار ساعة» كخطة تحقّق** — الحلقة تُستخرج في `RunOnceAsync` وتُنادى من
+#    نقطةٍ يدوية محميّة بـ**السوبر أدمن وبيئة التطوير معاً**.
+function RunJobs { (Api POST "/tasks/run-jobs" $null $admin $cid) }
+
+# ── مهمةٌ متأخرةٌ يوماً: المستوى الأول ──
+# ⚠️ الإنشاء يرفض الماضي، فتُنشأ بموعدٍ صالح ثم يُعدَّل إلى الماضي بسببٍ (قاعدة ٤ب).
+$ovr=(Api POST "/tasks" @{title='مهمة للتصعيد';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$wrk.userId} $tMng $cid).B
+$idO=[int]$ovr.taskId
+$d1=(Get-Date).Date.AddDays(-1).ToString('yyyy-MM-ddT00:00:00')
+$null=Api PUT "/tasks/$idO" @{title=$ovr.title;priority='Normal';dueDate=$d1;rowVersion=$ovr.rowVersion;reason='ضبط الموعد لاختبار التصعيد'} $tMng $cid
+
+$c0=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+$r1=RunJobs
+if($r1.S -eq 200){ Ok "نقطة التشغيل اليدوية تعمل (صعّدت $($r1.B.escalated))" } else { Bad "ردّ $($r1.S)" }
+$c1=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+if([int]$c1 -gt [int]$c0){ Ok "🔴 ووصل المسؤولَ إشعارُ تأخّر ($c0 ثم $c1)" } else { Bad "لم يُشعَر: $c0 ثم $c1" }
+
+# 🔴 ── X2: تشغيلٌ ثانٍ فوراً ⇒ صفر إشعارات جديدة ──
+$r2=RunJobs
+$c2=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+if([int]$c2 -eq [int]$c1){ Ok "🔴 وتشغيلٌ ثانٍ **لا يُنتج إشعاراً جديداً** (X2 — الحالة في أعمدة لا في ذاكرة)" }
+else { Bad "تكرّر: $c1 ثم $c2" }
+
+# ── المستوى الثاني: كل مديري الشركة ──
+$d4=(Get-Date).Date.AddDays(-4).ToString('yyyy-MM-ddT00:00:00')
+$cur=(Api GET "/tasks/$idO" $null $tMng $cid).B
+$null=Api PUT "/tasks/$idO" @{title=$cur.title;priority='Normal';dueDate=$d4;rowVersion=$cur.rowVersion;reason='تعميق التأخّر لاختبار المستوى الثاني'} $tMng $cid
+$null=RunJobs
+$after=(Api GET "/tasks/$idO" $null $tMng $cid)
+if($after.S -eq 200){ Ok "المهمة ما زالت تُقرأ بعد التصعيد" } else { Bad "ردّ $($after.S)" }
+
+# ── 🔐 X1: عزل الشركات — أخطر ما في هذه الدفعة ──
+# الخدمة الخلفية **بلا فلتر شركة إطلاقاً**، فالتجميع بـ`CompanyId` هو الحارس الوحيد.
+if($cid2 -gt 0){
+  $notifs2=(Api GET "/notifications?pageSize=100" $null $admin $cid2).B
+  $leak=@(@($notifs2.items) | Where-Object { [int]$_.entityId -eq $idO })
+  if($leak.Count -eq 0){ Ok "🔐 **X1**: تصعيدُ الشركة الأولى لا يظهر في إشعارات الثانية" }
+  else { Bad "🔴 تسرّب عبر الشركات: $($leak.Count) إشعاراً" }
+} else { Write-Host "  [تخطّي] لا شركة ثانية" -ForegroundColor DarkYellow }
+
+# ── إعادة الفتح تُصفّر التصعيد ──
+$null=Api POST "/tasks/$idO/status" @{newStatus='InProgress'} $tMng $cid
+$null=Api POST "/tasks/$idO/status" @{newStatus='Completed'} $tMng $cid
+$null=Api POST "/tasks/$idO/reopen" @{reason='إعادة فتحٍ لاختبار تصفير التصعيد'} $admin $cid
+$cBefore=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+$r3=RunJobs
+if([int]$r3.B.escalated -ge 1){ Ok "🔴 وبعد إعادة الفتح **يُستأنف التصعيد من الصفر** (الأعمدة صُفِّرت)" }
+else { Bad "لم يُستأنف: صعّد $($r3.B.escalated)" }
+
+Write-Host "`n=== 🔁 توليد النسخة التالية من المتكررة ===" -ForegroundColor Cyan
+# ⚠️ **عنوانٌ خاصٌّ بكل تشغيل**: المطابقة بعنوانٍ ثابت تلتقط سلسلة التشغيل السابق فتبدو
+#    تكاثراً وهو ليس كذلك — **عيبُ مرشِّحٍ لا عيبُ منتج** (تحقّقتُ من القاعدة: رأسٌ واحد
+#    ونسخةٌ واحدة لكلٍّ).
+$recTitle = 'مهمة أسبوعية متكررة ' + [Guid]::NewGuid().ToString('N').Substring(0,6)
+$rec=(Api POST "/tasks" @{title=$recTitle;taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$wrk.userId;isRecurring=$true;recurrencePattern='Weekly';recurrenceInterval=1} $tMng $cid)
+if($rec.S -eq 200 -and $rec.B.isRecurring){ Ok "أُنشئت مهمةٌ متكررة أسبوعياً" } else { Bad "ردّ $($rec.S)" }
+$idR2=[int]$rec.B.taskId
+
+$before=(Api GET "/tasks?pageSize=200" $null $tMng $cid).B.total
+$null=RunJobs
+$mid=(Api GET "/tasks?pageSize=200" $null $tMng $cid).B.total
+if([int]$mid -eq [int]$before){ Ok "🔴 ولا نسخة ما دامت لم تُكمَل — **التوليد يُطلقه الإنهاء لا مرورُ الوقت**" }
+else { Bad "وُلِّدت نسخةٌ قبل الإكمال" }
+
+$null=Api POST "/tasks/$idR2/status" @{newStatus='InProgress'} $tMng $cid
+$null=Api POST "/tasks/$idR2/status" @{newStatus='Completed'} $tMng $cid
+$rg=RunJobs
+if([int]$rg.B.recurringCreated -ge 1){ Ok "وبعد الإكمال وُلِّدت نسخة ($($rg.B.recurringCreated))" } else { Bad "لم تُولَّد" }
+
+$lst=(Api GET "/tasks?pageSize=200" $null $tMng $cid).B
+$copies=@(@($lst.items) | Where-Object { $_.title -eq $recTitle -and [int]$_.taskId -ne $idR2 })
+if($copies.Count -eq 1){ Ok "ونسخةٌ **واحدة** لا أكثر" } else { Bad "عدد النسخ $($copies.Count)" }
+if($copies.Count -ge 1 -and $copies[0].taskNumber -and $copies[0].taskNumber -ne $rec.B.taskNumber){ Ok "وبترقيمٍ جديد ($($copies[0].taskNumber))" } else { Bad "الترقيم لم يتجدّد" }
+
+# 🔴 ── X3: تشغيلٌ ثانٍ فوراً ⇒ لا نسخة ثانية ──
+$rg2=RunJobs
+$lst2=(Api GET "/tasks?pageSize=200" $null $tMng $cid).B
+$copies2=@(@($lst2.items) | Where-Object { $_.title -eq $recTitle -and [int]$_.taskId -ne $idR2 })
+if($copies2.Count -eq 1){ Ok "🔴 **X3**: تشغيلٌ ثانٍ لا يُنتج نسخةً ثانية — فحصُ وجودٍ وفهرسٌ فريد" }
+else { Bad "تكاثرت: $($copies2.Count) نسخة" }
+
+# ── نهاية السلسلة ──
+$endDate=(Get-Date).Date.AddDays(8).ToString('yyyy-MM-ddT00:00:00')
+$fin=(Api POST "/tasks" @{title='متكررة تنتهي قريباً';taskType='Individual';priority='Low';dueDate=$due;assignedToUserId=[int]$wrk.userId;isRecurring=$true;recurrencePattern='Monthly';recurrenceInterval=1;recurrenceEndDate=$endDate} $tMng $cid).B
+$idF=[int]$fin.taskId
+$null=Api POST "/tasks/$idF/status" @{newStatus='InProgress'} $tMng $cid
+$null=Api POST "/tasks/$idF/status" @{newStatus='Completed'} $tMng $cid
+$before2=(Api GET "/tasks?pageSize=200" $null $tMng $cid).B.total
+$null=RunJobs
+$after2=(Api GET "/tasks?pageSize=200" $null $tMng $cid).B.total
+if([int]$after2 -eq [int]$before2){ Ok "🔴 ومتكررةٌ تجاوز موعدُها التالي نهايةَ السلسلة **لا تُولّد**" }
+else { Bad "وُلِّدت رغم انتهاء السلسلة" }
+
+# 🔐 ── نقطة التشغيل محميّة ──
+$byWrk=(Api POST "/tasks/run-jobs" $null $tWrk $cid)
+if($byWrk.S -eq 403){ Ok "🔐 ونقطة التشغيل مقصورةٌ على السوبر أدمن (403 للموظف)" } else { Bad "ردّ $($byWrk.S)" }
+
 Write-Host "`n=== الحذف الناعم ===" -ForegroundColor Cyan
 $td2=(Api POST "/tasks" @{title='ستُحذف';taskType='Individual';priority='Low';dueDate=$due} $tMng $cid).B
 $idDel=[int]$td2.taskId
