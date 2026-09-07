@@ -370,3 +370,68 @@ const Map<String, String> kRecurrenceLabels = {
   'Weekly': 'أسبوعي',
   'Monthly': 'شهري',
 };
+
+
+// ═══════════════════════ الإشعارات (ADR-038) ═══════════════════════
+
+/// إشعارٌ واحد — **بلا مستلِم**: كلُّ ما يصل العميلَ هو إشعاراتُه هو.
+class NotificationModel {
+  final int notificationId;
+  final String title;
+  final String body;
+  final String category;
+  final String? entityType;
+  final int? entityId;
+  final String priority;
+  final bool isRead;
+  final DateTime? readAt;
+
+  /// **لحظة** — تُقرأ بـ`parseInstant` وتُعرض بـ`toLocal()`.
+  final DateTime createdAt;
+
+  NotificationModel({
+    required this.notificationId, required this.title, required this.body,
+    required this.category, this.entityType, this.entityId,
+    required this.priority, required this.isRead, this.readAt,
+    required this.createdAt,
+  });
+
+  bool get isHigh => priority == 'High';
+  bool get isTask => category == 'Task';
+
+  factory NotificationModel.fromJson(Map<String, dynamic> j) => NotificationModel(
+        notificationId: j['notificationId'],
+        title: j['title'] ?? '',
+        body: j['body'] ?? '',
+        category: j['category'] ?? '',
+        entityType: j['entityType'],
+        entityId: j['entityId'],
+        priority: j['priority'] ?? 'Normal',
+        isRead: j['isRead'] ?? false,
+        readAt: j['readAt'] == null ? null : parseInstant(j['readAt']),
+        createdAt: parseInstant(j['createdAt']),
+      );
+}
+
+class NotificationPage {
+  final List<NotificationModel> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  NotificationPage({
+    required this.items, required this.total,
+    required this.page, required this.pageSize,
+  });
+
+  factory NotificationPage.fromJson(Map<String, dynamic> j) => NotificationPage(
+        items: ((j['items'] ?? []) as List)
+            .map((e) => NotificationModel.fromJson(e)).toList(),
+        total: j['total'] ?? 0,
+        page: j['page'] ?? 1,
+        pageSize: j['pageSize'] ?? 25,
+      );
+
+  static NotificationPage get empty =>
+      NotificationPage(items: const [], total: 0, page: 1, pageSize: 25);
+}

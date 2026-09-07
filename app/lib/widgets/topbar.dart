@@ -5,11 +5,13 @@ import 'dart:typed_data';
 import '../core/theme.dart';
 import '../core/profile_providers.dart';
 import '../core/session.dart';
+import '../core/notification_providers.dart';
 import '../core/outgoing_providers.dart';
 import '../models.dart';
 import '../screens/outgoing_detail_screen.dart';
 import '../core/incoming_providers.dart';
 import '../screens/incoming_detail_screen.dart';
+import '../screens/notifications_screen.dart';
 
 /// Hint: الشريط العلوي (Topbar) المحدث
 class Topbar extends ConsumerWidget implements PreferredSizeWidget {
@@ -197,7 +199,46 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                       : const SizedBox.shrink(),
                 ),
 
-                // إشعارات الصادر — تظهر لمن يملك قسم «الصادر» في الشركة الفعّالة (ADR-017).
+                // 🔔 **جرس الإشعارات** (ADR-038) — **بلا حارس قسم**: الإشعارات عابرةٌ
+                //    للأقسام، فقد يصل الموظفَ إشعارٌ عن مهمة وآخرُ عن كتابٍ وارد.
+                Consumer(
+                  builder: (ctx, ref, child) {
+                    final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        _buildIconButton(ctx, icon: Icons.notifications_none, onTap: () {
+                          Navigator.of(ctx).push(MaterialPageRoute(
+                              builder: (_) => const NotificationsScreen()));
+                        }),
+                        // ⚠️ **تظهر عند وجودها فقط** — شارةُ «0» دائمة تُعمي عن الرقم حين يأتي.
+                        if (unread > 0)
+                          PositionedDirectional(
+                            top: -2,
+                            end: -2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              constraints: const BoxConstraints(minWidth: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.danger,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                unread > 99 ? '99+' : '$unread',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+
+                // مسودّاتٌ بانتظار الاعتماد — تظهر لمن يملك قسم «الصادر» (ADR-017).
                 Consumer(
                   builder: (ctx, ref, child) {
                     if (!ref.watch(sessionProvider).hasModule('Outgoing')) return const SizedBox.shrink();
@@ -207,7 +248,11 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        _buildIconButton(ctx, icon: Icons.notifications_none, onTap: () {
+                        // 🔴 **`pending_actions` لا `notifications_none`** (ADR-038): هذه
+                        //    **قائمة عمل** لا إشعار — مسودّاتٌ تنتظر اعتمادك. وجرسُ الإشعارات
+                        //    بجانبها الآن، وأيقونتان متطابقتان بمعنيين مختلفين **التباسٌ
+                        //    يجعل المستخدم يضغط الخطأ منهما مراراً**.
+                        _buildIconButton(ctx, icon: Icons.pending_actions, onTap: () {
                           if (pendingList.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد مسودات بانتظار الاعتماد')));
                             return;

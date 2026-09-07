@@ -1286,6 +1286,24 @@ class ApiClient {
   }
 
 
+  // ---------- الإشعارات (ADR-038) ----------
+
+  Future<NotificationPage> notifications(
+          {int page = 1, int pageSize = 25, bool unreadOnly = false}) async =>
+      NotificationPage.fromJson(await _get('/notifications', query: {
+        'page': page,
+        'pageSize': pageSize,
+        'unreadOnly': unreadOnly,
+      }) as Map<String, dynamic>);
+
+  Future<int> unreadNotificationCount() async =>
+      (await _get('/notifications/unread-count')) as int;
+
+  Future<void> markNotificationRead(int id) => _post('/notifications/$id/read', {});
+
+  Future<int> markAllNotificationsRead() async =>
+      (await _post('/notifications/read-all', {})) as int;
+
   // ---------- مساعدات ----------
   Future<dynamic> _get(String path, {Map<String, dynamic>? query}) async {
     try {

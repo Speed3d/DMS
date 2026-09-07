@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dms_app/core/api_client.dart';
 import 'package:dms_app/core/profile_providers.dart';
+import 'package:dms_app/core/notification_providers.dart';
 import 'package:dms_app/core/session.dart';
 import 'package:dms_app/models.dart';
 import 'package:dms_app/widgets/password_field.dart';
@@ -240,12 +241,18 @@ void main() {
       WidgetTester tester, {
       Uint8List? photo,
       double width = 1400,
+      int unread = 0,
+      List<String> modules = const [],
     }) async {
       tapped = null;
       await tester.pumpWidget(ProviderScope(
         overrides: [
-          sessionProvider.overrideWith(() => _FixedSession(_session())),
+          sessionProvider.overrideWith(() => _FixedSession(_session(modules: modules))),
           myPhotoProvider.overrideWith((ref) async => photo),
+          // ⚠️ **يُعزَل الجرس كما تُعزَل الصورة**: مزوّدُه يستقصي الخادم كل دقيقة، وبلا
+          //    تجاوزٍ هنا يبقى طلبُ Dio مؤقّتاً معلّقاً فيفشل الاختبار بـ«Pending timers»
+          //    — **عيبُ عزلٍ في الاختبار لا عيبٌ في المنتج**.
+          unreadNotificationsProvider.overrideWith((ref) => Stream.value(unread)),
         ],
         child: MaterialApp(
           home: Directionality(
@@ -316,6 +323,45 @@ void main() {
       expect(rect.center.dx < 1400 / 2, isTrue,
           reason: 'المرسى ليس عند بطاقة المستخدم: $rect');
     });
+
+    // ── 🔔 جرس الإشعارات (ADR-038) ──
+
+    testWidgets('🔔 أيقونتان لا واحدة — الجرس للإشعارات و`pending_actions` للمسودّات',
+        (tester) async {
+      // 🔴 **بلا هذا التمييز التباسٌ يجعل المستخدم يضغط الخطأ منهما مراراً**: كان زرّ
+      //    المسودّات يستعمل `notifications_none` وهو **قائمة عمل** لا إشعار، فلمّا جاء
+      //    الجرس الحقيقي صارت أيقونتان متطابقتان بمعنيين مختلفين.
+      // ⚠️ **بقسم الصادر** — وإلا لم يُرسَم زرّ المسودّات أصلاً فمرّ الحارس بلا أن يفحص شيئاً.
+      await pumpTopbar(tester, modules: const ['Outgoing']);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.notifications_none), findsOneWidget,
+          reason: 'الجرس واحدٌ لا اثنان');
+      expect(find.byIcon(Icons.pending_actions), findsOneWidget,
+          reason: 'زرّ المسودّات صار له أيقونته');
+    });
+
+    // ⚠️ **حارسان مستقلّان لا واحدٌ بضختين**: إعادةُ الضخّ في الشجرة نفسها **لا تُعيد
+    //    الاشتراك بالتدفّق**، فتبقى القيمة الأولى — وحارسٌ يقيس قيمةً لم تصل **يكذب**.
+    testWidgets('🔢 الشارة تغيب عند صفر — فلا تُعمي عن الرقم حين يأتي', (tester) async {
+      await pumpTopbar(tester, unread: 0);
+      await tester.pumpAndSettle();
+      expect(find.text('0'), findsNothing, reason: 'صفرٌ لا يُعرض');
+    });
+
+    testWidgets('🔢 وتظهر بالرقم عند وجود غير مقروء', (tester) async {
+      await pumpTopbar(tester, unread: 7);
+      await tester.pumpAndSettle();
+      expect(find.text('7'), findsOneWidget);
+    });
+
+    testWidgets('🔴 والشارة تُقصّ عند 99+ فلا تكسر التخطيط', (tester) async {
+      // رقمٌ من أربع خانات في دائرةٍ عرضُها 16 بكسل **يفيض** — والقصّ يمنع ذلك.
+      await pumpTopbar(tester, unread: 150);
+      await tester.pumpAndSettle();
+      expect(find.text('99+'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
 
@@ -338,7 +384,7 @@ class _UsersApi extends ApiClient {
   }
 }
 
-SessionState _session() => SessionState(
+SessionState _session({List<String> modules = const []}) => SessionState(
       loaded: true,
       activeCompanyId: 1,
       auth: AuthResult(
@@ -351,7 +397,7 @@ SessionState _session() => SessionState(
         role: 'Employee',
         companyIds: const [1],
         mustChangePassword: false,
-        companies: [CompanyAccess(companyId: 1, modules: const [])],
+        companies: [CompanyAccess(companyId: 1, modules: modules)],
       ),
     );
 

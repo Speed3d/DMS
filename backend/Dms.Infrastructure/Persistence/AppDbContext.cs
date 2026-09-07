@@ -59,6 +59,7 @@ public class AppDbContext : DbContext
     public DbSet<DmsTask> DmsTasks => Set<DmsTask>();
     public DbSet<DmsTaskUpdate> DmsTaskUpdates => Set<DmsTaskUpdate>();
     public DbSet<DmsTaskParticipant> DmsTaskParticipants => Set<DmsTaskParticipant>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -577,6 +578,35 @@ public class AppDbContext : DbContext
             // ⚠️ **بلا فلتر `IsRemoved` هنا عمداً**: قائمة المشاركين تحتاج المُزالين أحياناً
             //    (لعرض «أُزيل» في السجلّ)، و**فلتر الرؤية موضعُه `TaskService.Query()` وحدها**
             //    — فقاعدةُ رؤيةٍ في موضعين تتباعد (درس ADR-030).
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
+        // ---- Notification (كيانٌ عامّ يخدم كل الوحدات — ADR-038) ----
+        b.Entity<Notification>(e =>
+        {
+            e.HasKey(x => x.NotificationId);
+
+            e.Property(x => x.Title).IsRequired().HasMaxLength(200);
+            e.Property(x => x.Body).IsRequired().HasMaxLength(1000);
+            e.Property(x => x.Category).IsRequired().HasMaxLength(50);
+            e.Property(x => x.EntityType).HasMaxLength(100);
+            e.Property(x => x.DedupKey).HasMaxLength(200);
+
+            // شارةُ الجرس وقائمةُ الإشعارات — أكثرُ استعلامَين تكراراً في النظام.
+            e.HasIndex(x => new { x.RecipientUserId, x.IsRead, x.CreatedAt });
+            e.HasIndex(x => new { x.CompanyId, x.CreatedAt });
+
+            // 🔴 **حارس الإغراق على مستوى القاعدة**: الخدمة الخلفية تعمل كل ساعة، ومهمةٌ
+            //    متأخرةٌ أسبوعين تعني — بلا هذا — **336 إشعاراً** عن واقعةٍ واحدة. ومن يرى
+            //    مئة إشعارٍ متطابق **يتوقّف عن قراءة الإشعارات كلها**.
+            e.HasIndex(x => new { x.RecipientUserId, x.DedupKey })
+                .IsUnique().HasFilter("[DedupKey] IS NOT NULL");
+
+            e.HasOne(x => x.Recipient).WithMany()
+                .HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
+
+            // ⚠️ **بلا فلتر حذفٍ ناعم** — الحذف هنا **فعليّ** استثناءً موثَّقاً: الإشعار
+            //    إخطارٌ بحدث لا سجلُّ الحدث، والسجلّ في `DmsTaskUpdate` و`AuditLog` باقٍ.
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 

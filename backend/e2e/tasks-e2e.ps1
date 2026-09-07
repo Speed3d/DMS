@@ -377,6 +377,73 @@ if(@($hist2 | Where-Object { $_.description -like '*نُزعت*' }).Count -ge 1)
 $rdrP=(Api POST "/tasks/$idP/participants" @{userId=[int]$rdr.userId} $tMng $cid)
 if($rdrP.S -eq 400){ Ok "🔐 ولا يُشرَك قارئ — لا يرى الوحدة فلا يبلغه عملُه" } else { Bad "ردّ $($rdrP.S)" }
 
+Write-Host "`n=== 🔔 الإشعارات (ADR-038) ===" -ForegroundColor Cyan
+# 🔐 **ثلاث قواعد أمنية**: الإشعار ملكُ صاحبه · و`read` على إشعار غيرك **404 لا 403** ·
+#    والفاعلُ **لا يُشعَر بفعل نفسه**.
+$before=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+$tn=(Api POST "/tasks" @{title='مهمة تُشعِر مسؤولها';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=[int]$wrk.userId} $tMng $cid)
+if($tn.S -eq 200){ Ok "أُنشئت مهمةٌ لمسؤولٍ آخر" } else { Bad "ردّ $($tn.S)" }
+$idN=[int]$tn.B.taskId
+
+$after=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+if([int]$after -eq [int]$before + 1){ Ok "🔴 ووصل المسؤولَ إشعارٌ واحد ($before ثم $after)" } else { Bad "العدّاد $before ثم $after" }
+
+# 🔴 **الفاعل لا يُشعَر بفعله** — وهو أوّل ما يجعل المستخدم يتجاهل الجرس.
+$mgrCount=(Api GET "/notifications/unread-count" $null $tMng $cid).B
+$tn2=(Api POST "/tasks" @{title='مهمة لنفسي';taskType='Individual';priority='Normal';dueDate=$due;assignedToUserId=$mngId} $tMng $cid)
+$mgrAfter=(Api GET "/notifications/unread-count" $null $tMng $cid).B
+if([int]$mgrAfter -eq [int]$mgrCount){ Ok "🔴 ومَن أنشأ لنفسه **لا يُشعَر بفعله**" } else { Bad "أُشعر بنفسه: $mgrCount ثم $mgrAfter" }
+
+# ── القائمة والمحتوى ──
+$nl=(Api GET "/notifications?pageSize=50" $null $tWrk $cid).B
+$mine=@(@($nl.items) | Where-Object { [int]$_.entityId -eq $idN })
+if($mine.Count -ge 1){ Ok "والإشعار يحمل الكيان المعنيّ (entityId=$idN)" } else { Bad "الإشعار بلا كيان" }
+if($mine.Count -ge 1 -and $mine[0].category -eq 'Task'){ Ok "وتصنيفَه Task" } else { Bad "التصنيف خطأ" }
+$notifId=[long]$mine[0].notificationId
+
+# ── إعادة الفتح: أولوية عالية ──
+$null=Api POST "/tasks/$idN/status" @{newStatus='InProgress'} $tWrk $cid
+$null=Api POST "/tasks/$idN/status" @{newStatus='Completed'} $tWrk $cid
+$null=Api POST "/tasks/$idN/reopen" @{reason='المخرجات ناقصة وتحتاج مراجعة'} $admin $cid
+$nl2=(Api GET "/notifications?pageSize=50" $null $tWrk $cid).B
+$hi=@(@($nl2.items) | Where-Object { [int]$_.entityId -eq $idN -and $_.priority -eq 'High' })
+if($hi.Count -ge 1){ Ok "🔴 وإعادة الفتح تُنتج إشعاراً **عالي الأولوية** — نقضُ إنجازٍ مُعلَن" } else { Bad "لا إشعار High" }
+
+# ── حارس التكرار ──
+$cntA=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+$null=Api POST "/tasks/$idN/status" @{newStatus='InProgress'} $tWrk $cid
+$null=Api POST "/tasks/$idN/status" @{newStatus='Completed'} $tWrk $cid
+$null=Api POST "/tasks/$idN/reopen" @{reason='سببٌ ثانٍ لإعادة الفتح'} $admin $cid
+$cntB=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+if([int]$cntB -eq [int]$cntA){ Ok "🔴 و`DedupKey` يمنع إشعاراً ثانياً عن الواقعة نفسها" } else { Bad "تكرّر: $cntA ثم $cntB" }
+
+# ── الوسم بالمقروء ──
+$rd=(Api POST "/notifications/$notifId/read" $null $tWrk $cid)
+if($rd.S -eq 204){ Ok "الوسم بالمقروء يعمل (204)" } else { Bad "ردّ $($rd.S)" }
+$cntC=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+if([int]$cntC -lt [int]$cntB){ Ok "والعدّاد ينقص ($cntB ثم $cntC)" } else { Bad "لم ينقص" }
+
+# 🔐 ── إشعار غيرك: 404 لا 403 ──
+$steal=(Api POST "/notifications/$notifId/read" $null $tOut $cid)
+if($steal.S -eq 404){ Ok "🔐 وإشعارُ غيرك يردّ **404 لا 403** — لا يُفشى وجودُه" } else { Bad "ردّ $($steal.S)" }
+
+# 🔐 ── لا يرى أحدٌ إشعارات غيره ولو كان سوبر أدمن ──
+$adminList=(Api GET "/notifications?pageSize=100" $null $admin $cid).B
+$leak=@(@($adminList.items) | Where-Object { [long]$_.notificationId -eq $notifId })
+if($leak.Count -eq 0){ Ok "🔐 والسوبر أدمن **لا يرى إشعار غيره** — الرقابة لها سجلّ التدقيق" } else { Bad "تسرّب إلى السوبر أدمن" }
+
+# ── تحديد الكل كمقروء ──
+$allRead=(Api POST "/notifications/read-all" $null $tWrk $cid)
+if($allRead.S -eq 200){ Ok "تحديد الكل كمقروء يعمل" } else { Bad "ردّ $($allRead.S)" }
+$cntD=(Api GET "/notifications/unread-count" $null $tWrk $cid).B
+if([int]$cntD -eq 0){ Ok "والعدّاد صار صفراً" } else { Bad "بقي $cntD" }
+
+# ── الإشراك يُخطِر المُشرَك ──
+$cntOut=(Api GET "/notifications/unread-count" $null $tOut $cid).B
+$null=Api POST "/tasks/$idN/participants" @{userId=[int]$out.userId} $tMng $cid
+$cntOut2=(Api GET "/notifications/unread-count" $null $tOut $cid).B
+if([int]$cntOut2 -gt [int]$cntOut){ Ok "🔴 ومَن أُشرك يُخطَر بما يتابعه" } else { Bad "لم يُخطَر: $cntOut ثم $cntOut2" }
+
 Write-Host "`n=== الحذف الناعم ===" -ForegroundColor Cyan
 $td2=(Api POST "/tasks" @{title='ستُحذف';taskType='Individual';priority='Low';dueDate=$due} $tMng $cid).B
 $idDel=[int]$td2.taskId

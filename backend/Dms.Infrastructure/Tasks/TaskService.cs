@@ -1,4 +1,5 @@
 using Dms.Domain;
+using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -77,7 +78,8 @@ public interface ITaskService
 /// وحدة المهام (ADR-037) — كل منطق العمل هنا، والـcontroller عرضٌ رفيع.
 /// </summary>
 public sealed class TaskService(
-    AppDbContext db, ICurrentUser current, INumberingService numbering, IAuditService audit)
+    AppDbContext db, ICurrentUser current, INumberingService numbering, IAuditService audit,
+    INotificationService notifications)
     : ITaskService
 {
     private const string CounterType = "Task";
@@ -358,6 +360,13 @@ public sealed class TaskService(
             audit.Add("Create", nameof(DmsTask), task.TaskId.ToString(),
                 $"إنشاء مهمة {task.TaskNumber}", companyId);
 
+            await NotifyAsync(task,
+                task.TaskType == DmsTaskType.Department ? "مهمة جديدة لقسمك" : "أُسندت إليك مهمة",
+                task.Title,
+                task.Priority is DmsTaskPriority.Urgent
+                    ? NotificationPriority.High : NotificationPriority.Normal,
+                NotificationKeys.TaskAssigned(task.TaskId), ct);
+
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         });
@@ -504,6 +513,13 @@ public sealed class TaskService(
             TaskWorkflow.ArabicName(from), TaskWorkflow.ArabicName(to), reason?.Trim(), desc);
 
         audit.Add("ChangeStatus", nameof(DmsTask), task.TaskId.ToString(), desc, task.CompanyId);
+
+        // ⚠️ **الإكمال وحده يُشعِر** بين تغييرات الحالة: «صارت معلّقة» خبرٌ لا يحتاجه أحد
+        //    فوراً، و«اكتملت» ينتظره مَن أنشأها. وإشعارٌ لكل انتقالٍ يجعل الجرس ضجيجاً.
+        if (to == DmsTaskStatus.Completed)
+            await NotifyAsync(task, "اكتملت مهمة", task.Title,
+                NotificationPriority.Normal, NotificationKeys.TaskCompleted(task.TaskId), ct);
+
         await SaveGuardedAsync(ct);
         return task;
     }
@@ -589,6 +605,19 @@ public sealed class TaskService(
         AddUpdate(task, DmsTaskUpdateType.Reassign, oldName, target.FullName, null, desc);
         audit.Add("Reassign", nameof(DmsTask), task.TaskId.ToString(), desc, task.CompanyId);
 
+        // ⚠️ **إشعارٌ للمسؤول الجديد بمفتاحٍ يحمل معرّفه** — فلو أُعيد الإسناد إليه مرّةً
+        //    أخرى لاحقاً وصله خبرٌ جديد، ولا يُبتلع بمفتاحٍ قديم.
+        await notifications.SendAsync(new NotificationInput(
+            RecipientUserId: assignedToUserId,
+            CompanyId: task.CompanyId,
+            Title: "أُسندت إليك مهمة",
+            Body: task.Title,
+            Category: NotificationKeys.TaskCategory,
+            EntityType: nameof(DmsTask),
+            EntityId: task.TaskId,
+            Priority: NotificationPriority.Normal,
+            DedupKey: $"{NotificationKeys.TaskAssigned(task.TaskId)}:{assignedToUserId}"), ct);
+
         await SaveGuardedAsync(ct);
         return task;
     }
@@ -666,6 +695,22 @@ public sealed class TaskService(
         AddUpdate(task, DmsTaskUpdateType.Reassign, null, who, note?.Trim(),
             TaskParticipation.DescribeAdded(who, note));
         audit.Add("AddTaskParticipant", nameof(DmsTask), task.TaskId.ToString(), who, task.CompanyId);
+
+        // 🔴 **مَن أُضيف ليتابع يجب أن يُخطَر بما يتابعه** — وإلا كان الإشراك بلا أثرٍ يراه.
+        var newcomers = userId is { } single
+            ? [single]
+            : await notifications.DepartmentMembersAsync(task.CompanyId, departmentId!.Value, ct);
+
+        await notifications.SendManyAsync(newcomers, new NotificationInput(
+            RecipientUserId: 0,
+            CompanyId: task.CompanyId,
+            Title: "أُضفتَ إلى مهمة",
+            Body: task.Title,
+            Category: NotificationKeys.TaskCategory,
+            EntityType: nameof(DmsTask),
+            EntityId: task.TaskId,
+            Priority: NotificationPriority.Normal,
+            DedupKey: null), ct);
 
         await SaveGuardedAsync(ct);
         return row;
@@ -760,6 +805,11 @@ public sealed class TaskService(
             TaskWorkflow.ArabicName(DmsTaskStatus.Reopened), reason.Trim(), desc);
         audit.Add("Reopen", nameof(DmsTask), task.TaskId.ToString(), desc, task.CompanyId);
 
+        // 🔴 **أولويةٌ عالية**: إعادة الفتح **تنقض إنجازاً مُعلَناً** — ومَن أعلن إنجازه
+        //    وانصرف عنه يجب أن يعلم فوراً أن عملاً عاد إليه.
+        await NotifyAsync(task, "أُعيد فتح مهمة", $"{task.Title} — {reason.Trim()}",
+            NotificationPriority.High, NotificationKeys.TaskReopened(task.TaskId), ct);
+
         await SaveGuardedAsync(ct);
         return task;
     }
@@ -774,6 +824,11 @@ public sealed class TaskService(
 
         var row = AddUpdate(task, DmsTaskUpdateType.Comment, null, null, text.Trim(),
             $"علّق: {text.Trim()}");
+
+        // ⚠️ **بلا `DedupKey`**: كلُّ تعليقٍ خبرٌ جديد — ومفتاحٌ يبتلع الثاني يجعل الحوار
+        //    يصل نصفَه. (خلافاً للتصعيد حيث التكرار **هو** المشكلة.)
+        await NotifyAsync(task, "تعليقٌ جديد على مهمة", Trim(text.Trim(), 300)!,
+            NotificationPriority.Normal, null, ct);
 
         await db.SaveChangesAsync(ct);
         return row;
@@ -943,6 +998,36 @@ public sealed class TaskService(
 
     private static string? Trim(string? s, int max)
         => s is null ? null : (s.Length <= max ? s : s[..max]);
+
+    /// <summary>
+    /// يُشعِر المعنيّين بحدثٍ على المهمة — **في موضعٍ واحد**.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **ولا يُستدعى <c>SaveChangesAsync</c> هنا**: الإشعارات تُضاف إلى التتبّع وتُحفظ مع
+    /// عملية المهمة نفسها — فإمّا تقع الواقعة ويصل خبرُها، أو **لا تقع ولا يصل**. وحفظٌ
+    /// منفصل يعني إشعاراً بحدثٍ فشل.
+    ///
+    /// 🔴 **والفاعلُ لا يُشعَر بفعله** — والحارس في <c>NotificationService</c> لا هنا، فلا
+    /// يُنسى في أحد المواضع الستّة.
+    /// </remarks>
+    private async Task NotifyAsync(
+        DmsTask task, string title, string body,
+        NotificationPriority priority, string? dedupKey, CancellationToken ct)
+    {
+        var recipients = await GetRecipientsAsync(task, ct);
+        if (recipients.Count == 0) return;
+
+        await notifications.SendManyAsync(recipients, new NotificationInput(
+            RecipientUserId: 0,                 // يُملأ لكل مستلِم
+            CompanyId: task.CompanyId,
+            Title: title,
+            Body: body,
+            Category: NotificationKeys.TaskCategory,
+            EntityType: nameof(DmsTask),
+            EntityId: task.TaskId,
+            Priority: priority,
+            DedupKey: dedupKey), ct);
+    }
 
     /// <summary>يُصفّر **ذاكرة الإشعار** لا الحالة — العمودان ليسا حالةَ المهمة.</summary>
     private static void ResetEscalation(DmsTask task)

@@ -653,3 +653,19 @@ public sealed record TaskSummaryResponse(
 
 /// <summary>مستخدمٌ يصلح مسؤولاً عن مهمة.</summary>
 public sealed record AssignableUserResponse(int UserId, string FullName, string Username, UserRole Role);
+
+// ----------------- Notifications (ADR-038) -----------------
+
+/// <summary>إشعارٌ واحد — **بلا `RecipientUserId`**: كلُّ ما يصل العميلَ هو إشعاراتُه هو.</summary>
+/// <remarks>
+/// 🔐 **غيابُ الحقل جزءٌ من الأمان لا نقصٌ في العقد** (نظير `MyLeaveRequest` في ADR-033):
+/// حقلٌ يحمل المستلِم يُغري بقبوله في الطلب يوماً ما — والقاعدة أن المستلِم **يُشتقّ من
+/// الجلسة ولا يُقبل من العميل**.
+/// </remarks>
+public sealed record NotificationResponse(
+    long NotificationId, string Title, string Body, string Category,
+    string? EntityType, int? EntityId, NotificationPriority Priority,
+    bool IsRead, DateTime? ReadAt, DateTime CreatedAt);
+
+public sealed record NotificationListResponse(
+    List<NotificationResponse> Items, int Total, int Page, int PageSize);

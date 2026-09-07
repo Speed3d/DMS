@@ -5,6 +5,7 @@ using Dms.Infrastructure.Backup;
 using Dms.Infrastructure.Documents;
 using Dms.Infrastructure.Hr;
 using Dms.Infrastructure.Incoming;
+using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Reports;
@@ -49,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<ILeaveService, LeaveService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ITaskService, TaskService>();
+        services.AddScoped<INotificationService, NotificationService>();
         // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();
