@@ -36,15 +36,61 @@ public class QrSignerTests
     [Fact]
     public void TamperedContent_FailsVerification()
     {
+        // ⚠️ **يُبدَّل محرفٌ في المتن المُوقَّع لا في نصٍّ عربيّ ظاهر** — فمنذ `DMS2` صارت
+        //    الحقول مُرمَّزة، والاستبدالُ بالاسم العربي لم يعُد يجد شيئاً **فكان الاختبار
+        //    يمرّ بلا أن يُبدّل حرفاً**. هذه الصيغة تعمل مع أي إصدار.
         var (priv, pub) = QrSigner.GenerateKeyPair();
         var content = QrSigner.CreateQrContent(SampleBook(), priv);
 
-        // تعديل الجهة مع إبقاء التوقيع الأصلي
         var sep = content.LastIndexOf('|');
-        var tampered = content[..sep].Replace("وزارة الإعمار", "جهة مزوّرة") + content[sep..];
+        var canonical = content[..sep];
+        var flipped = canonical[..^1] + (canonical[^1] == 'A' ? 'B' : 'A');
+        var tampered = flipped + content[sep..];
 
-        var result = QrSigner.Verify(tampered, pub);
-        Assert.False(result.IsValid);
+        Assert.NotEqual(canonical, flipped); // الحارس يقيس شيئاً فعلاً
+        Assert.False(QrSigner.Verify(tampered, pub).IsValid);
+    }
+
+    [Fact]
+    public void FieldContainingSeparator_SurvivesRoundTrip()
+    {
+        // 🔴 **العيب الذي عالجه `DMS2`**: كانت الحقول خامّة، فاسمُ جهةٍ فيه `|` يُزيح
+        //    الحقول كلَّها — يبقى التوقيع صحيحاً وتُقرأ القيم في مواضع غيرها.
+        var (priv, pub) = QrSigner.GenerateKeyPair();
+        var book = SampleBook() with { Entity = "وزارة الإعمار | دائرة العقود" };
+
+        var result = QrSigner.Verify(QrSigner.CreateQrContent(book, priv), pub);
+
+        Assert.True(result.IsValid);
+        Assert.Equal("وزارة الإعمار | دائرة العقود", result.Entity);
+        Assert.Equal("DEN-2026-00124", result.Number);
+        Assert.Equal("2026-06-28", result.Date);
+        Assert.Equal("32750000", result.AmountInIqd);
+    }
+
+    [Fact]
+    public void LegacyDms1Content_StillVerifies()
+    {
+        // 🔴 **الورق لا يُعاد طبعُه**: كتابٌ اعتُمد بالصيغة الأولى يبقى رمزُه صالحاً للأبد.
+        var (priv, pub) = QrSigner.GenerateKeyPair();
+
+        var canonical = string.Join('|',
+            "DMS1", "DEN-2026-00124", "2026-06-28", "وزارة الإعمار", "32750000");
+
+        using var ecdsa = System.Security.Cryptography.ECDsa.Create();
+        ecdsa.ImportPkcs8PrivateKey(Convert.FromBase64String(priv), out _);
+        var sig = ecdsa.SignData(
+            System.Text.Encoding.UTF8.GetBytes(canonical),
+            System.Security.Cryptography.HashAlgorithmName.SHA256);
+
+        var legacy = canonical + '|' +
+            Convert.ToBase64String(sig).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var result = QrSigner.Verify(legacy, pub);
+
+        Assert.True(result.IsValid);
+        Assert.Equal("وزارة الإعمار", result.Entity);   // تُقرأ خامّة لا مُرمَّزة
+        Assert.Equal("32750000", result.AmountInIqd);
     }
 
     [Fact]

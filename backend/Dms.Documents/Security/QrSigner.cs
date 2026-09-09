@@ -16,7 +16,12 @@ namespace Dms.Documents.Security;
 /// </summary>
 public static class QrSigner
 {
-    private const string Prefix = "DMS1"; // إصدار صيغة المحتوى
+    /// <summary>الإصدار الذي يُوقَّع به اليوم — حقولُه **مُرمَّزة** (انظر <see cref="BuildCanonical"/>).</summary>
+    private const string Prefix = "DMS2";
+
+    /// <summary>الإصدار الأول — حقولٌ خامّة. **يُتحقَّق منه ولا يُوقَّع به** (توافقٌ خلفيّ).</summary>
+    private const string LegacyPrefix = "DMS1";
+
     private const char Sep = '|';
 
     /// <summary>توليد زوج مفاتيح ECDSA P-256. (PrivatePkcs8, PublicSpki) بصيغة Base64.</summary>
@@ -70,12 +75,22 @@ public static class QrSigner
 
             var fields = canonical.Split(Sep);
             // [0]=Prefix [1]=Number [2]=Date [3]=Entity [4]=AmountInIqd
+            //
+            // ⚠️ **تُقرأ الحقول بحسب إصدارها**: `DMS2` مُرمَّزة و`DMS1` خامّة.
+            //    ورمزٌ مطبوعٌ بالصيغة القديمة يبقى صالحاً — **الورق لا يُعاد طبعُه**.
+            var isLegacy = fields.ElementAtOrDefault(0) == LegacyPrefix;
+            string At(int i)
+            {
+                var raw = fields.ElementAtOrDefault(i) ?? "";
+                return isLegacy ? raw : ReadField(raw);
+            }
+
             return new QrVerificationResult(
                 IsValid: true,
-                Number: fields.ElementAtOrDefault(1) ?? "",
-                Date: fields.ElementAtOrDefault(2) ?? "",
-                Entity: fields.ElementAtOrDefault(3) ?? "",
-                AmountInIqd: fields.ElementAtOrDefault(4) ?? "",
+                Number: At(1),
+                Date: At(2),
+                Entity: At(3),
+                AmountInIqd: At(4),
                 Message: "توقيع صحيح");
         }
         catch (Exception ex)
@@ -93,16 +108,32 @@ public static class QrSigner
         return png.GetGraphic(pixelsPerModule);
     }
 
+    /// <summary>الصيغة المُوقَّعة — **حقولٌ مُرمَّزة** بـBase64Url.</summary>
+    /// <remarks>
+    /// 🔴 **لماذا رُمِّزت؟** كانت الحقول خامّة في <c>DMS1</c>، **فاسمُ جهةٍ فيه <c>|</c>
+    /// يُزيح الحقول كلَّها عند التحقق**: يبقى التوقيع صحيحاً وتُقرأ القيم في مواضع غيرها،
+    /// فيعرض التحقّقُ تاريخاً مكان جهةٍ ومبلغاً مكان تاريخ. والترميز يجعل الفاصل **فاصلاً
+    /// لا محرفاً محتملاً في القيمة**.
+    /// ⚠️ **والتوقيع يقع على النصّ المُرمَّز** — فلا يتغيّر المعنى بين التوقيع والتحقق.
+    /// </remarks>
     private static string BuildCanonical(BookDocument book)
     {
         var amountIqd = book.AmountInIqd?.ToString("0") ?? "-";
-        // ملاحظة: في الإنتاج نُرمّز الحقول (Base64Url) لتفادي حرف الفاصل داخل القيم.
         return string.Join(Sep,
             Prefix,
-            book.Number,
-            book.Date.ToString("yyyy-MM-dd"),
-            book.Entity,
-            amountIqd);
+            Field(book.Number),
+            Field(book.Date.ToString("yyyy-MM-dd")),
+            Field(book.Entity),
+            Field(amountIqd));
+    }
+
+    private static string Field(string? value) =>
+        Base64Url.Encode(Encoding.UTF8.GetBytes(value ?? ""));
+
+    private static string ReadField(string raw)
+    {
+        try { return Encoding.UTF8.GetString(Base64Url.Decode(raw)); }
+        catch { return ""; }
     }
 }
 

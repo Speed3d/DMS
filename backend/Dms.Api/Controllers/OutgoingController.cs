@@ -1,10 +1,13 @@
 using Dms.Api.Auth;
 using Dms.Api.Dtos;
+using Dms.Documents.Security;
+using Dms.Infrastructure.Documents;
 using Dms.Domain;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Api.Controllers;
@@ -13,7 +16,8 @@ namespace Dms.Api.Controllers;
 [Authorize]
 [RequireModule(AppModule.Outgoing)]
 [Route("api/[controller]")]
-public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : ControllerBase
+public sealed class OutgoingController(
+    IOutgoingService svc, AppDbContext db, IOptions<QrSigningOptions> qrOptions) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<OutgoingListItem>>> List(
@@ -130,12 +134,23 @@ public sealed class OutgoingController(IOutgoingService svc, AppDbContext db) : 
         return File(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     }
 
-    private static OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,
+    private OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,
         string? replyToIncomingNumber = null) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
         b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
         b.QrContent, b.GeneratedPdfBlobKey != null, b.ApprovedByUserId, b.ApprovedAt,
         b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson,
-        b.ReplyToIncomingId, replyToIncomingNumber);
+        b.ReplyToIncomingId, replyToIncomingNumber,
+        VerifyUrl(b));
+
+    /// <summary>رابط التحقق العامّ — **للمعتمد وحده**، فالمسودّة بلا رمزٍ مطبوع.</summary>
+    private string? VerifyUrl(OutgoingBook b)
+    {
+        if (b.Status != BookStatus.Final || b.OutgoingId <= 0) return null;
+
+        var token = PublicLink.CreateToken(b.OutgoingId, qrOptions.Value.PrivateKeyBase64);
+        var baseUrl = qrOptions.Value.PublicBaseUrl.TrimEnd('/');
+        return string.IsNullOrWhiteSpace(baseUrl) ? $"/v/{token}" : $"{baseUrl}/v/{token}";
+    }
 }

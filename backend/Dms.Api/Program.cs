@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -95,6 +97,36 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// 🔴 **حدُّ الطلبات على النقاط العامّة وحدها** (ADR-043): صفحةُ التحقق وتنزيلُ الـPDF
+//    مفتوحتان للعالم **وتضربان قاعدة البيانات في كل طلب**. وبلا حدٍّ يكفي سكربتٌ واحد
+//    ليُثقل السيرفر الداخلي — وهو جهازٌ صغير يخدم ثمانية مستخدمين.
+// ⚠️ **والحدُّ لكل عنوانٍ لا لكل التطبيق** — فمتحقّقٌ بطيء لا يحجب غيره.
+// ⚠️ **والتنزيل أضيق من العرض**: صفحةٌ خفيفة ≠ ملفٌّ من القرص.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    o.AddPolicy(RateLimitPolicies.PublicVerify, http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    o.AddPolicy(RateLimitPolicies.PublicDownload, http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+});
+
 builder.Services.AddCors(o => o.AddPolicy("all", p =>
 {
     if (builder.Environment.IsDevelopment())
@@ -144,6 +176,7 @@ else
     app.UseHttpsRedirection();
 }
 app.UseCors("all");
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

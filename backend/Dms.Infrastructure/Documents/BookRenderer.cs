@@ -32,9 +32,14 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
 
         if (!isPreview)
         {
+            // 🔴 **السجلّ التشفيري لا يُمسّ**: `QrContent` و`QrSignature` يبقيان كما كانا —
+            //    هما أثرُ التوقيع المحفوظ. **والمتغيّر هو ما يُرسَم في الصورة وحده.**
             qrContent = QrSigner.CreateQrContent(model, _qr.PrivateKeyBase64);
             signature = qrContent[(qrContent.LastIndexOf('|') + 1)..];
-            qrPng = QrSigner.CreateQrPng(qrContent);
+
+            // ⚠️ **رابطٌ تفتحه كاميرا الهاتف** حين يُضبط العنوان العامّ، وإلا فالنصّ الخامّ
+            //    كما كان (فبيئةُ التطوير تعمل بلا إعداد). انظر `QrSigningOptions.PublicBaseUrl`.
+            qrPng = QrSigner.CreateQrPng(PrintedQrPayload(book, qrContent));
         }
 
         var assets = new DocumentAssets(
@@ -45,6 +50,16 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
 
         var pdf = _pdf.Generate(model, assets);
         return new PdfRenderResult(pdf, qrContent, signature);
+    }
+
+    /// <summary>ما يُطبع داخل الـQR: رابطٌ عامّ إن أمكن، وإلا المحتوى الموقّع كما كان.</summary>
+    private string PrintedQrPayload(OutgoingBook book, string qrContent)
+    {
+        if (string.IsNullOrWhiteSpace(_qr.PublicBaseUrl) || book.OutgoingId <= 0)
+            return qrContent;
+
+        var token = PublicLink.CreateToken(book.OutgoingId, _qr.PrivateKeyBase64);
+        return $"{_qr.PublicBaseUrl.TrimEnd('/')}/v/{token}";
     }
 
     public byte[] RenderWord(OutgoingBook book, Entity entity, Company company)

@@ -322,7 +322,15 @@ public sealed record OutgoingDetail(
     string? QrContent, bool HasPdf, int? ApprovedByUserId, DateTime? ApprovedAt,
     DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion, bool CanApprove, string? BodyJson,
     // الربط العكسي: الكتاب الوارد الذي يردّ عليه هذا الصادر (إن وُجد)
-    int? ReplyToIncomingId = null, string? ReplyToIncomingNumber = null);
+    int? ReplyToIncomingId = null, string? ReplyToIncomingNumber = null,
+
+    /// <summary>رابط التحقق العامّ المطبوع في الـQR — `null` للمسودّة (ADR-043).</summary>
+    /// <remarks>
+    /// ⚠️ **لا تصعيدَ في الإفصاح**: مَن يقرأ هذا الردّ يرى الكتاب كلَّه أصلاً، والرابط
+    /// يفتح صفحةً تعرض **أقلَّ** ممّا يراه. وفائدتُه أن يُنسَخ ويُرسَل لمن يريد التحقق.
+    /// ⚠️ **ويُعاد ولو لم يُضبط `PublicBaseUrl`** (مساراً نسبياً) — فالفحص الآليّ يحتاجه.
+    /// </remarks>
+    string? VerifyUrl = null);
 
 public sealed record VersionResponse(int VersionNo, DateTime ChangedAt, int ChangedByUserId, string? ChangeNote);
 
