@@ -5,8 +5,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models.dart';
 import 'api_client.dart';
 
-/// عنوان الـ API. عدّله حسب بيئة النشر.
-const String kApiBaseUrl = 'http://localhost:5080/api';
+/// عنوان الـ API — يُحقن عند البناء، والافتراض هو بيئة التطوير.
+///
+/// 🔴 **العيب الذي وُلد منه هذا الحقن:** كان العنوان **ثابتاً** `http://localhost:5080/api`.
+///    وحزمة الويب تُنفَّذ في **متصفّح الزائر**، فكل من يفتح النظام كان سيطلب الـAPI من
+///    **جهازه هو** لا من السيرفر: شاشة الدخول تظهر ولا يعمل زرّ الدخول.
+///
+/// **للإنتاج:** `flutter build web --dart-define=API_BASE_URL=https://dms.<domain>/api`
+///
+/// ⚠️ **ويُفضَّل أن يكون على أصل الصفحة نفسه** (`https://dms.<domain>/api` لا نطاقاً آخر):
+///    عندئذٍ لا CORS أصلاً، وإلا وجب أن يحمل `AllowedOrigins` في الخادم أصلَ الصفحة —
+///    والإنتاج **يفشل مغلقاً** فلا يُسامح على النسيان.
+const String kApiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:5080/api',
+);
 
 class SessionState {
   final AuthResult? auth;

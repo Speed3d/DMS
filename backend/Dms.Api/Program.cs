@@ -14,6 +14,8 @@ using Dms.Infrastructure.Auth;
 using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -97,6 +99,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// 🔴 **خلف نفق Cloudflare كلُّ الزوّار يصلون من 127.0.0.1** — فبلا هذا يرى التطبيق عنوان
+//    `cloudflared` لا عنوان المتحقِّق: **حدُّ الطلبات «لكل IP» يصير حدّاً عامّاً واحداً**
+//    (متحقّقٌ واحد يحجب العالم)، و**سجلّ التدقيق يدوّن عنواناً بلا معنى** في كل سطر فحصٍ وتنزيل.
+// ⚠️ **ولا يُوثَق إلا بالعنوان المحليّ**: `cloudflared` يعمل على الجهاز نفسه، فحصرُ الثقة
+//    باللوبباك يمنع أيّ طرفٍ آخر من انتحال عنوانٍ بترويسة `X-Forwarded-For` ملفَّقة.
+//    (`KnownNetworks/KnownProxies` تُفرَّغ أولاً لأن الافتراضيّ يثق باللوبباك ضمناً وقد يتوسّع.)
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    o.KnownNetworks.Clear();
+    o.KnownProxies.Clear();
+    o.KnownProxies.Add(IPAddress.Loopback);
+    o.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
+
 // 🔴 **حدُّ الطلبات على النقاط العامّة وحدها** (ADR-043): صفحةُ التحقق وتنزيلُ الـPDF
 //    مفتوحتان للعالم **وتضربان قاعدة البيانات في كل طلب**. وبلا حدٍّ يكفي سكربتٌ واحد
 //    ليُثقل السيرفر الداخلي — وهو جهازٌ صغير يخدم ثمانية مستخدمين.
@@ -163,6 +180,9 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // ----- الـ Pipeline -----
+// ⚠️ **أوّل الأنابيب لا وسطه**: كل ما بعده (حدُّ الطلبات · التدقيق · إعادة توجيه HTTPS)
+//    يقرأ العنوان والمخطَّط، فقراءتُهما بعد أن استُهلكا لا تُصلح شيئاً.
+app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionMiddleware>();
 // يجب أن يسبق المصادقة: يرفض الطلبات بـ 503 أثناء الصيانة (الاستعادة) قبل لمس قاعدة البيانات.
 app.UseMiddleware<MaintenanceMiddleware>();

@@ -21,6 +21,21 @@
 - لا تُرجِع الكيانات مباشرةً من الـ Controllers — استخدم DTOs.
 - المبالغ: `decimal` بدقة `(18,2)`؛ أسعار الصرف `(18,4)`.
 
+## الإعدادات (Configuration)
+- 🔴 **القيمة الفارغة غيابُ إعداد لا إعدادٌ فارغ — و`??` يحرس `null` وحده.**
+  `appsettings.json` يشحن `""` لكل مفتاحٍ حسّاس، و`config["X"] ?? "افتراض"` **لا يعمل أبداً**
+  في الإنتاج لأن `""` ليست `null`. استعمل `IsNullOrWhiteSpace`.
+  ⚠️ **ولا يكشفه التطوير**: ملفّ التطوير يضبط القيمة فيمرّ الخطأ صامتاً. (وقع في
+  `Seed:AdminUsername` فكان يُنشئ سوبر أدمن **بلا اسمٍ ولا كلمة مرور** — ADR-044.)
+  **القاعدة في `Dms.Domain/SeedCredentials.cs`** حيث يمكن اختبارها.
+- 🔴 **الإعداد الذي لا يُصلَح بعد فواته يُشتقّ ولا يُترك خطوةً يدوية** — `PublicBaseUrl`
+  و`Urls` وبيانات المدير تُكتب من `generate-secrets`. **خطوةٌ يدويةٌ لا رجعة فيها فخٌّ لا خطوة.**
+- ⚠️ **`launchSettings.json` ملفُّ تطويرٍ لا يُنشَر** — فأيّ منفذٍ أو متغيّرٍ يعتمد عليه
+  **غيرُ موجودٍ في الإنتاج**. ما يلزم الإنتاج يُكتب في `appsettings.Production.json`.
+- 🔐 **`appsettings.Development.json` لا يُنشَر إطلاقاً** (`CopyToPublishDirectory=Never`):
+  يحمل أسراراً، **وإقلاعٌ بيئةَ تطويرٍ بالخطأ يفتح `AllowAnyOrigin` وSwagger ونقطةَ تصفير
+  القاعدة**. حذفُه يجعل ذلك الخطأ **يفشل مغلقاً**.
+
 ## EF Core
 - أي عملية تتضمّن `BeginTransaction` **يجب** أن تُغلَّف بـ `CreateExecutionStrategy().ExecuteAsync(...)` (لأن `EnableRetryOnFailure` مُفعّل).
 - لا تُعطّل الـ Global Query Filters إلا عمداً وبوعي أمني (`IgnoreQueryFilters`).

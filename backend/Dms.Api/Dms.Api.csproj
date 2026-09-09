@@ -19,6 +19,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 🔴 **ملفّ التطوير لا يُنشَر.** كان `dotnet publish` ينسخه إلى مجلد السيرفر وفيه
+         **مفتاح JWT ومفتاح توقيع QR الخاصّ** للتطوير — وهو الملفّ المستثنى من git تحديداً
+         لأنه يحمل أسراراً. وأثرُه ليس نظرياً: لو غاب متغيّر `ASPNETCORE_ENVIRONMENT` عن
+         الخدمة أو أُخطئ في كتابته، أقلع النظام **بيئةَ تطوير** فقرأ هذا الملف — فيصل
+         بقاعدة `DmsDb` بمفاتيح التطوير، **ويفتح `AllowAnyOrigin` وSwagger ونقطة
+         `system/reset-db` التدميرية** التي حارسُها الوحيد `IsDevelopment()`.
+         حذفُه من النشر يجعل ذلك الخطأ **يفشل مغلقاً** (أسرارٌ ناقصة ⇒ لا إقلاع). -->
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+
+    <!-- ⚠️ سكربت التحديث يجب أن يصل السيرفر **مع الإصدار**: خطة النشر تستدعيه من
+         `C:\DMS\api\ops\` بينما مصدره خارج المشروع، فبلا هذا لا يوجد هناك أبداً. -->
+    <Content Include="..\ops\update-dms.ps1" Link="ops\update-dms.ps1"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Dms.Infrastructure\Dms.Infrastructure.csproj" />
     <ProjectReference Include="..\Dms.Domain\Dms.Domain.csproj" />
     <ProjectReference Include="..\Dms.Documents\Dms.Documents.csproj" />

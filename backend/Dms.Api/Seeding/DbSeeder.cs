@@ -18,8 +18,11 @@ public static class DbSeeder
 
         if (!await db.Users.IgnoreQueryFilters().AnyAsync())
         {
-            var username = config["Seed:AdminUsername"] ?? "admin";
-            var password = config["Seed:AdminPassword"] ?? "Admin@12345";
+            // 🔴 **لا `??` هنا**: `appsettings.json` يشحن `""` و**السلسلة الفارغة ليست `null`**،
+            //    فكان يُنشأ مدير باسمٍ وكلمة مرورٍ فارغين ولا حسابَ آخر يُصلحه.
+            //    القاعدة في `Dms.Domain/SeedCredentials.cs` وحدها.
+            var username = SeedCredentials.Username(config["Seed:AdminUsername"]);
+            var password = SeedCredentials.Password(config["Seed:AdminPassword"]);
 
             db.Users.Add(new User
             {

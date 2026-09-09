@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dms.Documents.Security;
+using Dms.Domain;
 
 namespace Dms.Api.Ops;
 
@@ -25,7 +26,7 @@ public static class SecretsGenerator
         var opts = Parse(args);
         if (!opts.TryGetValue("out", out var outFile) || string.IsNullOrWhiteSpace(outFile))
         {
-            Console.Error.WriteLine("الاستخدام: Dms.Api.exe generate-secrets --out <مسار appsettings.Production.json> [--origins https://…] [--db-server .] [--db-name DmsDb] [--storage <مسار>] [--backup <مسار>] [--force]");
+            Console.Error.WriteLine("الاستخدام: Dms.Api.exe generate-secrets --out <مسار appsettings.Production.json> [--origins https://…] [--db-server .] [--db-name DmsDb] [--storage <مسار>] [--backup <مسار>] [--admin-user admin] [--url http://localhost:5080] [--force]");
             return 1;
         }
 
@@ -43,6 +44,15 @@ public static class SecretsGenerator
         var origins = opts.GetValueOrDefault("origins", "");
         var storage = opts.GetValueOrDefault("storage", @"C:\DMS\data\storage");
         var backup = opts.GetValueOrDefault("backup", @"C:\DMS\data\backups");
+        var adminUser = opts.GetValueOrDefault("admin-user", SeedCredentials.DefaultUsername);
+        var listenUrl = opts.GetValueOrDefault("url", "http://localhost:5080");
+
+        // 🔴 **أوّل أصلٍ مسموح هو عنوان النظام** — ومنه يُشتقّ عنوان صفحة التحقق العامّة.
+        //    اشتقاقُه هنا لا تركُه خطوةً يدوية **مقصود**: الـQR **يُخبَز في الـPDF لحظة
+        //    الاعتماد**، فكتابٌ اعتُمد قبل ضبطه يحمل النصّ الخامّ **إلى الأبد** ولا يُصلَح
+        //    بأثرٍ رجعيّ. والموضع الوحيد الذي يعرف الدومين أصلاً هو هذا. (ADR-043)
+        var publicBaseUrl = origins.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()?.TrimEnd('/') ?? "";
 
         Console.WriteLine("توليد أسرار الإنتاج...");
 
@@ -55,8 +65,21 @@ public static class SecretsGenerator
         var (privateKey, publicKey) = QrSigner.GenerateKeyPair();
         Console.WriteLine("  ✔ زوج مفاتيح QR (ECDSA P-256)");
 
+        // 🔴 **كلمة مرور المدير تُولَّد هنا ولا تُترك خطوةً يدوية.** `appsettings.json` يشحن
+        //    `Seed:AdminUsername = ""`، و**السلسلة الفارغة ليست `null`** فلا يلتقطها الاحتياطيّ
+        //    `?? "admin"` — فمن يشغّل هذه الأداة ثم يُقلع بلا قسم `Seed` كان يحصل على سوبر
+        //    أدمن **باسمٍ فارغ وكلمة مرورٍ فارغة، ولا حسابَ آخر يُصلحه**. (عولجت العلّة في
+        //    `SeedCredentials` كذلك — وهذه الطبقة الثانية: كلمةٌ فريدة لكل تنصيب لا افتراضٌ معروف.)
+        var adminPassword = GeneratePassword();
+        Console.WriteLine("  ✔ كلمة مرور المدير الأول (عشوائية فريدة)");
+
         var json = new JsonObject
         {
+            // ⚠️ **المنفذ صريحٌ هنا** — `launchSettings.json` ملفُّ تطويرٍ **لا يُنشَر**،
+            //    فبلا هذا يستمع الخادم على 5000 بينما النفق وسكربت التحديث يقصدان 5080.
+            // 🔐 **و`localhost` لا `0.0.0.0`**: `cloudflared` يعمل على الجهاز نفسه، فلا
+            //    داعي لتعريض المنفذ لشبكة المكتب كلها.
+            ["Urls"] = listenUrl,
             ["ConnectionStrings"] = new JsonObject
             {
                 ["Default"] = $"Server={dbServer};Database={dbName};Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=True",
@@ -66,9 +89,15 @@ public static class SecretsGenerator
             {
                 ["PrivateKeyBase64"] = privateKey,
                 ["PublicKeyBase64"] = publicKey,
+                ["PublicBaseUrl"] = publicBaseUrl,
             },
             ["Storage"] = new JsonObject { ["LocalRoot"] = storage },
             ["Backup"] = new JsonObject { ["Dir"] = backup },
+            ["Seed"] = new JsonObject
+            {
+                ["AdminUsername"] = adminUser,
+                ["AdminPassword"] = adminPassword,
+            },
             ["AllowedOrigins"] = origins,
         };
 
@@ -103,7 +132,42 @@ public static class SecretsGenerator
               4) اضبط AllowedOrigins على دومين النظام قبل التشغيل
                  (الإنتاج يفشل مغلقاً: بلا تهيئة = لا أصل مسموح).
             """);
+
+        Console.WriteLine($"""
+
+            ┌─ أول دخول للنظام ───────────────────────────────
+              المستخدم:    {adminUser}
+              كلمة المرور: {adminPassword}
+            └─────────────────────────────────────────────────
+            اكتبها الآن — النظام يطلب تغييرها عند أول دخول.
+            """);
+
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+            Console.WriteLine("""
+
+                ⚠️ لم تُمرَّر --origins، فبقي QrSigning:PublicBaseUrl فارغاً: ختم الـQR
+                   سيحمل نصّاً خامّاً لا رابطاً، فلا تفتحه كاميرا الهاتف.
+                   🔴 اضبطه **قبل اعتماد أول كتابٍ رسميّ** — الرمز يُخبَز في الـPDF لحظة
+                      الاعتماد، ولا يُصلحه ضبطٌ لاحق.
+                """);
+        else
+            Console.WriteLine($"  ✔ صفحة التحقق العامّة: {publicBaseUrl}/v/<token>");
+
         return 0;
+    }
+
+    /// <summary>
+    /// كلمة مرور عشوائية قوية تُقرأ من الشاشة.
+    /// ⚠️ **بلا أحرفٍ ملتبسة** (0/O و1/l/I) — تُنسخ يدوياً مرّةً واحدة، وخطأُ قراءةٍ فيها
+    ///    يظهر بوصفه «كلمة مرور خاطئة» فيُهدر وقتاً في تشخيصٍ لا سبب له.
+    /// </summary>
+    private static string GeneratePassword()
+    {
+        const string alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789@#%+=?";
+        var chars = new char[20];
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = alphabet[RandomNumberGenerator.GetInt32(alphabet.Length)];
+        return new string(chars);
     }
 
     /// <summary>يحلّل وسائط بصيغة --key value أو --flag (Hint: بسيط عمداً — أداة تشغيل لا واجهة عامة).</summary>

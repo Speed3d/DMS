@@ -1,5 +1,11 @@
 ﻿param([string]$AdminPwd='Speed3ds', [string]$Base='http://localhost:5080/api', [string]$Root='http://localhost:5080')
 $ErrorActionPreference='Stop'; $pass=0; $fail=0
+
+# 🔴 **لكل تشغيلٍ عنوانٌ خاصّ به.** اختبارُ حدّ الطلبات في نهاية السكربت يستهلك نافذة
+#    الدقيقة، فتشغيلٌ ثانٍ بعده مباشرةً كان يفشل بـ429 في سبعة تحقّقات — **سكربتٌ سليم
+#    يُظهر منتجاً سليماً معطوباً**، وهو أسوأ من ألّا يُشغَّل مرّتين.
+# 🔑 **ويُثبت في الوقت نفسه** أن الخادم يقرأ `X-Forwarded-For` الممرَّرة لا عنوان النفق.
+$runIp = "203.0.113.$(Get-Random -Minimum 2 -Maximum 250)"
 function Ok($m){ $script:pass++; Write-Host "  [نجح] $m" -ForegroundColor Green }
 function Bad($m){ $script:fail++; Write-Host "  [فشل] $m" -ForegroundColor Red }
 function Api($m,$u,$b,$t,$c){ $h=@{}; if($t){$h.Authorization="Bearer $t"}; if($c){$h."X-Company-Id"="$c"}
@@ -10,11 +16,12 @@ function Api($m,$u,$b,$t,$c){ $h=@{}; if($t){$h.Authorization="Bearer $t"}; if($
 }
 
 # صفحةٌ عامّة: بلا توكن وبلا ترويسة شركة.
-function Page($path){
-  try{ $r=Invoke-WebRequest -Uri "$Root$path" -UseBasicParsing -TimeoutSec 20
+function PageAs($path,$ip){
+  try{ $r=Invoke-WebRequest -Uri "$Root$path" -UseBasicParsing -TimeoutSec 20 -Headers @{'X-Forwarded-For'=$ip}
        return @{S=[int]$r.StatusCode; H=$r.Content} }
   catch{ $resp=$_.Exception.Response; return @{S=$(if($resp){[int]$resp.StatusCode}else{0}); H=''} }
 }
+function Page($path){ PageAs $path $runIp }
 
 # 🔴 **يُقرأ الحكم من `meta` لا من نصٍّ عربيّ** — PS 5.1 يشوّه العربية، ومطابقتُها حارسٌ هشّ
 #    (درسٌ مسجَّل في `hr-e2e.ps1`). والنصّ العربي يُفحص مرّةً واحدة بصيغةٍ مقتضبة.
@@ -23,7 +30,7 @@ function Verdict($html){
   return 'NONE'
 }
 function Bytes($path){
-  try{ $r=Invoke-WebRequest -Uri "$Root$path" -UseBasicParsing -TimeoutSec 30
+  try{ $r=Invoke-WebRequest -Uri "$Root$path" -UseBasicParsing -TimeoutSec 30 -Headers @{'X-Forwarded-For'=$runIp}
        return @{S=[int]$r.StatusCode; D=$r.Content; N=$r.Headers['Content-Disposition']} }
   catch{ $resp=$_.Exception.Response; return @{S=$(if($resp){[int]$resp.StatusCode}else{0}); D=$null; N=$null} }
 }
@@ -114,12 +121,25 @@ $dls=@($logs | Where-Object { $_.action -eq 'PublicPdfDownload' -and $_.entityId
 if($scans.Count -ge 1){ Ok "الفحص العامّ مسجَّلٌ في سجلّ التدقيق ($($scans.Count))" } else { Bad "لا سطرَ فحصٍ في السجلّ" }
 if($dls.Count -ge 1){ Ok "والتنزيل كذلك ($($dls.Count))" } else { Bad "لا سطرَ تنزيلٍ في السجلّ" }
 
+# 🔴 **العنوان الحقيقي لا عنوان النفق** — وبلا هذا يقرأ السجلّ 127.0.0.1 لكل زائر في العالم.
+if(@($scans | Where-Object { $_.details -like "*$runIp*" }).Count -ge 1){
+  Ok "🔐 والسجلّ يدوّن عنوان المتحقِّق الحقيقي ($runIp) لا عنوان النفق" }
+else { Bad "السجلّ لم يدوّن $runIp — الترويسة غير موثوقة أو `UseForwardedHeaders` غائب" }
+
 Write-Host "`n=== حدّ الطلبات ===" -ForegroundColor Cyan
 # 🔴 **النقطة عامّة وتضرب القاعدة في كل طلب** — وبلا حدٍّ يكفي سكربتٌ واحد ليُثقل السيرفر.
+# ⚠️ **بعنوانٍ يُحرَق وحده** — لا بعنوان التشغيل، وإلا أعطب التشغيلَ التالي.
+$burnIp='198.51.100.7'
 $codes=@()
-for($i=0;$i -lt 45;$i++){ $codes+=(Page "/v/$token").S }
+for($i=0;$i -lt 45;$i++){ $codes+=(PageAs "/v/$token" $burnIp).S }
 $tooMany=@($codes | Where-Object { $_ -eq 429 }).Count
 if($tooMany -ge 1){ Ok "تجاوزُ الحدّ يردّ 429 ($tooMany من 45)" } else { Bad "لا حدّ للطلبات — 0 من 45 رُدَّت" }
+
+# 🔐 **والحدّ لكل عنوانٍ لا لكل التطبيق** — وإلا حجب متحقّقٌ مُسيءٌ واحد كلَّ الجهات
+#    الخارجية عن التحقق، فصار حدُّ الحماية بابَ تعطيلٍ للخدمة.
+$other=PageAs "/v/$token" '198.51.100.99'
+if($other.S -eq 200){ Ok "🔐 وعنوانٌ آخر ما زال يُخدَم — العزل لكل IP لا للتطبيق" }
+else { Bad "عنوانٌ بريء رُدَّ بـ$($other.S) — الحدّ عامّ لا لكل IP" }
 
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
