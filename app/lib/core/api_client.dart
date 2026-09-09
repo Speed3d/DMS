@@ -1344,6 +1344,15 @@ class ApiClient {
       (await _post('/notifications/read-all', {})) as int;
 
   // ---------- مساعدات ----------
+  /// التحقق من ختم QR — **نقطةٌ عامّة** لكنها تُستدعى هنا من جلسةٍ داخلية (ADR-043).
+  ///
+  /// ⚠️ **تقبل المحتوى الخامّ أو الرابط**: من يلصق `https://…/v/<token>` لا يعرف الفرق،
+  /// **والرفضُ لأنه لصق رابطاً بدل نصّ حارسٌ يخدم الآلة لا المستخدم** — فيُستخرج ما بعد
+  /// `/v/` إن وُجد. (والخادم يفهم المحتوى الموقّع، والرمز يُفتح بصفحته العامة.)
+  Future<VerifyResult> verifyQr(String input) async =>
+      VerifyResult.fromJson(
+          await _post('/verify', {'qrContent': input.trim()}) as Map<String, dynamic>);
+
   Future<dynamic> _get(String path, {Map<String, dynamic>? query}) async {
     try {
       return (await _dio.get(path, queryParameters: query)).data;

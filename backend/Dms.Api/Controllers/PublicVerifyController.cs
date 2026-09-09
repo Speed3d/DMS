@@ -216,6 +216,10 @@ public sealed class PublicVerifyController(
         <html lang="ar" dir="rtl">
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
+        <!-- ⚠️ **حكمٌ يقرؤه الفحص الآليّ**: PowerShell 5.1 يشوّه العربية أحياناً، فمطابقةُ
+             نصٍّ عربيّ في سكربت E2E حارسٌ هشّ. وهذا السطر يجعل الحكم **قابلاً للمطابقة
+             بلا لبس** — ولا يُفصح بشيءٍ زائدٍ على ما تقوله الصفحة بالعربية. -->
+        <meta name="dms-verdict" content="{{v.Verdict}}">
         <title>التحقق من كتاب صادر</title>
         <style>
           :root { color-scheme: light }

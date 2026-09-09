@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'backup_alert.dart';
 
 import '../core/theme.dart';
+import '../screens/verify_screen.dart';
 import '../core/profile_providers.dart';
 import '../core/session.dart';
 import '../core/notification_providers.dart';
@@ -101,9 +102,11 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                 //    بشيء — حقلٌ يُكتب فيه ولا يبحث. والبحث الحقيقيّ في كل قسمٍ على حدة،
                 //    وصار **حيّاً وأنت تكتب** (`DebouncedSearchField`).
 
-                // QR Verify Button
+                // 🔴 **كان `onPressed: () {}` — قشرةً فارغة** (ADR-043): الزرّ يُرسم
+                //    ويستجيب بصرياً ولا يفعل شيئاً، ونقطةُ `/api/verify` جاهزةٌ منذ Phase 0
+                //    **بلا عميلٍ يستدعيها**. سابعُ تكرارٍ لنمط «ميزةٌ بلا مدخل».
                 OutlinedButton.icon(
-                  onPressed: () {}, // TODO: إضافة التحقق من الـ QR
+                  onPressed: () => _openVerify(context),
                   icon: const Icon(Icons.qr_code_scanner, size: 18),
                   label: const Text('تحقق QR'),
                   style: OutlinedButton.styleFrom(
@@ -115,6 +118,17 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                   ),
                 ),
                 const SizedBox(width: 14),
+              ],
+
+              // ⚠️ **وعلى الشاشة الضيّقة أيقونةٌ لا زرّ** — كان الزرّ يختفي كلّيّاً دون
+              //    900 بكسل، **فتغيب الميزة عمّن يفتح النظام من هاتفه** وهو أوّل من يحتاجها.
+              if (isMedium && !isVerySmall) ...[
+                _buildIconButton(
+                  context,
+                  icon: Icons.qr_code_scanner,
+                  onTap: () => _openVerify(context),
+                ),
+                const SizedBox(width: 8),
               ],
 
               if (!isVerySmall) ...[
@@ -363,6 +377,11 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
       ),
     );
   }
+
+  /// يفتح شاشة التحقق — **مسارٌ لا حوار**: فيها حقلُ نصّ، وحقولُ النصّ في الحوارات تُسقط
+  /// الرسم على الويب (قاعدة المشروع المسجَّلة).
+  void _openVerify(BuildContext context) => Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const VerifyScreen()));
 
   Widget _buildIconButton(BuildContext context, {required IconData icon, required VoidCallback onTap}) {
     final theme = Theme.of(context);

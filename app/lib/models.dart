@@ -1241,3 +1241,32 @@ class MovementLogItem {
         performedAt: parseInstant(j['performedAt']),
       );
 }
+
+/// نتيجة التحقق من ختم QR — `POST /api/verify` (ADR-043).
+///
+/// ⚠️ **حكمان لا واحد**: [isValid] يقول إن **التوقيع** سليم، و[foundInDb] يقول إن الكتاب
+/// **ما زال في السجلّ**. وتوقيعٌ صحيحٌ لكتابٍ مسحوب حالةٌ حقيقية — ودمجُهما يُخفيها.
+class VerifyResult {
+  final bool isValid;
+  final String message;
+  final String? number;
+  final String? date;
+  final String? entity;
+  final String? amountInIqd;
+  final bool foundInDb;
+
+  VerifyResult({
+    required this.isValid, required this.message, required this.foundInDb,
+    this.number, this.date, this.entity, this.amountInIqd,
+  });
+
+  factory VerifyResult.fromJson(Map<String, dynamic> j) => VerifyResult(
+        isValid: j['isValid'] ?? false,
+        message: j['message'] ?? '',
+        number: j['number'],
+        date: j['date'],
+        entity: j['entity'],
+        amountInIqd: j['amountInIqd'],
+        foundInDb: j['foundInDb'] ?? false,
+      );
+}
