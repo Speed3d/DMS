@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:typed_data';
+import 'backup_alert.dart';
 
 import '../core/theme.dart';
 import '../core/profile_providers.dart';
@@ -25,6 +26,12 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
   final VoidCallback onMenuTap;
   final String? logoUrl;
 
+  /// الانتقال إلى قسمٍ بمؤشّره — يستعمله **تنبيه تأخّر النسخ** ليقود إلى قسمه (المؤشّر 8).
+  ///
+  /// ⚠️ **اختياريّ**: الشريط العلوي يُبنى في اختباراتٍ بلا قشرة، وجعلُه إلزامياً يكسرها
+  /// بلا فائدة — والتنبيه نفسه لا يظهر إلا للسوبر أدمن المتأخّرة نسختُه.
+  final void Function(int index)? onNavigate;
+
   const Topbar({
     super.key,
     required this.title,
@@ -32,6 +39,7 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
     required this.onProfileTap,
     required this.onMenuTap,
     this.logoUrl,
+    this.onNavigate,
   });
 
   @override
@@ -198,6 +206,11 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                       ? const SizedBox(width: 8)
                       : const SizedBox.shrink(),
                 ),
+
+                // 🗄️ **تنبيه تأخّر النسخة الكاملة** — للسوبر أدمن وحده وعند التأخّر وحده.
+                //    ⚠️ **خارج الجرس عمداً**: الإشعارات مربوطةٌ بشركةٍ ومُستلِم، والنسخة
+                //    الاحتياطية **شأنٌ نظاميّ**؛ وهي حالةٌ حيّة تختفي فور أخذ النسخة.
+                BackupAlertIcon(onOpenBackup: () => onNavigate?.call(8)),
 
                 // 🔔 **جرس الإشعارات** (ADR-038) — **بلا حارس قسم**: الإشعارات عابرةٌ
                 //    للأقسام، فقد يصل الموظفَ إشعارٌ عن مهمة وآخرُ عن كتابٍ وارد.

@@ -63,7 +63,15 @@ void main() {
     required List<TaskListItem> items,
     int? total,
     SessionState? session,
+    double width = 1400,
+    double height = 900,
   }) async {
+    // ⚠️ **نافذةُ الاختبار 800×600 افتراضاً** — و`SizedBox` أوسع منها **يُقصّ إلى 800**،
+    //    فيقيس الحارسُ عرضاً غير الذي يزعم. تُضبط النافذة نفسها ليصحّ القياس.
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = Size(width, height);
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(ProviderScope(
       overrides: [
         sessionProvider.overrideWith(() => _FixedSession(session ?? sessionWith())),
@@ -75,7 +83,7 @@ void main() {
         home: Directionality(
           textDirection: TextDirection.rtl,
           child: Scaffold(
-            body: SizedBox(width: 1400, height: 900, child: const TaskBoardScreen()),
+            body: SizedBox(width: width, height: height, child: const TaskBoardScreen()),
           ),
         ),
       ),
@@ -167,6 +175,53 @@ void main() {
         task(id: 1, title: 'مهمة مكتملة', status: 'Completed', next: ['Reopened']),
       ]);
       expect(find.byType(LongPressDraggable<TaskListItem>), findsOneWidget);
+    });
+  });
+
+  group('📏 الأعمدة تملأ الشاشة وتتجاوب معها — لا عرضَ مكتوبٍ بيد', () {
+    // 🔴 **عرضٌ ثابت (290) يعني 1510 بكسلاً للأعمدة الخمسة**: يفيض عن شاشة 1366 فتخرج آخر
+    //    الحالات خارج النظر، ويترك فراغاً على 1920. **رقمٌ يساوي مجموع أرقامٍ أخرى يُحسب
+    //    لا يُكتب** — وهو الدرس نفسه الذي أفاض الارتفاع في هذه الشاشة.
+
+    // ⚠️ **المقاس يشمل هامشَي العمود (12)** — لأن `Container` بهامشٍ يلفّ نفسه بـ`Padding`،
+    //    والمفتاح على الخارج. فالعرض الصافي = المقاس − 12.
+    double slotWidth(WidgetTester tester, String status) =>
+        tester.getSize(find.byKey(ValueKey('board-col-$status'))).width;
+    double colWidth(WidgetTester tester, String status) =>
+        slotWidth(tester, status) - 12;
+
+    testWidgets('على شاشةٍ واسعة: تملأ العرض **بلا تمريرٍ أفقيّ**', (tester) async {
+      await pumpBoard(tester, items: [], width: 1400);
+
+      expect(find.byType(SingleChildScrollView), findsNothing,
+          reason: 'ما اتّسع لا يُمرَّر — والتمرير هنا يعني عرضاً مكتوباً بيد');
+
+      // الأعمدة الخمسة متساوية، ومجموعُها بهوامشها = العرض المتاح بالضبط.
+      final w = colWidth(tester, 'New');
+      for (final s in ['InProgress', 'OnHold', 'Reopened', 'Completed']) {
+        expect(colWidth(tester, s), closeTo(w, 0.01), reason: 'العمود $s غير مساوٍ');
+      }
+      expect((w + 12) * 5 + 24, closeTo(1400, 0.5),
+          reason: 'المجموع بالهوامش والحاشيتين = عرض الشاشة تماماً — لا فراغ ولا فيض');
+    });
+
+    testWidgets('وتضيق مع الشاشة: عرضٌ أصغر على 1100 من 1600', (tester) async {
+      await pumpBoard(tester, items: [], width: 1600);
+      final wide = colWidth(tester, 'New');
+      await pumpBoard(tester, items: [], width: 1100);
+      final narrow = colWidth(tester, 'New');
+
+      expect(narrow, lessThan(wide), reason: 'العرض لا يتجاوب مع الشاشة');
+      expect(find.byType(SingleChildScrollView), findsNothing);
+    });
+
+    testWidgets('🔴 وتحت الحدّ الأدنى: تمريرٌ أفقيّ لا قصٌّ للمحتوى', (tester) async {
+      // خمسةُ أعمدةٍ × 190 لا تتّسع في 900 — **وقصُّ العمود أسوأ من تمريره**.
+      await pumpBoard(tester, items: [], width: 900);
+
+      expect(find.byType(SingleChildScrollView), findsOneWidget);
+      expect(colWidth(tester, 'New'), 190,
+          reason: 'دون الحدّ الأدنى يثبت العرض عند حدٍّ مقروء ويُمرَّر');
     });
   });
 

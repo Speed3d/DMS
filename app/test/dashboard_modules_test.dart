@@ -7,6 +7,7 @@ import 'package:dms_app/core/hr_providers.dart';
 import 'package:dms_app/core/incoming_providers.dart';
 import 'package:dms_app/core/outgoing_providers.dart';
 import 'package:dms_app/core/session.dart';
+import 'package:dms_app/core/task_providers.dart';
 import 'package:dms_app/models.dart';
 import 'package:dms_app/screens/dashboard_screen.dart';
 
@@ -48,6 +49,10 @@ void main() {
           // بلا هذا التجاوز يحاول المزوّد بلوغ الشبكة في الاختبار (لا خادم) —
           // فيُخفق صامتاً ويُظهر «…» بدل الأرقام، وهو ما يُخفي عطباً حقيقياً لو وقع.
           hrSummaryProvider.overrideWith((ref) async => HrSummary(7, 5000000, 60000000, 2, 3)),
+          // نظيرُه للمهام — بلا تجاوزٍ يُطلق نداءً في اختبارٍ بلا خادم.
+          taskSummaryProvider.overrideWith((ref) async =>
+              TaskSummaryModel(total: 9, active: 4, overdue: 2, dueToday: 1,
+                  completedThisMonth: 3, mineActive: 2)),
         ],
         child: const MaterialApp(
           home: Directionality(textDirection: TextDirection.rtl, child: DashboardScreen()),
@@ -269,6 +274,57 @@ void main() {
     await pumpDashboard(tester, sessionWith(['Outgoing'], role: 'Manager'));
     expect(find.text('الموظفون الفعّالون'), findsNothing);
     expect(find.text('رواتب مُسدَّدة هذا الشهر'), findsNothing);
+  });
+
+  // ═══════════ 🗂️ التقسيم بالفئات (طلب المالك 2026-09-09) ═══════════
+  //
+  // 🔴 **أربع عشرة بطاقةً في شبكةٍ واحدة تُقرأ ركاماً** — فصارت لكل فئةٍ عنوانٌ وفاصل.
+  //    والحارس يقيس **الفواصل** لا العناوين وحدها: عنوانٌ بلا فاصلٍ صحيح يُبقي العيب.
+
+  /// عدد الفواصل بين الأقسام = عدد الأقسام − 1 **دائماً**.
+  int separatorCount(WidgetTester tester) => tester
+      .widgetList(find.byWidgetPredicate((w) =>
+          w.runtimeType.toString() == '_SectionSeparator'))
+      .length;
+
+  testWidgets('🗂️ صاحب كل الأقسام: خمسة عناوين وأربعة فواصل', (tester) async {
+    await pumpDashboard(
+        tester, sessionWith(kAllModules, role: 'Manager'));
+
+    for (final t in ['الصادر', 'الوارد', 'الأرشيف', 'الموظفون والرواتب', 'المهام']) {
+      expect(find.text(t), findsWidgets, reason: 'عنوان القسم «$t» مفقود');
+    }
+    expect(separatorCount(tester), 4,
+        reason: 'الفواصل بين الأقسام لا حولها — خمسةُ أقسامٍ تعني أربعة فواصل');
+  });
+
+  testWidgets('🔴 قسمٌ واحد: عنوانٌ واحد و**صفر فواصل**', (tester) async {
+    // فاصلٌ بلا ما يفصله خطٌّ معلّقٌ في الفراغ يُقرأ عطلاً في الرسم.
+    await pumpDashboard(tester, sessionWith(['Outgoing']));
+
+    expect(find.text('الصادر'), findsWidgets);
+    expect(find.text('الوارد'), findsNothing);
+    expect(separatorCount(tester), 0);
+  });
+
+  testWidgets('🔴 والقسم بلا بطاقات لا عنوانَ له إطلاقاً', (tester) async {
+    // مَن يملك «الوارد» بلا «الأرشيف» لا تُرسم له بطاقتا الأرشيف — **ولا عنوانُه**.
+    await pumpDashboard(tester, sessionWith(['Incoming']));
+
+    expect(find.text('الوارد'), findsWidgets);
+    expect(find.text('الأرشيف'), findsNothing,
+        reason: 'عنوانٌ بلا بطاقات يَعِد بما ليس هناك');
+    expect(separatorCount(tester), 0);
+  });
+
+  testWidgets('🗂️ وقسمان متباعدان: عنوانان وفاصلٌ واحد', (tester) async {
+    await pumpDashboard(tester, sessionWith(['Outgoing', 'Tasks']));
+
+    expect(find.text('الصادر'), findsWidgets);
+    expect(find.text('المهام'), findsWidgets);
+    expect(find.text('الوارد'), findsNothing);
+    expect(find.text('الموظفون والرواتب'), findsNothing);
+    expect(separatorCount(tester), 1);
   });
 }
 

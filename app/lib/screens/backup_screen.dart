@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
 import '../core/session.dart';
+import '../core/backup_providers.dart';
+import '../widgets/backup_alert.dart';
 import '../core/theme.dart';
 import '../models.dart';
 
@@ -15,7 +17,6 @@ class BackupScreen extends ConsumerStatefulWidget {
 
 class _State extends ConsumerState<BackupScreen> {
   BackupScheduleModel? _schedule;
-  BackupCoverage? _coverage;
   List<BackupRecordModel> _list = [];
   String _freq = 'Off';
   bool _enabled = false;
@@ -35,7 +36,11 @@ class _State extends ConsumerState<BackupScreen> {
       final api = ref.read(apiClientProvider);
       _schedule = await api.backupSchedule();
       _list = await api.backupList();
-      _coverage = await api.backupCoverage();
+
+      // 🔴 **التغطية تُقرأ من المزوّد العامّ لا من حالةٍ محلية** — لأن التنبيه صار يظهر
+      //    في القائمة الجانبية والشريط العلوي كذلك، **وحالتان لرقمٍ واحد تتباعدان**:
+      //    تُؤخذ النسخة فتختفي البطاقة وتبقى الشارة (أو العكس).
+      ref.invalidate(backupCoverageProvider);
       _freq = _schedule!.frequency;
       _enabled = _schedule!.enabled;
       _hour = _schedule!.hour;
@@ -207,12 +212,11 @@ class _State extends ConsumerState<BackupScreen> {
   /// المرفقات. فلو نُسيت شهرين ثم تعطّل القرص ضاعت مرفقات شهرين — **بينما النسخ
   /// اليومية تعمل بانتظام فتُعطي شعوراً زائفاً بالأمان.**
   Widget _coverageCard(BackupCoverage c) {
-    final (color, icon) = switch (c.urgency) {
-      'Ok' => (AppColors.success, Icons.verified_rounded),
-      'Soon' => (AppColors.gold, Icons.schedule_rounded),
-      'Urgent' => (AppColors.warn, Icons.warning_amber_rounded),
-      _ => (AppColors.danger, Icons.error_outline_rounded),
-    };
+    // ⚠️ **اللون والأيقونة من `backup_alert.dart` لا نسخةٌ هنا** — ثلاثة مواضع تعرض
+    //    التنبيه الآن (البطاقة · الشارة · الأيقونة)، وخرائطُ ألوانٍ متعدّدة تتباعد
+    //    **فيتناقض التنبيه مع نفسه فلا يُصدَّق**.
+    final color = backupUrgencyColor(c.urgency);
+    final icon = backupUrgencyIcon(c.urgency);
 
     return Card(
       color: color.withValues(alpha: 0.08),
@@ -304,8 +308,13 @@ class _State extends ConsumerState<BackupScreen> {
           ),
           const SizedBox(height: 16),
 
-          if (_coverage != null) _coverageCard(_coverage!),
-          if (_coverage != null) const SizedBox(height: 16),
+          ...(() {
+            final c = ref.watch(backupCoverageProvider).asData?.value;
+            return [
+              if (c != null) _coverageCard(c),
+              if (c != null) const SizedBox(height: 16),
+            ];
+          })(),
 
           _mirrorCard(),
           const SizedBox(height: 16),

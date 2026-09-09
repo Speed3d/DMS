@@ -110,163 +110,181 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         final double totalSpacing = spacing * (crossAxisCount - 1);
                         final double cardWidth = (width - totalSpacing) / crossAxisCount;
 
-                        return Wrap(
-                          spacing: spacing,
-                          runSpacing: spacing,
-                          children: [
-                            if (showOutgoing) ...[
-                              SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الصادر', '${outItems.length}', Icons.outbox_rounded, const Color(0xFF3B82F6))),
-                              // G11: تفتح القائمة **على المسودّات وحدها**؛ كانت تفتحها بلا فلتر
-                              //      فيضغط المستخدم رقم المسودّات ويرى كل الصادر.
-                              SizedBox(width: cardWidth, child: _buildStatCard('بانتظار الاعتماد', '$outDrafts', Icons.pending_actions_rounded, AppColors.warn, onTap: () => _goWithIntent(2, const OutgoingStatusIntent('Draft')))),
-                              SizedBox(width: cardWidth, child: _buildStatCard('صادر معتمد', '$outFinals', Icons.verified_rounded, AppColors.success)),
-                              SizedBox(width: cardWidth, child: _buildStatCard('إجمالي مبالغ الصادر', '${_fmt(outTotalIqd)} د.ع', Icons.payments_rounded, const Color(0xFF3B82F6))),
+                        // 🗂️ **البطاقات مجمَّعةٌ بفئتها لا مصفوفةً واحدة** (طلب المالك
+                        //    2026-09-09): أربع عشرة بطاقةً في شبكةٍ واحدة تُقرأ ركاماً،
+                        //    فيبحث القارئ عن رقم الوارد بين أرقام الرواتب. ولكل فئةٍ الآن
+                        //    عنوانٌ، ويفصل بينها خطّ.
+                        //
+                        // ⚠️ **والقسم الفارغ لا يُرسم إطلاقاً** — لا عنوانَ له ولا فاصل:
+                        //    عنوانٌ بلا بطاقات يَعِد بما ليس هناك، وفاصلٌ بلا ما يفصله زينة.
+                        //    (وهو ما يقع فعلاً: مَن يملك الصادر وحده يرى قسماً واحداً.)
+                        //
+                        // 🔐 **والمصادر تُقرأ داخل شرط قسمها** — قراءةُ عدسة الأرشيف أو
+                        //    ملخّص الرواتب لمن لا يملك قسمها تُطلق نداءً يردّ 403.
+                        final lens = showArchive
+                            ? ref.watch(archiveLensProvider).whenOrNull(data: (l) => l)
+                            : null;
+                        final hr = (showEmployees || showPayroll)
+                            ? ref.watch(hrSummaryProvider).whenOrNull(data: (s) => s)
+                            : null;
+                        final ts = showTasks
+                            ? ref.watch(taskSummaryProvider).whenOrNull(data: (s) => s)
+                            : null;
+
+                        SizedBox cell(Widget c) => SizedBox(width: cardWidth, child: c);
+
+                        final sections = <({String title, IconData icon, List<Widget> cards})>[
+                          (
+                            title: 'الصادر',
+                            icon: Icons.outbox_rounded,
+                            cards: [
+                              if (showOutgoing) ...[
+                                cell(_buildStatCard('إجمالي الصادر', '${outItems.length}',
+                                    Icons.outbox_rounded, const Color(0xFF3B82F6))),
+                                // G11: تفتح القائمة **على المسودّات وحدها**؛ كانت تفتحها بلا
+                                //      فلتر فيضغط المستخدم رقم المسودّات ويرى كل الصادر.
+                                cell(_buildStatCard('بانتظار الاعتماد', '$outDrafts',
+                                    Icons.pending_actions_rounded, AppColors.warn,
+                                    onTap: () => _goWithIntent(2, const OutgoingStatusIntent('Draft')))),
+                                cell(_buildStatCard('صادر معتمد', '$outFinals',
+                                    Icons.verified_rounded, AppColors.success)),
+                                cell(_buildStatCard('إجمالي مبالغ الصادر', '${_fmt(outTotalIqd)} د.ع',
+                                    Icons.payments_rounded, const Color(0xFF3B82F6))),
+                              ],
                             ],
-
-                            if (showIncoming) ...[
-                              SizedBox(width: cardWidth, child: _buildStatCard('إجمالي الوارد', '${incItems.length}', Icons.inbox_rounded, const Color(0xFF10B981))),
-                              SizedBox(width: cardWidth, child: _buildStatCard('وارد جديد', '$incNew', Icons.mark_email_unread_rounded, AppColors.gold, onTap: () => widget.onNavigate?.call(3))),
+                          ),
+                          (
+                            title: 'الوارد',
+                            icon: Icons.inbox_rounded,
+                            cards: [
+                              if (showIncoming) ...[
+                                cell(_buildStatCard('إجمالي الوارد', '${incItems.length}',
+                                    Icons.inbox_rounded, const Color(0xFF10B981))),
+                                cell(_buildStatCard('وارد جديد', '$incNew',
+                                    Icons.mark_email_unread_rounded, AppColors.gold,
+                                    onTap: () => widget.onNavigate?.call(3))),
+                              ],
                             ],
-
-                            // ⚠️ «وارد مؤرشف» و«أضابير الأرشيف» يُعدّان من **عدسة الأرشيف**
-                            //    لا من قائمة الوارد: الأخيرة صارت تستبعد المؤرشف افتراضياً،
-                            //    فلو عُدَّ منها لعرض صفراً دائماً — وهو ما حدث فعلاً وأُصلح.
-                            //    وكلاهما يتطلّب قسم «الأرشيف» لأن مصدرهما عدسته.
-                            if (showArchive)
-                              ...(() {
-                                final lens = ref.watch(archiveLensProvider).whenOrNull(data: (l) => l);
-                                final incArchived = lens?.where((e) => e.isIncoming).length;
-                                final paper = lens?.where((e) => !e.isIncoming).length;
-                                return [
-                                  if (showIncoming)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      child: _buildStatCard('وارد مؤرشف', incArchived?.toString() ?? '…',
-                                          Icons.mark_email_read_rounded, const Color(0xFF64748B),
-                                          onTap: () => widget.onNavigate?.call(4)),
-                                    ),
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildStatCard('أضابير الأرشيف', paper?.toString() ?? '…',
-                                        Icons.archive_rounded, const Color(0xFF8B5CF6),
-                                        onTap: () => widget.onNavigate?.call(4)),
-                                  ),
-                                ];
-                              })(),
-
+                          ),
+                          (
+                            title: 'الأرشيف',
+                            icon: Icons.archive_rounded,
+                            cards: [
+                              // ⚠️ «وارد مؤرشف» و«أضابير الأرشيف» يُعدّان من **عدسة الأرشيف**
+                              //    لا من قائمة الوارد: الأخيرة صارت تستبعد المؤرشف افتراضياً،
+                              //    فلو عُدَّ منها لعرض صفراً دائماً — وهو ما حدث فعلاً وأُصلح.
+                              //    وكلاهما يتطلّب قسم «الأرشيف» لأن مصدرهما عدسته.
+                              if (showArchive) ...[
+                                if (showIncoming)
+                                  cell(_buildStatCard(
+                                      'وارد مؤرشف',
+                                      lens?.where((e) => e.isIncoming).length.toString() ?? '…',
+                                      Icons.mark_email_read_rounded, const Color(0xFF64748B),
+                                      onTap: () => widget.onNavigate?.call(4))),
+                                cell(_buildStatCard(
+                                    'أضابير الأرشيف',
+                                    lens?.where((e) => !e.isIncoming).length.toString() ?? '…',
+                                    Icons.archive_rounded, const Color(0xFF8B5CF6),
+                                    onTap: () => widget.onNavigate?.call(4))),
+                              ],
+                            ],
+                          ),
+                          (
                             // ── الموظفون والرواتب (ADR-023 + ADR-025) ──
                             // ⚠️ `canSeeEmployees`/`canSeePayroll` لا `hasModule`: القسم **مع
                             //    الدور**، وبطاقةٌ تقود إلى شاشة تردّ 403 أسوأ من بطاقة غائبة.
                             // 🔐 **وكلُّ بطاقةٍ تتبع قسمها**: صاحب «الموظفين» وحده لا يرى
                             //    أرقام الرواتب — والخادم يُرسلها `null` له أصلاً.
-                            if (showEmployees || showPayroll)
-                              ...(() {
-                                final hr = ref.watch(hrSummaryProvider).whenOrNull(data: (s) => s);
-                                return [
-                                  if (showEmployees)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      child: _buildStatCard(
-                                          'الموظفون الفعّالون',
-                                          hr?.activeEmployees?.toString() ?? '…',
-                                          Icons.groups_2_rounded, const Color(0xFF0EA5E9),
-                                          onTap: () => widget.onNavigate?.call(9)),
-                                    ),
-                                  if (showPayroll)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      // ⚠️ **«مُسدَّدة» في التسمية لا زينةً**: الرقم صار
-                                      //    يستثني المسودّات (بلاغ المالك 2026-08-06)، وتسميةٌ
-                                      //    عامّة فوق رقمٍ مخصوص هي نصفُ العيب الذي عولج.
-                                      child: _buildStatCard(
-                                          'رواتب مُسدَّدة هذا الشهر',
-                                          hr?.thisMonthTotalIqd == null
-                                              ? '…'
-                                              : '${_fmt(hr!.thisMonthTotalIqd!)} د.ع',
-                                          Icons.payments_rounded, AppColors.gold,
-                                          onTap: () => widget.onNavigate?.call(10)),
-                                    ),
-                                  if (showPayroll && (hr?.unpaidMonths ?? 0) > 0)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      child: _buildStatCard(
-                                          'أشهر غير مُسدَّدة', '${hr!.unpaidMonths}',
-                                          Icons.report_gmailerrorred_rounded, AppColors.danger,
-                                          onTap: () => widget.onNavigate?.call(10)),
-                                    ),
-                                  if (showEmployees && (hr?.pendingLeaves ?? 0) > 0)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      child: _buildStatCard(
-                                          'إجازات بانتظار الموافقة', '${hr!.pendingLeaves}',
-                                          Icons.beach_access_rounded, AppColors.warn,
-                                          // تنقل **بنيّة**: مَن ينتظر، لا «افتح الموظفين».
-                                          onTap: () => _goWithIntent(
-                                              9, const PendingLeavesIntent())),
-                                    ),
-                                ];
-                              })(),
-
+                            title: 'الموظفون والرواتب',
+                            icon: Icons.groups_2_rounded,
+                            cards: [
+                              if (showEmployees)
+                                cell(_buildStatCard(
+                                    'الموظفون الفعّالون',
+                                    hr?.activeEmployees?.toString() ?? '…',
+                                    Icons.groups_2_rounded, const Color(0xFF0EA5E9),
+                                    onTap: () => widget.onNavigate?.call(9))),
+                              if (showPayroll)
+                                // ⚠️ **«مُسدَّدة» في التسمية لا زينةً**: الرقم صار يستثني
+                                //    المسودّات (بلاغ المالك 2026-08-06)، وتسميةٌ عامّة فوق
+                                //    رقمٍ مخصوص هي نصفُ العيب الذي عولج.
+                                cell(_buildStatCard(
+                                    'رواتب مُسدَّدة هذا الشهر',
+                                    hr?.thisMonthTotalIqd == null
+                                        ? '…'
+                                        : '${_fmt(hr!.thisMonthTotalIqd!)} د.ع',
+                                    Icons.payments_rounded, AppColors.gold,
+                                    onTap: () => widget.onNavigate?.call(10))),
+                              if (showPayroll && (hr?.unpaidMonths ?? 0) > 0)
+                                cell(_buildStatCard('أشهر غير مُسدَّدة', '${hr!.unpaidMonths}',
+                                    Icons.report_gmailerrorred_rounded, AppColors.danger,
+                                    onTap: () => widget.onNavigate?.call(10))),
+                              if (showEmployees && (hr?.pendingLeaves ?? 0) > 0)
+                                cell(_buildStatCard(
+                                    'إجازات بانتظار الموافقة', '${hr!.pendingLeaves}',
+                                    Icons.beach_access_rounded, AppColors.warn,
+                                    // تنقل **بنيّة**: مَن ينتظر، لا «افتح الموظفين».
+                                    onTap: () => _goWithIntent(9, const PendingLeavesIntent()))),
+                            ],
+                          ),
+                          (
                             // ── المهام (ADR-037) ──
                             // ⚠️ `canSeeTasks` لا `hasModule`: القسم **مع الدور** — والقارئ
                             //    محجوبٌ ولو مُنح القسم، فبطاقةٌ تقود إلى شاشة تردّ 403 أسوأ
                             //    من بطاقة غائبة. (القاعدة نفسها المكتوبة للموظفين أعلاه.)
-                            if (showTasks)
-                              ...(() {
-                                final ts = ref
-                                    .watch(taskSummaryProvider)
-                                    .whenOrNull(data: (s) => s);
-                                return [
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildStatCard(
-                                        'مهامي النشِطة',
-                                        ts?.mineActive.toString() ?? '…',
-                                        Icons.assignment_ind_rounded,
-                                        const Color(0xFF6366F1),
-                                        // تنقل **بنيّة** لا «افتح المهام» — G11 نفسها.
-                                        onTap: () => _goWithIntent(
-                                            12, const TaskListIntent(TaskIntentKind.mine))),
-                                  ),
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildStatCard(
-                                        'مهامّ قيد العمل',
-                                        ts?.active.toString() ?? '…',
-                                        Icons.task_alt_rounded,
-                                        const Color(0xFF0EA5E9),
-                                        onTap: () => widget.onNavigate?.call(12)),
-                                  ),
-                                  // ⚠️ **تظهر عند وجودها فقط** — بطاقةُ «متأخرة: 0» ضجيجٌ
-                                  //    دائم، وحين تصير 3 لا يلحظها أحد لأنها كانت هناك دوماً.
-                                  if ((ts?.overdue ?? 0) > 0)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      child: _buildStatCard(
-                                          'مهامّ متأخرة', '${ts!.overdue}',
-                                          Icons.running_with_errors_rounded,
-                                          AppColors.danger,
-                                          onTap: () => _goWithIntent(12,
-                                              const TaskListIntent(TaskIntentKind.overdue))),
-                                    ),
-                                  if ((ts?.dueToday ?? 0) > 0)
-                                    SizedBox(
-                                      width: cardWidth,
-                                      child: _buildStatCard(
-                                          'تستحق اليوم', '${ts!.dueToday}',
-                                          Icons.today_rounded, AppColors.warn,
-                                          onTap: () => widget.onNavigate?.call(12)),
-                                    ),
-                                  SizedBox(
-                                    width: cardWidth,
-                                    child: _buildStatCard(
-                                        'أُنجزت هذا الشهر',
-                                        ts?.completedThisMonth.toString() ?? '…',
-                                        Icons.verified_rounded, AppColors.success,
-                                        onTap: () => widget.onNavigate?.call(12)),
-                                  ),
-                                ];
-                              })(),
+                            title: 'المهام',
+                            icon: Icons.task_alt_rounded,
+                            cards: [
+                              if (showTasks) ...[
+                                cell(_buildStatCard(
+                                    'مهامي النشِطة',
+                                    ts?.mineActive.toString() ?? '…',
+                                    Icons.assignment_ind_rounded, const Color(0xFF6366F1),
+                                    // تنقل **بنيّة** لا «افتح المهام» — G11 نفسها.
+                                    onTap: () => _goWithIntent(
+                                        12, const TaskListIntent(TaskIntentKind.mine)))),
+                                cell(_buildStatCard(
+                                    'مهامّ قيد العمل',
+                                    ts?.active.toString() ?? '…',
+                                    Icons.task_alt_rounded, const Color(0xFF0EA5E9),
+                                    onTap: () => widget.onNavigate?.call(12))),
+                                // ⚠️ **تظهر عند وجودها فقط** — بطاقةُ «متأخرة: 0» ضجيجٌ دائم،
+                                //    وحين تصير 3 لا يلحظها أحد لأنها كانت هناك دوماً.
+                                if ((ts?.overdue ?? 0) > 0)
+                                  cell(_buildStatCard('مهامّ متأخرة', '${ts!.overdue}',
+                                      Icons.running_with_errors_rounded, AppColors.danger,
+                                      onTap: () => _goWithIntent(
+                                          12, const TaskListIntent(TaskIntentKind.overdue)))),
+                                if ((ts?.dueToday ?? 0) > 0)
+                                  cell(_buildStatCard('تستحق اليوم', '${ts!.dueToday}',
+                                      Icons.today_rounded, AppColors.warn,
+                                      onTap: () => widget.onNavigate?.call(12))),
+                                cell(_buildStatCard(
+                                    'أُنجزت هذا الشهر',
+                                    ts?.completedThisMonth.toString() ?? '…',
+                                    Icons.verified_rounded, AppColors.success,
+                                    onTap: () => widget.onNavigate?.call(12))),
+                              ],
+                            ],
+                          ),
+                        ].where((s) => s.cards.isNotEmpty).toList();
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (var i = 0; i < sections.length; i++) ...[
+                              // **الفاصل بين القسمين لا قبل الأول ولا بعد الأخير** — خطٌّ
+                              // معلّقٌ في الفراغ يُقرأ عطلاً في الرسم.
+                              if (i > 0) const _SectionSeparator(),
+                              _SectionHeading(
+                                  title: sections[i].title, icon: sections[i].icon),
+                              const SizedBox(height: 14),
+                              Wrap(
+                                spacing: spacing,
+                                runSpacing: spacing,
+                                children: sections[i].cards,
+                              ),
+                            ],
                           ],
                         );
                       }
@@ -848,4 +866,47 @@ class _NoModulesView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// عنوان فئةٍ في لوحة التحكم — أيقونةٌ واسمٌ وخطٌّ خفيف يمتدّ (طلب المالك 2026-09-09).
+///
+/// ⚠️ **يُرسَم لقسمٍ له بطاقاتٌ فعلاً** — واللائحة تُصفّى قبل الرسم، فلا عنوانَ فوق فراغ.
+class _SectionHeading extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SectionHeading({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Text(title,
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.bold, color: color)),
+        const SizedBox(width: 12),
+        // ⚠️ `Expanded` لا عرضٌ مكتوب — الخطّ يملأ ما بقي مهما ضاقت النافذة.
+        Expanded(
+          child: Divider(
+              height: 1, thickness: 1, color: color.withValues(alpha: 0.18)),
+        ),
+      ],
+    );
+  }
+}
+
+/// فاصلٌ بين فئتين — **بينهما لا قبل الأولى ولا بعد الأخيرة**.
+class _SectionSeparator extends StatelessWidget {
+  const _SectionSeparator();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 26),
+        child: Divider(
+            height: 1,
+            thickness: 1,
+            color: Theme.of(context).dividerColor.withValues(alpha: 0.5)),
+      );
 }

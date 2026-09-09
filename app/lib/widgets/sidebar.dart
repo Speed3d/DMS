@@ -5,6 +5,9 @@ import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
 import '../core/hr_providers.dart';
 import '../core/task_providers.dart';
+import '../core/backup_providers.dart';
+import '../core/company_providers.dart';
+import 'backup_alert.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -66,26 +69,13 @@ class Sidebar extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-          // Logo & Title
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.all(4),
-                child: const Icon(Icons.business, color: AppColors.navy, size: 28),
-              ),
-              const SizedBox(width: 12),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('DEN LAND', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15.5, letterSpacing: 0.4)),
-                  Text('إدارة الوثائق', style: TextStyle(color: Color(0xFF7F93B8), fontSize: 11.5)),
-                ],
-              ),
-            ],
-          ),
+          // 🏢 **صدرُ القائمة يتبع الشركة الفعّالة** (طلب المالك 2026-09-09): اسمُها
+          //    وشعارُها لا اسمَ النظام — **والنظام متعدّد الشركات، فاسمٌ ثابت يجعل موظف
+          //    الشركة الثانية يرى شعار الأولى فوق بياناته**. ويتبدّلان بتبديل الشركة لأن
+          //    `activeCompanyProvider` يُبطَل حينها.
+          //
+          // ⚠️ **والسطر الثاني «إدارة الوثائق» يصف النظام لا الشركة** — فيبقى كما هو.
+          _CompanyHeader(),
           const SizedBox(height: 24),
 
           // Main Menu
@@ -157,7 +147,19 @@ class Sidebar extends ConsumerWidget {
             ),
             if (_showSettings) _buildItem(6, Icons.settings_rounded, 'الإعدادات والقوالب'),
             if (_showUsers) _buildItem(7, Icons.people_alt_rounded, 'المستخدمون'),
-            if (_showBackup) _buildItem(8, Icons.security_rounded, 'النسخ الاحتياطي'),
+            // 🔴 **شارةُ تأخّر النسخة الكاملة** (طلب المالك 2026-09-09) — للسوبر أدمن
+            //    وحده، وتحمل **عدد الأيام** بلونٍ يتصاعد مع الإلحاح. والبند نفسه محجوبٌ
+            //    عن غيره أصلاً، فالشارة لا تُسرّب شيئاً.
+            if (_showBackup)
+              Consumer(
+                builder: (context, ref, child) {
+                  final alert = ref.watch(backupAlertProvider);
+                  return _buildItem(8, Icons.security_rounded, 'النسخ الاحتياطي',
+                      badge: alert == null ? null : (alert.daysSince?.toString() ?? '!'),
+                      badgeColor:
+                          alert == null ? null : backupUrgencyColor(alert.urgency));
+                },
+              ),
           ],
 
           const Spacer(),
@@ -202,7 +204,8 @@ class Sidebar extends ConsumerWidget {
     );
   }
 
-  Widget _buildItem(int index, IconData icon, String label, {String? badge}) {
+  Widget _buildItem(int index, IconData icon, String label,
+      {String? badge, Color? badgeColor}) {
     final isSelected = selectedIndex == index;
     return Material(
       color: Colors.transparent,
@@ -233,13 +236,79 @@ class Sidebar extends ConsumerWidget {
               if (badge != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-                  decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(99)),
+                  // ⚠️ **اللون يُمرَّر ولا يُثبَّت**: شارةُ تأخّر النسخ تتصاعد من الأصفر
+                  //    إلى الأحمر، ولونٌ واحد لا يفرّق بين «اقترب» و«مضى شهران».
+                  decoration: BoxDecoration(
+                      color: badgeColor ?? AppColors.gold,
+                      borderRadius: BorderRadius.circular(99)),
                   child: Text(badge, style: const TextStyle(color: AppColors.navyDeep, fontSize: 11, fontWeight: FontWeight.w900)),
                 ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// صدر القائمة الجانبية — شعار الشركة الفعّالة واسمها.
+///
+/// ⚠️ **الاسم يتبع سابقة الشريط العلوي حرفياً** (`company?.name ?? 'جاري التحميل...'`) —
+/// فاسمان مختلفان لحالةٍ واحدة يجعلان الشاشة تبدو مضطربة أثناء التحميل.
+///
+/// 🔴 **وفشلُ الشعار لا يُفرغ الصدر**: تعذّرُ تحميل الصورة (شبكةٌ منقطعة · ملفٌّ محذوف)
+/// يعود بالأيقونة العامّة — **وصدرٌ فارغ يُقرأ عطلاً في البرنامج لا نقصاً في صورة**.
+class _CompanyHeader extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final company = ref.watch(activeCompanyProvider).asData?.value;
+    final logoUrl = companyLogoUrl(company);
+
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.all(4),
+          child: logoUrl == null
+              ? const Icon(Icons.business, color: AppColors.navy, size: 28)
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    logoUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.business, color: AppColors.navy, size: 28),
+                  ),
+                ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                company?.name ?? 'جاري التحميل...',
+                // ⚠️ **سطران وقصٌّ** — أسماء الشركات الرسمية طويلة («أرض العرين للتجارة
+                //    والمقاولات»)، وسطرٌ واحد يقصّها عند أول كلمتين.
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14.5,
+                    height: 1.25,
+                    letterSpacing: 0.2),
+              ),
+              const Text('إدارة الوثائق',
+                  style: TextStyle(color: Color(0xFF7F93B8), fontSize: 11.5)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

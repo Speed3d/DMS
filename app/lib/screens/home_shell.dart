@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/company_providers.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
@@ -22,19 +23,6 @@ import 'profile_screen.dart';
 import 'task_board_screen.dart';
 import 'task_list_screen.dart';
 
-import '../models.dart';
-
-final activeCompanyProvider = FutureProvider.autoDispose<Company?>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  final session = ref.watch(sessionProvider);
-  if (session.effectiveCompanyId == null) return null;
-  try {
-    final companies = await api.companies();
-    return companies.where((c) => c.companyId == session.effectiveCompanyId).firstOrNull;
-  } catch (_) {
-    return null;
-  }
-});
 
 /// Hint: الهيكل الرئيسي للتطبيق (Shell) الذي يجمع القائمة الجانبية والشريط العلوي مع محتوى الشاشات
 class HomeShell extends ConsumerStatefulWidget {
@@ -129,15 +117,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   builder: (context, ref, child) {
                     final company = ref.watch(activeCompanyProvider).value;
                     final companyName = company?.name ?? 'جاري التحميل...';
-                    final logoUrl = company?.logoImageKey != null && company!.logoImageKey!.isNotEmpty
-                        ? '$kApiBaseUrl/companies/${company.companyId}/logo'
-                        : null;
+                    final logoUrl = companyLogoUrl(company);
                     return Topbar(
                       title: '${_getPageTitle(_index, canManageUsers, isSuper)} - $companyName',
                       subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
                       logoUrl: logoUrl,
                       onProfileTap: _showProfileMenu,
                       onMenuTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                      onNavigate: (i) => setState(() => _index = i),
                     );
                   },
                 ),

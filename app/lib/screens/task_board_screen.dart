@@ -27,6 +27,16 @@ class TaskBoardScreen extends ConsumerStatefulWidget {
   ConsumerState<TaskBoardScreen> createState() => _TaskBoardScreenState();
 }
 
+/// حاشية اللوح، وهامشُ كل عمود من كل جانب — **تدخل في حساب العرض** فلا تُكتب مرّتين.
+const double kBoardPadding = 12;
+const double kBoardGutter = 6;
+
+/// أضيقُ عرضٍ يبقى العمود عنده مقروءاً — دونه يُمرَّر أفقياً بدل أن يُقصّ محتواه.
+///
+/// **190 تعني أن الأعمدة الخمسة تملأ الشاشة بلا تمرير ابتداءً من ~1034 بكسلاً** — فتدخل
+/// فيها نوافذُ 1366 و1440 و1920 كلُّها. وما دونها يُمرَّر، **والتمرير أرحم من القصّ**.
+const double kBoardColumnMinWidth = 190;
+
 /// أعمدة اللوحة — **بلا «ملغاة»** (انظر توثيق الصنف).
 const List<({String status, String label, IconData icon})> _boardColumns = [
   (status: 'New', label: 'جديدة', icon: Icons.fiber_new_outlined),
@@ -126,10 +136,22 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
           children: [
             if (_busy) const LinearProgressIndicator(minHeight: 2),
             Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.all(12),
-                child: Row(
+              // 🔴 **عرض العمود يُحسب من عرض الشاشة لا يُكتب رقماً**: عرضٌ ثابت (290) يعني
+              //    1510 بكسلاً للأعمدة الخمسة — تفيض عن شاشة 1366 فتخرج آخر الحالات خارج
+              //    النظر، وتترك فراغاً على شاشة 1920. **والقاعدة نفسها التي أفاضت الارتفاع.**
+              child: LayoutBuilder(builder: (context, c) {
+                final n = _boardColumns.length;
+
+                // المتاح = العرض − حاشيتا اللوح − هوامش الأعمدة (6 لكل جانب).
+                final available = c.maxWidth - (kBoardPadding * 2) - (kBoardGutter * 2 * n);
+                final ideal = available / n;
+
+                // **يتّسع ⇒ تملأ الأعمدةُ الشاشةَ بلا تمرير.** ولا يتّسع ⇒ حدٌّ أدنى مقروء
+                // مع تمريرٍ أفقيّ — **قصُّ العمود أسوأ من تمريره**.
+                final fits = ideal >= kBoardColumnMinWidth;
+                final colWidth = fits ? ideal : kBoardColumnMinWidth;
+
+                final row = Row(
                   // 🔴 **`stretch` لا `start`** — فيأخذ العمود ارتفاع الشاشة المتاح ويُحسَب
                   //    ارتفاع قائمته بـ`Expanded`. وارتفاعٌ مكتوبٌ بيدي (`maxHeight: 560`)
                   //    يفيض كلّما ضاقت النافذة: **رقمٌ يساوي مجموع أرقامٍ أخرى يُحسب لا يُكتب**
@@ -137,12 +159,22 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final col in _boardColumns)
-                      _column(col, data.items
-                          .where((t) => t.status == col.status)
-                          .toList()),
+                      _column(
+                        col,
+                        data.items.where((t) => t.status == col.status).toList(),
+                        colWidth,
+                      ),
                   ],
-                ),
-              ),
+                );
+
+                return fits
+                    ? Padding(padding: const EdgeInsets.all(kBoardPadding), child: row)
+                    : SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.all(kBoardPadding),
+                        child: row,
+                      );
+              }),
             ),
 
             // ⚠️ **الملغاة تُعدّ ولا تُعرض** — وإخفاؤها بلا إعلانٍ يجعل اللوحة تكذب في
@@ -180,8 +212,8 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
     );
   }
 
-  Widget _column(
-      ({String status, String label, IconData icon}) col, List<TaskListItem> items) {
+  Widget _column(({String status, String label, IconData icon}) col,
+      List<TaskListItem> items, double width) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = TaskStatusPill.colorFor(col.status, isDark);
 
@@ -197,8 +229,10 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
       builder: (context, candidate, _) {
         final hovering = candidate.isNotEmpty;
         return Container(
-          width: 290,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          // مفتاحٌ للحرّاس — يقيسون عرض العمود فعلاً بدل تصديق أنه محسوب.
+          key: ValueKey('board-col-${col.status}'),
+          width: width,
+          margin: const EdgeInsets.symmetric(horizontal: kBoardGutter),
           decoration: BoxDecoration(
             color: hovering
                 ? color.withValues(alpha: 0.12)
@@ -221,10 +255,18 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
                   children: [
                     Icon(col.icon, size: 18, color: color),
                     const SizedBox(width: 8),
-                    Text(col.label,
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, color: color, fontSize: 14)),
-                    const Spacer(),
+                    // 🔴 **`Expanded` مع قصٍّ لا `Text` عارٍ ثم `Spacer`**: العنوان الطويل
+                    //    («قيد التنفيذ» · «أُعيد فتحها») يفيض عن العمود الضيّق — وقد فاض
+                    //    24 بكسلاً فعلاً عند الحدّ الأدنى. **والعدّاد لا يُقصّ أبداً**، فهو
+                    //    المعلومة التي لا تُخمَّن.
+                    Expanded(
+                      child: Text(col.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, color: color, fontSize: 14)),
+                    ),
+                    const SizedBox(width: 6),
                     Container(
                       padding:
                           const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -254,7 +296,7 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
                         itemCount: items.length,
-                        itemBuilder: (_, i) => _card(items[i]),
+                        itemBuilder: (_, i) => _card(items[i], width),
                       ),
               ),
             ],
@@ -264,7 +306,7 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
     );
   }
 
-  Widget _card(TaskListItem t) {
+  Widget _card(TaskListItem t, double columnWidth) {
     final card = _CardBody(task: t);
 
     // مهمةٌ في حالةٍ نهائية لا تُسحَب — والسحبُ الذي لا يقود إلى شيء يُربك.
@@ -284,7 +326,9 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
         onDraggableCanceled: (_, _) => setState(() => _dragging = null),
         feedback: Material(
           color: Colors.transparent,
-          child: SizedBox(width: 260, child: card),
+          // البطاقة المسحوبة **بعرض عمودها** لا برقمٍ ثابت — وإلا بدت أعرض من موضعها
+          // على الشاشات الضيّقة وأضيق منه على الواسعة.
+          child: SizedBox(width: columnWidth - 16, child: card),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: card),
         child: _tappable(t, card),
