@@ -426,7 +426,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                           Colors.blue,
                           (kIncomingTransitions[d.status] ?? const []).isEmpty ? null : () => _changeStatus(d),
                           disabledHint: 'لا توجد حالة لاحقة متاحة'),
-                      _buildActionButton('إحالة لقسم', Icons.forward_to_inbox_rounded, AppColors.navyDeep,
+                      _buildActionButton('إحالة لقسم', Icons.forward_to_inbox_rounded, AppColors.action(context),
                           _isOperable(d.status) ? () => _forwardBook(d) : null,
                           disabledHint: 'الإحالة متاحة للكتب (جديد) أو (قيد المراجعة) فقط'),
                     ],
@@ -995,7 +995,7 @@ class _ForwardScreenState extends State<_ForwardScreen> {
                 // ترويسة ثابتة — تبقى ظاهرة أثناء تمرير قائمة الأقسام.
                 Container(
                   padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-                  color: AppColors.navyDeep,
+                  color: AppColors.action(context),
                   child: Row(
                     children: [
                       const Icon(Icons.forward_to_inbox_rounded, color: Colors.white, size: 20),
@@ -1203,7 +1203,7 @@ class _MovementsWidget extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 4, left: 12),
                         child: CircleAvatar(
                           radius: 4,
-                          backgroundColor: AppColors.navyDeep,
+                          backgroundColor: AppColors.action(context),
                         ),
                       ),
                       Expanded(

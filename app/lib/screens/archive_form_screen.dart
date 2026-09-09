@@ -220,8 +220,8 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                           children: [
                             Container(
                               padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: AppColors.navyDeep.withValues(alpha: 0.1), shape: BoxShape.circle),
-                              child: const Icon(Icons.info_outline_rounded, color: AppColors.navyDeep),
+                              decoration: BoxDecoration(color: AppColors.action(context).withValues(alpha: 0.1), shape: BoxShape.circle),
+                              child: Icon(Icons.info_outline_rounded, color: AppColors.action(context)),
                             ),
                             const SizedBox(width: 12),
                             const Flexible(child: Text('المعلومات الأساسية', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
@@ -251,7 +251,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                               builder: (context, child) {
                                 return Theme(
                                   data: Theme.of(context).copyWith(
-                                    colorScheme: Theme.of(context).colorScheme.copyWith(primary: AppColors.navyDeep),
+                                    colorScheme: Theme.of(context).colorScheme.copyWith(primary: AppColors.action(context)),
                                   ),
                                   child: child!,
                                 );
@@ -352,7 +352,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.edit_document, color: AppColors.navyDeep),
+                            Icon(Icons.edit_document, color: AppColors.action(context)),
                             const SizedBox(width: 12),
                             const Flexible(child: Text('محتوى الأرشيف (اختياري)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                             const Spacer(),
@@ -396,7 +396,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.attach_file_rounded, color: AppColors.navyDeep),
+                            Icon(Icons.attach_file_rounded, color: AppColors.action(context)),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
@@ -457,10 +457,11 @@ class _State extends ConsumerState<ArchiveFormScreen> {
                     child: FilledButton.icon(
                       onPressed: _busy ? null : _save,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.navyDeep,
+                        backgroundColor: AppColors.action(context),
+                        foregroundColor: AppColors.onAction(context),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 8,
-                        shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                        shadowColor: AppColors.action(context).withValues(alpha: 0.5),
                       ),
                       icon: _busy 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))
@@ -541,7 +542,7 @@ class _State extends ConsumerState<ArchiveFormScreen> {
       fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.navyDeep, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.action(context), width: 1.5)),
     );
   }
 }

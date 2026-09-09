@@ -176,10 +176,10 @@ class _CompanyCardState extends State<_CompanyCard> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.navyDeep.withValues(alpha: 0.05),
+                    color: AppColors.action(context).withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.corporate_fare_rounded, size: 32, color: AppColors.navyDeep),
+                  child: Icon(Icons.corporate_fare_rounded, size: 32, color: AppColors.action(context)),
                 ),
                 const SizedBox(width: 20),
                 Expanded(
@@ -188,7 +188,7 @@ class _CompanyCardState extends State<_CompanyCard> {
                     children: [
                       Text(
                         widget.company.name,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.navyDeep),
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.action(context)),
                       ),
                       const SizedBox(height: 4),
                       Container(

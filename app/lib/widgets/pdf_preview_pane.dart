@@ -39,6 +39,7 @@ class PdfPreviewPane extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
           decoration: const BoxDecoration(
+            // ⚠️ **خلفيةٌ كحليّة مقصودة في الوضعين** — شريطُ ترويسةٍ داكن يعلوه نصٌّ أبيض.
             color: AppColors.navyDeep,
             borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
           ),

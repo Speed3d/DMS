@@ -73,6 +73,8 @@ class AttachmentViewer {
 
   static Widget _header(BuildContext ctx, String fileName, VoidCallback? onDownload) => Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        // ⚠️ **خلفيةٌ كحليّة مقصودة في الوضعين** — شريطُ ترويسةٍ داكن يعلوه نصٌّ أبيض،
+        //    لا لونَ فعلٍ يُقلب. (وهو `static` بلا `context` أصلاً.)
         color: AppColors.navyDeep,
         child: Row(
           children: [

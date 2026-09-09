@@ -132,8 +132,8 @@ class _EmployeeLinkDialogState extends ConsumerState<EmployeeLinkDialog> {
                         : const Icon(Icons.search_rounded, size: 18),
                     label: const Text('بحث', style: TextStyle(fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.navyDeep,
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.action(context),
+                      foregroundColor: AppColors.onAction(context),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                     ),
@@ -198,8 +198,8 @@ class _EmployeeLinkDialogState extends ConsumerState<EmployeeLinkDialog> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.navyDeep,
-              foregroundColor: Colors.white,
+              backgroundColor: AppColors.action(context),
+              foregroundColor: AppColors.onAction(context),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             ),

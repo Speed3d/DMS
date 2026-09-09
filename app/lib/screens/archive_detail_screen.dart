@@ -40,7 +40,7 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(m, style: const TextStyle(fontWeight: FontWeight.bold)),
-      backgroundColor: error ? AppColors.danger : AppColors.navyDeep,
+      backgroundColor: error ? AppColors.danger : AppColors.action(context),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ));
@@ -181,7 +181,7 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Text(d.archiveNumber, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.navyDeep)),
+                                  Text(d.archiveNumber, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.action(context))),
                                   const Spacer(),
                                   Text('رقم الأرشيف', style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5), fontSize: 12)),
                                 ],
@@ -227,9 +227,9 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Row(
+                              Row(
                                 children: [
-                                  Icon(Icons.info_outline_rounded, color: AppColors.navyDeep),
+                                  Icon(Icons.info_outline_rounded, color: AppColors.action(context)),
                                   SizedBox(width: 8),
                                   Text('المعلومات الأساسية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                 ],
@@ -253,9 +253,9 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Row(
+                                Row(
                                   children: [
-                                    Icon(Icons.feed_rounded, color: AppColors.navyDeep),
+                                    Icon(Icons.feed_rounded, color: AppColors.action(context)),
                                     SizedBox(width: 8),
                                     Text('التفاصيل الإضافية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                   ],
@@ -291,9 +291,9 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                               decoration: BoxDecoration(
                                 border: Border(bottom: BorderSide(color: theme.dividerColor)),
                               ),
-                              child: const Row(
+                              child: Row(
                                 children: [
-                                  Icon(Icons.visibility_rounded, color: AppColors.navyDeep),
+                                  Icon(Icons.visibility_rounded, color: AppColors.action(context)),
                                   SizedBox(width: 8),
                                   Text('محتوى الأرشيف والمرفقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                                 ],
@@ -335,7 +335,8 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                                           icon: const Icon(Icons.upload_file_rounded, size: 18),
                                           label: const Text('رفع ملف'),
                                           style: FilledButton.styleFrom(
-                                            backgroundColor: AppColors.navyDeep,
+                                            backgroundColor: AppColors.action(context),
+                                            foregroundColor: AppColors.onAction(context),
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                           ),
                                         ),
@@ -384,7 +385,7 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                                                     Container(
                                                       padding: const EdgeInsets.all(12),
                                                       decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
-                                                      child: Icon(_fileIcon(a.fileType), color: AppColors.navyDeep),
+                                                      child: Icon(_fileIcon(a.fileType), color: AppColors.action(context)),
                                                     ),
                                                     const SizedBox(width: 16),
                                                     Expanded(
@@ -409,13 +410,13 @@ class _State extends ConsumerState<ArchiveDetailScreen> {
                                                     if (AttachmentViewer.canView(a.fileName))
                                                       IconButton(
                                                         icon: const Icon(Icons.visibility_rounded),
-                                                        color: AppColors.navyDeep,
+                                                        color: AppColors.action(context),
                                                         onPressed: _busy ? null : () => _view(a),
                                                         tooltip: 'عرض',
                                                       ),
                                                     IconButton(
                                                       icon: const Icon(Icons.download_rounded),
-                                                      color: AppColors.navyDeep,
+                                                      color: AppColors.action(context),
                                                       onPressed: _busy ? null : () => _download(a),
                                                       tooltip: 'تحميل',
                                                     ),

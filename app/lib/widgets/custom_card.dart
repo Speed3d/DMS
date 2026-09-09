@@ -52,7 +52,18 @@ class CustomCard extends StatelessWidget {
           ),
         ],
       ),
-      child: child,
+      // 🔴 **`Material` شفّافة حول المحتوى — في الجذر لا في كل شاشة** (بلاغ المالك
+      //    2026-09-09): `ListTile` و`SwitchListTile` و`InkWell` يرسمون **خلفيتهم وأثر
+      //    نقرهم على أقرب `Material` فوقهم**، والبطاقة `DecoratedBox` تحجبهما — فترمي
+      //    Flutter «ListTile background color or ink splashes may be invisible».
+      //
+      // ⚠️ **وقد عولج مرّتين في شاشتين بلفٍّ يدويّ** (`employee_form` و`hr_settings`)،
+      //    فبقيت **سبعة عشر موضعاً** تنتظر بلاغاً. والعلاج في البطاقة نفسها يجعل كل
+      //    محتوىً داخلها سليماً — **ومَن يكتب شاشةً جديدة لا يحتاج أن يعرف القاعدة**.
+      //
+      // ⚠️ **و`transparency` لا `canvas`**: لا ترسم لوناً ولا ظلاً، فمظهر البطاقة لا
+      //    يتغيّر بحرف — تُتيح السطحَ للرسم عليه فقط.
+      child: Material(type: MaterialType.transparency, child: child),
     );
 
     if (onTap != null) {

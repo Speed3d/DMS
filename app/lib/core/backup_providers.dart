@@ -22,13 +22,20 @@ final backupCoverageProvider =
   return ref.read(apiClientProvider).backupCoverage();
 });
 
-/// هل تأخّرت النسخة الكاملة؟ — **مشتقٌّ متزامن** يقرؤه الشريط الجانبي والعلوي.
+/// هل تأخّرت النسخة الكاملة؟ — **دالّةٌ نقيّة لا مزوّدٌ مشتقّ**.
 ///
-/// ⚠️ **`Ok` و«لم تصل بعد» كلاهما «لا تنبيه»** — فلا تُومض الشارة أثناء التحميل ثم تختفي.
-/// و**الدرجات الثلاث تُنقَل كما هي** (`Soon`/`Urgent`/`Overdue`) لأن اللون يتصاعد معها:
-/// تنبيهٌ بلونٍ واحد لا يفرّق بين «اقترب الموعد» و«مضى شهران».
-final backupAlertProvider = Provider.autoDispose<BackupCoverage?>((ref) {
-  final c = ref.watch(backupCoverageProvider).asData?.value;
-  if (c == null || c.isOk) return null;
-  return c;
-});
+/// 🔴 **ولماذا لا مزوّد؟ لأن المزوّد المشتقّ أسقط الرسم فعلاً** (بلاغ المالك 2026-09-09،
+/// وأُعيد إنتاجه في `provider_resume_test.dart`): `Provider` يراقب `FutureProvider`، وحين
+/// يُستأنَف اشتراكُ قارئه **أثناء طور البناء** (تبدّل `TickerMode` مع كل انتقال مسار أو
+/// فتح حوار) يُفلَش المصدر فيُبطل التابعُ نفسه ⇒ «setState() called during build».
+///
+/// 🔴 **وهذا يصحّح الدرس المسجَّل**: لم تكن العلّة «غيرُ متزامنٍ يراقب غيرَ متزامن» — بل
+/// **أيُّ سلسلةِ `watch` بين مزوّدين**، ولو كان التابع متزامناً. **والعلاج: لا سلسلة —
+/// يقرأ القارئ المصدرَ مباشرةً ويحسب بدالّة.**
+///
+/// ⚠️ **و«لم تصل بعد» و«سليمة» كلاهما «لا تنبيه»** — فلا تُومض الشارة أثناء التحميل.
+/// و**الدرجات الثلاث تُنقَل كما هي** (`Soon`/`Urgent`/`Overdue`) لأن اللون يتصاعد معها.
+BackupCoverage? backupAlertOf(AsyncValue<BackupCoverage?> coverage) {
+  final c = coverage.asData?.value;
+  return (c == null || c.isOk) ? null : c;
+}

@@ -201,11 +201,11 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                     label: const Text('موظف جديد',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.navyDeep,
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.action(context),
+                      foregroundColor: AppColors.onAction(context),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 8,
-                      shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                      shadowColor: AppColors.action(context).withValues(alpha: 0.5),
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
                   ),
@@ -222,8 +222,8 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                     label: const Text('إضافة موظف قائم',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.navyDeep,
-                      side: BorderSide(color: AppColors.navyDeep.withValues(alpha: 0.35), width: 1.5),
+                      foregroundColor: AppColors.action(context),
+                      side: BorderSide(color: AppColors.action(context).withValues(alpha: 0.35), width: 1.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
@@ -328,9 +328,9 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                               label: const Text('إضافة موظف قائم في شركة أخرى',
                                   style: TextStyle(fontWeight: FontWeight.bold)),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.navyDeep,
+                                foregroundColor: AppColors.action(context),
                                 side: BorderSide(
-                                    color: AppColors.navyDeep.withValues(alpha: 0.35), width: 1.5),
+                                    color: AppColors.action(context).withValues(alpha: 0.35), width: 1.5),
                                 shape:
                                     RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 padding:

@@ -266,11 +266,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: ElevatedButton(
               onPressed: _busy ? null : _login,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.navyDeep,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.action(context),
+                foregroundColor: AppColors.onAction(context),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 14,
-                shadowColor: AppColors.navyDeep.withValues(alpha: 0.8),
+                shadowColor: AppColors.action(context).withValues(alpha: 0.8),
               ),
               child: _busy
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))

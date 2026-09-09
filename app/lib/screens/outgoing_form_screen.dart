@@ -305,8 +305,8 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(color: AppColors.navyDeep.withValues(alpha: 0.1), shape: BoxShape.circle),
-                                child: const Icon(Icons.info_outline_rounded, color: AppColors.navyDeep),
+                                decoration: BoxDecoration(color: AppColors.action(context).withValues(alpha: 0.1), shape: BoxShape.circle),
+                                child: Icon(Icons.info_outline_rounded, color: AppColors.action(context)),
                               ),
                               const SizedBox(width: 12),
                               const Flexible(child: Text('معلومات الكتاب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
@@ -404,7 +404,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                                   return Theme(
                                     data: Theme.of(context).copyWith(
                                       colorScheme: Theme.of(context).colorScheme.copyWith(
-                                        primary: AppColors.navyDeep,
+                                        primary: AppColors.action(context),
                                       ),
                                     ),
                                     child: child!,
@@ -524,7 +524,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.edit_document, color: AppColors.navyDeep),
+                            Icon(Icons.edit_document, color: AppColors.action(context)),
                             const SizedBox(width: 12),
                             const Flexible(child: Text('محتوى الكتاب (المحرر)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                             const Spacer(),
@@ -601,10 +601,11 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                           child: FilledButton.icon(
                             onPressed: _busy ? null : _save,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.navyDeep,
+                              backgroundColor: AppColors.action(context),
+                              foregroundColor: AppColors.onAction(context),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               elevation: 8,
-                              shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                              shadowColor: AppColors.action(context).withValues(alpha: 0.5),
                             ),
                             icon: _busy 
                               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))
@@ -626,7 +627,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                       child: Column(
                         children: [
                           TabBar(
-                            labelColor: AppColors.navyDeep,
+                            labelColor: AppColors.action(context),
                             indicatorColor: AppColors.gold,
                             tabs: [
                               const Tab(icon: Icon(Icons.edit_rounded), text: 'التحرير'),
@@ -717,7 +718,7 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
       fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.navyDeep, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.action(context), width: 1.5)),
     );
   }
 }

@@ -604,7 +604,7 @@ class _PathPromptPageState extends State<_PathPromptPage> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.danger ? AppColors.danger : AppColors.navyDeep;
+    final color = widget.danger ? AppColors.danger : AppColors.action(context);
     return Scaffold(
       appBar: AppBar(title: Text(widget.title), centerTitle: true),
       body: Center(

@@ -89,7 +89,7 @@ class Sidebar extends ConsumerWidget {
           if (modules.contains('Outgoing'))
             Consumer(
               builder: (context, ref, child) {
-                final countAsync = ref.watch(outgoingCountProvider);
+                final countAsync = outgoingCountOf(ref.watch(pendingDraftsProvider));
                 final badge = countAsync.whenOrNull(data: (count) => count > 0 ? count.toString() : null);
                 return _buildItem(2, Icons.send_rounded, 'الصادر', badge: badge);
               },
@@ -97,7 +97,7 @@ class Sidebar extends ConsumerWidget {
           if (modules.contains('Incoming'))
             Consumer(
               builder: (context, ref, child) {
-                final countAsync = ref.watch(incomingCountProvider);
+                final countAsync = incomingCountOf(ref.watch(pendingIncomingProvider));
                 final badge = countAsync.whenOrNull(data: (count) => count > 0 ? count.toString() : null);
                 return _buildItem(3, Icons.inbox_rounded, 'الوارد', badge: badge);
               },
@@ -112,7 +112,7 @@ class Sidebar extends ConsumerWidget {
           if (canSeePayroll)
             Consumer(
               builder: (context, ref, child) {
-                final countAsync = ref.watch(unpaidMonthsProvider);
+                final countAsync = unpaidMonthsOf(ref.watch(hrSummaryProvider));
                 final badge = countAsync.whenOrNull(
                     data: (count) => count > 0 ? count.toString() : null);
                 return _buildItem(10, Icons.payments_rounded, 'الرواتب', badge: badge);
@@ -124,7 +124,7 @@ class Sidebar extends ConsumerWidget {
           if (canSeeTasks)
             Consumer(
               builder: (context, ref, child) {
-                final countAsync = ref.watch(overdueTasksCountProvider);
+                final countAsync = overdueTasksCountOf(ref.watch(taskSummaryProvider));
                 final badge = countAsync.whenOrNull(
                     data: (count) => count > 0 ? count.toString() : null);
                 return _buildItem(12, Icons.task_alt_rounded, 'المهام', badge: badge);
@@ -153,7 +153,7 @@ class Sidebar extends ConsumerWidget {
             if (_showBackup)
               Consumer(
                 builder: (context, ref, child) {
-                  final alert = ref.watch(backupAlertProvider);
+                  final alert = backupAlertOf(ref.watch(backupCoverageProvider));
                   return _buildItem(8, Icons.security_rounded, 'النسخ الاحتياطي',
                       badge: alert == null ? null : (alert.daysSince?.toString() ?? '!'),
                       badgeColor:
@@ -241,6 +241,7 @@ class Sidebar extends ConsumerWidget {
                   decoration: BoxDecoration(
                       color: badgeColor ?? AppColors.gold,
                       borderRadius: BorderRadius.circular(99)),
+                  // ⚠️ **كحليٌّ في الوضعين**: الشارة نفسها ذهبية/ملوّنة، فالنصّ فوقها داكنٌ دائماً.
                   child: Text(badge, style: const TextStyle(color: AppColors.navyDeep, fontSize: 11, fontWeight: FontWeight.w900)),
                 ),
             ],

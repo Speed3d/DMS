@@ -31,8 +31,16 @@ final hrSummaryProvider = FutureProvider.autoDispose<HrSummary?>((ref) async {
 /// ⚠️ **مشتقّ من `AsyncValue` مباشرةً لا عبر `await ref.watch(x.future)`** — انتظارُ
 /// `.future` يُنشئ `ProxyProviderListenable` يُبطل نفسه أثناء طور البناء فيرمي
 /// «setState() called during build». (الدرس نفسه المسجَّل في `outgoing_providers.dart`.)
-final unpaidMonthsProvider = Provider.autoDispose<AsyncValue<int>>((ref) =>
-    ref.watch(hrSummaryProvider).whenData((s) => s?.unpaidMonths ?? 0));
+/// 🔴 **دالّةٌ نقيّة لا مزوّدٌ مشتقّ** (بلاغ المالك 2026-09-09، وأُعيد إنتاجه في
+/// `provider_resume_test.dart`): `Provider` يراقب `FutureProvider` ⇒ حين يُستأنَف اشتراكُ
+/// قارئه **أثناء طور البناء** (تبدّل `TickerMode` مع كل انتقال مسار أو فتح حوار) يُفلَش
+/// المصدر فيُبطل التابعُ نفسه ⇒ «setState() called during build» **ويتوقّف الرسم**.
+///
+/// 🔴 **وهذا يصحّح الدرس المسجَّل**: لم تكن العلّة «غيرُ متزامنٍ يراقب غيرَ متزامن» — بل
+/// **أيُّ سلسلةِ `watch` بين مزوّدين**، ولو كان التابع متزامناً وبسيطاً كهذا.
+/// **والعلاج: لا سلسلة — يقرأ القارئُ المصدرَ مباشرةً ويحسب بدالّة.**
+AsyncValue<int> unpaidMonthsOf(AsyncValue<HrSummary?> summary) =>
+    summary.whenData((s) => s?.unpaidMonths ?? 0);
 
 /// صورة موظفٍ بعينه — بايتاتٌ أو `null` لمن لا صورةَ له.
 ///
@@ -61,7 +69,6 @@ final employeePhotoProvider =
 void invalidateHr(WidgetRef ref) {
   ref.invalidate(employeesProvider);
   ref.invalidate(hrSummaryProvider);
-  ref.invalidate(unpaidMonthsProvider);
   // ⚠️ **العائلة كلّها**: لا نعرف أيّ بطاقةٍ تغيّرت صورتها، وإبقاءُ صورةٍ قديمة
   //    مخزَّنةً يجعل المستخدم يظنّ الرفع فشل.
   ref.invalidate(employeePhotoProvider);

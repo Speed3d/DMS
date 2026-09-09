@@ -83,13 +83,20 @@ final pendingIncomingProvider = FutureProvider.autoDispose<List<IncomingListItem
 ///
 /// ⚠️ مشتقّ من `AsyncValue` مباشرةً لا عبر `await ref.watch(x.future)` — انظر التعليل
 /// الكامل في `outgoing_providers.dart` (منع «setState called during build»).
-final incomingCountProvider = Provider.autoDispose<AsyncValue<int>>((ref) =>
-    ref.watch(pendingIncomingProvider).whenData((list) => list.length));
+/// 🔴 **دالّةٌ نقيّة لا مزوّدٌ مشتقّ** (بلاغ المالك 2026-09-09، وأُعيد إنتاجه في
+/// `provider_resume_test.dart`): `Provider` يراقب `FutureProvider` ⇒ حين يُستأنَف اشتراكُ
+/// قارئه **أثناء طور البناء** (تبدّل `TickerMode` مع كل انتقال مسار أو فتح حوار) يُفلَش
+/// المصدر فيُبطل التابعُ نفسه ⇒ «setState() called during build» **ويتوقّف الرسم**.
+///
+/// 🔴 **وهذا يصحّح الدرس المسجَّل**: لم تكن العلّة «غيرُ متزامنٍ يراقب غيرَ متزامن» — بل
+/// **أيُّ سلسلةِ `watch` بين مزوّدين**، ولو كان التابع متزامناً وبسيطاً كهذا.
+/// **والعلاج: لا سلسلة — يقرأ القارئُ المصدرَ مباشرةً ويحسب بدالّة.**
+AsyncValue<int> incomingCountOf(AsyncValue<List<IncomingListItem>> pending) =>
+    pending.whenData((list) => list.length);
 
 void invalidateIncoming(WidgetRef ref) {
   ref.invalidate(incomingListProvider);
   ref.invalidate(pendingIncomingProvider);
-  ref.invalidate(incomingCountProvider);
 }
 
 // ----------------- تفاصيل كتاب وارد -----------------

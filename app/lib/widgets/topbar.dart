@@ -192,7 +192,7 @@ class Topbar extends ConsumerWidget implements PreferredSizeWidget {
                               ),
                               child: Text(
                                 pendingIncCount > 9 ? '+9' : '$pendingIncCount',
-                                style: const TextStyle(color: AppColors.navyDeep, fontSize: 10, fontWeight: FontWeight.bold, height: 1),
+                                style: TextStyle(color: AppColors.action(context), fontSize: 10, fontWeight: FontWeight.bold, height: 1),
                               ),
                             ),
                           ),

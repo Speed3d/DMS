@@ -173,6 +173,8 @@ class _HrSettingsScreenState extends ConsumerState<HrSettingsScreen> {
                       height: 1.7,
                       color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
               const SizedBox(height: 8),
+              // 🔄 **صار زائداً منذ 2026-09-09** — [CustomCard] نفسها تُتيح السطح الآن، فلا
+              //    حاجةَ للفٍّ يدويّ في شاشةٍ جديدة. يبقى هنا بلا ضرر (شفّافةٌ داخل شفّافة).
               // ⚠️ **`Material` شفّافة حول `SwitchListTile` داخل `CustomCard`:** البطاقة
               //    `DecoratedBox` ذات خلفية، و`ListTile` يرسم خلفيته وأثر النقر على أقرب
               //    `Material` **فوقه** — فتحجبهما البطاقة، ويرمي Flutter تأكيداً:
@@ -236,11 +238,11 @@ class _HrSettingsScreenState extends ConsumerState<HrSettingsScreen> {
             label: Text(_saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.navyDeep,
-              foregroundColor: Colors.white,
+              backgroundColor: AppColors.action(context),
+              foregroundColor: AppColors.onAction(context),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 8,
-              shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+              shadowColor: AppColors.action(context).withValues(alpha: 0.5),
             ),
           ),
         ),

@@ -39,7 +39,7 @@ class BackupAlertIcon extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final alert = ref.watch(backupAlertProvider);
+    final alert = backupAlertOf(ref.watch(backupCoverageProvider));
     if (alert == null) return const SizedBox.shrink();
 
     final color = backupUrgencyColor(alert.urgency);

@@ -202,8 +202,8 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                         ),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: AppColors.navyDeep.withValues(alpha: 0.1),
-                            foregroundColor: AppColors.navyDeep,
+                            backgroundColor: AppColors.action(context).withValues(alpha: 0.1),
+                            foregroundColor: AppColors.action(context),
                             child: Text('V${v.versionNo}', style: const TextStyle(fontWeight: FontWeight.bold)),
                           ),
                           title: Text(v.changeNote ?? 'تعديل على محتوى الكتاب', style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -354,11 +354,11 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                       if (_showWordExport)
                         // Word متاح للمسودّة والمعتمد معاً — يُولَّد من بيانات الكتاب لا من ملف
                         // مخزَّن، فلا يشترط `hasPdf` (بخلاف زر PDF الذي يقرأ ملفاً مولَّداً عند الاعتماد).
-                        _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.navyDeep,
+                        _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.action(context),
                             () => _exportWord(d)),
                       if (d.isFinal) ...[
                         _buildActionButton('تعديل كإصدار', Icons.edit_document, AppColors.warn, () => _editApproved(d)),
-                        _buildActionButton('سجل الإصدارات', Icons.history_rounded, AppColors.navyDeep, _showVersions),
+                        _buildActionButton('سجل الإصدارات', Icons.history_rounded, AppColors.action(context), _showVersions),
                       ]
                         ],
                       ),

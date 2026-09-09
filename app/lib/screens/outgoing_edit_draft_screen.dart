@@ -357,7 +357,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                                 children: [
                                   Row(
                                     children: [
-                                      const Icon(Icons.edit_document, color: AppColors.navyDeep),
+                                      Icon(Icons.edit_document, color: AppColors.action(context)),
                                       const SizedBox(width: 12),
                                       const Text('تعديل نص الكتاب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                                       const Spacer(),
@@ -463,7 +463,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
       fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.navyDeep, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.action(context), width: 1.5)),
     );
   }
 }

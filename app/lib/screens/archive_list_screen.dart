@@ -87,11 +87,11 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('أرشفة مستند جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.navyDeep,
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.action(context),
+                      foregroundColor: AppColors.onAction(context),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 8,
-                      shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                      shadowColor: AppColors.action(context).withValues(alpha: 0.5),
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
                   ),
@@ -110,8 +110,8 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                     icon: const Icon(Icons.drive_folder_upload_rounded),
                     label: const Text('استيراد دفعة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.navyDeep,
-                      side: BorderSide(color: AppColors.navyDeep.withValues(alpha: 0.5), width: 1.5),
+                      foregroundColor: AppColors.action(context),
+                      side: BorderSide(color: AppColors.action(context).withValues(alpha: 0.5), width: 1.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                     ),
@@ -220,14 +220,14 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                                   decoration: BoxDecoration(
-                                                    color: (it.isIncoming ? AppColors.success : AppColors.navyDeep).withValues(alpha: 0.12),
+                                                    color: (it.isIncoming ? AppColors.success : AppColors.action(context)).withValues(alpha: 0.12),
                                                     borderRadius: BorderRadius.circular(4),
                                                   ),
                                                   child: Text(
                                                     it.isIncoming ? 'وارد مؤرشف' : 'أضبارة ورقية',
                                                     style: TextStyle(
                                                       fontSize: 11,
-                                                      color: it.isIncoming ? AppColors.success : AppColors.navyDeep,
+                                                      color: it.isIncoming ? AppColors.success : AppColors.action(context),
                                                       fontWeight: FontWeight.w700,
                                                     ),
                                                   ),

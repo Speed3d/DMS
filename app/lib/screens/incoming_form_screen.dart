@@ -447,10 +447,11 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
                     child: FilledButton.icon(
                       onPressed: _busy ? null : _save,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.navyDeep,
+                        backgroundColor: AppColors.action(context),
+                        foregroundColor: AppColors.onAction(context),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 8,
-                        shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                        shadowColor: AppColors.action(context).withValues(alpha: 0.5),
                       ),
                       icon: _busy 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))
@@ -477,7 +478,7 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.attach_file_rounded, color: AppColors.navyDeep),
+              Icon(Icons.attach_file_rounded, color: AppColors.action(context)),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text('المرفقات (اختياري)',
@@ -500,7 +501,7 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
             ..._pendingAttachments.map((f) => ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(_iconFor(f.name), color: AppColors.navyDeep),
+                  leading: Icon(_iconFor(f.name), color: AppColors.action(context)),
                   title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text('${f.sizeKb} ك.ب', style: const TextStyle(fontSize: 11)),
                   trailing: IconButton(
@@ -535,7 +536,7 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.navyDeep, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.action(context), width: 1.5)),
     );
   }
 }

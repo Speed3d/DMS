@@ -449,11 +449,11 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                                   : 'حفظ',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.navyDeep,
-                        foregroundColor: Colors.white,
+                        backgroundColor: AppColors.action(context),
+                        foregroundColor: AppColors.onAction(context),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 8,
-                        shadowColor: AppColors.navyDeep.withValues(alpha: 0.5),
+                        shadowColor: AppColors.action(context).withValues(alpha: 0.5),
                       ),
                     ),
                   ),
@@ -543,7 +543,7 @@ class _TemplateNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final color = isDark ? AppColors.goldBrightDark : AppColors.navyDeep;
+    final color = isDark ? AppColors.goldBrightDark : AppColors.action(context);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
@@ -567,6 +567,8 @@ class _TemplateNotice extends StatelessWidget {
               ),
             ),
           ]),
+          // 🔄 **صار زائداً منذ 2026-09-09** — [CustomCard] نفسها تُتيح السطح الآن، فلا
+          //    حاجةَ للفٍّ يدويّ في شاشةٍ جديدة. يبقى هنا بلا ضرر (شفّافةٌ داخل شفّافة).
           // `Material` شفّافة: `SwitchListTile` يرسم خلفيته على أقرب `Material` فوقه،
           // وحاوية ذات خلفية تحجبه (الدرس المسجَّل في `hr_render_test`).
           Material(
@@ -704,11 +706,11 @@ class _PhotoPicker extends StatelessWidget {
     return Row(children: [
       CircleAvatar(
         radius: 34,
-        backgroundColor: AppColors.navyDeep.withValues(alpha: 0.10),
+        backgroundColor: AppColors.action(context).withValues(alpha: 0.10),
         backgroundImage: bytes != null ? MemoryImage(bytes!) : null,
         child: bytes == null
             ? Icon(Icons.person_rounded,
-                size: 34, color: AppColors.navyDeep.withValues(alpha: 0.45))
+                size: 34, color: AppColors.action(context).withValues(alpha: 0.45))
             : null,
       ),
       const SizedBox(width: 16),

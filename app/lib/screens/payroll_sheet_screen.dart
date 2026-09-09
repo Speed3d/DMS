@@ -772,8 +772,8 @@ class _NotGenerated extends StatelessWidget {
               label: const Text('توليد كشف الشهر',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.navyDeep,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.action(context),
+                foregroundColor: AppColors.onAction(context),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 8,
                 padding: const EdgeInsets.symmetric(horizontal: 28),

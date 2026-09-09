@@ -59,22 +59,33 @@ void main() {
     expect(find.text('تفعيل مكافأة نهاية الخدمة'), findsOneWidget);
   });
 
-  testWidgets('وبدون Material يرمي التأكيد — إثبات أن الحارس له أسنان', (tester) async {
+  // 🔄 **انقلب هذا الحارس في 2026-09-09 — وهو انقلابٌ صحيح.**
+  //
+  // كان يُثبت أن `CustomCard` **بلا لفٍّ يدويّ ترمي** — وقد كتبتُ في نصّه حينها:
+  // «لو توقّف Flutter عن رمي هذا التأكيد يوماً، يسقط الاختبار فنعلم أن الالتفاف لم يعد
+  // لازماً». **وقع ذلك فعلاً**، لا لتغيّرٍ في Flutter بل لأن العلاج **نُقل إلى البطاقة
+  // نفسها** بعد بلاغ المالك: سبعةَ عشرَ موضعاً كانت تنتظر بلاغاً، فصارت البطاقة تُتيح
+  // السطح لكل محتوىً داخلها.
+  //
+  // ⚠️ **والحارسُ السلبيّ لم يُلغَ بل انتقل** إلى `custom_card_material_test.dart`:
+  //    هناك يُبنى `DecoratedBox` بلونٍ بلا `Material` ويُثبَت أنه **يرمي** — فتبقى
+  //    الأسنان في مكانها الصحيح: على **التركيب** لا على البطاقة التي عُولجت.
+  testWidgets('و[CustomCard] وحدها تكفي الآن — بلا لفٍّ يدويّ', (tester) async {
     await pump(
       tester,
       CustomCard(
         child: SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: true,
-          title: const Text('بلا Material'),
+          title: const Text('بلا لفٍّ يدويّ'),
           onChanged: (_) {},
         ),
       ),
     );
 
-    // لو توقّف Flutter عن رمي هذا التأكيد يوماً، يسقط الاختبار فنعلم أن الالتفاف
-    // لم يعد لازماً — بدل أن يبقى في الكود بلا سبب معروف.
-    expect(tester.takeException(), isA<FlutterError>());
+    expect(tester.takeException(), isNull,
+        reason: 'البطاقة تُتيح `Material` شفّافة منذ 2026-09-09');
+    expect(find.text('بلا لفٍّ يدويّ'), findsOneWidget);
   });
 
   // ─────────── الدفعة ٢: شريط أدوات قائمة الموظفين بعد إضافة مِرشَّح الإجازات ───────────
