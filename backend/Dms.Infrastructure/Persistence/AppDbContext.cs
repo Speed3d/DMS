@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<ArchiveDoc> ArchiveDocs => Set<ArchiveDoc>();
     public DbSet<IncomingBook> IncomingBooks => Set<IncomingBook>();
     public DbSet<MovementLog> MovementLogs => Set<MovementLog>();
+    public DbSet<BookReply> BookReplies => Set<BookReply>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
     public DbSet<Counter> Counters => Set<Counter>();
@@ -161,9 +162,6 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Template).WithMany()
                 .HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
 
-            e.HasOne(x => x.ReplyToIncoming).WithMany()
-                .HasForeignKey(x => x.ReplyToIncomingId).OnDelete(DeleteBehavior.SetNull);
-
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
         });
 
@@ -189,14 +187,34 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Entity).WithMany()
                 .HasForeignKey(x => x.EntityId).OnDelete(DeleteBehavior.Restrict);
 
-            e.HasOne(x => x.ReplyOutgoing).WithMany()
-                .HasForeignKey(x => x.ReplyOutgoingId).OnDelete(DeleteBehavior.SetNull);
-
             e.HasIndex(x => x.EntityId);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.ReceivedDate);
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ---- BookReply (ربط الردّ: كثيرٌ إلى كثير — ADR-045) ----
+        b.Entity<BookReply>(e =>
+        {
+            e.HasKey(x => x.BookReplyId);
+
+            // فريد: ربطُ الزوج نفسه مرّتين لا معنى له. والخدمة تفحص الوجود مسبقاً لتعطي 409
+            // عربية، وهذا الفهرس حارسُ التسابق فوقها (نظير EmployeeLeaveSettlement).
+            e.HasIndex(x => new { x.IncomingId, x.OutgoingId }).IsUnique();
+            e.HasIndex(x => x.OutgoingId);
+
+            // 🔴 **التعاقبان آمنان بعد إسقاط المفتاحين القديمين**: قبل إسقاطهما كان من
+            //    OutgoingBooks إلى هذا الجدول **مساران** (مباشرٌ وعبر IncomingBooks) فيرفضه
+            //    SQL Server بخطأ 1785. والمهاجرة تُسقطهما **قبل** إنشاء الجدول.
+            e.HasOne(x => x.Incoming).WithMany(i => i.Replies)
+                .HasForeignKey(x => x.IncomingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Outgoing).WithMany(o => o.RepliesTo)
+                .HasForeignKey(x => x.OutgoingId).OnDelete(DeleteBehavior.Cascade);
+
+            // ⚠️ فلترٌ عامّ خلافاً لـIncomingAssignment: هذا الجدول يُستعلَم عنه **مباشرةً**
+            //    من جهة الصادر، فاستعلامٌ بلا فلتر يرى شركتين.
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 
         // ---- IncomingAssignment (إحالة لعدة أقسام — ADR-018) ----

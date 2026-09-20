@@ -12,6 +12,7 @@ import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/status_pill.dart';
 import 'incoming_form_screen.dart';
+import 'outgoing_detail_screen.dart';
 import 'task_form_screen.dart';
 
 /// Hint: شاشة تفاصيل الكتاب الوارد (تعرض المعلومات، المرفقات، سجل الحركة)
@@ -70,7 +71,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
         //   ٢) **فكّ الأرشفة** — يفتح قفل التعديل على السجل الرسمي، فالسبب هو الأثر
         //      الوحيد الذي يشرح لاحقاً لماذا خرج كتابٌ من الأرشيف ومن أذِن به.
         final isUnarchiving = d.status == 'Archived';
-        final noteRequired = (newStatus == 'Replied' && d.replyOutgoingId == null) || isUnarchiving;
+        final noteRequired = (newStatus == 'Replied' && d.replies.isEmpty) || isUnarchiving;
         return AlertDialog(
           title: Text(isUnarchiving ? 'فكّ أرشفة الكتاب' : 'تغيير حالة الكتاب'),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -260,14 +261,19 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     }
   }
 
-  Future<void> _unlinkFromOutgoing(IncomingDetail d) async {
+  /// فكّ ربط **ردٍّ بعينه** (ADR-045).
+  ///
+  /// ⚠️ **الرسالة لا تَعِد بعودة الحالة**: بعد تعدّد الردود صار رجوعُها مشروطاً بقواعد
+  /// `BookReplyRules` (ردٌّ باقٍ · تعليمٌ يدويّ · كتابٌ لم يُحَل قطّ) — ووعدٌ لا يتحقّق
+  /// أسوأ من صمت.
+  Future<void> _unlinkFromOutgoing(ReplyLink link) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('فك الارتباط'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         content: Text('سيُفك ارتباط هذا الكتاب بالصادر رقم '
-            '${d.replyOutgoingNumber ?? d.replyOutgoingId}، وتعود حالته إلى (قيد المراجعة). هل تريد المتابعة؟'),
+            '${link.number ?? link.bookId}. هل تريد المتابعة؟'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('فك الارتباط')),
@@ -278,7 +284,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
 
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider).unlinkIncoming(widget.id);
+      await ref.read(apiClientProvider).unlinkIncomingReply(widget.id, link.bookId);
       _snack('تم فك الارتباط.');
       invalidateIncoming(ref);
       _reload();
@@ -383,6 +389,11 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
           final canViewMovements = currentUser != null && role != 'Reader';
           // المدير فأعلى (Hint: مرآة لـ RequireRole(Manager) في الباك-إند)
           final isManagerOrAbove = role == 'SuperAdmin' || role == 'President' || role == 'Manager';
+          // ⚠️ **بالدور لا بالعلَم — وهذا صحيحٌ ومقصود.** حارسُ الخادم لربط الردّ وفكّه هو
+          //    `RequireRole(UserRole.Manager)` لا `CanManageIncoming`، **لأن الربط يغيّر
+          //    حالة الكتاب** إلى «تم الرد» فهو قرارٌ إداريّ. فمرآتُه هنا الدورُ نفسه.
+          //    🔴 **ولا يُحوَّل إلى `session.canManageIncoming`** — ذاك العلَم لصلاحياتٍ
+          //    لا تمسّ الحالة، وتحويلُه هنا يفتح الربط لمن يردّه الخادمُ بـ403.
           final canManageLink = isManagerOrAbove;
           // التعديل: ممنوع على المؤرشف · المدير فأعلى في بقية الحالات · الموظف وهو (جديد) فقط
           final canEdit = d.status != 'Archived' && (isManagerOrAbove || d.status == 'New');
@@ -479,27 +490,28 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                               //       وأُزيل مصدر «وارد» من التقرير المالي. البيانات القديمة باقية
                               //       في القاعدة (لا migration حذف) فالقرار قابل للتراجع.
 
-                              // ━━━ الارتباط بالصادر ━━━
+                              // ━━━ الردود بالصادر — **قائمة** منذ ADR-045 ━━━
                               const Divider(height: 32),
-                              const Text('الارتباط بالصادر',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              const SizedBox(height: 16),
-                              if (d.replyOutgoingId != null) ...[
-                                _buildInfoRow('تم الرد بكتاب صادر رقم',
-                                    d.replyOutgoingNumber ?? '#${d.replyOutgoingId}', Icons.link_rounded),
-                                if (canManageLink) ...[
-                                  const SizedBox(height: 12),
-                                  Align(
-                                    alignment: AlignmentDirectional.centerStart,
-                                    child: TextButton.icon(
-                                      onPressed: _busy ? null : () => _unlinkFromOutgoing(d),
-                                      icon: const Icon(Icons.link_off_rounded, size: 18),
-                                      style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-                                      label: const Text('فك الارتباط'),
-                                    ),
-                                  ),
+                              Row(children: [
+                                const Text('الردود بكتب صادرة',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                if (d.replies.length > 1) ...[
+                                  const SizedBox(width: 8),
+                                  // ⚠️ **العدد يُعلَن** — فردٌّ ثانٍ لا يمرّ غير ملحوظ.
+                                  Text('(${d.replies.length})',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.action(context))),
                                 ],
-                              ] else ...[
+                              ]),
+                              const SizedBox(height: 16),
+                              if (d.replies.isNotEmpty) ...[
+                                for (final link in d.replies) ...[
+                                  _buildReplyRow(link, canManageLink),
+                                  if (link != d.replies.last) const SizedBox(height: 10),
+                                ],
+                              ] else
                                 Text('لم يُربط هذا الكتاب بكتاب صادر بعد.',
                                     style: TextStyle(
                                         fontSize: 13,
@@ -508,23 +520,25 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                                             .bodyMedium
                                             ?.color
                                             ?.withValues(alpha: 0.6))),
-                                if (canManageLink) ...[
-                                  const SizedBox(height: 12),
-                                  Align(
-                                    alignment: AlignmentDirectional.centerStart,
-                                    // Hint: الربط متاح للكتب (جديد/قيد المراجعة) فقط — مرآة لقاعدة الباك-إند.
-                                    child: Tooltip(
-                                      message: _isOperable(d.status)
-                                          ? 'اختيار كتاب صادر معتمد للرد على هذا الوارد'
-                                          : 'الربط متاح للكتب (جديد) أو (قيد المراجعة) فقط',
-                                      child: OutlinedButton.icon(
-                                        onPressed: (_busy || !_isOperable(d.status)) ? null : _linkToOutgoing,
-                                        icon: const Icon(Icons.add_link_rounded, size: 18),
-                                        label: const Text('ربط بكتاب صادر'),
-                                      ),
+                              if (canManageLink) ...[
+                                const SizedBox(height: 12),
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  // ⚠️ **مرآةٌ لـ`BookReplyRules.CanLink` لا لـ`IsOperable`**: الردّ
+                                  //    الثاني مسموحٌ على كتابٍ صار «تم الرد»، وحارسٌ أضيق من
+                                  //    الخادم يُخفي ما هو مسموح.
+                                  child: Tooltip(
+                                    message: _canLinkReply(d.status)
+                                        ? 'اختيار كتاب صادر معتمد للرد على هذا الوارد'
+                                        : 'الربط غير متاح للكتب (المغلقة) أو (المؤرشفة)',
+                                    child: OutlinedButton.icon(
+                                      onPressed:
+                                          (_busy || !_canLinkReply(d.status)) ? null : _linkToOutgoing,
+                                      icon: const Icon(Icons.add_link_rounded, size: 18),
+                                      label: Text(d.replies.isEmpty ? 'ربط بكتاب صادر' : 'إضافة ردّ آخر'),
                                     ),
                                   ),
-                                ],
+                                ),
                               ],
                             ],
                           ),
@@ -635,8 +649,60 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
     );
   }
 
-  /// Hint: حالة الكتاب تسمح بالإجراءات التشغيلية (الإحالة/الربط) — مرآة لـ IncomingWorkflow.IsOperable.
+  /// Hint: حالة الكتاب تسمح بالإجراءات التشغيلية (**الإحالة**) — مرآة لـ IncomingWorkflow.IsOperable.
   bool _isOperable(String status) => status == 'New' || status == 'InReview';
+
+  /// حالةُ الكتاب تسمح **بربط ردٍّ** — مرآة لـ`BookReplyRules.CanLink` (ADR-045).
+  ///
+  /// 🔴 **قاعدةٌ ثانية لا توسيعٌ للأولى**: الفرق بينهما **«تم الرد» بالضبط** — يقبله الربط
+  /// (ردٌّ أوّليّ ثم نهائيّ) وترفضه الإحالة. وتوحيدُهما كان يفتح الإحالة على كتابٍ مُجابٍ عنه.
+  bool _canLinkReply(String status) =>
+      status == 'New' || status == 'InReview' || status == 'Replied';
+
+  /// سطرُ ردٍّ واحد: رقمُ الصادر وموضوعه، وفتحُه، وفكُّ ربطه.
+  ///
+  /// 🔴 **وزرّ «فتح الكتاب الصادر» جديد**: المسار من الوارد إلى الصادر **كان مقطوعاً**
+  /// بخلاف نظيره في شاشة الصادر — تُعرض الرقم ولا تستطيع بلوغه.
+  Widget _buildReplyRow(ReplyLink link, bool canManageLink) {
+    final muted =
+        Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(Icons.link_rounded, size: 18, color: AppColors.action(context)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(link.number ?? '#${link.bookId}',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              const SizedBox(height: 2),
+              Text(link.subject,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: muted)),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'فتح الكتاب الصادر',
+          icon: const Icon(Icons.open_in_new_rounded, size: 18),
+          onPressed: _busy
+              ? null
+              : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => OutgoingDetailScreen(id: link.bookId))),
+        ),
+        if (canManageLink)
+          IconButton(
+            tooltip: 'فك الارتباط',
+            icon: const Icon(Icons.link_off_rounded, size: 18),
+            color: AppColors.danger,
+            onPressed: _busy ? null : () => _unlinkFromOutgoing(link),
+          ),
+      ],
+    );
+  }
 
   /// Hint: [onTap] = null يعني الزر معطّل، ويُعرض سبب التعطيل في tooltip بالعربية.
   Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback? onTap,

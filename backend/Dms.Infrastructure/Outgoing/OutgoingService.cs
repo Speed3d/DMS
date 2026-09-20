@@ -290,6 +290,14 @@ public sealed class OutgoingService(
         else
             EnsureCanModifyDraft(book);          // المسودّة: المالك أو المدير فأعلى
 
+        // 🔴 **عيبٌ كان قائماً وعولج مع ADR-045:** حذفُ الصادر لم يكن يُفرغ الربط إطلاقاً
+        //    (بخلاف حذف الوارد الذي كان يُفرغ جهةً واحدة) — فيبقى الوارد **«تم الرد» بردٍّ
+        //    محذوف**، ولا سبيل لإعادته. والروابط تُحذف فعلياً لأن `BookReply` بلا حذفٍ ناعم.
+        // ⚠️ **ولا تُخفَّض حالةُ الوارد هنا**: الخفضُ قرارٌ له قواعده في `BookReplyRules`،
+        //    وحذفُ الصادر لا يعني أن الردّ لم يقع — بل أن مستنده أُزيل. يبقى الأثر في
+        //    سجلّ الحركة، ويُنزلها المستخدم يدوياً إن شاء.
+        db.BookReplies.RemoveRange(db.BookReplies.Where(r => r.OutgoingId == id));
+
         book.IsDeleted = true;
         book.DeletedByUserId = current.UserId;
         book.DeletedAt = DateTime.UtcNow;

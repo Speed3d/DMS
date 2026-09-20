@@ -305,6 +305,17 @@ public sealed record UpdateOutgoingRequest(
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
 
+/// <summary>اعتماد الصادر — ومعه **اختيارياً** الواردات التي يردّ عليها (ADR-045).</summary>
+/// <remarks>
+/// 🔴 **لماذا عند الاعتماد لا عند حفظ المسودّة؟** لأن الربط **يُعلن رداً رسمياً** وينقل
+/// الوارد إلى «تم الرد»، ومسودّةٌ لم تُعتمد ليست رداً بعد. فربطُها كان يُظهر لموظف الوارد
+/// رداً لا وجود له، ويكشف مسودّةً لم يرها أحد.
+/// ⚠️ **والاختيار يُحمَل في نموذج الصادر أثناء الكتابة** ويُرسَل هنا، فلا يحتاج المستخدم
+/// الذهاب إلى شاشة الوارد بعد الاعتماد — وهو أصلُ طلب المالك.
+/// ⚠️ **وجسمُ الطلب اختياريّ كلُّه** فلا ينكسر مُستدعٍ قديم يعتمد بلا جسم.
+/// </remarks>
+public sealed record ApproveOutgoingRequest(List<int>? ReplyToIncomingIds = null);
+
 public sealed record EditApprovedRequest(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
@@ -321,8 +332,14 @@ public sealed record OutgoingDetail(
     BookStatus Status, decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
     string? QrContent, bool HasPdf, int? ApprovedByUserId, DateTime? ApprovedAt,
     DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion, bool CanApprove, string? BodyJson,
-    // الربط العكسي: الكتاب الوارد الذي يردّ عليه هذا الصادر (إن وُجد)
-    int? ReplyToIncomingId = null, string? ReplyToIncomingNumber = null,
+    /// <summary>الكتب الواردة التي يردّ عليها هذا الصادر — **قائمة** منذ ADR-045.</summary>
+    /// <remarks>
+    /// ⚠️ **حلّت محلّ `ReplyToIncomingId`/`Number` المفردين**: صادرٌ واحد يُجيب عدّة واردات.
+    /// 🔐 **ولا تحمل إلا ما يراه الطالب** — تمرّ بـ`IIncomingService.Query()`، وكان الحقل
+    /// المفرد يقرأ `db.IncomingBooks` مباشرةً فيكشف رقم واردٍ محجوبٍ بحدّ القسم لكلّ من يرى
+    /// الصادر (والكلُّ يراه — ADR-030).
+    /// </remarks>
+    List<ReplyLinkDto>? RepliesTo = null,
 
     /// <summary>رابط التحقق العامّ المطبوع في الـQR — `null` للمسودّة (ADR-043).</summary>
     /// <remarks>
@@ -371,7 +388,15 @@ public sealed record IncomingDetail(
     ReceiveMethod ReceiveMethod, int ReceivedByUserId, string ReceivedByUserName,
     IncomingStatus Status, List<IncomingAssignmentDto> Departments, string? LastAction, string? Keywords, string? Notes,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
-    int? ReplyOutgoingId, string? ReplyOutgoingNumber, DateTime CreatedAt);
+    List<ReplyLinkDto> Replies, DateTime CreatedAt);
+
+/// <summary>رابطُ ردّ — كتابٌ في الطرف الآخر مع لحظة ربطه (ADR-045).</summary>
+/// <remarks>
+/// عقدٌ واحد للجهتين: في <see cref="IncomingDetail"/> يحمل الصادرَ الذي ردّ،
+/// وفي <see cref="OutgoingDetail"/> يحمل الواردَ المردود عليه. **وشكلٌ واحد يمنع تباعد
+/// الطرفين** عند أول تعديل.
+/// </remarks>
+public sealed record ReplyLinkDto(int BookId, string? Number, DateTime Date, string Subject, DateTime LinkedAt);
 
 public sealed record MovementLogItem(
     int MovementId, string Action, string Description,

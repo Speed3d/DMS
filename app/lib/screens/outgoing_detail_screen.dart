@@ -50,10 +50,23 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
     setState(() {});
   }
 
+  /// اعتماد الصادر — ويسأل أوّلاً **هل يردّ على كتبٍ واردة؟** (ADR-045).
+  ///
+  /// 🔴 **المدخل هنا لا في نموذج المسودّة**: الربط يشترط صادراً معتمداً، فلو وُضع الاختيار
+  /// في النموذج لَلَزِم حفظُه في مكانٍ ما بانتظار الاعتماد — أو ضاع عند إغلاق الشاشة.
+  /// ووضعُه على بوّابة الاعتماد يجعل **لحظة الاختيار هي لحظة التنفيذ**، بلا حالةٍ معلّقة.
+  ///
+  /// ⚠️ **واختياريّ بالكامل**: المضيّ بلا اختيارٍ يعتمد الكتاب كما كان يفعل دائماً.
   Future<void> _approve() async {
+    final picked = await Navigator.of(context).push<List<int>>(MaterialPageRoute(
+        builder: (_) => const _ReplyTargetsScreen(), fullscreenDialog: true));
+    // `null` = تراجَع عن الاعتماد كلّه؛ والقائمة الفارغة = اعتمِد بلا ربط.
+    if (picked == null) return;
+
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider).approve(widget.id);
+      await ref.read(apiClientProvider).approve(widget.id,
+          replyToIncomingIds: picked.isEmpty ? null : picked);
       invalidateOutgoing(ref); // تحديث اللوحة/الإشعارات فوراً (يظهر المبلغ المعتمد)
 
       // نسخة محلية تلقائية على جهاز المستخدم بعد الاعتماد.
@@ -402,24 +415,66 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                 const SizedBox(height: 16),
                                 _buildInfoRow('المعادل بالدينار', '${_fmt(d.amountInIqd ?? 0)} د.ع', Icons.payments_rounded),
                               ],
-
-                              // ━━━ الربط بالوارد (Hint: يظهر فقط إذا كان هذا الصادر ردّاً على كتاب وارد) ━━━
-                              if (d.replyToIncomingId != null) ...[
+                              // ━━━ الواردات المردود عليها — **قائمة** منذ ADR-045 ━━━
+                              // 🔐 **لا تحمل إلا ما يراه الطالب**: الخادم يبنيها من
+                              //    `IncomingService.Query()`، وكان الحقل المفرد يقرأ الجدول
+                              //    مباشرةً فيكشف رقم واردٍ محجوبٍ بحدّ القسم.
+                              if (d.repliesTo.isNotEmpty) ...[
                                 const Divider(height: 32),
-                                const Text('الارتباط بالوارد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                Row(children: [
+                                  Text(
+                                      d.repliesTo.length == 1
+                                          ? 'الارتباط بالوارد'
+                                          : 'الواردات المردود عليها',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold, fontSize: 16)),
+                                  if (d.repliesTo.length > 1) ...[
+                                    const SizedBox(width: 8),
+                                    Text('(${d.repliesTo.length})',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.action(context))),
+                                  ],
+                                ]),
                                 const SizedBox(height: 16),
-                                _buildInfoRow('هذا الكتاب ردّ على الوارد رقم',
-                                    d.replyToIncomingNumber ?? '#${d.replyToIncomingId}', Icons.link_rounded),
-                                const SizedBox(height: 12),
-                                Align(
-                                  alignment: AlignmentDirectional.centerStart,
-                                  child: TextButton.icon(
-                                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                                        builder: (_) => IncomingDetailScreen(id: d.replyToIncomingId!))),
-                                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                                    label: const Text('فتح الكتاب الوارد'),
-                                  ),
-                                ),
+                                for (final link in d.repliesTo) ...[
+                                  Row(children: [
+                                    Icon(Icons.link_rounded,
+                                        size: 18, color: AppColors.action(context)),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(link.number ?? '#${link.bookId}',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700, fontSize: 13.5)),
+                                          const SizedBox(height: 2),
+                                          Text(link.subject,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context)
+                                                      .textTheme
+                                                      .bodyMedium
+                                                      ?.color
+                                                      ?.withValues(alpha: 0.6))),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'فتح الكتاب الوارد',
+                                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                                      onPressed: () => Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                              builder: (_) =>
+                                                  IncomingDetailScreen(id: link.bookId))),
+                                    ),
+                                  ]),
+                                  if (link != d.repliesTo.last) const SizedBox(height: 10),
+                                ],
                               ],
 
                               if (d.qrContent != null) ...[
@@ -542,4 +597,150 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
 
   String _fmt(num n) =>
       n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+}
+
+/// شاشة اختيار الكتب الواردة التي يردّ عليها هذا الصادر — قبل الاعتماد (ADR-045).
+///
+/// 🔴 **شاشةٌ لا حوار** — قاعدةُ مشروعٍ مستقرّة: حقول البحث داخل `showDialog` تسبّب خلل
+/// `disposed EngineFlutterView` على الويب.
+///
+/// ⚠️ **واختيارٌ متعدّد** على نمط شاشة الإحالة (`_ForwardScreen`): صادرٌ واحد يُجيب عدّة
+/// واردات، وهو أصلُ هذه الدفعة كلّها.
+///
+/// 🔐 **والقائمة تأتي من `/incoming` المفلترة بقاعدة رؤية الخادم** — فلا يظهر هنا كتابٌ
+/// محجوبٌ بحدّ القسم. وهي **مفلترة على القابل للربط** (جديد · قيد المراجعة · تم الرد)
+/// مرآةً لـ`BookReplyRules.CanLink` — فلا يختار المستخدم كتاباً يرفضه الخادم بعد ضغطتين.
+class _ReplyTargetsScreen extends ConsumerStatefulWidget {
+  const _ReplyTargetsScreen();
+  @override
+  ConsumerState<_ReplyTargetsScreen> createState() => _ReplyTargetsScreenState();
+}
+
+class _ReplyTargetsScreenState extends ConsumerState<_ReplyTargetsScreen> {
+  late Future<List<IncomingListItem>> _future;
+  final Set<int> _selected = {};
+  String _search = '';
+
+  /// مرآةُ `BookReplyRules.CanLink` — والمغلق والمؤرشف خارجها.
+  static const _linkable = {'New', 'InReview', 'Replied'};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _future = ref.read(apiClientProvider).incomingList(search: _search);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('هل يردّ هذا الكتاب على واردات؟'),
+        centerTitle: true,
+        leading: IconButton(
+          tooltip: 'إلغاء الاعتماد',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Text(
+                  'اختيارٌ اختياريّ — الكتب المختارة تصير حالتها (تم الرد) وتُربط بهذا الصادر. '
+                  'وتستطيع الاعتماد بلا اختيار.',
+                  style: TextStyle(fontSize: 12.5, height: 1.6, color: muted),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: 'بحث برقم الكتاب أو موضوعه',
+                    prefixIcon: Icon(Icons.search_rounded),
+                  ),
+                  onChanged: (v) => _search = v,
+                  onSubmitted: (_) => _load(),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: FutureBuilder<List<IncomingListItem>>(
+                    future: _future,
+                    builder: (context, snap) {
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snap.hasError) {
+                        return Center(
+                            child: Text('تعذّر جلب الوارد: ${snap.error}',
+                                style: TextStyle(color: AppColors.danger)));
+                      }
+                      final items = (snap.data ?? [])
+                          .where((b) => _linkable.contains(b.status))
+                          .toList();
+                      if (items.isEmpty) {
+                        return Center(
+                            child: Text('لا توجد كتب واردة قابلة للربط.',
+                                style: TextStyle(color: muted)));
+                      }
+                      return ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final b = items[i];
+                          return CheckboxListTile(
+                            value: _selected.contains(b.incomingId),
+                            onChanged: (v) => setState(() => v == true
+                                ? _selected.add(b.incomingId)
+                                : _selected.remove(b.incomingId)),
+                            title: Text(b.incomingNumber ?? '#${b.incomingId}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700, fontSize: 13.5)),
+                            subtitle: Text(b.subject,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, color: muted)),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        // ⚠️ **قائمةٌ فارغة لا `null`**: الأولى «اعتمِد بلا ربط»
+                        //    والثانية «تراجعتُ عن الاعتماد» — وخلطُهما يعتمد بلا قصد.
+                        onPressed: () => Navigator.pop(context, <int>[]),
+                        child: const Text('اعتماد بلا ربط'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _selected.isEmpty
+                            ? null
+                            : () => Navigator.pop(context, _selected.toList()),
+                        icon: const Icon(Icons.verified_rounded, size: 18),
+                        label: Text('اعتماد وربط (${_selected.length})'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

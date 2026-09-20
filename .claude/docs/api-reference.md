@@ -84,6 +84,23 @@
 
 > **الربط العكسي:** `GET /api/outgoing/{id}` يُرجِع `replyToIncomingId` و`replyToIncomingNumber` للكتاب الوارد الذي يردّ عليه.
 
+### 🔗 ربط الردّ — **كثيرٌ إلى كثير** (ADR-045)
+
+| الطريقة | المسار | ملاحظة |
+|---|---|---|
+| POST | `/incoming/{id}/link/{outgoingId}` | صادرٌ معتمد يردّ على هذا الوارد. **المدير فأعلى** |
+| DELETE | `/incoming/{id}/link/{outgoingId}` | 🔴 **المعرّف إلزاميّ** — كان `/link` بلا معرّف |
+| POST | `/outgoing/{id}/approve` | جسمٌ **اختياريّ**: `{ replyToIncomingIds: [..] }` ⇒ ربطٌ عند الاعتماد |
+
+- `IncomingDetail.replies` و`OutgoingDetail.repliesTo` — **قائمتان** من
+  `ReplyLinkDto(bookId, number, date, subject, linkedAt)`. حلّتا محلّ `replyOutgoingId/Number`
+  و`replyToIncomingId/Number`.
+- 🔐 **`repliesTo` تمرّ بـ`IncomingService.Query()`** فلا تكشف رقم واردٍ محجوبٍ بحدّ القسم.
+- **الربط مسموح** على `New | InReview | Replied` (`BookReplyRules.CanLink`) — **لا `IsOperable`**،
+  وإلا انفتحت **الإحالة** على كتابٍ مُجابٍ عنه. و**تكرار الزوج نفسه يردّ 409**.
+- **وفكُّ ردٍّ لا يُنزّل الحالة** إلا إذا كان **الأخير** و**رفعها الربطُ نفسه** — والكتابُ
+  الذي لم يُحَل قطّ يعود **«جديد»** لا «قيد المراجعة».
+
 ## الأرشيف — `/api/archive`
 | الطريقة | المسار | الوصف |
 |---|---|---|

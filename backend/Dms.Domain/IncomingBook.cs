@@ -55,8 +55,12 @@ public class IncomingBook
     public decimal? ExchangeRate { get; set; }
     public decimal? AmountInIqd { get; set; } // يُحسب تلقائياً
 
-    /// <summary>إذا تم الرد على هذا الكتاب الوارد بكتاب صادر (Hint: الربط العكسي).</summary>
-    public int? ReplyOutgoingId { get; set; }
+    /// <summary>الكتب الصادرة التي ردّت على هذا الوارد — **واحدٌ أو أكثر** (ADR-045).</summary>
+    /// <remarks>
+    /// ⚠️ **حلّ محلّ `ReplyOutgoingId` المفرد**: الوارد يُجاب بردٍّ أوّليّ («وصلنا كتابكم وقيد
+    /// الدراسة») ثم نهائيّ، وعمودٌ واحد كان يُجبر على اختيار أحدهما وإخفاء الآخر.
+    /// </remarks>
+    public ICollection<BookReply> Replies { get; set; } = new List<BookReply>();
 
     // بيانات تتبع الإنشاء والتعديل
     public int CreatedByUserId { get; set; }
@@ -70,5 +74,4 @@ public class IncomingBook
 
     // العلاقات (Navigation Properties)
     public Entity? Entity { get; set; }
-    public OutgoingBook? ReplyOutgoing { get; set; }
 }

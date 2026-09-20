@@ -46,8 +46,11 @@ public sealed record IncomingDetailData(
     string EntityName,
     string? DocumentTypeName,
     string ReceivedByUserName,
-    string? ReplyOutgoingNumber,
+    IReadOnlyList<ReplyLinkData> Replies,
     IReadOnlyList<AssignmentData> Departments);
+
+/// <summary>كتابٌ صادرٌ ردَّ على هذا الوارد — للعرض في بطاقة الردود (ADR-045).</summary>
+public sealed record ReplyLinkData(int OutgoingId, string? Number, DateTime Date, string Subject, DateTime LinkedAt);
 
 /// <summary>إسناد قسم مع اسمه واسم مَن أحاله (للعرض).</summary>
 public sealed record AssignmentData(int DepartmentId, string Name, string? Note, string AssignedByUserName, DateTime AssignedAt);
@@ -68,7 +71,12 @@ public interface IIncomingService
     Task ChangeStatusAsync(int id, IncomingStatus newStatus, string? note, CancellationToken ct = default);
     Task ForwardAsync(int id, IReadOnlyList<ForwardTarget> targets, string? generalNote, CancellationToken ct = default);
     Task LinkToOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default);
-    Task UnlinkFromOutgoingAsync(int incomingId, CancellationToken ct = default);
+
+    /// <summary>فكّ ربط **ردٍّ بعينه** — المعرّف إلزاميّ بعد ADR-045 (الوارد قد يحمل ردوداً).</summary>
+    Task UnlinkFromOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default);
+
+    /// <summary>ربطُ صادرٍ معتمد بعدّة واردات دفعةً واحدة — يُستعمل عند إنشاء الصادر وتعديله.</summary>
+    Task LinkOutgoingToManyAsync(int outgoingId, IReadOnlyList<int> incomingIds, CancellationToken ct = default);
     Task SoftDeleteAsync(int id, CancellationToken ct = default);
     Task<List<MovementLogData>> GetMovementsAsync(int incomingId, CancellationToken ct = default);
 }
@@ -117,10 +125,8 @@ public sealed class IncomingService(
 
     public async Task<IncomingDetailData> GetDetailAsync(int id, CancellationToken ct = default)
     {
-        // Hint: ReplyOutgoing مُضمَّن هنا فقط (شاشة التفاصيل) — بقية العمليات لا تحتاجه فتبقى GetAsync خفيفة.
         var book = await Query()
             .Include(b => b.Entity)
-            .Include(b => b.ReplyOutgoing)
             .Include(b => b.Assignments).ThenInclude(a => a.Department)
             .FirstOrDefaultAsync(b => b.IncomingId == id, ct)
             ?? throw new NotFoundException("الكتاب الوارد غير موجود أو لا تملك صلاحية رؤيته.");
@@ -142,12 +148,22 @@ public sealed class IncomingService(
                 assignerNames.TryGetValue(a.AssignedByUserId, out var n) ? n : "—", a.AssignedAt))
             .ToList();
 
+        // ⚠️ **الردود باستعلامٍ ثانٍ لا بـ`Include`** (درس ADR-034): `Include` نحو
+        //    `OutgoingBooks` المفلتر يولّد `INNER JOIN` — وصادرٌ خرج من الفلتر (محذوفٌ
+        //    ناعماً) كان **يحذف صفَّ الربط كلَّه** بدل أن يُفرّغ رقمه.
+        var replies = await db.BookReplies
+            .Where(r => r.IncomingId == id)
+            .OrderBy(r => r.LinkedAt)
+            .Join(db.OutgoingBooks, r => r.OutgoingId, o => o.OutgoingId,
+                (r, o) => new ReplyLinkData(o.OutgoingId, o.Number, o.Date, o.Subject, r.LinkedAt))
+            .ToListAsync(ct);
+
         return new IncomingDetailData(
             book,
             book.Entity?.Name ?? "—",
             docTypeName,
             await UserNameAsync(book.ReceivedByUserId, ct),
-            book.ReplyOutgoing?.Number,
+            replies,
             departments);
     }
 
@@ -269,7 +285,12 @@ public sealed class IncomingService(
 
         // Hint: الانتقال لـ«تم الرد» يتم تلقائياً عند الربط بصادر؛ فإن تمّ يدوياً (ردّ ورقي خارج النظام)
         // تصبح الملاحظة إلزامية لتوثيق سبب الرد.
-        if (newStatus == IncomingStatus.Replied && book.ReplyOutgoingId is null && string.IsNullOrWhiteSpace(note))
+        // ⚠️ **كان `book.ReplyOutgoingId is null`** قبل ADR-045 — والسؤال الآن «هل ثمّة أيُّ ردّ؟»
+        //    لا «هل ثمّة ردٌّ واحد؟». وبلا هذا التحويل يصير وضعُ «تم الرد» يدوياً **بلا ملاحظة**
+        //    ممكناً لكتابٍ بلا ردٍّ إطلاقاً، فينهار الحارس من حيث لا يُقصد.
+        if (newStatus == IncomingStatus.Replied
+            && !await db.BookReplies.AnyAsync(r => r.IncomingId == id, ct)
+            && string.IsNullOrWhiteSpace(note))
             throw new ValidationException("يجب إدخال ملاحظة عند تغيير الحالة إلى (تم الرد) يدوياً بدون ربط بكتاب صادر.");
 
         // ⚠️ **فكّ الأرشفة يتطلّب سبباً إلزامياً.** الأرشفة تُغلق باب التعديل على السجل الرسمي،
@@ -393,6 +414,12 @@ public sealed class IncomingService(
         audit.Add("Forward", nameof(IncomingBook), id.ToString(), string.Join("، ", added), book.CompanyId);
         await db.SaveChangesAsync(ct);
     }
+    /// <inheritdoc/>
+    /// <remarks>
+    /// 🔴 **سقط حارسا «واحدٌ لواحد» هنا (ADR-045).** كانا يردّان 409 على ربطٍ ثانٍ من أيّ
+    /// جهة، وقد كسرهما العمل الفعليّ: صادرٌ واحد يُجيب ثلاثة واردات، وواردٌ يُجاب بردٍّ
+    /// أوّليّ ثم نهائيّ. والباقي من الحرّاس **أضيق لا أوسع**: الزوج نفسه لا يُربط مرّتين.
+    /// </remarks>
     public async Task LinkToOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default)
     {
         // Hint: الربط ينقل الكتاب إلى «تم الرد» — فهو قرار إداري بصلاحية المدير فأعلى،
@@ -400,39 +427,133 @@ public sealed class IncomingService(
         RequireRole(UserRole.Manager);
 
         var incoming = await GetAsync(incomingId, ct);
+        var outgoing = await LoadLinkableOutgoingAsync(outgoingId, incoming.CompanyId, ct);
 
-        // Hint: الربط يعني «تم الرد» — فهو إجراء على كتاب قيد المعالجة فقط، لا على مغلق أو مؤرشف.
-        // (استثناء مقصود من مصفوفة الانتقالات: الربط بصادر معتمد ينقل الكتاب مباشرة إلى «تم الرد».)
-        if (!IncomingWorkflow.IsOperable(incoming.Status))
-            throw new ValidationException(
-                $"لا يمكن ربط كتاب في حالة ({ArabicName(incoming.Status)}) بكتاب صادر — الربط متاح للكتب (جديد) أو (قيد المراجعة) فقط.");
+        await LinkCoreAsync(incoming, outgoing, ct);
+        await db.SaveChangesAsync(ct);
+    }
 
-        // Hint: ربط جديد فوق ربط قائم يُفقد الأثر — يُطلب فك الارتباط أولاً.
-        if (incoming.ReplyOutgoingId is not null && incoming.ReplyOutgoingId != outgoingId)
-            throw new ConflictException("الكتاب الوارد مرتبط بكتاب صادر آخر. افكك الارتباط الحالي أولاً.");
+    /// <inheritdoc/>
+    /// <remarks>
+    /// ⚠️ **الصلاحية هنا صلاحيةُ الصادر لا الوارد**: الرابط يُنشأ لحظةَ إنشاء الكتاب الصادر
+    /// أو تعديله، ومَن يعتمد صادراً هو مَن يقرّر على ماذا يردّ. والحارس أن كل واردٍ يمرّ
+    /// بـ<see cref="Query"/> — فلا يُربط ما لا يُرى.
+    /// </remarks>
+    public async Task LinkOutgoingToManyAsync(int outgoingId, IReadOnlyList<int> incomingIds, CancellationToken ct = default)
+    {
+        if (incomingIds is null || incomingIds.Count == 0) return;
 
-        // التحقق من الصادر
+        RequireRole(UserRole.Manager);
+
+        foreach (var incomingId in incomingIds.Distinct())
+        {
+            var incoming = await GetAsync(incomingId, ct);
+            var outgoing = await LoadLinkableOutgoingAsync(outgoingId, incoming.CompanyId, ct);
+
+            // ⚠️ **المربوط سلفاً يُتخطّى بصمت** لا يرمي: هذه دالّة «اجعل الحالة كذا» تُنادى
+            //    عند كل حفظٍ للصادر، فرميُها على ما هو مربوطٌ أصلاً يُفشل حفظاً سليماً.
+            if (await db.BookReplies.AnyAsync(r => r.IncomingId == incoming.IncomingId && r.OutgoingId == outgoingId, ct))
+                continue;
+
+            await LinkCoreAsync(incoming, outgoing, ct);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task UnlinkFromOutgoingAsync(int incomingId, int outgoingId, CancellationToken ct = default)
+    {
+        // Hint: فك الربط يُرجع الكتاب من «تم الرد» — نفس صلاحية الربط.
+        RequireRole(UserRole.Manager);
+
+        var incoming = await GetAsync(incomingId, ct);
+
+        // Hint: الكتاب المؤرشف سجل رسمي مغلق — لا يُعدَّل ارتباطه.
+        // ⚠️ **وقرارُ «المؤرشف يُضمّ لمعاملة» لا يشمل هذا**: الضمّ إشارةٌ لا تمسّ حالةً،
+        //    وفكُّ الردّ **يُغيّر حالة السجلّ الرسميّ**.
+        if (incoming.Status == IncomingStatus.Archived)
+            throw new ValidationException("لا يمكن فك ارتباط كتاب مؤرشف.");
+
+        var link = await db.BookReplies
+                       .FirstOrDefaultAsync(r => r.IncomingId == incomingId && r.OutgoingId == outgoingId, ct)
+                   ?? throw new ValidationException("هذا الكتاب الصادر غير مرتبط بالكتاب الوارد.");
+
+        db.BookReplies.Remove(link);
+
+        var outgoing = await db.OutgoingBooks
+            .FirstOrDefaultAsync(o => o.OutgoingId == outgoingId, ct);
+
+        await ApplyStatusAfterUnlinkAsync(incoming, outgoingId, ct);
+
+        incoming.LastAction = outgoing?.Number is { } num
+            ? $"تم فك الارتباط من الصادر {num}"
+            : "تم فك الارتباط من الصادر";
+        incoming.UpdatedAt = DateTime.UtcNow;
+
+        db.MovementLogs.Add(new MovementLog
+        {
+            CompanyId = incoming.CompanyId,
+            IncomingId = incoming.IncomingId,
+            Action = "UnlinkedFromOutgoing",
+            Description = outgoing?.Number is { } n
+                ? $"تم فك ربط الكتاب من الصادر رقم {n}"
+                : "تم فك ربط الكتاب من الصادر",
+            PerformedByUserId = current.UserId!.Value,
+            PerformedAt = DateTime.UtcNow
+        });
+
+        audit.Add("Unlink", nameof(IncomingBook), incomingId.ToString(), null, incoming.CompanyId);
+        await db.SaveChangesAsync(ct);
+    }
+
+    // ─────────────────────────── مساعدات الربط ───────────────────────────
+
+    /// <summary>يجلب الصادر ويتحقّق من صلاحيته للربط — **مصدرٌ واحد لحرّاس الصادر**.</summary>
+    private async Task<OutgoingBook> LoadLinkableOutgoingAsync(int outgoingId, int companyId, CancellationToken ct)
+    {
         var outgoing = await db.OutgoingBooks.FirstOrDefaultAsync(b => b.OutgoingId == outgoingId, ct)
             ?? throw new NotFoundException("الكتاب الصادر غير موجود.");
 
-        if (outgoing.CompanyId != incoming.CompanyId)
+        // 🔴 **فحصٌ صريح للشركة لا اتّكالاً على الفلتر العام**: السوبر أدمن بلا شركة فعّالة
+        //    يُعطّل الفلتر كلَّه (`AppDbContext` المُنشئ)، فيصير ربطُ كتابَي شركتين ممكناً.
+        if (outgoing.CompanyId != companyId)
             throw new ValidationException("لا يمكن ربط كتب من شركات مختلفة.");
 
         if (outgoing.Status != BookStatus.Final)
             throw new ValidationException("يمكن الربط فقط مع الكتب الصادرة المعتمدة.");
 
-        // Hint: الصادر الواحد يردّ على وارد واحد — علاقة واحد‑لواحد في الاتجاهين.
-        if (outgoing.ReplyToIncomingId is not null && outgoing.ReplyToIncomingId != incomingId)
-            throw new ConflictException("الكتاب الصادر مرتبط بكتاب وارد آخر. اختر صادراً غير مرتبط.");
+        return outgoing;
+    }
 
-        incoming.ReplyOutgoingId = outgoing.OutgoingId;
+    /// <summary>ينشئ الرابط ويرفع الحالة ويكتب السجلّ — **بلا حفظ** (المُستدعي يحفظ).</summary>
+    private async Task LinkCoreAsync(IncomingBook incoming, OutgoingBook outgoing, CancellationToken ct)
+    {
+        // 🔴 **قاعدةٌ ثانية لا توسيعٌ لـIsOperable**: تلك تحرس الإحالة أيضاً، وتوسيعُها
+        //    لقبول «تم الرد» كان يفتح الإحالة على كتابٍ مُجابٍ عنه — قاعدةٌ لم تتغيّر.
+        if (!BookReplyRules.CanLink(incoming.Status))
+            throw new ValidationException(
+                $"لا يمكن ربط كتاب في حالة ({ArabicName(incoming.Status)}) بكتاب صادر — الربط متاح للكتب (جديد) أو (قيد المراجعة) أو (تم الرد).");
+
+        // ⚠️ **فحصُ وجودٍ يعطي 409 عربية**؛ والفهرس الفريد حارسُ التسابق فوقه. وبلا هذا
+        //    الفحص يخرج `DbUpdateException` خاماً إلى المستخدم (500 بلا معنى).
+        if (await db.BookReplies.AnyAsync(
+                r => r.IncomingId == incoming.IncomingId && r.OutgoingId == outgoing.OutgoingId, ct))
+            throw new ConflictException("هذا الكتاب الصادر مرتبط بهذا الوارد أصلاً.");
+
+        db.BookReplies.Add(new BookReply
+        {
+            IncomingId = incoming.IncomingId,
+            OutgoingId = outgoing.OutgoingId,
+            CompanyId = incoming.CompanyId,
+            LinkedByUserId = current.UserId,
+            LinkedAt = DateTime.UtcNow
+        });
+
         incoming.Status = IncomingStatus.Replied;   // الربط بصادر معتمد = ردّ رسمي
         incoming.LastAction = $"تم الرد بالصادر {outgoing.Number}";
         incoming.UpdatedAt = DateTime.UtcNow;
 
-        outgoing.ReplyToIncomingId = incoming.IncomingId;
-
-        var log = new MovementLog
+        db.MovementLogs.Add(new MovementLog
         {
             CompanyId = incoming.CompanyId,
             IncomingId = incoming.IncomingId,
@@ -440,53 +561,42 @@ public sealed class IncomingService(
             Description = $"تم ربط الكتاب بالصادر رقم {outgoing.Number}",
             PerformedByUserId = current.UserId!.Value,
             PerformedAt = DateTime.UtcNow
-        };
-        db.MovementLogs.Add(log);
+        });
 
-        audit.Add("Link", nameof(IncomingBook), incomingId.ToString(), $"Linked to {outgoing.Number}", incoming.CompanyId);
-        await db.SaveChangesAsync(ct);
+        audit.Add("Link", nameof(IncomingBook), incoming.IncomingId.ToString(),
+            $"Linked to {outgoing.Number}", incoming.CompanyId);
     }
 
-    public async Task UnlinkFromOutgoingAsync(int incomingId, CancellationToken ct = default)
+    /// <summary>
+    /// يطبّق <see cref="BookReplyRules.StatusAfterUnlink"/> — **بجمع مدخلاته من القاعدة**.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **`becameRepliedByLink` يُشتقّ من سجلّ الحركة** لا من عمود: آخرُ سطرٍ يمسّ الحالة
+    /// إمّا `LinkedToOutgoing` (فالربط رفعها) أو `StatusChanged` (فإنسانٌ رفعها بملاحظة).
+    /// والفرق يحسم هل يجوز إنزالها — ولولاه لمُحي توثيق «ردٍّ ورقيّ خارج النظام».
+    /// </remarks>
+    private async Task ApplyStatusAfterUnlinkAsync(IncomingBook incoming, int removedOutgoingId, CancellationToken ct)
     {
-        // Hint: فك الربط يُرجع الكتاب من «تم الرد» إلى «قيد المراجعة» — نفس صلاحية الربط.
-        RequireRole(UserRole.Manager);
+        var remaining = await db.BookReplies
+            .CountAsync(r => r.IncomingId == incoming.IncomingId && r.OutgoingId != removedOutgoingId, ct);
 
-        var incoming = await GetAsync(incomingId, ct);
-        if (incoming.ReplyOutgoingId is null)
-            throw new ValidationException("لا يوجد كتاب صادر مرتبط بهذا الكتاب الوارد.");
+        var hasAssignments = await db.IncomingBooks
+            .Where(b => b.IncomingId == incoming.IncomingId)
+            .SelectMany(b => b.Assignments)
+            .AnyAsync(ct);
 
-        // Hint: الكتاب المؤرشف سجل رسمي مغلق — لا يُعدَّل ارتباطه.
-        if (incoming.Status == IncomingStatus.Archived)
-            throw new ValidationException("لا يمكن فك ارتباط كتاب مؤرشف.");
+        var lastStatusAction = await db.MovementLogs
+            .Where(m => m.IncomingId == incoming.IncomingId
+                        && (m.Action == "LinkedToOutgoing" || m.Action == "StatusChanged"))
+            .OrderByDescending(m => m.PerformedAt).ThenByDescending(m => m.MovementId)
+            .Select(m => m.Action)
+            .FirstOrDefaultAsync(ct);
 
-        var outgoing = await db.OutgoingBooks.FindAsync(new object[] { incoming.ReplyOutgoingId.Value }, ct);
-        if (outgoing != null)
-        {
-            outgoing.ReplyToIncomingId = null;
-        }
-
-        incoming.ReplyOutgoingId = null;
-        // Hint: العودة لقيد المراجعة تخصّ الكتاب الذي صار «تم الرد» بسبب هذا الربط؛
-        // أما المغلق فيبقى مغلقاً (الإغلاق قرار مستقل عن الربط).
-        if (incoming.Status == IncomingStatus.Replied)
-            incoming.Status = IncomingStatus.InReview;
-        incoming.LastAction = "تم فك الارتباط من الصادر";
-        incoming.UpdatedAt = DateTime.UtcNow;
-
-        var log = new MovementLog
-        {
-            CompanyId = incoming.CompanyId,
-            IncomingId = incoming.IncomingId,
-            Action = "UnlinkedFromOutgoing",
-            Description = "تم فك ربط الكتاب من الصادر",
-            PerformedByUserId = current.UserId!.Value,
-            PerformedAt = DateTime.UtcNow
-        };
-        db.MovementLogs.Add(log);
-
-        audit.Add("Unlink", nameof(IncomingBook), incomingId.ToString(), null, incoming.CompanyId);
-        await db.SaveChangesAsync(ct);
+        incoming.Status = BookReplyRules.StatusAfterUnlink(
+            incoming.Status,
+            remaining,
+            hasAssignments,
+            becameRepliedByLink: lastStatusAction == "LinkedToOutgoing");
     }
 
     public async Task SoftDeleteAsync(int id, CancellationToken ct = default)
@@ -501,12 +611,11 @@ public sealed class IncomingService(
         if (book.Status != IncomingStatus.New)
             RequireRole(UserRole.Manager); // المدير فأعلى للكتب قيد المعالجة
 
-        // فك الارتباط التلقائي إن وُجد
-        if (book.ReplyOutgoingId != null)
-        {
-            var outgoing = await db.OutgoingBooks.FindAsync(new object[] { book.ReplyOutgoingId.Value }, ct);
-            if (outgoing != null) outgoing.ReplyToIncomingId = null;
-        }
+        // 🔴 **تُحذف روابط الردّ حذفاً فعلياً لا ناعماً** (ADR-045): `BookReply` جدولُ ربطٍ
+        //    بلا حذفٍ ناعم، وصفٌّ يشير إلى كتابٍ محذوف **يختفي من كل استعلام** (الملاحة
+        //    الإلزامية نحو جدولٍ مفلتر) — فيبقى الطرف الآخر «تم الرد» بردٍّ لا يُرى،
+        //    و«فكّ الربط» يقول «غير مرتبط»: طريقٌ مسدودٌ صامت.
+        db.BookReplies.RemoveRange(db.BookReplies.Where(r => r.IncomingId == id));
 
         book.IsDeleted = true;
         book.DeletedByUserId = current.UserId;

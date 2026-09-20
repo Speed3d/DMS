@@ -168,13 +168,14 @@ Expect "قبول: المدير فأعلى يعدّل كتاباً (قيد الم
 if ($r.Body.subject -eq "تصحيح بعد الإحالة") { Ok "التعديل حُفظ فعلياً" } else { Bad "الموضوع لم يتغيّر: $($r.Body.subject)" }
 
 # ─────────────────────────── 6) الربط بالصادر ───────────────────────────
-Section "6) الربط بكتاب صادر معتمد"
-# Hint: نبحث عن صادر معتمد **غير مرتبط** بوارد آخر — الربط علاقة واحد‑لواحد،
-# وبدون هذا الفحص يفشل الاختبار عند إعادة تشغيله (الصادر يبقى مرتبطاً من تشغيل سابق).
+Section "6) الربط بكتب صادرة — كثيرٌ إلى كثير (ADR-045)"
+# 🔄 **انقلب حارسٌ هنا (ADR-045).** كان السكربت يبحث عن صادر **غير مرتبط** لأن العلاقة كانت
+#    واحداً لواحد، ويؤكّد أن ربط الصادر نفسه بوارد ثانٍ يردّ 409. وقد صار ذلك **مسموحاً**:
+#    صادرٌ واحد يُجيب عدّة واردات، وواردٌ يُجاب بردٍّ أوّليّ ثم نهائيّ. والممنوع الآن
+#    **تكرار الزوج نفسه** وحده.
 $approved = $null
 foreach ($o in ((Api GET "/outgoing" $null $adminTok $cid).Body | Where-Object { $_.status -eq "Final" })) {
-    $detail = (Api GET "/outgoing/$($o.outgoingId)" $null $adminTok $cid).Body
-    if ($null -eq $detail.replyToIncomingId) { $approved = $detail; break }
+    $approved = (Api GET "/outgoing/$($o.outgoingId)" $null $adminTok $cid).Body; break
 }
 if (-not $approved) {
     $tpl = (Api GET "/templates" $null $adminTok $cid).Body | Select-Object -First 1
@@ -194,19 +195,60 @@ if ($approved) {
     $r = Api POST "/incoming/$($target.incomingId)/link/$oid" $null $adminTok $cid
     Expect "ربط الوارد بالصادر" $r.Status 200
     if ($r.Body.status -eq "Replied") { Ok "الربط نقل الحالة إلى (تم الرد)" } else { Bad "الحالة: $($r.Body.status)" }
-    if ($r.Body.replyOutgoingNumber -eq $approved.number) { Ok "رقم الصادر المرتبط معبّأ: $($r.Body.replyOutgoingNumber)" } else { Bad "رقم الصادر المرتبط فارغ" }
+    if (@($r.Body.replies).Count -eq 1) { Ok "قائمة الردود فيها ردٌّ واحد" } else { Bad "عدد الردود: $(@($r.Body.replies).Count)" }
+    if (@($r.Body.replies)[0].number -eq $approved.number) { Ok "رقم الصادر المرتبط معبّأ: $(@($r.Body.replies)[0].number)" } else { Bad "رقم الصادر المرتبط فارغ" }
 
-    # الربط العكسي من جهة الصادر
+    # الربط العكسي من جهة الصادر — **قائمة** الآن
     $o = (Api GET "/outgoing/$oid" $null $adminTok $cid).Body
-    if ($o.replyToIncomingNumber -eq $target.incomingNumber) { Ok "الربط العكسي ظاهر في الصادر: $($o.replyToIncomingNumber)" } else { Bad "الربط العكسي مفقود في الصادر" }
+    if (@($o.repliesTo | Where-Object { $_.number -eq $target.incomingNumber }).Count -eq 1) {
+        Ok "الربط العكسي ظاهر في الصادر: $($target.incomingNumber)"
+    } else { Bad "الربط العكسي مفقود في الصادر" }
 
-    $other = (NewBook "كتاب وارد ثانٍ" $adminTok).Body
-    Expect "رفض ربط نفس الصادر بوارد آخر" (Api POST "/incoming/$($other.incomingId)/link/$oid" $null $adminTok $cid).Status 409
+    # 🔴 **الحارس المنقلب**: صادرٌ واحد يُجيب واردَين — كان 409 وصار مسموحاً.
+    $other = (NewBook "كتاب وارد ثانٍ لنفس الصادر" $adminTok).Body
+    $r2 = Api POST "/incoming/$($other.incomingId)/link/$oid" $null $adminTok $cid
+    Expect "صادرٌ واحد يُربط بواردٍ ثانٍ (كان ممنوعاً)" $r2.Status 200
 
-    $r = Api DELETE "/incoming/$($target.incomingId)/link" $null $adminTok $cid
-    Expect "فك الارتباط" $r.Status 200
-    if ($r.Body.status -eq "InReview") { Ok "فك الارتباط أعاد الحالة إلى (قيد المراجعة)" } else { Bad "الحالة: $($r.Body.status)" }
-    Expect "رفض فك ارتباط غير موجود" (Api DELETE "/incoming/$($target.incomingId)/link" $null $adminTok $cid).Status 400
+    # ويظهر الواردان معاً في بطاقة الصادر — برهانُ «كثيرٌ إلى كثير» لا مجرّد قبول الطلب.
+    $o2 = (Api GET "/outgoing/$oid" $null $adminTok $cid).Body
+    if (@($o2.repliesTo).Count -ge 2) { Ok "الصادر يعرض الواردَين معاً ($(@($o2.repliesTo).Count))" } else { Bad "عدد الواردات في الصادر: $(@($o2.repliesTo).Count)" }
+
+    # 🔴 **وردٌّ ثانٍ على وارد صار «تم الرد»** — أوّليّ ثم نهائيّ. وهذا ما ترفضه `IsOperable`
+    #    وتقبله `BookReplyRules.CanLink`، فالحارسان مختلفان عمداً.
+    $tpl2 = (Api GET "/templates" $null $adminTok $cid).Body | Select-Object -First 1
+    $second = $null
+    if ($tpl2) {
+        $d2 = Api POST "/outgoing" @{
+            companyId = $cid; entityId = $eid; templateId = $tpl2.templateId; date = "2026-07-21T00:00:00"
+            headerPhrase = "إلى"; signatoryName = "المدير"; signatoryTitle = "المدير العام"
+            subject = "ردّ نهائيّ"; bodyHtml = "<p>الجواب النهائي.</p>"
+            amount = $null; currency = $null; exchangeRate = $null; bodyJson = $null } $adminTok $cid
+        if ($d2.Status -eq 200) { $second = (Api POST "/outgoing/$($d2.Body.outgoingId)/approve" $null $adminTok $cid).Body }
+    }
+    if ($second) {
+        $r3 = Api POST "/incoming/$($target.incomingId)/link/$($second.outgoingId)" $null $adminTok $cid
+        Expect "ردٌّ ثانٍ على وارد (تم الرد) مقبول" $r3.Status 200
+        if (@($r3.Body.replies).Count -eq 2) { Ok "الوارد يحمل ردَّين" } else { Bad "عدد الردود: $(@($r3.Body.replies).Count)" }
+
+        # ⚠️ **تكرار الزوج نفسه** هو الممنوع الوحيد الباقي.
+        Expect "رفض تكرار الزوج نفسه" (Api POST "/incoming/$($target.incomingId)/link/$($second.outgoingId)" $null $adminTok $cid).Status 409
+
+        # 🔴 **فكُّ ردٍّ والآخرُ باقٍ لا يُنزّل الحالة** — أهمّ قاعدةٍ في `BookReplyRules`.
+        $r4 = Api DELETE "/incoming/$($target.incomingId)/link/$($second.outgoingId)" $null $adminTok $cid
+        Expect "فكّ الردّ الثاني" $r4.Status 200
+        if ($r4.Body.status -eq "Replied") { Ok "وردٌّ باقٍ يُبقي الحالة (تم الرد)" } else { Bad "هبطت الحالة إلى $($r4.Body.status) ورَدٌّ باقٍ" }
+        if (@($r4.Body.replies).Count -eq 1) { Ok "وبقي ردٌّ واحد" } else { Bad "عدد الردود بعد الفكّ: $(@($r4.Body.replies).Count)" }
+    } else { Skip "تعذّر تجهيز صادر ثانٍ — تخطّي اختبارات الردّ المتعدّد" }
+
+    # فكُّ آخر ردّ يُنزّل الحالة — والكتاب لم يُحَل قطّ فيعود (جديد) لا (قيد المراجعة).
+    $r5 = Api DELETE "/incoming/$($target.incomingId)/link/$oid" $null $adminTok $cid
+    Expect "فكّ آخر ردّ" $r5.Status 200
+    if ($r5.Body.status -eq "New") { Ok "وكتابٌ لم يُحَل قطّ يعود (جديد) لا (قيد المراجعة)" }
+    elseif ($r5.Body.status -eq "InReview") { Bad "عاد إلى (قيد المراجعة) وهو لم يمرّ على قسمٍ قطّ" }
+    else { Bad "الحالة بعد فكّ آخر ردّ: $($r5.Body.status)" }
+    if (@($r5.Body.replies).Count -eq 0) { Ok "ولا ردود باقية" } else { Bad "بقيت ردود: $(@($r5.Body.replies).Count)" }
+
+    Expect "رفض فك ارتباط غير موجود" (Api DELETE "/incoming/$($target.incomingId)/link/$oid" $null $adminTok $cid).Status 400
 
     $closed = (NewBook "كتاب يُغلق ثم يُحاول ربطه" $adminTok).Body
     $null = ChangeStatus $closed.incomingId "Closed" "إغلاق مباشر"

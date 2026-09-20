@@ -250,8 +250,15 @@ class ApiClient {
   Future<OutgoingDetail> updateOutgoing(int id, Map<String, dynamic> body) async =>
       OutgoingDetail.fromJson(await _put('/outgoing/$id', body));
 
-  Future<OutgoingDetail> approve(int id) async =>
-      OutgoingDetail.fromJson(await _post('/outgoing/$id/approve', null));
+  /// اعتماد الصادر — ومعه **اختيارياً** الواردات التي يردّ عليها (ADR-045).
+  ///
+  /// ⚠️ **الربط عند الاعتماد لا عند حفظ المسودّة**: الربط يُعلن ردّاً رسمياً وينقل الوارد
+  /// إلى «تم الرد»، ومسودّةٌ لم تُعتمد ليست ردّاً بعد.
+  Future<OutgoingDetail> approve(int id, {List<int>? replyToIncomingIds}) async =>
+      OutgoingDetail.fromJson(await _post('/outgoing/$id/approve',
+          replyToIncomingIds == null || replyToIncomingIds.isEmpty
+              ? null
+              : {'replyToIncomingIds': replyToIncomingIds}));
 
   Future<OutgoingDetail> editApproved(int id, Map<String, dynamic> body) async =>
       OutgoingDetail.fromJson(await _put('/outgoing/$id/edit-approved', body));
@@ -332,8 +339,9 @@ class ApiClient {
   Future<IncomingDetail> linkIncoming(int id, int outgoingId) async =>
       IncomingDetail.fromJson(await _post('/incoming/$id/link/$outgoingId', null));
 
-  Future<IncomingDetail> unlinkIncoming(int id) async =>
-      IncomingDetail.fromJson(await _deleteReturnData('/incoming/$id/link'));
+  /// فكّ ربط **ردٍّ بعينه** — المعرّف إلزاميّ منذ ADR-045 (الوارد قد يحمل ردوداً).
+  Future<IncomingDetail> unlinkIncomingReply(int id, int outgoingId) async =>
+      IncomingDetail.fromJson(await _deleteReturnData('/incoming/$id/link/$outgoingId'));
 
   Future<void> deleteIncoming(int id) => _delete('/incoming/$id');
 

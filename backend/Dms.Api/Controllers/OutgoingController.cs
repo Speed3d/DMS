@@ -3,6 +3,7 @@ using Dms.Api.Dtos;
 using Dms.Documents.Security;
 using Dms.Infrastructure.Documents;
 using Dms.Domain;
+using Dms.Infrastructure.Incoming;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +18,8 @@ namespace Dms.Api.Controllers;
 [RequireModule(AppModule.Outgoing)]
 [Route("api/[controller]")]
 public sealed class OutgoingController(
-    IOutgoingService svc, AppDbContext db, IOptions<QrSigningOptions> qrOptions) : ControllerBase
+    IOutgoingService svc, IIncomingService incoming, AppDbContext db,
+    IOptions<QrSigningOptions> qrOptions) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<OutgoingListItem>>> List(
@@ -41,12 +43,18 @@ public sealed class OutgoingController(
         var book = await svc.GetAsync(id, ct);
         var entityName = await db.Entities.Where(e => e.EntityId == book.EntityId)
             .Select(e => e.Name).FirstOrDefaultAsync(ct) ?? "";
-        // الربط العكسي: رقم الكتاب الوارد الذي يردّ عليه هذا الصادر (Hint: يُعرض في شاشة التفاصيل).
-        var replyToIncomingNumber = book.ReplyToIncomingId is null
-            ? null
-            : await db.IncomingBooks.Where(i => i.IncomingId == book.ReplyToIncomingId)
-                .Select(i => i.IncomingNumber).FirstOrDefaultAsync(ct);
-        return Detail(book, entityName, svc.CanCurrentUserApprove(), replyToIncomingNumber);
+        // الربط العكسي: الكتب الواردة التي يردّ عليها هذا الصادر (ADR-045).
+        // 🔐 **يمرّ بـ`IIncomingService.Query()` لا بـ`db.IncomingBooks`** — وهو تصحيحُ
+        //    تسريبٍ كان قائماً: القراءة المباشرة كانت تكشف رقم واردٍ **محجوبٍ بحدّ القسم**
+        //    لكلّ من يرى الصادر، والكلُّ يراه (ADR-030). ومع تعدّد الردود كانت ستصير قائمةً.
+        var repliesTo = await db.BookReplies
+            .Where(r => r.OutgoingId == id)
+            .OrderBy(r => r.LinkedAt)
+            .Join(incoming.Query(), r => r.IncomingId, i => i.IncomingId,
+                (r, i) => new ReplyLinkDto(i.IncomingId, i.IncomingNumber, i.ReceivedDate, i.Subject, r.LinkedAt))
+            .ToListAsync(ct);
+
+        return Detail(book, entityName, svc.CanCurrentUserApprove(), repliesTo);
     }
 
     [HttpPost]
@@ -68,9 +76,16 @@ public sealed class OutgoingController(
     }
 
     [HttpPost("{id:int}/approve")]
-    public async Task<ActionResult<OutgoingDetail>> Approve(int id, CancellationToken ct)
+    public async Task<ActionResult<OutgoingDetail>> Approve(
+        int id, [FromBody] ApproveOutgoingRequest? req, CancellationToken ct)
     {
         await svc.ApproveAsync(id, ct);
+
+        // ⚠️ **بعد الاعتماد لا قبله** — الربط يشترط صادراً `Final`، والاعتماد هو ما يجعله كذلك.
+        // ⚠️ **وكلُّ واردٍ يمرّ بـ`Query()` داخل الخدمة**، فلا يُربط ما لا يراه المعتمِد.
+        if (req?.ReplyToIncomingIds is { Count: > 0 } ids)
+            await incoming.LinkOutgoingToManyAsync(id, ids, ct);
+
         return await Get(id, ct);
     }
 
@@ -135,13 +150,13 @@ public sealed class OutgoingController(
     }
 
     private OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,
-        string? replyToIncomingNumber = null) => new(
+        List<ReplyLinkDto>? repliesTo = null) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
         b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
         b.QrContent, b.GeneratedPdfBlobKey != null, b.ApprovedByUserId, b.ApprovedAt,
         b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson,
-        b.ReplyToIncomingId, replyToIncomingNumber,
+        repliesTo ?? [],
         VerifyUrl(b));
 
     /// <summary>رابط التحقق العامّ — **للمعتمد وحده**، فالمسودّة بلا رمزٍ مطبوع.</summary>

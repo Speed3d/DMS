@@ -98,6 +98,16 @@ class SessionState {
   /// 🔄 **كان الحدّ «المدير فأعلى» (ADR-023) فصار «فوق القارئ» (ADR-025).**
   bool get _aboveReader => auth?.role != 'Reader';
 
+  /// صلاحية **إدارة الوارد** — ربطُ الردّ وفكُّه وتغييرُ الحالات (ADR-045).
+  ///
+  /// 🔐 **حدّان معاً: العلَم *و* دورٌ فوق القارئ.**
+  /// ⚠️ **والقارئ قد يحمل العلَم فعلاً**: `UserService.ResolveLinksAsync` يصفّر للقارئ
+  /// الأعلامَ الحسّاسة الأربعة (`CanManageEmployees`/`Payroll`/`AmendPaidPayroll`/`Tasks`)
+  /// **ولا يمسّ `CanManageIncoming`** — ولهذا يحجبه الخادم **بفحصٍ صريح للدور** في
+  /// `IncomingService` لا بالعلَم. فالعلَمُ وحده هنا كان يمنح القارئ زرّاً يردّ الخادمُ عليه 403.
+  bool get canManageIncoming =>
+      (auth?.canManageIncomingIn(effectiveCompanyId) ?? false) && _aboveReader;
+
   // ── حرّاس التقارير — **مرايا للحرّاس الخلفية حرفياً** (ADR-031) ──
   // ⚠️ القاعدة نفسها المكتوبة لأقسام الموظفين أعلاه: بندٌ يقود إلى شاشة تردّ 403 **أسوأ من
   //    إخفائه**. وكلُّ حارسٍ هنا له نظيرٌ في `ReportsController` — فمن غيّر هناك يغيّر هنا.

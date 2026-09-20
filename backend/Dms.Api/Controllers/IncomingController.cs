@@ -106,7 +106,9 @@ public sealed class IncomingController(
                 a.DepartmentId, a.Name, a.Note, a.AssignedByUserName, a.AssignedAt)).ToList(),
             b.LastAction, b.Keywords, b.Notes,
             b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
-            b.ReplyOutgoingId, d.ReplyOutgoingNumber, b.CreatedAt);
+            d.Replies.Select(r => new ReplyLinkDto(
+                r.OutgoingId, r.Number, r.Date, r.Subject, r.LinkedAt)).ToList(),
+            b.CreatedAt);
     }
 
     [HttpPost]
@@ -177,10 +179,16 @@ public sealed class IncomingController(
         return await Get(id, ct);
     }
 
-    [HttpDelete("{id:int}/link")]
-    public async Task<ActionResult<IncomingDetail>> Unlink(int id, CancellationToken ct)
+    /// <summary>فكّ ربط **ردٍّ بعينه** — المعرّف إلزاميّ منذ ADR-045.</summary>
+    /// <remarks>
+    /// ⚠️ **كان `DELETE /{id}/link` بلا معرّف** لأن الوارد لم يكن يحمل إلا ردّاً واحداً.
+    /// وبعد تعدّد الردود صار المسار القديم **غامضاً**: أيَّ ردٍّ يفكّ؟ فحُذف ولم يُترك
+    /// يفكّ «الأول» — وفكُّ ردٍّ لم يقصده المستخدم أسوأ من رسالة خطأ.
+    /// </remarks>
+    [HttpDelete("{id:int}/link/{outgoingId:int}")]
+    public async Task<ActionResult<IncomingDetail>> Unlink(int id, int outgoingId, CancellationToken ct)
     {
-        await incomingService.UnlinkFromOutgoingAsync(id, ct);
+        await incomingService.UnlinkFromOutgoingAsync(id, outgoingId, ct);
         return await Get(id, ct);
     }
 

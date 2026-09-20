@@ -50,13 +50,16 @@ public class OutgoingBook
     public int? DeletedByUserId { get; set; }
     public DateTime? DeletedAt { get; set; }
 
-    /// <summary>إذا كان هذا الصادر ردّاً على كتاب وارد (Hint: يستخدم للربط العكسي).</summary>
-    public int? ReplyToIncomingId { get; set; }
+    /// <summary>الكتب الواردة التي يردّ عليها هذا الصادر — **واحدٌ أو أكثر** (ADR-045).</summary>
+    /// <remarks>
+    /// ⚠️ **حلّ محلّ `ReplyToIncomingId` المفرد**: كتابٌ صادرٌ واحد يُجيب عدّة واردات عن
+    /// القضية نفسها، وعمودٌ واحد كان يترك البقيّة **بلا ردٍّ مسجَّل**.
+    /// </remarks>
+    public ICollection<BookReply> RepliesTo { get; set; } = new List<BookReply>();
 
     /// <summary>للتزامن المتفائل عند التعديل بعد الاعتماد.</summary>
     public byte[]? RowVersion { get; set; }
 
     public Entity? Entity { get; set; }
     public Template? Template { get; set; }
-    public IncomingBook? ReplyToIncoming { get; set; }
 }

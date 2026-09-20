@@ -117,6 +117,18 @@ class AuthResult {
   bool canManageTasksIn(int? companyId) =>
       _isExempt || (accessIn(companyId)?.canManageTasks ?? false);
 
+  /// صلاحية **إدارة الوارد** — الربط بالصادر وفكّه وتغيير الحالات (ADR-045).
+  ///
+  /// 🔴 **كان العلَم مفكوكاً من JSON منذ ADR-015 وبلا قارئٍ هنا إطلاقاً**، فكانت الشاشة
+  /// تحرس الربط **بمقارنة الدور** (مدير فأعلى) — فيُخفى الزرّ عن موظفٍ يملك الصلاحية فعلاً
+  /// والخادم يقبل طلبه. **حارسُ واجهةٍ أضيق من حارس الخادم يُخفي ما هو مسموح.**
+  ///
+  /// ⚠️ **والإعفاء بالدور إلزاميّ هنا**: السوبر أدمن قد يكون **بلا إسناد لأيّ شركة** فلا
+  /// يحمل توكنه خريطة العلَم أصلاً. ونظيرُ هذا في الخادم `HttpCurrentUser` **يفتقده**،
+  /// فيُعوَّض هناك بفحص الدور في الخدمة (`IncomingService`) لا بالعلَم وحده.
+  bool canManageIncomingIn(int? companyId) =>
+      _isExempt || (accessIn(companyId)?.canManageIncoming ?? false);
+
   factory AuthResult.fromJson(Map<String, dynamic> j) => AuthResult(
         accessToken: j['accessToken'],
         accessExpires: DateTime.tryParse(j['accessExpires'] ?? '') ?? DateTime.now(),
@@ -971,9 +983,8 @@ class OutgoingDetail {
   final String rowVersion;
   final bool canApprove;
   final String? bodyJson;
-  /// الكتاب الوارد الذي يردّ عليه هذا الصادر (Hint: الربط العكسي — يُعرض في شاشة التفاصيل).
-  final int? replyToIncomingId;
-  final String? replyToIncomingNumber;
+  /// الكتب الواردة التي يردّ عليها هذا الصادر — **قائمة** منذ ADR-045.
+  final List<ReplyLink> repliesTo;
   OutgoingDetail({
     required this.outgoingId,
     required this.companyId,
@@ -997,8 +1008,7 @@ class OutgoingDetail {
     required this.rowVersion,
     this.canApprove = false,
     this.bodyJson,
-    this.replyToIncomingId,
-    this.replyToIncomingNumber,
+    this.repliesTo = const [],
   });
   bool get isFinal => status == 'Final';
   factory OutgoingDetail.fromJson(Map<String, dynamic> j) => OutgoingDetail(
@@ -1024,9 +1034,46 @@ class OutgoingDetail {
         rowVersion: j['rowVersion'] ?? '',
         canApprove: j['canApprove'] ?? false,
         bodyJson: j['bodyJson'],
-        replyToIncomingId: j['replyToIncomingId'],
-        replyToIncomingNumber: j['replyToIncomingNumber'],
+        repliesTo: ReplyLink.listFrom(j['repliesTo']),
       );
+}
+
+/// رابطُ ردّ — الكتابُ في الطرف الآخر مع لحظة ربطه (ADR-045).
+///
+/// عقدٌ واحد للجهتين: في [OutgoingDetail] يحمل الواردَ المردود عليه، وفي [IncomingDetail]
+/// يحمل الصادرَ الذي ردّ. **وشكلٌ واحد يمنع تباعد الطرفين** عند أول تعديل.
+class ReplyLink {
+  final int bookId;
+  final String? number;
+
+  /// 📅 **يومٌ تقويميّ لا لحظة** — تاريخ الكتاب يُقرأ بـ`DateTime.parse` لا `parseInstant`،
+  /// وتحويلُه بالمنطقة الزمنية يُنقصه يوماً (ADR-032).
+  final DateTime date;
+  final String subject;
+
+  /// ⏱️ **لحظةٌ لا يوم** — تمرّ بـ`parseInstant` (الخادم يرسلها بلا `Z`).
+  final DateTime linkedAt;
+
+  ReplyLink({
+    required this.bookId,
+    required this.number,
+    required this.date,
+    required this.subject,
+    required this.linkedAt,
+  });
+
+  factory ReplyLink.fromJson(Map<String, dynamic> j) => ReplyLink(
+        bookId: j['bookId'] ?? 0,
+        number: j['number'],
+        date: DateTime.parse(j['date']),
+        subject: j['subject'] ?? '',
+        linkedAt: parseInstant(j['linkedAt']),
+      );
+
+  /// ⚠️ **الغياب قائمةٌ فارغة لا استثناء**: عقدٌ أقدم أو ردٌّ بلا روابط يجب ألّا يُسقط الشاشة.
+  static List<ReplyLink> listFrom(dynamic raw) => raw is List
+      ? raw.map((e) => ReplyLink.fromJson(Map<String, dynamic>.from(e))).toList()
+      : const [];
 }
 
 // ──────────────────── ثوابت الوارد (مرآة لـ enums الباك-إند) ────────────────────
@@ -1167,8 +1214,8 @@ class IncomingDetail {
   final String? currency;
   final num? exchangeRate;
   final num? amountInIqd;
-  final int? replyOutgoingId;
-  final String? replyOutgoingNumber;
+  /// الكتب الصادرة التي ردّت على هذا الوارد — **قائمة** منذ ADR-045.
+  final List<ReplyLink> replies;
   final DateTime createdAt;
 
   IncomingDetail({
@@ -1178,7 +1225,7 @@ class IncomingDetail {
     required this.receiveMethod, required this.receivedByUserId, required this.receivedByUserName,
     required this.status, this.departments = const [], this.lastAction, this.keywords, this.notes,
     this.amount, this.currency, this.exchangeRate, this.amountInIqd,
-    this.replyOutgoingId, this.replyOutgoingNumber, required this.createdAt,
+    this.replies = const [], required this.createdAt,
   });
 
   factory IncomingDetail.fromJson(Map<String, dynamic> j) => IncomingDetail(
@@ -1210,8 +1257,7 @@ class IncomingDetail {
         currency: j['currency'],
         exchangeRate: j['exchangeRate'],
         amountInIqd: j['amountInIqd'],
-        replyOutgoingId: j['replyOutgoingId'],
-        replyOutgoingNumber: j['replyOutgoingNumber'],
+        replies: ReplyLink.listFrom(j['replies']),
         createdAt: parseInstant(j['createdAt']),
       );
 }
