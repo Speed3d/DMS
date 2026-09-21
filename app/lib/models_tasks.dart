@@ -423,15 +423,44 @@ class NotificationModel {
       );
 }
 
+/// عددُ غير المقروء في شركةٍ **غير الفعّالة** (ADR-046).
+///
+/// 🔐 **عددٌ واسمُ شركةٍ فقط** — بلا عنوانٍ ولا متنٍ ولا معرّف كيان. الغرضُ **الإعلان عن
+/// وجودها لا عرضُها**، فلا يُقرأ محتوى شركةٍ من شركةٍ أخرى.
+class CompanyUnread {
+  final int companyId;
+  final String companyName;
+  final int unread;
+
+  const CompanyUnread({
+    required this.companyId,
+    required this.companyName,
+    required this.unread,
+  });
+
+  factory CompanyUnread.fromJson(Map<String, dynamic> j) => CompanyUnread(
+        companyId: j['companyId'] ?? 0,
+        companyName: (j['companyName'] ?? '—').toString(),
+        unread: j['unread'] ?? 0,
+      );
+}
+
 class NotificationPage {
   final List<NotificationModel> items;
   final int total;
   final int page;
   final int pageSize;
 
+  /// شركاتي الأخرى التي فيها إشعاراتٌ غير مقروءة (ADR-046).
+  ///
+  /// 🔴 **يُقرأ ولو كانت [items] فارغة** — وهي **الحالة التي وُجد لأجلها**: شركةٌ فعّالة
+  /// بلا إشعارات وأخرى فيها ثلاثة. فلو رُبط بغير الفارغ لَما ظهر حين يلزم.
+  final List<CompanyUnread> otherCompanies;
+
   NotificationPage({
     required this.items, required this.total,
     required this.page, required this.pageSize,
+    this.otherCompanies = const [],
   });
 
   factory NotificationPage.fromJson(Map<String, dynamic> j) => NotificationPage(
@@ -440,6 +469,8 @@ class NotificationPage {
         total: j['total'] ?? 0,
         page: j['page'] ?? 1,
         pageSize: j['pageSize'] ?? 25,
+        otherCompanies: ((j['otherCompanies'] ?? []) as List)
+            .map((e) => CompanyUnread.fromJson(e)).toList(),
       );
 
   static NotificationPage get empty =>

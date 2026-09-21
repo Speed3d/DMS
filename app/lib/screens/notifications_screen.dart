@@ -11,10 +11,17 @@ import 'incoming_detail_screen.dart';
 import 'outgoing_detail_screen.dart';
 import 'task_detail_screen.dart';
 
-/// شاشة الإشعارات (ADR-038).
+/// شاشة الإشعارات (ADR-038 · وفلترةُ الشركة ADR-046).
 ///
 /// ⚠️ **بلا حارس قسم** — الإشعارات عابرةٌ للأقسام، ومَن فقد قسماً لا يفقد إشعاراته القديمة:
 /// هي **واقعاتٌ وقعت له**.
+///
+/// 🔴 **لكنها ليست عابرةً للشركات (ADR-046 — قرار المالك):** ما تعرضه هذه الشاشة هو
+/// إشعاراتُ **الشركة الفعّالة** وحدها، كالصادر والوارد والأرشيف والمهام. والخادم يفرض
+/// ذلك بالفلتر العام، **والواجهة مرآةٌ له لا حارسٌ ثانٍ**.
+///
+/// ✅ **وما يُحجب يُعلَن**: ذيلُ الشاشة يقول «ولديك N في شركة كذا» بزرّ تبديل — فالحجبُ
+/// بلا إعلانٍ كان يعني إشعاراً **لا يعلم به صاحبُه ثم يُحذف بعد 90 يوماً**.
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -123,12 +130,88 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       style: const TextStyle(color: AppColors.danger)),
                 ),
               ),
-              data: (page) => page.items.isEmpty ? _empty() : _list(page),
+              // 🔴 **الذيل خارج فرع «فارغة»** (ADR-046): الحالة التي وُجد لأجلها هي
+              //    **شركةٌ فعّالة بلا إشعارات وأخرى فيها ثلاثة** — فلو وُضع داخل `_list`
+              //    لَغاب حين يلزم بالضبط، ورأى المستخدم «لا إشعارات» وهي موجودة.
+              data: (page) => Column(
+                children: [
+                  Expanded(child: page.items.isEmpty ? _empty() : _list(page)),
+                  if (page.otherCompanies.isNotEmpty)
+                    _otherCompanies(page.otherCompanies),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// شريطُ «ولديك إشعاراتٌ في شركاتك الأخرى» — يسدّ ثغرة الفقد الصامت (ADR-046).
+  ///
+  /// ⚠️ **يُعلن العدد واسم الشركة فقط** — لا عنواناً ولا متناً، فالمحتوى يبقى داخل شركته.
+  Widget _otherCompanies(List<CompanyUnread> rows) {
+    final theme = Theme.of(context);
+    final action = AppColors.action(context);
+
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.business_rounded, size: 16, color: action),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'إشعاراتٌ في شركاتك الأخرى',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.bold, color: action),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // ⚠️ **`Wrap` لا `Row`**: الاسم والعدد والزرّ تفيض تحت ~400 بكسل.
+            ...rows.map((r) => Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Text('${r.companyName} — ${r.unread} غير مقروء',
+                          style: theme.textTheme.bodyMedium),
+                      TextButton(
+                        onPressed: _busy ? null : () => _switchTo(r),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: const Text('تبديل إليها'),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// يبدّل الشركة الفعّالة — **فتُعاد الشاشة بإشعارات تلك الشركة**.
+  ///
+  /// ⚠️ **ولا يُغلق الشاشة**: المزوّدات تراقب الجلسة فتُعاد بنفسها، وإغلاقُها يعني أن
+  /// المستخدم يبدّل ثم يبحث عن الجرس من جديد.
+  Future<void> _switchTo(CompanyUnread row) async {
+    await ref.read(sessionProvider.notifier).setActiveCompany(row.companyId);
+    if (!mounted) return;
+    invalidateNotifications(ref);
+    setState(() {});
   }
 
   Widget _empty() => Center(

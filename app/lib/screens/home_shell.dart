@@ -4,6 +4,7 @@ import '../core/company_providers.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
+import '../core/notification_providers.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/topbar.dart';
 
@@ -217,8 +218,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                     ref.read(sessionProvider.notifier).setActiveCompany(c.companyId);
                     // إبطال مزوّدات الشركة ليُعاد جلبها فوراً بالشركة الجديدة
                     // (يمنع ظهور إشعارات/بيانات الشركة السابقة).
+                    //
+                    // 🔴 **والإشعارات صراحةً** (ADR-046): التعليق كان يَعِد بمنع إشعارات
+                    //    الشركة السابقة **ولا يُبطلها** — ونجا الأمر لأن مزوّديها يراقبان
+                    //    الجلسة فيُعادان ضمناً. **ووعدٌ يُنفَّذ بالصدفة يسقط عند أول تعديل**،
+                    //    فصار الإبطال صريحاً كنظرائه.
                     invalidateOutgoing(ref);
                     invalidateIncoming(ref);
+                    invalidateNotifications(ref);
                     ref.invalidate(activeCompanyProvider);
                     Navigator.pop(ctx);
                     setState(() {});

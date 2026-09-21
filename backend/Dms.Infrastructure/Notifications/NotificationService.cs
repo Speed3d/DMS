@@ -12,6 +12,11 @@ public sealed record NotificationInput(
     NotificationPriority Priority = NotificationPriority.Normal,
     string? DedupKey = null);
 
+/// <summary>
+/// عددُ غير المقروء في شركةٍ **غير الفعّالة** — سطرٌ في ذيل قائمة الإشعارات (ADR-046).
+/// </summary>
+public sealed record CompanyUnread(int CompanyId, string CompanyName, int Unread);
+
 public interface INotificationService
 {
     /// <summary>يُنشئ إشعاراً — **ويتخطّى المكرّر بصمت** إن كان له <c>DedupKey</c>.</summary>
@@ -27,6 +32,11 @@ public interface INotificationService
     Task<int> GetUnreadCountAsync(CancellationToken ct = default);
     Task MarkAsReadAsync(long id, CancellationToken ct = default);
     Task<int> MarkAllAsReadAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// غيرُ المقروء في شركاتي **الأخرى** — يسدّ ثغرة الفقد الصامت بعد فلترة الشركة (ADR-046).
+    /// </summary>
+    Task<List<CompanyUnread>> OtherCompaniesUnreadAsync(CancellationToken ct = default);
 
     /// <summary>ينظّف ما مضى عليه أكثر من <paramref name="days"/> — تستعمله الدفعة ٦.</summary>
     Task<int> PurgeOlderThanAsync(int days, CancellationToken ct = default);
@@ -133,16 +143,29 @@ public sealed class NotificationService(AppDbContext db, ICurrentUser current) :
 
     // ─────────────────────────── القراءة — ملكُ صاحبه ───────────────────────────
 
-    /// <summary>إشعاراتي أنا — **ولا سبيل لقراءة إشعارات غيري من أي مسار**.</summary>
+    /// <summary>إشعاراتي أنا **في شركتي الفعّالة** — ولا سبيل لقراءة إشعارات غيري من أي مسار.</summary>
+    /// <remarks>
+    /// 🔴 **حدّان لا واحد (ADR-046 — نقضُ ADR-038 بقرار المالك):** الفلتر العام على الشركة
+    /// **نافذٌ عمداً** (لا <c>IgnoreQueryFilters</c>)، وفوقه الحدُّ الشخصيّ
+    /// <c>RecipientUserId == me</c>. فالإشعار **تابعٌ للشركة كالصادر والوارد والأرشيف**،
+    /// ومَن بدّل شركته لا يرى إشعارات الأخرى.
+    ///
+    /// ⚠️ **ولماذا نُقض القرار السابق؟** كان يقول «الإشعار وصله هو لا شركته»، فيعرضه في كل
+    /// الشركات. **والتشغيل أثبت أنه أسوأ**: الإشعار يُعرض ثم **لا يُفتح بالنقر** — لأن
+    /// <c>GET /tasks/{id}</c> يمرّ بـ<c>Query()</c> المفلترة بالشركة **فيردّ 404**.
+    /// 🔑 **ومدخلٌ يقود إلى لا شيء أسوأ من غيابه** (قاعدة `coding-standards.md`).
+    ///
+    /// 🔴 **وثغرةُ الفقد الصامت مسدودةٌ لا مُهمَلة**: ما يُحجب هنا يُعلَن **بالعدد واسم
+    /// الشركة** في <see cref="OtherCompaniesUnreadAsync"/> — فالحجبُ بلا إعلانٍ كان يعني
+    /// إشعاراً لا يعلم به صاحبُه **ثم يُحذف بعد 90 يوماً**.
+    ///
+    /// ⚠️ **والقُمع واحد**: القائمة والشارة والوسمُ بالمقروء (مفرداً وجُملةً) كلُّها تمرّ من
+    /// هنا — فلا يبقى مسارٌ يرى غير ما تراه الشاشة.
+    /// </remarks>
     private IQueryable<Notification> Mine()
     {
         var me = current.UserId ?? -1;
-
-        // 🔴 **`IgnoreQueryFilters` عمداً مع شرطٍ أضيق**: الفلتر العام على الشركة يمنع
-        //    المستخدم من رؤية إشعاراته في شركةٍ بدّلها للتوّ — وهو **إخفاءٌ خاطئ**: الإشعار
-        //    وصله هو، لا شركته. والحدّ الحقيقي `RecipientUserId == me` وهو **أضيق** من
-        //    فلتر الشركة لا أوسع.
-        return db.Notifications.IgnoreQueryFilters().Where(n => n.RecipientUserId == me);
+        return db.Notifications.Where(n => n.RecipientUserId == me);
     }
 
     public async Task<(List<Notification> Items, int Total)> GetAsync(
@@ -168,6 +191,60 @@ public sealed class NotificationService(AppDbContext db, ICurrentUser current) :
     {
         RequireAuthenticated();
         return await Mine().CountAsync(n => !n.IsRead, ct);
+    }
+
+    /// <summary>غيرُ المقروء في شركاتي الأخرى — بالعدد واسم الشركة (ADR-046).</summary>
+    /// <remarks>
+    /// 🔴 **`IgnoreQueryFilters` هنا مقصودٌ ومحروسٌ بثلاثة قيود معاً** — وهو التجاوز الوحيد
+    /// في الملفّ، وغرضُه **الإعلان عن وجودِ إشعارات لا عرضُها**:
+    /// <list type="number">
+    /// <item><c>RecipientUserId == me</c> — إشعاراتي أنا لا غيري.</item>
+    /// <item><c>CompanyId != active</c> — الشركة الفعّالة لها <see cref="GetAsync"/>.</item>
+    /// <item>🔐 <c>AllowedCompanyIds</c> — **شركاتي المُسنَدة اليوم وحدها**.</item>
+    /// </list>
+    ///
+    /// ⚠️ **ولماذا القيد الثالث؟** إشعارٌ قديم في شركةٍ **فُكّ إسنادي عنها** كان سيُعلن
+    /// اسمَها في شاشتي — أي **يكشف علاقةً انتهت**، ويَعِد بتبديلٍ إليها **يرفضه الخادم**
+    /// أصلاً (`ActiveCompanyId` يفحص المسموح). فالقيد يمنع كشفاً ووعداً كاذباً معاً.
+    ///
+    /// 🔐 **والمُفصَح عددٌ واسمُ شركةٍ يعرفها صاحبُها — بلا عنوانٍ ولا متن ولا معرّف كيان.**
+    /// وهو نظير قاعدة «المحجوب بالعدد فقط» في المعاملات (ADR-045).
+    ///
+    /// ⚠️ **وبلا شركةٍ فعّالة لا معنى لـ«الأخرى»** — فيعود فارغاً للسوبر أدمن غير المُسنَد
+    /// (وهو يرى إشعاراته كلَّها أصلاً لأن الفلتر العام مُعطَّل عنه).
+    /// </remarks>
+    public async Task<List<CompanyUnread>> OtherCompaniesUnreadAsync(CancellationToken ct = default)
+    {
+        RequireAuthenticated();
+
+        if (current.ActiveCompanyId is not { } active) return [];
+
+        var allowed = current.AllowedCompanyIds.Where(c => c != active).ToList();
+        if (allowed.Count == 0) return [];
+
+        var me = current.UserId ?? -1;
+
+        var counts = await db.Notifications.IgnoreQueryFilters()
+            .Where(n => n.RecipientUserId == me && !n.IsRead && allowed.Contains(n.CompanyId))
+            .GroupBy(n => n.CompanyId)
+            .Select(g => new { CompanyId = g.Key, Unread = g.Count() })
+            .ToListAsync(ct);
+
+        if (counts.Count == 0) return [];
+
+        // ⚠️ **الأسماء باستعلامٍ ثانٍ** (نمط ADR-034): `Company` مفلترةٌ بالشركة الفعّالة،
+        //    فربطٌ داخليّ عليها **يمحو الصفَّ لا الاسم** — فيختفي السطر كلُّه صامتاً.
+        var ids = counts.Select(c => c.CompanyId).ToList();
+        var names = await db.Companies.IgnoreQueryFilters()
+            .Where(c => ids.Contains(c.CompanyId))
+            .ToDictionaryAsync(c => c.CompanyId, c => c.Name, ct);
+
+        return counts
+            .Select(c => new CompanyUnread(
+                c.CompanyId, names.TryGetValue(c.CompanyId, out var n) ? n : "—", c.Unread))
+            .OrderByDescending(c => c.Unread)
+            .ThenBy(c => c.CompanyName)
+            .ToList();
     }
 
     public async Task MarkAsReadAsync(long id, CancellationToken ct = default)

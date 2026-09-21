@@ -24,6 +24,24 @@ public sealed record MeResponse(
 
 // ----------------- Company -----------------
 public sealed record CompanyRequest(string Name, string Prefix, bool IsActive, string? DefaultSignatoryName = null, string? DefaultSignatoryTitle = null);
+/// <summary>
+/// بيانُ ما سيُحذف مع الشركة — يُعرض **قبل** التأكيد (ADR-047).
+/// </summary>
+/// <remarks>
+/// 🔑 **«لا تحذف ما لا تراه»**: كلُّ رقمٍ هنا يظهر للمالك قبل أن يكتب اسم الشركة.
+/// ⚠️ **والمحذوف ناعماً يُذكر منفصلاً** — لأنه **لا يمنع الحذف** (قرار المالك) لكنه
+/// **يُمحى فعلياً** معه، فإخفاؤه يعني موافقةً على ما لا يُرى.
+/// </remarks>
+public sealed record CompanyDeletePreviewResponse(
+    int CompanyId, string Name, string Prefix, bool IsActive,
+    int LiveOutgoing, int DeletedOutgoing,
+    int LiveIncoming, int DeletedIncoming,
+    int Archive, int Employees, int Tasks, int CaseFiles,
+    int Users, int SoleCompanyUsers,
+    int Departments, int Entities, int Templates,
+    int WillBeErased,
+    bool CanDelete, string BlockReason, string? BlockMessage);
+
 public sealed record CompanyResponse(int CompanyId, string Name, string Prefix, bool IsActive, string? DefaultSignatoryName, string? DefaultSignatoryTitle, string? LogoImageKey);
 
 // ----------------- Template -----------------
@@ -757,5 +775,15 @@ public sealed record NotificationResponse(
     string? EntityType, int? EntityId, NotificationPriority Priority,
     bool IsRead, DateTime? ReadAt, DateTime CreatedAt);
 
+/// <summary>
+/// عددُ غير المقروء في شركةٍ **غير الفعّالة** (ADR-046).
+/// </summary>
+/// <remarks>
+/// 🔐 **عددٌ واسمُ شركةٍ فقط — بلا عنوانٍ ولا متنٍ ولا معرّف كيان.** الغرضُ **الإعلان عن
+/// وجودها لا عرضُها**، نظير قاعدة «المحجوب بالعدد فقط» في المعاملات (ADR-045).
+/// </remarks>
+public sealed record CompanyUnreadResponse(int CompanyId, string CompanyName, int Unread);
+
 public sealed record NotificationListResponse(
-    List<NotificationResponse> Items, int Total, int Page, int PageSize);
+    List<NotificationResponse> Items, int Total, int Page, int PageSize,
+    List<CompanyUnreadResponse> OtherCompanies);

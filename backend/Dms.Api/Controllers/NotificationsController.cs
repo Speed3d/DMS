@@ -29,12 +29,17 @@ public sealed class NotificationsController(INotificationService notifications) 
         var size = Math.Clamp(pageSize, 1, 100);
         var (items, total) = await notifications.GetAsync(Math.Max(page, 1), size, unreadOnly, ct);
 
+        // 🔴 **يُرافق القائمةَ لا نقطةً ثانية** (ADR-046): الشاشة تُرسم مرّةً واحدة، ولو كان
+        //    نداءً منفصلاً لظهر السطر **بعد** القائمة بارتعاشة — أو نُسي فلم يظهر أصلاً.
+        var others = await notifications.OtherCompaniesUnreadAsync(ct);
+
         return new NotificationListResponse(
             items.Select(n => new NotificationResponse(
                 n.NotificationId, n.Title, n.Body, n.Category,
                 n.EntityType, n.EntityId, n.Priority,
                 n.IsRead, n.ReadAt, n.CreatedAt)).ToList(),
-            total, Math.Max(page, 1), size);
+            total, Math.Max(page, 1), size,
+            others.Select(c => new CompanyUnreadResponse(c.CompanyId, c.CompanyName, c.Unread)).ToList());
     }
 
     /// <summary>عدد غير المقروء — **شارة الجرس**، وتُستقصى كل دقيقة.</summary>
