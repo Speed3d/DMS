@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dms_app/core/case_file_providers.dart';
 import 'package:dms_app/core/session.dart';
 import 'package:dms_app/models.dart';
+import 'package:dms_app/screens/case_files_screen.dart';
 import 'package:dms_app/widgets/custom_card.dart';
+import 'package:dms_app/widgets/search_field.dart';
 import 'package:dms_app/widgets/status_pill.dart';
 import 'package:dms_app/widgets/task_badges.dart';
 
@@ -247,6 +249,39 @@ void main() {
       expect(caseFileCountOf(const AsyncValue<List<CaseFileListItem>>.loading()).value,
           isNull);
     });
+  });
+
+  // ─────────────────────── التخطيط ───────────────────────
+
+  group('📏 شاشة المعاملات تُرسم في الشاشات الضيّقة', () {
+    // ⚠️ **حارسُ رسمٍ لا حارسُ فيض** — والفرق مقصود: ظننتُ أن عرضاً ثابتاً 380 داخل حشوةٍ
+    //    32 يفيض تحت 444 بكسل، **فأثبت الحارس السلبيّ العكس**: `SizedBox` يلتزم بقيود أبيه
+    //    فيُقصَر ولا يفيض. فأُزيل «العلاج» وبقي الحارس **بوصفه الصحيح**.
+    // 🔑 وهذا نفعُ الحارس السلبيّ: لا يمنع العيبَ فحسب، بل يمنع **إصلاحَ ما ليس معطوباً**.
+    for (final w in <double>[320, 380, 443, 444, 1200]) {
+      testWidgets('حقل البحث يُرسم بلا استثناء عند $w بكسل', (tester) async {
+        // ⚠️ **نافذة الاختبار 800×600 افتراضاً** و`SizedBox` أوسع يُقصّ (قاعدة المشروع).
+        tester.view.physicalSize = Size(w, 600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(
+              body: Padding(
+                padding: const EdgeInsets.all(32),
+                child: SizedBox(
+                  width: kCaseSearchWidth,
+                  child: DebouncedSearchField(hintText: 'بحث', onChanged: (_) {}),
+                ),
+              ),
+            ),
+          ),
+        ));
+        expect(tester.takeException(), isNull, reason: 'استثناء رسمٍ عند العرض $w');
+      });
+    }
   });
 
   // ─────────────────────── البطاقة ───────────────────────

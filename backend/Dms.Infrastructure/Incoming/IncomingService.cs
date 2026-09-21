@@ -1,4 +1,5 @@
 using Dms.Domain;
+using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -85,7 +86,8 @@ public sealed class IncomingService(
     AppDbContext db,
     ICurrentUser current,
     INumberingService numbering,
-    IAuditService audit) : IIncomingService
+    IAuditService audit,
+    INotificationService notifications) : IIncomingService
 {
     private const string CounterType = "Incoming";
 
@@ -411,6 +413,27 @@ public sealed class IncomingService(
         book.LastAction = $"محال إلى {string.Join("، ", added)}";
         book.UpdatedAt = now;
 
+        // 🔔 **إشعارُ الإحالة** (الدفعة ٤): يصل **كلَّ موظفي القسم المُحال إليه** — وهو أقوى
+        //    إشعارٍ عمليّ لأن الإحالة تعني «عليك عمل».
+        // ⚠️ **قبل `SaveChanges`**: `SendManyAsync` يُضيف ولا يحفظ (الحفظ على المُستدعي).
+        // ⚠️ **ولا يُشعَر المُحيل نفسه** — الخدمة تُسقط الفاعل من المستلِمين.
+        foreach (var t in targets.DistinctBy(x => x.DepartmentId))
+        {
+            var members = await notifications.DepartmentMembersAsync(book.CompanyId, t.DepartmentId, ct);
+            if (members.Count == 0) continue;
+
+            await notifications.SendManyAsync(members, new NotificationInput(
+                RecipientUserId: 0,
+                CompanyId: book.CompanyId,
+                Title: "أُحيل إليك كتاب وارد",
+                Body: book.Subject,
+                Category: NotificationKeys.IncomingCategory,
+                EntityType: nameof(IncomingBook),
+                EntityId: book.IncomingId,
+                Priority: NotificationPriority.Normal,
+                DedupKey: NotificationKeys.IncomingForwarded(book.IncomingId, t.DepartmentId)), ct);
+        }
+
         audit.Add("Forward", nameof(IncomingBook), id.ToString(), string.Join("، ", added), book.CompanyId);
         await db.SaveChangesAsync(ct);
     }
@@ -565,6 +588,19 @@ public sealed class IncomingService(
 
         audit.Add("Link", nameof(IncomingBook), incoming.IncomingId.ToString(),
             $"Linked to {outgoing.Number}", incoming.CompanyId);
+
+        // 🔔 **إشعارُ الردّ** (الدفعة ٤): يصل **مَن سجّل الوارد** — فهو مَن ينتظر مصيره.
+        // ⚠️ **والصادر في المفتاح**: الوارد يُجاب بردٍّ أوّليّ ثم نهائيّ، وهما خبران مختلفان.
+        await notifications.SendAsync(new NotificationInput(
+            RecipientUserId: incoming.ReceivedByUserId,
+            CompanyId: incoming.CompanyId,
+            Title: "صدر ردٌّ على كتابٍ استلمتَه",
+            Body: $"{incoming.Subject} — بالصادر {outgoing.Number}",
+            Category: NotificationKeys.IncomingCategory,
+            EntityType: nameof(IncomingBook),
+            EntityId: incoming.IncomingId,
+            Priority: NotificationPriority.Normal,
+            DedupKey: NotificationKeys.IncomingReplied(incoming.IncomingId, outgoing.OutgoingId)), ct);
     }
 
     /// <summary>

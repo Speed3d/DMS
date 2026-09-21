@@ -160,6 +160,35 @@ if($cid2 -gt 0){
   Expect "معاملةُ الشركة الأولى لا تُرى من الثانية" (Api GET "/case-files/$caseId" $null $admin $cid2).S 404
 } else { Skip "لا شركة ثانية" }
 
+Write-Host "`n=== ٩) الإشعارات (الدفعة ٤) ===" -ForegroundColor Cyan
+# 🔔 **الإشعار ملكُ صاحبه** — فنقرأ إشعارات المستلِم بتوكنه هو لا بتوكن الأدمن.
+# ⚠️ **ولا يُشعَر الفاعل بفعل نفسه** — فالمُحيل لا يصله إشعار إحالته.
+$nWork=NewIncoming "وارد للإشعار $mk" $tMgr
+$fw=Api POST "/incoming/$($nWork.incomingId)/forward" @{departments=@(@{departmentId=$otherDepId;note='لقسم آخر'})} $tMgr $cid
+Expect "إحالة كتابٍ إلى قسم زميل" $fw.S 200
+
+$inbox=@((Api GET "/notifications" $null $tOut $cid).B.items)
+$hit=$inbox | Where-Object { $_.entityType -eq 'IncomingBook' -and [int]$_.entityId -eq [int]$nWork.incomingId } | Select-Object -First 1
+if($hit){ Ok "موظفُ القسم المُحال إليه وصله إشعار" } else { Bad "لم يصل إشعارُ الإحالة" }
+
+# 🔴 **الحقلان اللذان يجعلان الإشعار قابلاً للفتح** — وبدونهما يصل ولا يُفتح بالنقر
+#    (نمط «ميزة بلا مدخل»). وموجّهُ الواجهة يقرأ `entityType` حصراً.
+if($hit){
+  if($hit.entityType -eq 'IncomingBook'){ Ok "ويحمل `entityType` الذي يعرفه موجّه الواجهة" } else { Bad "entityType: $($hit.entityType)" }
+  if([int]$hit.entityId -gt 0){ Ok "ويحمل `entityId` فيُفتح الكتاب بالنقر" } else { Bad "entityId فارغ" }
+}
+
+# ⚠️ **ولا يُشعَر الفاعل** — المُحيل نفسه لا يجد الإشعار في صندوقه.
+$own=@((Api GET "/notifications" $null $tMgr $cid).B.items)
+$self=$own | Where-Object { $_.entityType -eq 'IncomingBook' -and [int]$_.entityId -eq [int]$nWork.incomingId } | Select-Object -First 1
+if(-not $self){ Ok "والمُحيل نفسه لا يصله إشعارُ فعله" } else { Bad "وصل الفاعلَ إشعارُ فعله" }
+
+# 🔴 **تكرارُ الإحالة لا يُكرّر الإشعار** — `DedupKey` بفهرسٍ فريد يمنعه **في القاعدة**.
+$before=@($inbox | Where-Object { [int]$_.entityId -eq [int]$nWork.incomingId }).Count
+$null=Api POST "/incoming/$($nWork.incomingId)/forward" @{departments=@(@{departmentId=$otherDepId;note='إعادة'})} $tMgr $cid
+$after=@(@((Api GET "/notifications" $null $tOut $cid).B.items) | Where-Object { [int]$_.entityId -eq [int]$nWork.incomingId }).Count
+if($after -eq $before){ Ok "وإعادةُ الإحالة لا تُكرّر الإشعار ($after)" } else { Bad "تكاثر: $before ثم $after" }
+
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
 Write-Host "فشل: $fail" -ForegroundColor $(if($fail -gt 0){'Red'}else{'Green'})

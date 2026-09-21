@@ -6,6 +6,9 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import 'case_files_screen.dart';
+import 'incoming_detail_screen.dart';
+import 'outgoing_detail_screen.dart';
 import 'task_detail_screen.dart';
 
 /// شاشة الإشعارات (ADR-038).
@@ -54,11 +57,29 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
 
     if (!mounted) return;
+    final route = _routeFor(n);
+    if (route != null) await Navigator.of(context).push(route);
+  }
+
+  /// وجهةُ النقر بحسب نوع الكيان — أو `null` لإشعارٍ لا يُفتح.
+  ///
+  /// 🔴 **كان يعرف `DmsTask` وحده** — فإشعارُ كتابٍ أو معاملةٍ **يصل ولا يُفتح بالنقر**،
+  /// وهو **ثامنُ تكرارٍ لنمط «ميزةٌ بلا مدخل»** في هذا المستودع. والخادم يرسل `EntityType`
+  /// **ليفتحه العميل** (نصُّ `Notification.cs`)، فتصنيفٌ لا يعرفه الموجّه يُفرغ الحقل من غرضه.
+  ///
+  /// ⚠️ **ومصدرٌ واحد للقرار**: يستعمله المنطق **والسهمُ** معاً، فلا يظهر سهمٌ يَعِد بفتحٍ
+  /// لا يقع، ولا يُفتح ما لا سهم له.
+  Route<void>? _routeFor(NotificationModel n) {
     final id = n.entityId;
-    if (n.entityType == 'DmsTask' && id != null) {
-      await Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: id)));
-    }
+    if (id == null) return null;
+
+    return switch (n.entityType) {
+      'DmsTask' => MaterialPageRoute(builder: (_) => TaskDetailScreen(taskId: id)),
+      'IncomingBook' => MaterialPageRoute(builder: (_) => IncomingDetailScreen(id: id)),
+      'OutgoingBook' => MaterialPageRoute(builder: (_) => OutgoingDetailScreen(id: id)),
+      'CaseFile' => MaterialPageRoute(builder: (_) => CaseFileDetailScreen(id: id)),
+      _ => null,
+    };
   }
 
   @override
@@ -185,7 +206,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               ],
             ),
           ),
-          if (n.entityType == 'DmsTask')
+          // ⚠️ **السهم من المصدر نفسه** — لا شرطٌ ثانٍ يتباعد عنه.
+          if (_routeFor(n) != null)
             Icon(Icons.chevron_left_rounded, size: 18, color: muted),
         ],
       ),

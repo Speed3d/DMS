@@ -1,5 +1,6 @@
 using Dms.Domain;
 using Dms.Infrastructure.Incoming;
+using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
@@ -56,7 +57,8 @@ public sealed class CaseFileService(
     ICurrentUser current,
     IIncomingService incoming,
     IOutgoingService outgoing,
-    IAuditService audit) : ICaseFileService
+    IAuditService audit,
+    INotificationService notifications) : ICaseFileService
 {
     // ─────────────────────────── الحرّاس ───────────────────────────
 
@@ -284,6 +286,10 @@ public sealed class CaseFileService(
 
         await AttachAsync(file, kind, bookId, ct);
         await db.SaveChangesAsync(ct);
+
+        // 🔴 **بعد الحفظ لا قبله**: المستلِمون يُقرأون من القاعدة، والكتابُ المضموم لتوّه
+        //    **لم يُثبَّت بعد** — فنداءٌ قبل الحفظ لا يرى الانضمام ولا يصل أحداً.
+        await NotifyFollowersAsync(file, kind, bookId, ct);
     }
 
     public async Task RemoveMemberAsync(int caseFileId, CaseMemberKind kind, int bookId, CancellationToken ct = default)
@@ -420,6 +426,10 @@ public sealed class CaseFileService(
         if (theirs is null) await AttachAsync(file, otherKind, otherBookId, ct);
         await db.SaveChangesAsync(ct);
 
+        // ⚠️ **إشعارٌ واحد عن الانضمام** لا اثنان: ربطُ كتابين حدثٌ واحد في نظر المتابع،
+        //    و`DedupKey` يحمل الكتاب المضموم فلا يتكرّر إن أُعيد الربط.
+        await NotifyFollowersAsync(file, otherKind, otherBookId, ct);
+
         return file;
     }
 
@@ -470,6 +480,47 @@ public sealed class CaseFileService(
                 await RetireIfEmptyAsync(old, ct);
             }
         }
+    }
+
+    /// <summary>🔔 يُشعر **مَن له كتابٌ في المعاملة** بانضمام كتابٍ جديد (الدفعة ٤).</summary>
+    /// <remarks>
+    /// 🔐 **ومَن «يتابع المعاملة» هو مَن سجّل أحد كتبها الواردة أو أنشأ أحد صادراتها** —
+    /// لا كلُّ من يراها. فالرؤية قد تأتي من القسم أو من صلاحيةٍ عامّة، **والمتابعة عملٌ باشره
+    /// صاحبُه**؛ وإشعارُ كلِّ من يرى يُنتج ضجيجاً يُعلّم الناس تجاهل الجرس.
+    ///
+    /// ⚠️ **والقائمة تُبنى من الجدول لا من `Query()`**: المستلِمون هم أصحاب الكتب أنفسهم،
+    /// ولو فُلترت بقاعدة رؤية **الفاعل** لسقط منها من لا يراه الفاعلُ — وهم أولى الناس بالخبر.
+    /// والعزل قائمٌ بشرط `CompanyId` الصريح.
+    ///
+    /// ⚠️ **وتحفظ بنفسها**: تُنادى **بعد** حفظ الانضمام (وإلا لم ترَه)، فلا حفظَ لاحقاً يحملها.
+    /// </remarks>
+    private async Task NotifyFollowersAsync(
+        CaseFile file, CaseMemberKind joinedKind, int joinedBookId, CancellationToken ct)
+    {
+        var recipients = await db.IncomingBooks
+            .Where(b => b.CaseFileId == file.CaseFileId && b.CompanyId == file.CompanyId)
+            .Select(b => b.ReceivedByUserId)
+            .Union(db.OutgoingBooks
+                .Where(b => b.CaseFileId == file.CaseFileId && b.CompanyId == file.CompanyId)
+                .Select(b => b.CreatedByUserId))
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (recipients.Count == 0) return;
+
+        await notifications.SendManyAsync(recipients, new NotificationInput(
+            RecipientUserId: 0,
+            CompanyId: file.CompanyId,
+            Title: "كتابٌ جديد في معاملةٍ تتابعها",
+            Body: file.Title,
+            Category: NotificationKeys.CaseFileCategory,
+            EntityType: nameof(CaseFile),
+            EntityId: file.CaseFileId,
+            Priority: NotificationPriority.Normal,
+            DedupKey: NotificationKeys.CaseFileJoined(
+                file.CaseFileId, joinedKind.ToString(), joinedBookId)), ct);
+
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>يضبط انتماء الكتاب ويكتب الأثر — **الوارد في سجلّ الحركة والصادر في التدقيق**.</summary>

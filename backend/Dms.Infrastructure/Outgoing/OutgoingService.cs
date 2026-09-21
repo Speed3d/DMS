@@ -2,6 +2,7 @@ using System.Text.Json;
 using Dms.Documents.Storage;
 using Dms.Domain;
 using Dms.Infrastructure.Documents;
+using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,8 @@ public sealed class OutgoingService(
     INumberingService numbering,
     IAuditService audit,
     BookRenderer renderer,
-    IFileStorage storage) : IOutgoingService
+    IFileStorage storage,
+    INotificationService notifications) : IOutgoingService
 {
     private const string CounterType = "Outgoing";
 
@@ -192,6 +194,22 @@ public sealed class OutgoingService(
                 book.GeneratedPdfBlobKey = pendingPdfKey;
 
                 audit.Add("Approve", nameof(OutgoingBook), id.ToString(), $"اعتماد ورقم {book.Number}", book.CompanyId);
+
+                // 🔔 **إشعارُ الاعتماد** (الدفعة ٤): يصل **مُنشئ المسودّة** — فهو مَن ينتظر
+                //    صدور الرقم الرسميّ ليتصرّف بالكتاب.
+                // ⚠️ **ولا يصل المعتمِد نفسه** إن كان هو المُنشئ: الخدمة تُسقط الفاعل.
+                // ⚠️ **وداخل المعاملة قبل الحفظ** — فلا إشعارَ باعتمادٍ لم يُثبَّت.
+                await notifications.SendAsync(new NotificationInput(
+                    RecipientUserId: book.CreatedByUserId,
+                    CompanyId: book.CompanyId,
+                    Title: "اعتُمد كتابك الصادر",
+                    Body: $"{book.Subject} — الرقم {book.Number}",
+                    Category: NotificationKeys.OutgoingCategory,
+                    EntityType: nameof(OutgoingBook),
+                    EntityId: book.OutgoingId,
+                    Priority: NotificationPriority.Normal,
+                    DedupKey: NotificationKeys.OutgoingApproved(book.OutgoingId)), ct);
+
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             });

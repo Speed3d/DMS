@@ -16,6 +16,12 @@ import 'outgoing_detail_screen.dart';
 ///
 /// ⚠️ **مدخلان لا واحد** (قرار المالك): هذه للاستعراض والبحث، وزرُّ «يخصّ كتاباً سابقاً»
 /// داخل الكتاب للعمل اليوميّ. والثاني هو المستعمَل غالباً، وهذه لمن يفكّر بالملفّات.
+/// عرضُ حقل البحث المفضَّل — **يُستورَد في الحارس ولا يُكتب فيه**.
+///
+/// ⚠️ نسخةٌ محلّية في الاختبار كانت ستُثبت سلامة عتبةٍ **مهجورة** لو تغيّرت الشاشة وحدها
+/// (درسٌ مسجَّل في `hr_render_test.dart`).
+const double kCaseSearchWidth = 380;
+
 class CaseFilesScreen extends ConsumerWidget {
   const CaseFilesScreen({super.key});
 
@@ -29,8 +35,13 @@ class CaseFilesScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ⚠️ **لا `LayoutBuilder` هنا — وقد جُرّب وأُزيل.** ظننتُ أن عرضاً ثابتاً داخل
+          //    حشوةٍ 32 يفيض تحت 444 بكسل، **فأثبت الحارس السلبيّ العكس**: `SizedBox`
+          //    **يلتزم بقيود أبيه** فيُقصَر تلقائياً ولا يفيض.
+          // 🔑 والدرس: **قِس قبل أن تُصلح** — «إصلاحٌ» لعيبٍ لا وجود له يُضيف تعقيداً
+          //    ويُوهم القارئ بخطرٍ ليس قائماً.
           SizedBox(
-            width: 380,
+            width: kCaseSearchWidth,
             child: DebouncedSearchField(
               hintText: 'بحث بعنوان المعاملة',
               onChanged: (v) => ref.read(caseSearchProvider.notifier).state = v,

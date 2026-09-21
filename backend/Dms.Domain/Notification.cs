@@ -93,4 +93,37 @@ public static class NotificationKeys
     /// والتصعيد يقول «ساءت الحال» — **والحال لا تسوء كل يوم**.
     /// </remarks>
     public static string TaskEscalation(int taskId, int level) => $"task:{taskId}:esc:{level}";
+
+    // ───────────── الوارد والصادر والمعاملات (ADR-045، الدفعة ٤) ─────────────
+    //
+    // ⚠️ **المفاتيح هنا لا نصوصاً في الخدمات** — نصٌّ متناثر يتباعد عن نظيره عند أول تعديل،
+    //    و`DedupKey` بفهرسٍ فريد: مفتاحٌ مختلفٌ بحرفٍ يعني **إشعاراً مكرّراً يمرّ**.
+
+    public const string IncomingCategory = "Incoming";
+    public const string OutgoingCategory = "Outgoing";
+    public const string CaseFileCategory = "CaseFile";
+
+    /// <summary>أُحيل كتابٌ وارد إلى قسمٍ — **إشعارٌ لكل (كتاب × قسم)**.</summary>
+    /// <remarks>
+    /// ⚠️ **القسم في المفتاح لا الكتاب وحده**: الإحالة **تراكمية** (ADR-018)، فكتابٌ يُحال
+    /// إلى المالية ثم القانونية حدثان مختلفان لجمهورين مختلفين — ومفتاحٌ بلا قسمٍ كان
+    /// يبتلع الثاني صامتاً.
+    /// </remarks>
+    public static string IncomingForwarded(int incomingId, int departmentId) =>
+        $"incoming:{incomingId}:fwd:{departmentId}";
+
+    /// <summary>صدر ردٌّ على كتابٍ وارد — **إشعارٌ لكل (وارد × صادر)**.</summary>
+    /// <remarks>
+    /// ⚠️ **الصادر في المفتاح**: الوارد يُجاب بردٍّ أوّليّ ثم نهائيّ (ADR-045)، وهما
+    /// خبران مختلفان لصاحب الكتاب.
+    /// </remarks>
+    public static string IncomingReplied(int incomingId, int outgoingId) =>
+        $"incoming:{incomingId}:replied:{outgoingId}";
+
+    /// <summary>اعتُمد كتابٌ صادر — **مرّةً واحدة**، فالاعتماد لا يقع مرّتين.</summary>
+    public static string OutgoingApproved(int outgoingId) => $"outgoing:{outgoingId}:approved";
+
+    /// <summary>ضُمّ كتابٌ إلى معاملة — **إشعارٌ لكل (معاملة × كتابٍ مضموم)**.</summary>
+    public static string CaseFileJoined(int caseFileId, string kind, int bookId) =>
+        $"case:{caseFileId}:joined:{kind}:{bookId}";
 }
