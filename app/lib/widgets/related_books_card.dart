@@ -164,13 +164,24 @@ class _MemberRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              // 🔴 **`Wrap` لا `Row`** (بلاغ المالك 2026-09-21): الثلاثة — الرقم والنوع
+              //    والتاريخ — عرضُها الطبيعيّ يتجاوز المتاح داخل بطاقةٍ ضيّقة، ففاضت
+              //    **19 بكسلاً**. والبديلُ الآخر (`Flexible` بقصٍّ) كان **يقصّ رقم الكتاب**
+              //    وهو **هويّته** — فالسطر الثاني أهونُ من رقمٍ ناقص.
+              //
+              // 🔒 **والحارس مُثبَتٌ أنه يحرس**: أُعيد `Row` مؤقّتاً فسقطت **خمسةُ**
+              //    اختباراتٍ بفيضٍ حقيقيّ (**135 بكسلاً عند 340** و**94 عند 560**).
+              //
+              // ⚠️ **و`spacing` بدل `SizedBox` اليدويّ**: الفاصل المكتوب بين العناصر
+              //    **لا يُطوى مع السطر**، فيبقى فراغاً معلّقاً في آخر السطر الأول.
+              Wrap(
+                spacing: 8,
+                runSpacing: 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(member.number ?? '#${member.bookId}',
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                  const SizedBox(width: 8),
                   Text(member.kind.label, style: TextStyle(fontSize: 11, color: muted)),
-                  const SizedBox(width: 8),
                   Text(DateFormat('yyyy/MM/dd').format(member.date),
                       style: TextStyle(fontSize: 11, color: muted)),
                 ],

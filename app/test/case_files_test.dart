@@ -7,6 +7,7 @@ import 'package:dms_app/core/session.dart';
 import 'package:dms_app/models.dart';
 import 'package:dms_app/screens/case_files_screen.dart';
 import 'package:dms_app/widgets/custom_card.dart';
+import 'package:dms_app/widgets/related_books_card.dart';
 import 'package:dms_app/widgets/search_field.dart';
 import 'package:dms_app/widgets/status_pill.dart';
 import 'package:dms_app/widgets/task_badges.dart';
@@ -308,6 +309,90 @@ void main() {
         ),
       ));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  // ═══════════ فيضُ صفّ العضو — بلاغُ المالك 2026-09-21 ═══════════
+  //
+  // 🔴 **فاض 19 بكسلاً** داخل بطاقةٍ عرضُها المتاح 203.2: الرقم والنوع والتاريخ في
+  //    `Row` واحد. والعلاج `Wrap` لا `Flexible` — **لأن القصّ كان يقصّ رقم الكتاب**
+  //    وهو هويّته.
+
+  group('📏 صفُّ العضو لا يفيض', () {
+    CaseFileDetail detail(String number, String subject) => CaseFileDetail(
+          caseFileId: 1,
+          title: 'معاملة',
+          notes: null,
+          createdAt: DateTime(2026, 9, 1),
+          hiddenCount: 0,
+          members: [
+            CaseMember(
+              kind: CaseMemberKind.incoming,
+              bookId: 11,
+              number: number,
+              date: DateTime(2026, 9, 21),
+              subject: subject,
+              status: 'New',
+            ),
+            CaseMember(
+              kind: CaseMemberKind.outgoing,
+              bookId: 12,
+              number: number,
+              date: DateTime(2026, 12, 31),
+              subject: subject,
+              status: 'Final',
+            ),
+          ],
+        );
+
+    Future<void> pumpAt(WidgetTester tester, double width, CaseFileDetail d) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          relatedCaseProvider.overrideWith((ref, key) async => d),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: RelatedBooksCard(
+                kind: CaseMemberKind.incoming,
+                bookId: 11,
+                canManage: true,
+                onRelate: () {},
+                onOpen: (_) {},
+                onOpenCase: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    // 🔴 **مقيسٌ لا مُدَّعى**: بـ`Row` تفيض المقاسات الأربعة كلُّها؛ وبـ`Wrap` لا تفيض.
+    for (final w in <double>[340, 380, 440, 560]) {
+      testWidgets('بلا فيضٍ عند عرض ${w.toInt()} بكسل — برقمٍ طويل',
+          (tester) async {
+        await pumpAt(tester, w,
+            detail('DEN-IN-2026-00124', 'كتابٌ بموضوعٍ طويلٍ يمتدّ على أكثر من سطر'));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('⚠️ ورقمُ الكتاب **يظهر كاملاً** لا مقصوصاً — فهو هويّته',
+        (tester) async {
+      await pumpAt(tester, 340, detail('DEN-IN-2026-00124', 'موضوع'));
+      // النصّ نفسه موجودٌ في الشجرة (عضوان بالرقم نفسه).
+      expect(find.text('DEN-IN-2026-00124'), findsNWidgets(2));
+    });
+
+    testWidgets('✅ والنوع والتاريخ يظهران معه', (tester) async {
+      await pumpAt(tester, 340, detail('DEN-2026-00001', 'موضوع'));
+      expect(find.text('2026/09/21'), findsOneWidget);
+      expect(find.text('2026/12/31'), findsOneWidget);
     });
   });
 }
