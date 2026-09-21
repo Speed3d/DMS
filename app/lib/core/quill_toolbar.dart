@@ -28,7 +28,20 @@ const Map<String, String> kQuillFontFamilies = {
 };
 
 /// خيارات أزرار الشريط (الخطوط + الأحجام) — تصلح لأي شريط مهما اختلف تخطيطه.
+///
+/// 🔴 **أزرارٌ أصغر — بلاغ المالك (2026-09-21): الشريط يأكل مساحة المحرر.**
+/// والتقليصُ في **المقاس لا في الوظائف**، ولم يُحذف زرٌّ واحد: حذفُ الأزرار يوفّر
+/// مساحةً اليوم و**يكلّف بلاغاً غداً** حين يحتاجها المستخدم ولا يجدها.
+///
+/// افتراضات `flutter_quill`: أيقونة **15** وعاملُ زرّ **1.6** ⇒ زرٌّ **24** بكسلاً.
+/// وصارت **13 × 1.45 ⇒ 18.85** — أي **~21٪ أقصر في كل صفّ**.
+/// ⚠️ **ولم أنزل أكثر**: الزرُّ هدفُ نقرٍ بالفأرة، وتصغيرُه دون ~18 بكسلاً يجعل
+/// الإصابة تحتاج تصويباً — **ومساحةٌ تُكسب بخطأٍ في النقر ليست مكسباً**.
 const kQuillButtonOptions = quill.QuillSimpleToolbarButtonOptions(
+  base: quill.QuillToolbarBaseButtonOptions(
+    iconSize: 13,
+    iconButtonFactor: 1.45,
+  ),
   fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
     renderFontFamilies: false,
     items: kQuillFontFamilies,
@@ -39,8 +52,21 @@ const kQuillButtonOptions = quill.QuillSimpleToolbarButtonOptions(
 );
 
 /// الإعداد الكامل لشريط أدوات تحرير متن الكتاب.
+///
+/// 🔴 **صُغِّر بطلب المالك (2026-09-21)** — والمكسبُ الأكبر ليس في حجم الزرّ بل في
+/// **عدد الصفوف**: `multiRowsDisplay` يلفّ الأزرار في `Wrap`، فكلُّ ما يُضيّق العنصر
+/// يُدخل أزراراً أكثر في الصفّ **فيسقط صفٌّ كامل دفعةً واحدة**.
+///
+/// ⚠️ **ولم يُجعَل `multiRowsDisplay: false`** — يصير الشريط صفّاً واحداً يُمرَّر أفقياً،
+/// فيختفي نصفُ الأزرار خلف حافةٍ **لا يعرف المستخدم أن خلفها شيئاً**. وإخفاءُ أداةٍ
+/// أسوأ من إظهارها صغيرة.
+///
+/// و`showDividers: false`: الفواصلُ زينةٌ تأخذ عرضاً، **والأقسام تتمايز بالتباعد**.
 const kQuillToolbarConfig = quill.QuillSimpleToolbarConfig(
   multiRowsDisplay: true,
+  showDividers: false,
+  toolbarSectionSpacing: 2,
+  toolbarRunSpacing: 2,
   showAlignmentButtons: true,
   showCodeBlock: false,
   showInlineCode: false,
