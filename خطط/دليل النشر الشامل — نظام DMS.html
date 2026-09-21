@@ -1,0 +1,2247 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>دليل نشر DMS</title>
+<meta name="description" content="المرجع التنفيذيّ الواحد لنشر نظام إدارة الوثائق: من شراء الدومين إلى أوّل كتابٍ رسميّ.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ═══ دليل النشر — نظام DMS ═══
+   اللوحة مأخوذةٌ من هوية المشروع نفسها: app/lib/core/theme.dart  */
+
+:root{
+  color-scheme: light;
+  --ground:#e9edf4; --surface:#ffffff; --surface-2:#f4f6fa; --surface-3:#eceff5;
+  --border:#e2e7ef; --border-strong:#cfd7e5;
+  --ink:#0f1d38; --ink-2:#3d5075; --ink-3:#6b7d9e;
+  --navy:#0c1b33; --navy-2:#15315c; --gold:#be9a47; --gold-soft:#f3ead6;
+  --on-gold:#ffffff;
+  --danger:#c13b33; --danger-bg:#fdf0ef; --danger-br:#f2cdc9;
+  --warn:#be7a12;   --warn-bg:#fdf5e8;   --warn-br:#f0dcb8;
+  --ok:#178a5b;     --ok-bg:#edf8f2;     --ok-br:#c2e5d3;
+  --info:#2f6bb5;   --info-bg:#eef4fc;   --info-br:#c9dcf3;
+  --key:#7a4fb5;    --key-bg:#f5f0fc;    --key-br:#ddcdf0;
+  /* الطرفية داكنةٌ في الوضعين عمداً: هي شاشة أوامر */
+  --term:#0a1428; --term-ink:#dbe6f7; --term-br:#1d3153; --term-chip:#8fb6e8;
+  --rail:302px; --radius:12px;
+  --shadow:0 1px 2px rgba(12,27,51,.05), 0 6px 20px -8px rgba(12,27,51,.12);
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --sans:"IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
+  --serif:"Amiri","Times New Roman",serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ground:#070e1c; --surface:#0f1b30; --surface-2:#13223c; --surface-3:#17294a;
+    --border:#1d3153; --border-strong:#2a4470;
+    --ink:#e8eef9; --ink-2:#a9bbd9; --ink-3:#7e93b8;
+    --navy:#e8eef9; --navy-2:#8fb6e8; --gold:#edcc73; --gold-soft:#2a2415;
+    --on-gold:#0a1428;
+    --danger:#e2655c; --danger-bg:#2a1512; --danger-br:#5a2620;
+    --warn:#e0a23c;   --warn-bg:#2a2011;   --warn-br:#5c441a;
+    --ok:#34b27b;     --ok-bg:#0f2620;     --ok-br:#1d5340;
+    --info:#8fb6e8;   --info-bg:#101f36;   --info-br:#25406b;
+    --key:#c4a4ec;    --key-bg:#1d1730;    --key-br:#3b2f5c;
+    --term:#050d1c; --term-br:#1a2c4c;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#070e1c; --surface:#0f1b30; --surface-2:#13223c; --surface-3:#17294a;
+  --border:#1d3153; --border-strong:#2a4470;
+  --ink:#e8eef9; --ink-2:#a9bbd9; --ink-3:#7e93b8;
+  --navy:#e8eef9; --navy-2:#8fb6e8; --gold:#edcc73; --gold-soft:#2a2415;
+  --on-gold:#0a1428;
+  --danger:#e2655c; --danger-bg:#2a1512; --danger-br:#5a2620;
+  --warn:#e0a23c;   --warn-bg:#2a2011;   --warn-br:#5c441a;
+  --ok:#34b27b;     --ok-bg:#0f2620;     --ok-br:#1d5340;
+  --info:#8fb6e8;   --info-bg:#101f36;   --info-br:#25406b;
+  --key:#c4a4ec;    --key-bg:#1d1730;    --key-br:#3b2f5c;
+  --term:#050d1c; --term-br:#1a2c4c;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:15.5px; line-height:1.85;
+  direction:rtl; text-align:right;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--gold); color:var(--on-gold)}
+a{color:var(--navy-2); text-underline-offset:3px; text-decoration-thickness:1px}
+a:hover{color:var(--gold)}
+:focus-visible{outline:2px solid var(--gold); outline-offset:2px; border-radius:4px}
+
+/* ─── الشريط العلوي ─── */
+.topbar{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:50;
+  display:flex; align-items:center; gap:12px;
+  padding:10px clamp(16px,3vw,28px);
+  background:var(--surface); border-bottom:1px solid var(--border);
+}
+.topbar .brand{display:flex; align-items:center; gap:9px; font-weight:600; white-space:nowrap; font-size:14px}
+.topbar .brand .mark{
+  width:26px; height:26px; border-radius:7px; flex:none;
+  background:linear-gradient(140deg,#15315c,#0c1b33);
+  display:grid; place-items:center; color:#be9a47;
+  font-family:var(--serif); font-size:15px; line-height:1;
+}
+.topbar .sep{flex:1}
+.iconbtn{
+  display:inline-grid; place-items:center; width:34px; height:34px; flex:none;
+  border:1px solid var(--border); border-radius:9px; background:var(--surface);
+  color:var(--ink-2); cursor:pointer; font-size:15px; line-height:1;
+  transition:background .15s, color .15s, border-color .15s;
+}
+.iconbtn:hover{background:var(--surface-3); color:var(--ink); border-color:var(--border-strong)}
+
+/* ─── الهيكل ─── */
+.shell{
+  display:grid; grid-template-columns:var(--rail) minmax(0,1fr);
+  gap:clamp(20px,3vw,44px); align-items:start;
+  max-width:1360px; margin:0 auto; padding:0 clamp(16px,3vw,28px) 96px;
+}
+
+/* ─── الرِّف ─── */
+.rail{
+  position:sticky; top:calc(env(safe-area-inset-top,0px) + 66px);
+  max-height:calc(100vh - 92px); overflow:auto; overscroll-behavior:contain;
+  padding-block:22px 12px; scrollbar-width:thin;
+}
+.rail h2{
+  font-family:var(--sans); font-size:10.5px; font-weight:700; letter-spacing:.14em;
+  color:var(--ink-3); margin:0 0 10px;
+}
+.search{position:relative; margin-bottom:16px}
+.search input{
+  width:100%; padding:9px 34px 9px 12px; font-size:13.5px;
+  color:var(--ink); background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; font-family:var(--sans);
+}
+.search input::placeholder{color:var(--ink-3)}
+.search input:focus{border-color:var(--gold); outline:none; box-shadow:0 0 0 3px var(--gold-soft)}
+.search .ico{position:absolute; inset-inline-end:11px; top:50%; translate:0 -50%; color:var(--ink-3); font-size:13px; pointer-events:none}
+
+.meter{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:13px 14px; margin-bottom:18px; box-shadow:var(--shadow);
+}
+.meter .row{display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:9px}
+.meter .lab{font-size:11.5px; font-weight:600; color:var(--ink-2)}
+.meter .val{font-family:var(--mono); font-size:13px; font-weight:700; color:var(--gold); font-variant-numeric:tabular-nums; direction:ltr}
+.bar{height:6px; border-radius:99px; background:var(--surface-3); overflow:hidden}
+.bar i{display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,var(--gold),var(--navy-2)); transition:width .45s cubic-bezier(.4,0,.2,1)}
+.meter .hint{margin:8px 0 0; font-size:11px; color:var(--ink-3); line-height:1.6}
+.meter .reset{
+  margin-top:9px; width:100%; padding:5px; font-size:11px; font-family:var(--sans);
+  border:1px solid var(--border); border-radius:7px; background:var(--surface-2);
+  color:var(--ink-3); cursor:pointer;
+}
+.meter .reset:hover{color:var(--danger); border-color:var(--danger-br)}
+
+.toc{list-style:none; margin:0; padding:0}
+.toc li{margin:0}
+.toc a{
+  display:flex; align-items:baseline; gap:9px; padding:6px 10px 6px 8px;
+  border-radius:8px; font-size:13.5px; line-height:1.55; color:var(--ink-2);
+  text-decoration:none; border-inline-start:2px solid transparent;
+}
+.toc a:hover{background:var(--surface-3); color:var(--ink)}
+.toc a .n{
+  font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--ink-3);
+  min-width:28px; flex:none; direction:ltr; text-align:center;
+  border:1px solid var(--border); border-radius:5px; padding:1px 0;
+}
+.toc a.on{background:var(--gold-soft); color:var(--ink); font-weight:600}
+.toc a.on .n{background:var(--gold); color:var(--on-gold); border-color:var(--gold)}
+.toc .sub{list-style:none; margin:2px 0 6px; padding:0; display:none}
+.toc li.open > .sub{display:block}
+.toc .sub a{font-size:12.5px; padding:4px 10px 4px 26px; color:var(--ink-3); border-inline-start:1px solid var(--border); margin-inline-start:14px; border-radius:0 8px 8px 0}
+.toc .sub a:hover{color:var(--ink); border-inline-start-color:var(--gold)}
+.toc .sub a.on{color:var(--gold); border-inline-start-color:var(--gold); background:none; font-weight:600}
+
+/* ─── المتن ─── */
+main{padding-block:26px 0; min-width:0}
+.doc{max-width:74ch}
+.doc > *{scroll-margin-top:96px}
+
+.hero{
+  position:relative; overflow:hidden; margin-bottom:30px; padding:30px clamp(20px,3.4vw,38px) 28px;
+  border-radius:18px; border:1px solid #0c1b33;
+  background:linear-gradient(155deg,#0c1b33 0%,#15315c 100%);
+  color:#e8eef9; box-shadow:var(--shadow); max-width:none;
+}
+.hero::after{
+  content:""; position:absolute; inset-block:-40%; inset-inline-start:-14%;
+  width:52%; background:radial-gradient(circle at 50% 50%, rgba(190,154,71,.22), transparent 66%);
+  pointer-events:none;
+}
+.hero .eyebrow{
+  position:relative; font-size:11px; font-weight:600; letter-spacing:.2em;
+  color:#be9a47; margin:0 0 12px;
+}
+.hero h1{
+  position:relative; font-family:var(--serif); font-weight:700;
+  font-size:clamp(28px,4.4vw,46px); line-height:1.25; margin:0 0 10px;
+  text-wrap:balance; color:#fff;
+}
+.hero p.sub{position:relative; margin:0; font-size:15px; color:#b9c9e4; max-width:56ch; line-height:1.8}
+.hero .facts{position:relative; display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.hero .facts span{
+  display:inline-flex; align-items:center; gap:6px; padding:5px 11px;
+  border:1px solid rgba(190,154,71,.4); border-radius:99px;
+  font-size:12px; color:#dfe8f6; background:rgba(10,20,40,.4);
+}
+.hero .facts b{font-family:var(--mono); font-size:12px; color:#edcc73; direction:ltr; font-weight:600}
+
+/* حقل الدومين */
+.domainbox{
+  position:relative; margin-top:22px; padding:15px 17px;
+  background:rgba(7,14,28,.52); border:1px solid rgba(190,154,71,.34); border-radius:13px;
+}
+.domainbox label{display:block; font-size:12.5px; color:#c8d6ec; margin-bottom:9px; line-height:1.7}
+.domainbox label b{color:#edcc73; font-weight:600}
+.domainbox .in{display:flex; gap:8px; flex-wrap:wrap}
+.domainbox input{
+  flex:1 1 220px; min-width:0; padding:9px 13px; border-radius:9px;
+  border:1px solid rgba(190,154,71,.42); background:rgba(0,0,0,.34);
+  color:#fff; font-family:var(--mono); font-size:13.5px; direction:ltr; text-align:left;
+}
+.domainbox input::placeholder{color:#7d8fae}
+.domainbox input:focus{outline:none; border-color:#edcc73; box-shadow:0 0 0 3px rgba(190,154,71,.22)}
+.domainbox button{
+  padding:9px 17px; border-radius:9px; border:0; cursor:pointer;
+  background:#be9a47; color:#0a1428; font-family:var(--sans); font-weight:600; font-size:13.5px;
+}
+.domainbox button:hover{filter:brightness(1.1)}
+.domainbox .note{margin:9px 0 0; font-size:11.5px; color:#93a6c4; line-height:1.7}
+.dom{
+  font-family:var(--mono); direction:ltr; display:inline-block;
+  background:var(--gold-soft); color:var(--ink); border-radius:4px; padding:0 3px;
+  box-shadow:inset 0 -1px 0 var(--gold);
+}
+.code .dom{background:rgba(190,154,71,.22); color:#edcc73; box-shadow:none; padding:0}
+
+/* العناوين */
+.doc h2{
+  font-family:var(--serif); font-weight:700; font-size:clamp(23px,3vw,31px);
+  line-height:1.4; margin:56px 0 16px; padding-bottom:12px; color:var(--navy);
+  border-bottom:1px solid var(--border); text-wrap:balance;
+  display:flex; align-items:baseline; gap:11px;
+}
+.doc h2 .step{
+  font-family:var(--mono); font-size:12px; font-weight:600; flex:none;
+  color:var(--on-gold); background:var(--gold); border-radius:7px;
+  padding:3px 8px; direction:ltr; translate:0 -4px;
+}
+.doc h3{
+  font-family:var(--sans); font-weight:700; font-size:17.5px; line-height:1.55;
+  margin:34px 0 12px; color:var(--ink); text-wrap:balance;
+}
+.doc h4{font-size:15px; font-weight:700; margin:24px 0 8px; color:var(--ink-2)}
+.hicon{font-size:.86em; margin-inline-end:2px}
+
+.doc p{margin:0 0 15px}
+.doc strong{font-weight:700; color:var(--ink)}
+.doc hr{border:0; height:1px; background:var(--border); margin:44px 0}
+.doc ul,.doc ol{margin:0 0 16px; padding-inline-start:24px}
+.doc li{margin-bottom:7px}
+.doc li::marker{color:var(--ink-3)}
+
+/* شفرة */
+.doc :not(pre) > code{
+  font-family:var(--mono); font-size:.845em; direction:ltr; unicode-bidi:embed;
+  background:var(--surface-3); border:1px solid var(--border); border-radius:5px;
+  padding:1px 5px; color:var(--navy-2);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .doc :not(pre) > code{color:var(--gold)}
+}
+:root[data-theme="dark"] .doc :not(pre) > code{color:var(--gold)}
+
+.code{
+  position:relative; margin:0 0 18px; border-radius:var(--radius); overflow:hidden;
+  background:var(--term); border:1px solid var(--term-br); box-shadow:var(--shadow);
+}
+.code .head{
+  display:flex; align-items:center; gap:8px; padding:7px 12px;
+  border-bottom:1px solid var(--term-br); background:rgba(255,255,255,.028);
+}
+.code .dot{width:8px; height:8px; border-radius:99px; background:var(--term-br); flex:none}
+.code .lang{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; color:var(--term-chip);
+  direction:ltr; margin-inline-start:2px;
+}
+.code .grow{flex:1}
+.code .copy{
+  border:1px solid var(--term-br); background:transparent; color:var(--term-chip);
+  border-radius:6px; padding:3px 9px; font-family:var(--sans); font-size:11.5px;
+  cursor:pointer; transition:background .15s,color .15s;
+}
+.code .copy:hover{background:rgba(143,182,232,.14); color:#fff}
+.code .copy.done{color:#34b27b; border-color:#1d5340}
+.code pre{
+  margin:0; padding:14px 16px; overflow-x:auto; direction:ltr; text-align:left;
+  font-family:var(--mono); font-size:12.9px; line-height:1.78; color:var(--term-ink);
+  scrollbar-width:thin;
+}
+.code pre code{font:inherit; background:none; border:0; padding:0; white-space:pre; color:inherit}
+
+/* تنبيهات */
+.call{
+  --c:var(--info); --bg:var(--info-bg); --br:var(--info-br);
+  position:relative; margin:0 0 20px; padding:14px 17px;
+  background:var(--bg); border:1px solid var(--br); border-radius:var(--radius);
+  border-inline-start:3px solid var(--c);
+}
+.call.danger{--c:var(--danger); --bg:var(--danger-bg); --br:var(--danger-br)}
+.call.warn  {--c:var(--warn);   --bg:var(--warn-bg);   --br:var(--warn-br)}
+.call.ok    {--c:var(--ok);     --bg:var(--ok-bg);     --br:var(--ok-br)}
+.call.key   {--c:var(--key);    --bg:var(--key-bg);    --br:var(--key-br)}
+.call.trial {--c:var(--navy-2); --bg:var(--surface-2); --br:var(--border-strong)}
+.call > :last-child{margin-bottom:0}
+.call .tag{
+  display:inline-flex; align-items:center; gap:5px; margin:0 0 9px;
+  font-size:10.5px; font-weight:700; letter-spacing:.09em; color:var(--c);
+}
+.call p{margin-bottom:11px}
+.call .code{margin-block:12px}
+.call ul,.call ol{margin-bottom:11px}
+.call h3,.call h4{margin-top:4px}
+
+/* جداول */
+.tablewrap{overflow-x:auto; margin:0 0 20px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); scrollbar-width:thin}
+.doc table{border-collapse:collapse; width:100%; font-size:13.8px; line-height:1.7}
+.doc th,.doc td{padding:10px 13px; text-align:right; vertical-align:top; border-bottom:1px solid var(--border)}
+.doc thead th{
+  background:var(--surface-3); font-size:11.5px; font-weight:700; letter-spacing:.04em;
+  color:var(--ink-2); white-space:nowrap;
+}
+.doc tbody tr:last-child td{border-bottom:0}
+.doc tbody tr:hover{background:var(--surface-2)}
+
+/* قوائم التحقق */
+.checklist{list-style:none; margin:0 0 20px; padding:0; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); overflow:hidden}
+.checklist li{display:flex; gap:11px; align-items:flex-start; margin:0; padding:11px 14px; border-bottom:1px solid var(--border); transition:background .15s}
+.checklist li:last-child{border-bottom:0}
+.checklist li:hover{background:var(--surface-2)}
+.checklist input{
+  appearance:none; flex:none; width:19px; height:19px; margin-top:3px; cursor:pointer;
+  border:1.5px solid var(--border-strong); border-radius:6px; background:var(--surface);
+  display:grid; place-items:center; transition:background .15s, border-color .15s;
+}
+.checklist input:checked{background:var(--ok); border-color:var(--ok)}
+.checklist input:checked::after{content:"✓"; color:#fff; font-size:12px; font-weight:700; line-height:1}
+.checklist label{cursor:pointer; flex:1; line-height:1.75}
+.checklist input:checked + label{color:var(--ink-3); text-decoration:line-through; text-decoration-color:var(--border-strong)}
+.checkhead{display:flex; align-items:center; gap:10px; margin:0 0 10px}
+.checkhead .pill{
+  font-family:var(--mono); font-size:11px; font-weight:600; direction:ltr;
+  padding:2px 9px; border-radius:99px; border:1px solid var(--border-strong);
+  color:var(--ink-2); background:var(--surface); font-variant-numeric:tabular-nums;
+}
+.checkhead .pill.full{background:var(--ok); border-color:var(--ok); color:#fff}
+
+/* بطاقات المراحل */
+.phases{display:grid; grid-template-columns:repeat(auto-fill,minmax(212px,1fr)); gap:10px; margin:0 0 22px}
+.pcard{
+  display:flex; gap:11px; align-items:flex-start; padding:13px 14px; text-decoration:none;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  transition:border-color .16s, transform .16s, box-shadow .16s;
+}
+.pcard:hover{border-color:var(--gold); transform:translateY(-2px); box-shadow:var(--shadow)}
+.pcard .k{
+  font-family:var(--mono); font-size:12px; font-weight:700; direction:ltr; flex:none;
+  min-width:30px; text-align:center; padding:3px 0; border-radius:7px;
+  background:var(--surface-3); color:var(--ink-2); border:1px solid var(--border);
+}
+.pcard:hover .k{background:var(--gold); color:var(--on-gold); border-color:var(--gold)}
+.pcard .t{display:block; font-size:13.6px; font-weight:600; color:var(--ink); line-height:1.5}
+.pcard .m{display:block; font-size:11.5px; color:var(--ink-3); margin-top:3px}
+
+/* البحث */
+.hit{background:var(--gold-soft); border-radius:3px; box-shadow:0 0 0 2px var(--gold-soft)}
+.dimmed{display:none}
+.noresult{padding:26px; text-align:center; color:var(--ink-3); font-size:14px}
+
+.totop{
+  position:fixed; inset-block-end:calc(env(safe-area-inset-bottom,0px) + 20px); inset-inline-start:20px;
+  z-index:40; width:42px; height:42px; border-radius:50%; border:1px solid var(--border);
+  background:var(--surface); color:var(--ink-2); cursor:pointer; box-shadow:var(--shadow);
+  display:grid; place-items:center; font-size:16px; opacity:0; pointer-events:none;
+  transition:opacity .25s, transform .25s; transform:translateY(8px);
+}
+.totop.show{opacity:1; pointer-events:auto; transform:none}
+.totop:hover{border-color:var(--gold); color:var(--gold)}
+
+/* ─── الشاشات الضيّقة ─── */
+@media (max-width:1040px){
+  .shell{grid-template-columns:1fr}
+  .rail{
+    position:static; max-height:none; overflow:visible;
+    border-bottom:1px solid var(--border); padding-bottom:20px; margin-bottom:6px;
+  }
+  .toc{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:2px}
+  .toc .sub{display:none !important}
+  .doc{max-width:none}
+}
+@media (max-width:560px){
+  body{font-size:15px}
+  .hero{padding:24px 18px; border-radius:14px}
+  .doc h2{font-size:22px; gap:8px}
+  .code pre{font-size:12px}
+  .doc th,.doc td{padding:8px 10px; font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important; transition-duration:.01ms !important}
+  .pcard:hover{transform:none}
+}
+
+/* ─── الطباعة ─── */
+@media print{
+  :root{--ground:#fff; --surface:#fff; --surface-2:#fff; --surface-3:#f2f2f2}
+  .topbar,.rail,.totop,.domainbox{display:none !important}
+  .code .copy{display:none !important}
+  .shell{display:block; max-width:none; padding:0}
+  body{font-size:10.5pt; line-height:1.6; background:#fff; color:#000}
+  .hero{background:#fff; color:#000; border:1px solid #999; box-shadow:none}
+  .hero h1,.hero p.sub,.hero .eyebrow{color:#000}
+  .hero .facts span{color:#000; border-color:#999; background:none}
+  .hero .facts b{color:#000}
+  .doc h2{break-after:avoid; page-break-after:avoid}
+  .code,.call,.tablewrap,.checklist{break-inside:avoid; page-break-inside:avoid}
+  .code{background:#f4f4f4; border-color:#bbb}
+  .code pre{color:#000}
+  .doc{max-width:none}
+  a{color:#000}
+}
+
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="brand"><span class="mark">د</span>دليل النشر — DMS</span>
+  <span class="sep"></span>
+  <button type="button" class="iconbtn" id="print" title="طباعة أو حفظ PDF">⎙</button>
+  <button type="button" class="iconbtn" id="theme" title="المظهر">◐</button>
+</header>
+
+<div class="shell">
+
+  <aside class="rail">
+    <div class="search">
+      <input type="search" id="q" placeholder="ابحث في الدليل…  (Ctrl+K)" aria-label="بحث">
+      <span class="ico">⌕</span>
+    </div>
+
+    <div class="meter">
+      <div class="row"><span class="lab">جاهزية النشر</span><span class="val" id="meter-val">0 / 0</span></div>
+      <div class="bar"><i id="meter-bar"></i></div>
+      <p class="hint">بنودُ التحقّق في كل المراحل. علاماتُك تُحفظ في هذا المتصفّح.</p>
+      <button type="button" class="reset" id="meter-reset">مسح كل العلامات</button>
+    </div>
+
+    <h2>المراحل</h2>
+    <ul class="toc"><li><a href="#-المحتويات" data-for="-المحتويات"><span class="n">•</span><span>المحتويات</span></a></li><li><a href="#0-اقرأ-هذا-أولاً" data-for="0-اقرأ-هذا-أولاً"><span class="n">0</span><span>اقرأ هذا أولاً</span></a><ul class="sub"><li><a href="#-ثلاثة-قرارات-لا-يمكن-التراجع-عنها-بعد-أول-كتابٍ-رسميّ" data-for="-ثلاثة-قرارات-لا-يمكن-التراجع-عنها-بعد-أول-كتابٍ-رسميّ">ثلاثة قرارات لا يمكن التراجع عنها بعد أول كتابٍ رسميّ</a></li><li><a href="#الشكل-النهائيّ" data-for="الشكل-النهائيّ">الشكل النهائيّ</a></li><li><a href="#أين-يذهب-كل-شيء" data-for="أين-يذهب-كل-شيء">أين يذهب كل شيء</a></li></ul></li><li><a href="#0ب-مرحلتان-لا-واحدة--التجربة-ثم-الإنتاج" data-for="0ب-مرحلتان-لا-واحدة--التجربة-ثم-الإنتاج"><span class="n">0ب</span><span>مرحلتان لا واحدة — التجربة ثم الإنتاج</span></a><ul class="sub"><li><a href="#-أولاً--صحّح-فهم-نقطة-اللاعودة-فهو-يحرّر-خطّتك-لا-يقيّدها" data-for="-أولاً--صحّح-فهم-نقطة-اللاعودة-فهو-يحرّر-خطّتك-لا-يقيّدها">أولاً — صحّح فهم «نقطة اللاعودة»، فهو يحرّر خطّتك لا يقيّدها</a></li><li><a href="#الخريطة-أيّ-مرحلةٍ-تُنفَّذ-أين" data-for="الخريطة-أيّ-مرحلةٍ-تُنفَّذ-أين">الخريطة: أيّ مرحلةٍ تُنفَّذ أين</a></li><li><a href="#-وما-لا-تُثبته-التجربة--فلا-تبنِ-عليه" data-for="-وما-لا-تُثبته-التجربة--فلا-تبنِ-عليه">وما لا تُثبته التجربة — فلا تبنِ عليه</a></li><li><a href="#-ثلاثة-محاذير-أثناء-التجربة" data-for="-ثلاثة-محاذير-أثناء-التجربة">ثلاثة محاذير أثناء التجربة</a></li><li><a href="#-وما-تكسبه-التجربة-فعلاً" data-for="-وما-تكسبه-التجربة-فعلاً">وما تكسبه التجربة فعلاً</a></li></ul></li><li><a href="#1-المشتريات" data-for="1-المشتريات"><span class="n">1</span><span>المشتريات</span></a><ul class="sub"><li><a href="#الأجهزة" data-for="الأجهزة">الأجهزة</a></li><li><a href="#الاشتراكات-والتراخيص" data-for="الاشتراكات-والتراخيص">الاشتراكات والتراخيص</a></li><li><a href="#-تنبيه-الترخيص--لا-تتجاوزه" data-for="-تنبيه-الترخيص--لا-تتجاوزه">تنبيه الترخيص — لا تتجاوزه</a></li><li><a href="#جهاز-التجربة--بلا-شراء" data-for="جهاز-التجربة--بلا-شراء">جهاز التجربة — بلا شراء</a></li><li><a href="#أشياء-تحتاجها-أثناء-التثبيت" data-for="أشياء-تحتاجها-أثناء-التثبيت">أشياء تحتاجها أثناء التثبيت</a></li></ul></li><li><a href="#2-المرحلة-أ--الدومين-أولاً" data-for="2-المرحلة-أ--الدومين-أولاً"><span class="n">2</span><span>المرحلة أ — الدومين أولاً</span></a><ul class="sub"><li><a href="#أ-1-حساب-cloudflare" data-for="أ-1-حساب-cloudflare">أ-1) حساب Cloudflare</a></li><li><a href="#أ-2-شراء-الدومين" data-for="أ-2-شراء-الدومين">أ-2) شراء الدومين</a></li><li><a href="#أ-3-اكتب-عنوانك-النهائيّ-الآن" data-for="أ-3-اكتب-عنوانك-النهائيّ-الآن">أ-3) اكتب عنوانك النهائيّ الآن</a></li></ul></li><li><a href="#3-المرحلة-ب--تثبيت-ويندوز" data-for="3-المرحلة-ب--تثبيت-ويندوز"><span class="n">3</span><span>المرحلة ب — تثبيت ويندوز</span></a><ul class="sub"><li><a href="#ب-1-تحضير-فلاشة-الإقلاع" data-for="ب-1-تحضير-فلاشة-الإقلاع">ب-1) تحضير فلاشة الإقلاع</a></li><li><a href="#ب-2-الإقلاع-من-الفلاشة" data-for="ب-2-الإقلاع-من-الفلاشة">ب-2) الإقلاع من الفلاشة</a></li><li><a href="#ب-3-التثبيت" data-for="ب-3-التثبيت">ب-3) التثبيت</a></li><li><a href="#ب-4-حساب-المسؤول" data-for="ب-4-حساب-المسؤول">ب-4) حساب المسؤول</a></li><li><a href="#ب-5-التحديثات" data-for="ب-5-التحديثات">ب-5) التحديثات</a></li></ul></li><li><a href="#4-المرحلة-ج--الشبكة-والجهاز" data-for="4-المرحلة-ج--الشبكة-والجهاز"><span class="n">4</span><span>المرحلة ج — الشبكة والجهاز</span></a><ul class="sub"><li><a href="#ج-1-اسم-الجهاز" data-for="ج-1-اسم-الجهاز">ج-1) اسم الجهاز</a></li><li><a href="#ج-2-ip-ثابت-حجزٌ-في-الراوتر" data-for="ج-2-ip-ثابت-حجزٌ-في-الراوتر">ج-2) IP ثابت (حجزٌ في الراوتر)</a></li><li><a href="#ج-3-المنطقة-الزمنية" data-for="ج-3-المنطقة-الزمنية">ج-3) المنطقة الزمنية</a></li><li><a href="#ج-4-منع-إعادة-التشغيل-أثناء-الدوام" data-for="ج-4-منع-إعادة-التشغيل-أثناء-الدوام">ج-4) منع إعادة التشغيل أثناء الدوام</a></li><li><a href="#ج-5-تشفير-القرص-bitlocker" data-for="ج-5-تشفير-القرص-bitlocker">ج-5) تشفير القرص (BitLocker)</a></li><li><a href="#ج-6-سطح-المكتب-البعيد" data-for="ج-6-سطح-المكتب-البعيد">ج-6) سطح المكتب البعيد</a></li><li><a href="#ج-7-ups" data-for="ج-7-ups">ج-7) UPS</a></li></ul></li><li><a href="#5-المرحلة-د--البرامج-الأساسية" data-for="5-المرحلة-د--البرامج-الأساسية"><span class="n">5</span><span>المرحلة د — البرامج الأساسية</span></a><ul class="sub"><li><a href="#د-1-sql-server-express" data-for="د-1-sql-server-express">د-1) SQL Server Express</a></li><li><a href="#د-2-net-9-runtime" data-for="د-2-net-9-runtime">د-2) .NET 9 Runtime</a></li><li><a href="#د-3-iis-لخدمة-الواجهة" data-for="د-3-iis-لخدمة-الواجهة">د-3) IIS لخدمة الواجهة</a></li><li><a href="#د-4-هيكل-المجلدات" data-for="د-4-هيكل-المجلدات">د-4) هيكل المجلدات</a></li></ul></li><li><a href="#6-المرحلة-هـ--بناء-النظام-ونقله" data-for="6-المرحلة-هـ--بناء-النظام-ونقله"><span class="n">6</span><span>المرحلة هـ — بناء النظام ونقله</span></a><ul class="sub"><li><a href="#هـ-1-بناء-الباك-إند" data-for="هـ-1-بناء-الباك-إند">هـ-1) بناء الباك-إند</a></li><li><a href="#هـ-2-بناء-الواجهة---بعنوان-دومينك" data-for="هـ-2-بناء-الواجهة---بعنوان-دومينك">هـ-2) بناء الواجهة —  بعنوان دومينك</a></li><li><a href="#هـ-3-النقل-إلى-السيرفر" data-for="هـ-3-النقل-إلى-السيرفر">هـ-3) النقل إلى السيرفر</a></li></ul></li><li><a href="#7-المرحلة-و--الأسرار-والقاعدة-والخدمة" data-for="7-المرحلة-و--الأسرار-والقاعدة-والخدمة"><span class="n">7</span><span>المرحلة و — الأسرار والقاعدة والخدمة</span></a><ul class="sub"><li><a href="#و-1-توليد-أسرار-الإنتاج--مرّة-واحدة-في-عمر-النظام" data-for="و-1-توليد-أسرار-الإنتاج--مرّة-واحدة-في-عمر-النظام">و-1) توليد أسرار الإنتاج — مرّة واحدة في عمر النظام</a></li><li><a href="#و-2-تأمين-ملف-الأسرار" data-for="و-2-تأمين-ملف-الأسرار">و-2) تأمين ملف الأسرار</a></li><li><a href="#و-3-أول-إقلاع--تطبيق-قاعدة-البيانات" data-for="و-3-أول-إقلاع--تطبيق-قاعدة-البيانات">و-3) أول إقلاع — تطبيق قاعدة البيانات</a></li><li><a href="#و-4-تسجيل-الخدمة" data-for="و-4-تسجيل-الخدمة">و-4) تسجيل الخدمة</a></li><li><a href="#و-5-نشر-الواجهة-على-iis" data-for="و-5-نشر-الواجهة-على-iis">و-5) نشر الواجهة على IIS</a></li></ul></li><li><a href="#8-المرحلة-ز--نفق-cloudflare" data-for="8-المرحلة-ز--نفق-cloudflare"><span class="n">8</span><span>المرحلة ز — نفق Cloudflare</span></a><ul class="sub"><li><a href="#ز-1-تثبيت-cloudflared" data-for="ز-1-تثبيت-cloudflared">ز-1) تثبيت cloudflared</a></li><li><a href="#ز-2-تسجيل-الدخول-وإنشاء-النفق" data-for="ز-2-تسجيل-الدخول-وإنشاء-النفق">ز-2) تسجيل الدخول وإنشاء النفق</a></li><li><a href="#ز-3-ملف-الإعدادات---بمسارَين-لا-مسارٍ-واحد" data-for="ز-3-ملف-الإعدادات---بمسارَين-لا-مسارٍ-واحد">ز-3) ملف الإعدادات —  بمسارَين لا مسارٍ واحد</a></li><li><a href="#ز-4-ربط-الدومين-بالنفق" data-for="ز-4-ربط-الدومين-بالنفق">ز-4) ربط الدومين بالنفق</a></li><li><a href="#ز-5-الاختبار-ثم-التثبيت-كخدمة" data-for="ز-5-الاختبار-ثم-التثبيت-كخدمة">ز-5) الاختبار ثم التثبيت كخدمة</a></li><li><a href="#ز-6-إعدادات-الأمان-في-cloudflare" data-for="ز-6-إعدادات-الأمان-في-cloudflare">ز-6) إعدادات الأمان في Cloudflare</a></li></ul></li><li><a href="#9-المرحلة-ح--النسخ-الاحتياطي" data-for="9-المرحلة-ح--النسخ-الاحتياطي"><span class="n">9</span><span>المرحلة ح — النسخ الاحتياطي</span></a><ul class="sub"><li><a href="#ح-1-النسخة-الأولى--تلقائية-على-قرص-السيرفر" data-for="ح-1-النسخة-الأولى--تلقائية-على-قرص-السيرفر">ح-1) النسخة الأولى — تلقائية على قرص السيرفر</a></li><li><a href="#ح-2-النسخة-الثانية--سحابية-onedrive" data-for="ح-2-النسخة-الثانية--سحابية-onedrive">ح-2) النسخة الثانية — سحابية (OneDrive)</a></li><li><a href="#ح-3-النسخة-الثالثة--مرآة-كاملة-على-قرصٍ-خارجي-شهرياً" data-for="ح-3-النسخة-الثالثة--مرآة-كاملة-على-قرصٍ-خارجي-شهرياً">ح-3) النسخة الثالثة — مرآة كاملة على قرصٍ خارجي (شهرياً)</a></li></ul></li><li><a href="#10-المرحلة-ط--الاختبار-النهائي" data-for="10-المرحلة-ط--الاختبار-النهائي"><span class="n">10</span><span>المرحلة ط — الاختبار النهائي</span></a><ul class="sub"><li><a href="#أ-الوصول" data-for="أ-الوصول">أ) الوصول</a></li><li><a href="#ب-الوظائف-الأساسية" data-for="ب-الوظائف-الأساسية">ب) الوظائف الأساسية</a></li><li><a href="#ج--التحقق-بكاميرا-الهاتف-الميزة-الجديدة" data-for="ج--التحقق-بكاميرا-الهاتف-الميزة-الجديدة">ج)  التحقق بكاميرا الهاتف (الميزة الجديدة)</a></li><li><a href="#د-استمرارية-الخدمة" data-for="د-استمرارية-الخدمة">د) استمرارية الخدمة</a></li><li><a href="#هـ--اختبار-الاستعادة--غير-قابل-للتفاوض" data-for="هـ--اختبار-الاستعادة--غير-قابل-للتفاوض">هـ)  اختبار الاستعادة — غير قابل للتفاوض</a></li></ul></li><li><a href="#10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc" data-for="10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc"><span class="n">10ب</span><span>الانتقال من جهاز التجربة إلى الـMini PC</span></a><ul class="sub"><li><a href="#١-أوقِف-نفق-التجربة--أوّلاً-وقبل-أي-شيء" data-for="١-أوقِف-نفق-التجربة--أوّلاً-وقبل-أي-شيء">١) أوقِف نفق التجربة — أوّلاً وقبل أي شيء</a></li><li><a href="#٢-ماذا-يُنقَل-وماذا-لا-يُنقَل" data-for="٢-ماذا-يُنقَل-وماذا-لا-يُنقَل">٢) ماذا يُنقَل وماذا لا يُنقَل</a></li><li><a href="#٣-نقل-النفق--خياران" data-for="٣-نقل-النفق--خياران">٣) نقل النفق — خياران</a></li><li><a href="#٤-ثم-أكمِل-على-الـmini-pc-بالترتيب" data-for="٤-ثم-أكمِل-على-الـmini-pc-بالترتيب">٤) ثم أكمِل على الـMini PC بالترتيب</a></li><li><a href="#٥--قائمة-تحقّقٍ-قبل-أن-تُعلن-الانتقال-ناجحاً" data-for="٥--قائمة-تحقّقٍ-قبل-أن-تُعلن-الانتقال-ناجحاً">٥)  قائمة تحقّقٍ قبل أن تُعلن الانتقال ناجحاً</a></li></ul></li><li><a href="#11-أول-كتاب-رسمي--نقطة-اللاعودة" data-for="11-أول-كتاب-رسمي--نقطة-اللاعودة"><span class="n">11</span><span>أول كتاب رسمي — نقطة اللاعودة</span></a><ul class="sub"><li><a href="#-ثلاثة-أشياء-تُخبَز-في-الـpdf-لحظة-الاعتماد" data-for="-ثلاثة-أشياء-تُخبَز-في-الـpdf-لحظة-الاعتماد">ثلاثة أشياء تُخبَز في الـPDF لحظة الاعتماد</a></li><li><a href="#-قائمة-ما-قبل-أول-كتاب" data-for="-قائمة-ما-قبل-أول-كتاب">قائمة ما قبل أول كتاب</a></li></ul></li><li><a href="#12-كيفية-الدخول-على-النظام" data-for="12-كيفية-الدخول-على-النظام"><span class="n">12</span><span>كيفية الدخول على النظام</span></a><ul class="sub"><li><a href="#للموظفين--من-المكتب-أو-البيت-أو-الخارج" data-for="للموظفين--من-المكتب-أو-البيت-أو-الخارج">للموظفين — من المكتب أو البيت أو الخارج</a></li><li><a href="#للجهات-الخارجية--بلا-حساب-أصلاً" data-for="للجهات-الخارجية--بلا-حساب-أصلاً">للجهات الخارجية — بلا حساب أصلاً</a></li><li><a href="#لك--إدارة-السيرفر" data-for="لك--إدارة-السيرفر">لك — إدارة السيرفر</a></li></ul></li><li><a href="#13-التشغيل-اليومي" data-for="13-التشغيل-اليومي"><span class="n">13</span><span>التشغيل اليومي</span></a><ul class="sub"><li><a href="#يومياً--تلقائيّ-بلا-تدخّل" data-for="يومياً--تلقائيّ-بلا-تدخّل">يومياً — تلقائيّ بلا تدخّل</a></li><li><a href="#أسبوعياً--دقيقتان" data-for="أسبوعياً--دقيقتان">أسبوعياً — دقيقتان</a></li><li><a href="#شهرياً" data-for="شهرياً">شهرياً</a></li><li><a href="#سنوياً" data-for="سنوياً">سنوياً</a></li></ul></li><li><a href="#14-تحديث-النظام" data-for="14-تحديث-النظام"><span class="n">14</span><span>تحديث النظام</span></a></li><li><a href="#15-استكشاف-الأخطاء" data-for="15-استكشاف-الأخطاء"><span class="n">15</span><span>استكشاف الأخطاء</span></a><ul class="sub"><li><a href="#النظام-يعمل-أحياناً-ولا-يعمل-أحياناً--والبيانات-تختلف-بين-محاولة-وأخرى" data-for="النظام-يعمل-أحياناً-ولا-يعمل-أحياناً--والبيانات-تختلف-بين-محاولة-وأخرى">النظام يعمل أحياناً ولا يعمل أحياناً — والبيانات تختلف بين محاولة وأخرى</a></li><li><a href="#لا-يفتح-الموقع-إطلاقاً" data-for="لا-يفتح-الموقع-إطلاقاً">لا يفتح الموقع إطلاقاً</a></li><li><a href="#الصفحة-تفتح-بيضاء" data-for="الصفحة-تفتح-بيضاء">الصفحة تفتح بيضاء</a></li><li><a href="#شاشة-الدخول-تظهر-وزرّ-الدخول-لا-يفعل-شيئاً" data-for="شاشة-الدخول-تظهر-وزرّ-الدخول-لا-يفعل-شيئاً">شاشة الدخول تظهر وزرّ الدخول لا يفعل شيئاً</a></li><li><a href="#api-أو-v-يردّان-404-من-الإنترنت-وهما-يعملان-محلياً" data-for="api-أو-v-يردّان-404-من-الإنترنت-وهما-يعملان-محلياً">/api أو /v يردّان 404 من الإنترنت وهما يعملان محلياً</a></li><li><a href="#كل-النسخ-الاحتياطية-تفشل" data-for="كل-النسخ-الاحتياطية-تفشل">كل النسخ الاحتياطية تفشل</a></li><li><a href="#امتلأ-القرص" data-for="امتلأ-القرص">امتلأ القرص</a></li><li><a href="#نسيت-كلمة-مرور-المدير" data-for="نسيت-كلمة-مرور-المدير">نسيت كلمة مرور المدير</a></li><li><a href="#انتهت-شهادة-https" data-for="انتهت-شهادة-https">انتهت شهادة HTTPS</a></li></ul></li><li><a href="#16-المرجع-السريع" data-for="16-المرجع-السريع"><span class="n">16</span><span>المرجع السريع</span></a><ul class="sub"><li><a href="#عناوين-ومسارات" data-for="عناوين-ومسارات">عناوين ومسارات</a></li><li><a href="#أوامر-الطوارئ" data-for="أوامر-الطوارئ">أوامر الطوارئ</a></li><li><a href="#مفاتيح-يجب-حفظها" data-for="مفاتيح-يجب-حفظها">مفاتيح يجب حفظها</a></li></ul></li><li><a href="#ملحق-ما-صُحِّح-ولماذا" data-for="ملحق-ما-صُحِّح-ولماذا"><span class="n">•</span><span>ملحق: ما صُحِّح ولماذا</span></a><ul class="sub"><li><a href="#خمسةٌ-كانت-ستمنع-النظام-من-العمل" data-for="خمسةٌ-كانت-ستمنع-النظام-من-العمل">خمسةٌ كانت ستمنع النظام من العمل</a></li><li><a href="#سبعةٌ-كانت-ستُعطّل-جزءاً" data-for="سبعةٌ-كانت-ستُعطّل-جزءاً">سبعةٌ كانت ستُعطّل جزءاً</a></li><li><a href="#وستُّ-نقاط-دقّة" data-for="وستُّ-نقاط-دقّة">وستُّ نقاط دقّة</a></li><li><a href="#وثلاثة-إصلاحاتٍ-في-الكود-رافقت-هذه-المراجعة" data-for="وثلاثة-إصلاحاتٍ-في-الكود-رافقت-هذه-المراجعة">وثلاثة إصلاحاتٍ في الكود رافقت هذه المراجعة</a></li></ul></li></ul>
+  </aside>
+
+  <main>
+    <div class="doc">
+
+      <section class="hero">
+        <p class="eyebrow">أرض العرين للتجارة والمقاولات · DEN LAND</p>
+        <h1>من شراء الدومين إلى أوّل كتابٍ رسميّ</h1>
+        <p class="sub">المرجع التنفيذيّ الواحد لنشر نظام إدارة الوثائق على سيرفر المكتب —
+           مقابَلٌ بالكود سطراً بسطر، لا منقولاً من خطّةٍ سابقة.</p>
+        <div class="facts">
+          <span>آخر تحديث <b>2026-09-21</b></span>
+          <span><b>21</b> مرحلة</span>
+          <span><b>50</b> أمراً جاهزاً للنسخ</span>
+          <span><b>46</b> بند تحقّق</span>
+        </div>
+
+        <div class="domainbox">
+          <label for="domain">اكتب <b>عنوان نظامك النهائيّ</b> مرّةً واحدة — وسيُكتب في
+            <b>كل أمرٍ وكل رابطٍ</b> في هذه الصفحة، فتنسخ الأوامر جاهزةً بلا تعديل.</label>
+          <div class="in">
+            <input type="text" id="domain" placeholder="dms.denland.com" spellcheck="false" autocomplete="off">
+            <button type="button" id="domain-apply">اكتبه في الدليل</button>
+          </div>
+          <p class="note" id="domain-note"></p>
+        </div>
+      </section>
+
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p>🔑 <strong>وهذا الملفّ هو المصدر الوحيد</strong> — لا يُحرَّر الـHTML بيد، بل يُعاد توليده:
+<code>python "خطط/_build/build-guide.py"</code>
+</p>
+<p><strong>ما تغيّر عن النسخة السابقة:</strong> صُحِّحت <strong>خمسة أعطالٍ مانعة</strong> كانت ستمنع النظام من
+العمل أصلاً (عنوان الـAPI · توجيه النفق · المنفذ · حساب المدير الأول · رابط التحقق)،
+و<strong>سبعةٌ تُعطّل جزءاً</strong>. التفصيل في <a href="#ملحق-ما-صُحِّح-ولماذا">الملحق «ما صُحِّح ولماذا»</a>.</p>
+<p>🆕 <strong>وما أُضيف في 2026-09-21 (قرار المالك):</strong> النشر صار <strong>مرحلتين لا واحدة</strong> —
+<strong>تجربةٌ على حاسبةٍ عادية ثم إنتاجٌ على الـMini PC</strong> (<a href="#0ب-مرحلتان-لا-واحدة--التجربة-ثم-الإنتاج">§0ب</a>
+و<a href="#10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc">§10ب</a>)، <strong>وصُحِّح فهمُ نقطة اللاعودة</strong>:
+ليست أوّلَ تثبيت بل <strong>أوّلَ كتابٍ رسميّ</strong>. <strong>والترتيب لم يتغيّر ولا مرحلةٌ أُعيد ترقيمها.</strong></p>
+</div>
+<h2 id="-المحتويات"><span class="hicon">📋</span> المحتويات</h2>
+<div class="phases"><a class="pcard" href="#0-اقرأ-هذا-أولاً"><span class="k">0</span><span><span class="t">اقرأ هذا أولاً — الترتيب الذي لا يُخالَف</span><span class="m">١٠ دقائق</span></span></a><a class="pcard" href="#0ب-مرحلتان-لا-واحدة--التجربة-ثم-الإنتاج"><span class="k">0ب</span><span><span class="t">مرحلتان: تجربة ثم إنتاج — وما يُختبر في كلٍّ</span><span class="m">٥ دقائق</span></span></a><a class="pcard" href="#1-المشتريات"><span class="k">1</span><span><span class="t">المشتريات وما تحتاجه</span><span class="m">يوم–أسبوع</span></span></a><a class="pcard" href="#2-المرحلة-أ--الدومين-أولاً"><span class="k">2</span><span><span class="t">أ — الدومين أولاً</span><span class="m">٣٠ دقيقة</span></span></a><a class="pcard" href="#3-المرحلة-ب--تثبيت-ويندوز"><span class="k">3</span><span><span class="t">ب — تثبيت ويندوز</span><span class="m">١–٢ ساعة</span></span></a><a class="pcard" href="#4-المرحلة-ج--الشبكة-والجهاز"><span class="k">4</span><span><span class="t">ج — الشبكة والجهاز والتشفير</span><span class="m">ساعة</span></span></a><a class="pcard" href="#5-المرحلة-د--البرامج-الأساسية"><span class="k">5</span><span><span class="t">د — SQL Server و.NET وIIS</span><span class="m">ساعة</span></span></a><a class="pcard" href="#6-المرحلة-هـ--بناء-النظام-ونقله"><span class="k">6</span><span><span class="t">هـ — بناء النظام ونقله</span><span class="m">٣٠ دقيقة</span></span></a><a class="pcard" href="#7-المرحلة-و--الأسرار-والقاعدة-والخدمة"><span class="k">7</span><span><span class="t">و — الأسرار والقاعدة والخدمة</span><span class="m">٣٠ دقيقة</span></span></a><a class="pcard" href="#8-المرحلة-ز--نفق-cloudflare"><span class="k">8</span><span><span class="t">ز — نفق Cloudflare</span><span class="m">٣٠ دقيقة</span></span></a><a class="pcard" href="#9-المرحلة-ح--النسخ-الاحتياطي"><span class="k">9</span><span><span class="t">ح — النسخ الاحتياطي ٣-٢-١</span><span class="m">ساعة</span></span></a><a class="pcard" href="#10-المرحلة-ط--الاختبار-النهائي"><span class="k">10</span><span><span class="t">ط — الاختبار النهائي</span><span class="m">ساعة</span></span></a><a class="pcard" href="#10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc"><span class="k">10ب</span><span><span class="t">الانتقال من جهاز التجربة إلى الـMini PC</span><span class="m">ساعة</span></span></a><a class="pcard" href="#11-أول-كتاب-رسمي--نقطة-اللاعودة"><span class="k">11</span><span><span class="t">أول كتاب رسمي — نقطة اللاعودة</span><span class="m">اقرأها مرّتين</span></span></a><a class="pcard" href="#12-كيفية-الدخول-على-النظام"><span class="k">12</span><span><span class="t">كيفية الدخول</span></span></a><a class="pcard" href="#13-التشغيل-اليومي"><span class="k">13</span><span><span class="t">التشغيل اليومي</span></span></a><a class="pcard" href="#14-تحديث-النظام"><span class="k">14</span><span><span class="t">تحديث النظام</span></span></a><a class="pcard" href="#15-استكشاف-الأخطاء"><span class="k">15</span><span><span class="t">استكشاف الأخطاء</span></span></a><a class="pcard" href="#16-المرجع-السريع"><span class="k">16</span><span><span class="t">المرجع السريع والمفاتيح</span></span></a></div>
+<hr />
+<h2 id="0-اقرأ-هذا-أولاً"><span class="step">0</span>اقرأ هذا أولاً</h2>
+<h3 id="-ثلاثة-قرارات-لا-يمكن-التراجع-عنها-بعد-أول-كتابٍ-رسميّ"><span class="hicon">🔴</span> ثلاثة قرارات لا يمكن التراجع عنها بعد أول كتابٍ رسميّ</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>القرار</th>
+<th>لماذا لا رجعة فيه</th>
+<th>يُضبط في</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>اسم الدومين</strong></td>
+<td>يُخبَز في <strong>ختم QR داخل كل PDF</strong> لحظة الاعتماد. كتابٌ اعتُمد بعنوانٍ قديم يحمله للأبد</td>
+<td><a href="#2-المرحلة-أ--الدومين-أولاً">المرحلة أ</a></td>
+</tr>
+<tr>
+<td><strong>مفاتيح توقيع QR</strong></td>
+<td>تغييرها <strong>يُبطل التحقق من كل كتابٍ وُقّع سابقاً</strong></td>
+<td><a href="#7-المرحلة-و--الأسرار-والقاعدة-والخدمة">المرحلة و</a></td>
+</tr>
+<tr>
+<td><strong><code>QrSigning:PublicBaseUrl</code></strong></td>
+<td>نفس السبب — القيمة تُطبع في الرمز نفسه</td>
+<td>تلقائيّ من <code>--origins</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>فالدومين يُشترى قبل أي شيء آخر</strong> — لا بعد تجهيز السيرفر. سببان صلبان:</p>
+<ol>
+<li><strong>ملف أسرار الإنتاج</strong> يُولَّد بالدومين (<code>--origins</code>)، ومنه يُشتقّ عنوان صفحة التحقق.</li>
+<li><strong>حزمة الواجهة تُبنى بالدومين مضمَّناً فيها</strong> (<code>--dart-define=API_BASE_URL=…</code>) — فلا يمكن
+   بناؤها قبل معرفته، ولا تصحيحها إلا بإعادة بناءٍ ونشرٍ كاملين.</li>
+</ol>
+<h3 id="الشكل-النهائيّ">الشكل النهائيّ</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">نصّ</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code>موظفوك · والجهات الخارجية (من أي مكان في العالم)
+                    │
+                    ▼
+        https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>          ← عنوانٌ واحد للجميع، HTTPS تلقائي
+                    │
+                    ▼
+        ☁️  Cloudflare   (حماية · شهادة · حجب هجمات)
+                    │  نفقٌ صادرٌ مشفّر — **صفر منافذ مفتوحة على راوترك**
+                    ▼
+        🖥️  Mini PC في المكتب
+            ├── IIS        :80    → الواجهة (ملفات ثابتة)
+            ├── DMS API    :5080  → /api/*  و  /v/*   (خدمة ويندوز)
+            ├── SQL Server Express → قاعدة DmsDb
+            └── C:\DMS\data\       → المرفقات + النسخ الاحتياطية
+</code></pre></div>
+<h3 id="أين-يذهب-كل-شيء">أين يذهب كل شيء</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">نصّ</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code>C:\DMS\
+├── api\                      ← التطبيق (يُستبدل عند كل تحديث)
+│   ├── Dms.Api.exe
+│   ├── appsettings.Production.json   🔑 الأسرار — لا يُستبدل أبداً
+│   └── ops\update-dms.ps1            ← سكربت التحديث الآمن
+├── app\                      ← الواجهة (ملفات ثابتة لـIIS)
+├── data\                     ← **خارج مجلد التطبيق عمداً** فلا يمسّه التحديث
+│   ├── storage\              ← المرفقات وصور القوالب
+│   └── backups\              ← النسخ الاحتياطية
+└── releases\                 ← نقاط الرجوع (يُنشئها سكربت التحديث)
+</code></pre></div>
+<hr />
+<h2 id="0ب-مرحلتان-لا-واحدة--التجربة-ثم-الإنتاج"><span class="step">0ب</span>مرحلتان لا واحدة — التجربة ثم الإنتاج</h2>
+<div class="call info">
+<p><strong>قرار المالك (2026-09-21):</strong> النشر يجري على <strong>مرحلتين</strong>: تجربةٌ كاملة على <strong>حاسبةٍ
+عادية</strong> (لابتوب أو PC)، ثم — إن نجح كل شيء — <strong>إنتاجٌ على الـMini PC</strong>.
+🔴 <strong>ولا يُنقل شيءٌ من بيانات التجربة</strong>: الـMini PC يبدأ <strong>من الصفر</strong> والترقيم <strong>من ١</strong>.</p>
+</div>
+<h3 id="-أولاً--صحّح-فهم-نقطة-اللاعودة-فهو-يحرّر-خطّتك-لا-يقيّدها"><span class="hicon">🔴</span> أولاً — صحّح فهم «نقطة اللاعودة»، فهو يحرّر خطّتك لا يقيّدها</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>❌ <strong>ما كان مفهوماً</strong></td>
+<td>«بعد أوّل تثبيتٍ يُفعَّل الباركود، ومن تلك اللحظة لا أستطيع تغيير أيّ شيء»</td>
+</tr>
+<tr>
+<td>✅ <strong>الصحيح — مُتحقَّقٌ من الكود</strong></td>
+<td><strong>التثبيت لا يُجمّد شيئاً</strong>؛ <code>generate-secrets</code> يُولّد مفاتيح <strong>ولا يختم كتاباً</strong>. ونقطةُ اللاعودة هي <strong>أوّلُ كتابٍ رسميّ تعتمده ثم يخرج من مكتبك</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>لماذا؟</strong> ثلاث حقائق في الكود:</p>
+<ol>
+<li>ختمُ الـQR يُولَّد <strong>عند الاعتماد وحده</strong> — <code>BookRenderer.RenderPdfAsync</code> لا يوقّع إلا
+   حين <code>isPreview: false</code>، والمعاينةُ بلا ختمٍ إطلاقاً.</li>
+<li>الـPDF بختمه <strong>يُحفظ ملفاً على القرص</strong> (<code>GeneratedPdfBlobKey</code>) لحظةَ الاعتماد.</li>
+<li>التنزيلُ <strong>يقرأ الملفَّ المحفوظ ولا يُعيد التوليد</strong> — فما دُفن فيه لا يتغيّر.</li>
+</ol>
+<p>⇒ <strong>الذي يتجمّد هو الورقة التي خرجت، لا الجهاز الذي ثُبِّت.</strong> فثبِّت وفكَّ وأعِد، وغيّر
+الدومين، وولّد مفاتيح جديدة <strong>كما تشاء</strong> — ما دام <strong>لم يخرج كتابٌ رسميّ حقيقيّ</strong>.</p>
+<h3 id="الخريطة-أيّ-مرحلةٍ-تُنفَّذ-أين">الخريطة: أيّ مرحلةٍ تُنفَّذ أين</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>المرحلة</th>
+<th>🧪 التجربة (حاسبة عادية)</th>
+<th>🖥️ الإنتاج (Mini PC)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>أ — الدومين</strong></td>
+<td>✅ <strong>مرّة واحدة</strong> — <strong>والعنوان النهائيّ نفسه</strong> يُستعمل في المرحلتين</td>
+<td>— لا يُعاد</td>
+</tr>
+<tr>
+<td><strong>ب — تثبيت ويندوز</strong></td>
+<td>⏭️ تُتخطّى (الحاسبة عليها ويندوز)</td>
+<td>✅ كاملةً</td>
+</tr>
+<tr>
+<td><strong>ج — الشبكة والتشفير</strong></td>
+<td>⏭️ تُتخطّى (لا IP ثابت ولا BitLocker ولا UPS)</td>
+<td>✅ كاملةً — <strong>ولا تُختصر</strong></td>
+</tr>
+<tr>
+<td><strong>د — SQL و.NET وIIS</strong></td>
+<td>✅ — 🔴 <strong>بقاعدةٍ باسم <code>DmsTrial</code></strong></td>
+<td>✅ — بقاعدة <code>DmsDb</code></td>
+</tr>
+<tr>
+<td><strong>هـ — البناء والنقل</strong></td>
+<td>✅ — <strong>والبناء نفسه يصلح للمرحلتين</strong></td>
+<td>♻️ يُنسخ فقط، بلا إعادة بناء</td>
+</tr>
+<tr>
+<td><strong>و — الأسرار والقاعدة</strong></td>
+<td>✅ أسرارُ تجربة</td>
+<td>🔴 <strong>أسرارٌ جديدة تماماً</strong> — لا تُنقل أسرار التجربة</td>
+</tr>
+<tr>
+<td><strong>ز — النفق</strong></td>
+<td>✅</td>
+<td>🔄 <strong>يُنقل أو يُنشأ من جديد</strong> ← <a href="#10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc">§10ب</a></td>
+</tr>
+<tr>
+<td><strong>ح — النسخ الاحتياطي</strong></td>
+<td>⏭️ يكفي اختبار الاستعادة من داخل النظام</td>
+<td>✅ كاملةً (٣-٢-١)</td>
+</tr>
+<tr>
+<td><strong>ط — الاختبار النهائي</strong></td>
+<td>جزئيّ (أ · ب · ج)</td>
+<td>✅ <strong>كاملاً — لا يُختصر بحجّة التجربة</strong></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="-وما-لا-تُثبته-التجربة--فلا-تبنِ-عليه"><span class="hicon">🔴</span> وما <strong>لا</strong> تُثبته التجربة — فلا تبنِ عليه</h3>
+<p>التجربة على اللابتوب تُثبت أن <strong>البرنامج والدومين والنفق وختم الـQR ومسحَه بالهاتف</strong> تعمل.
+<strong>ولا تُثبت</strong> شيئاً ممّا يلي، وكلُّه يخصّ الـMini PC وحده:</p>
+<ul>
+<li><strong>مثيل SQL Server Express المُسمّى</strong> (<code>.\SQLEXPRESS</code>) — واللابتوب قد يحمل المثيل الافتراضيّ.</li>
+<li><strong>الخدمة <code>DmsApi</code> وتعافيها التلقائيّ</strong> بعد انقطاع كهرباء أو إعادة تشغيل.</li>
+<li><strong>BitLocker</strong> و<strong>الـIP الثابت</strong> و<strong>الـUPS</strong> و<strong>منع إعادة التشغيل أثناء الدوام</strong>.</li>
+<li><strong>النسخ الاحتياطي ٣-٢-١</strong> والمرآة على القرص الخارجي.</li>
+<li>🔴 <strong>اختبار الاستعادة على جهازٍ نظيف</strong> — وهو غير قابل للتفاوض ويُنفَّذ على الـMini PC.</li>
+</ul>
+<div class="call key"><p class="tag">🔑 قاعدة</p>
+<p><strong>فالتجربة تختصر المخاطرة، ولا تختصر المرحلة ط.</strong></p>
+</div>
+<h3 id="-ثلاثة-محاذير-أثناء-التجربة"><span class="hicon">🔴</span> ثلاثة محاذير أثناء التجربة</h3>
+<ol>
+<li><strong>قاعدةٌ باسمٍ آخر — إلزاميّ.</strong> استعمل <code>DmsTrial</code> (أو أيّ اسم) <strong>ولا تستعمل <code>DmsDb</code></strong>
+   على جهاز التطوير: هي قاعدةٌ فيها عملُك الحاليّ، و<code>dotnet run</code> <strong>يطبّق المهاجرات عند كل
+   إقلاعٍ بلا سؤال</strong>.</li>
+<li><strong>لا تعتمد كتاباً تعتبره حقيقياً.</strong> كلُّ ما تعتمده في التجربة <strong>يُمحى</strong> مع القاعدة —
+   وإن طُبع وأُرسل فقد خرج بختمٍ سيُبطله مفتاحُ الإنتاج الجديد.</li>
+<li><strong>لا تُتعب نفسك في إعداد البيانات.</strong> الشركات والقوالب والمستخدمون والأقسام والجهات
+   <strong>تُعاد يدوياً على الـMini PC</strong>. أنشئ في التجربة <strong>أقلَّ ما يكفي للاختبار</strong> لا أكثر.</li>
+</ol>
+<h3 id="-وما-تكسبه-التجربة-فعلاً"><span class="hicon">✅</span> وما تكسبه التجربة فعلاً</h3>
+<ul>
+<li>تكتشف أخطاء <strong>الدومين والنفق والبناء</strong> وأنت غيرُ مستعجل، لا يوم النشر.</li>
+<li>تتدرّب على الخطوات <strong>مرّتين</strong>، فتصير الثانية أسرع وأقلَّ خطأً.</li>
+<li>تختبر <strong>مسحَ الـQR بكاميرا الهاتف على دومينك الحقيقيّ</strong> — وهي أكثر خطوةٍ يصعب تصحيحها لاحقاً.</li>
+</ul>
+<hr />
+<h2 id="1-المشتريات"><span class="step">1</span>المشتريات</h2>
+<h3 id="الأجهزة">الأجهزة</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>البند</th>
+<th>المواصفة الموصى بها</th>
+<th>ملاحظة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Mini PC</strong></td>
+<td>معالج حديث (i5/Ryzen5 فأعلى) · <strong>16 جيجا رام</strong> · <strong>SSD NVMe 512 جيجا</strong></td>
+<td>✅ لديك</td>
+</tr>
+<tr>
+<td><strong>UPS</strong></td>
+<td>يكفي لإطفاءٍ آمن (٥–١٠ دقائق حِمل)</td>
+<td>✅ لديك · <strong>إلزامي</strong>: انقطاعٌ مفاجئ أثناء كتابةٍ قد يُتلف القاعدة</td>
+</tr>
+<tr>
+<td><strong>قرص خارجي</strong></td>
+<td>SSD خارجي <strong>1 تيرابايت</strong></td>
+<td>للمرآة الشهرية — <strong>يُحفظ خارج المبنى</strong></td>
+</tr>
+<tr>
+<td><strong>كيبل شبكة</strong></td>
+<td>Cat5e/Cat6 من الراوتر مباشرةً</td>
+<td>🔴 <strong>لا واي-فاي للسيرفر</strong> — انقطاعةٌ لحظية تُسقط النفق</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="الاشتراكات-والتراخيص">الاشتراكات والتراخيص</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>البند</th>
+<th>التكلفة التقريبية</th>
+<th>ملاحظة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>دومين <code>.com</code></strong></td>
+<td>10–12 دولار/سنة</td>
+<td>من Cloudflare مباشرةً · <strong>فعّل التجديد التلقائي</strong></td>
+</tr>
+<tr>
+<td><strong>Cloudflare</strong></td>
+<td><strong>مجاني</strong></td>
+<td>الخطة المجانية تكفي: نفق + شهادة + حماية</td>
+</tr>
+<tr>
+<td><strong>ترخيص ويندوز</strong></td>
+<td>حسب اختيارك ↓</td>
+<td>🔴 اقرأ التنبيه أدناه</td>
+</tr>
+<tr>
+<td><strong>Microsoft 365</strong> (اختياري)</td>
+<td>~70 دولار/سنة</td>
+<td>لنسخة OneDrive السحابية</td>
+</tr>
+</tbody>
+</table></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<h3 id="-تنبيه-الترخيص--لا-تتجاوزه">تنبيه الترخيص — لا تتجاوزه</h3>
+<p>النسخة <strong>التقييمية</strong> من Windows Server 2022 تعمل <strong>180 يوماً فقط</strong>، وبعدها <strong>يُطفئ
+الجهاز نفسه كل ساعة</strong>. لك ثلاثة خيارات:</p>
+<ol>
+<li><strong>Windows 11 Pro</strong> (الأرخص والأبسط) — يكفي تماماً لثمانية مستخدمين، وكل خطوات هذا
+   الدليل تعمل عليه بلا تغيير عدا <code>Install-WindowsFeature</code> (يُستبدل بـ<code>Enable-WindowsOptionalFeature</code>).</li>
+<li><strong>Windows Server 2022 Standard بترخيصٍ مُشترى</strong> — الأنسب لبيئة سيرفر.</li>
+<li>~~التقييمية~~ — <strong>للتجربة فقط</strong>، لا لنظامٍ يحمل وثائق الشركة.</li>
+</ol>
+</div>
+<h3 id="جهاز-التجربة--بلا-شراء">جهاز التجربة — بلا شراء</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>البند</th>
+<th>المواصفة</th>
+<th>ملاحظة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>حاسبة التجربة</strong></td>
+<td>أيّ لابتوب أو PC عليه ويندوز 10/11</td>
+<td>✅ <strong>لديك</strong> — لا يُشترى شيء لها</td>
+</tr>
+</tbody>
+</table></div>
+<div class="call trial"><p class="tag">🧪 التجربة</p>
+<p><strong>يكفيها:</strong> .NET 9 Runtime · SQL Server Express (أو أيّ مثيلٍ عندك) · IIS أو أيّ خادم
+ملفاتٍ ثابتة · و<code>cloudflared</code>. <strong>وكلُّها مجانية.</strong></p>
+<p>🔴 <strong>وما تحتاجه التجربة من المشتريات هو الدومين وحده</strong> — فهو يُشترى <strong>قبلها</strong>، لأن
+عنوانه <strong>يُخبَز في حزمة الواجهة وفي ختم الـQR</strong>. أمّا القرص الخارجي وكيبل الشبكة فللإنتاج.</p>
+</div>
+<h3 id="أشياء-تحتاجها-أثناء-التثبيت">أشياء تحتاجها أثناء التثبيت</h3>
+<ul>
+<li><strong>فلاشة USB</strong> ١٦ جيجا فأكثر · <strong>جهاز آخر</strong> لتحضيرها · <strong>إنترنت</strong> · <strong>بطاقة دولية</strong> للدومين</li>
+<li><strong>دفتر أو ملف مشفّر</strong> لتدوين المفاتيح (<a href="#مفاتيح-يجب-حفظها">القائمة في §16</a>)</li>
+</ul>
+<hr />
+<h2 id="2-المرحلة-أ--الدومين-أولاً"><span class="step">2</span>المرحلة أ — الدومين أولاً</h2>
+<h3 id="أ-1-حساب-cloudflare">أ-1) حساب Cloudflare</h3>
+<ol>
+<li><code>https://dash.cloudflare.com/sign-up</code> — بريدك + كلمة مرور قوية، وتحقّق من البريد.</li>
+<li>🔐 <strong>فعّل المصادقة الثنائية فوراً</strong>: اسمك (أعلى) ← <strong>My Profile</strong> ← <strong>Authentication</strong>
+   ← <strong>Two-Factor Authentication</strong> ← Google Authenticator أو Authy.
+   <strong>هذا الحساب يتحكم بعنوان نظامك كلِّه — لا تؤجّل حمايته.</strong></li>
+<li><strong>احفظ رموز الاسترداد</strong> (Recovery Codes) في مكانٍ آمن خارج هاتفك.</li>
+</ol>
+<h3 id="أ-2-شراء-الدومين">أ-2) شراء الدومين</h3>
+<p>من لوحة Cloudflare ← <strong>Domain Registration</strong> ← <strong>Register Domain</strong>:</p>
+<ul>
+<li><strong>اسمٌ قصيرٌ يخصّ الشركة</strong>: مثل <code>denland.com</code> أو <code>ardhalarein.com</code></li>
+<li><strong><code>.com</code> فقط</strong> — الأوسع دعماً والأقلّ مشاكل</li>
+<li>بعد الشراء ← ✅ <strong>فعّل Auto-renew</strong> — 🔴 <strong>دومينٌ منتهٍ = نظامٌ متوقّف تماماً</strong></li>
+</ul>
+<p>بعد الشراء يظهر الدومين في حسابك <strong>مرتبطاً تلقائياً</strong> بـDNS الخاص بـCloudflare.</p>
+<h3 id="أ-3-اكتب-عنوانك-النهائيّ-الآن">أ-3) اكتب عنوانك النهائيّ الآن</h3>
+<div class="call info">
+<p><strong>العنوان الذي سيُستعمل في كل خطوةٍ لاحقة:</strong>
+<code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span></code>
+مثال: <code>https://dms.denland.com</code></p>
+<p>✍️ <strong>اكتبه هنا واستعمله حرفياً في كل أمرٍ يلي — بلا <code>/</code> في آخره.</strong></p>
+</div>
+<hr />
+<div class="call trial"><p class="tag">🧪 التجربة</p>
+<p><strong>وهذا العنوان نفسه يُستعمل في التجربة أيضاً</strong> — لا تُنشئ دوميناً فرعياً للتجربة.
+<strong>السبب:</strong> حزمة الواجهة تُبنى والعنوان مخبوزٌ فيها، وختمُ الـQR يحمل العنوان نفسه —
+فاستعمالُ العنوان النهائيّ منذ التجربة يعني <strong>بناءً واحداً</strong>، و<strong>اختباراً حقيقياً لمسح
+الـQR بالهاتف على الدومين الذي سيعمل فعلاً</strong>.</p>
+<p>⚠️ <strong>وأثناء التجربة سيشير الدومين إلى حاسبة التجربة</strong> — وهذا مقبول لأن أحداً لا يعرف
+العنوان بعد. وإن أردتَ إغلاقه تماماً فعّل <strong>Cloudflare Access</strong> مؤقّتاً
+(<a href="#ز-6-إعدادات-الأمان-في-cloudflare">§ز-6</a>) وأطفئه قبل أوّل كتاب.</p>
+</div>
+<hr />
+<h2 id="3-المرحلة-ب--تثبيت-ويندوز"><span class="step">3</span>المرحلة ب — تثبيت ويندوز</h2>
+<div class="call trial"><p class="tag">🧪 التجربة</p>
+<p><strong>هذه المرحلة والتي تليها (ج) تُتخطّيان في التجربة</strong> — حاسبة التجربة عليها ويندوز
+أصلاً، ولا تحتاج IP ثابتاً ولا BitLocker ولا UPS.
+🔴 <strong>وتُنفَّذان كاملتين على الـMini PC</strong> — ولا يُقال «جرّبتُها على اللابتوب فتكفي».</p>
+</div>
+<h3 id="ب-1-تحضير-فلاشة-الإقلاع">ب-1) تحضير فلاشة الإقلاع</h3>
+<p><strong>من جهازك الحالي:</strong></p>
+<ol>
+<li>حمّل ملف ISO (من مركز التقييم أو نسختك المرخَّصة) — اختر <strong>Desktop Experience</strong> لا Core.</li>
+<li>حمّل <strong>Rufus</strong> من <code>https://rufus.ie</code>.</li>
+<li>افتح Rufus ← اختر الفلاشة في <strong>Device</strong> ← <strong>SELECT</strong> واختر الـISO ← <strong>START</strong>.</li>
+</ol>
+<h3 id="ب-2-الإقلاع-من-الفلاشة">ب-2) الإقلاع من الفلاشة</h3>
+<ol>
+<li>وصّل الفلاشة بالـMini PC وشغّله، واضغط باستمرار <strong>F2</strong> أو <strong>DEL</strong> أو <strong>F12</strong> لدخول BIOS.</li>
+<li><strong>Boot Order</strong> ← اجعل USB أولاً ← احفظ (<strong>F10</strong>) واخرج.</li>
+</ol>
+<h3 id="ب-3-التثبيت">ب-3) التثبيت</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>الشاشة</th>
+<th>الاختيار</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>اللغة</td>
+<td><strong>Language:</strong> English (United States)</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Time and currency:</strong> Arabic (Iraq) ← مهمّ لصيغة التاريخ</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Keyboard:</strong> Arabic (101)</td>
+</tr>
+<tr>
+<td>الإصدار</td>
+<td><strong>Standard (Desktop Experience)</strong> — 🔴 حتماً لا Core</td>
+</tr>
+<tr>
+<td>نوع التثبيت</td>
+<td><strong>Custom: Install Windows only (advanced)</strong></td>
+</tr>
+<tr>
+<td>القرص</td>
+<td>القرص الرئيسي — إن كانت عليه أقسام قديمة احذفها كلها</td>
+</tr>
+</tbody>
+</table></div>
+<p>سيستغرق ١٠–٢٠ دقيقة مع إعادات تشغيل تلقائية.</p>
+<h3 id="ب-4-حساب-المسؤول">ب-4) حساب المسؤول</h3>
+<ul>
+<li>كلمة مرور <strong>قوية</strong> لحساب <code>Administrator</code>.</li>
+<li>🔴 <strong>سجّلها في مكانٍ آمن — لا يمكن استرجاعها إن نُسيت.</strong></li>
+</ul>
+<h3 id="ب-5-التحديثات">ب-5) التحديثات</h3>
+<p><strong>Start ← Settings ← Windows Update ← Check for updates</strong> — ثبّت <strong>كل</strong> التحديثات وأعِد
+التشغيل، ثم كرّر حتى لا يبقى شيء.</p>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p>لا تتجاوز هذه الخطوة: التحديثات تُغلق ثغراتٍ أمنية، وجهازك سيكون متاحاً من الإنترنت.</p>
+</div>
+<hr />
+<h2 id="4-المرحلة-ج--الشبكة-والجهاز"><span class="step">4</span>المرحلة ج — الشبكة والجهاز</h2>
+<h3 id="ج-1-اسم-الجهاز">ج-1) اسم الجهاز</h3>
+<p>اضغط <strong>Start</strong> واكتب <code>sysdm.cpl</code> ← <strong>Change</strong> ← <strong>Computer name:</strong> <code>DMS-SERVER</code> ← أعِد التشغيل.</p>
+<h3 id="ج-2-ip-ثابت-حجزٌ-في-الراوتر">ج-2) IP ثابت (حجزٌ في الراوتر)</h3>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>لا تتجاوز هذه</strong>: إن أُعيد تشغيل الراوتر وتغيّر IP السيرفر، انقطع وصولك الإداريّ إليه.</p>
+</div>
+<p><strong>اعرف عنوان MAC للـMini PC</strong> — في PowerShell كمسؤول:</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object Name, MacAddress, LinkSpeed
+</code></pre></div>
+<p>ثم من إعدادات راوترك (عادةً <code>192.168.1.1</code>) ← <strong>DHCP</strong> ← <strong>DHCP Reservation</strong> — أضف عنوان
+MAC واحجز له <code>192.168.1.100</code>.</p>
+<p><strong>تأكّد بعد إعادة التشغيل:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Get-NetIPAddress -AddressFamily IPv4 | Where-Object InterfaceAlias -notlike '*Loopback*' | Select-Object IPAddress, InterfaceAlias
+</code></pre></div>
+<h3 id="ج-3-المنطقة-الزمنية">ج-3) المنطقة الزمنية</h3>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>حرجة</strong>: كل تاريخٍ في النظام — الكتب وسجلّ التدقيق والرواتب — يُبنى على ساعة السيرفر.</p>
+</div>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Set-TimeZone -Id &quot;Arabic Standard Time&quot;
+Get-TimeZone
+w32tm /resync
+</code></pre></div>
+<p>يجب أن تقرأ: <strong><code>(UTC+03:00) Baghdad</code></strong></p>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong><code>Arabic Standard Time</code> هي بغداد</strong> — و<code>Arab Standard Time</code> (بلا «ic») هي الرياض.
+الفرق حرفان والنتيجة توقيتٌ خاطئ في كل سطر.</p>
+</div>
+<h3 id="ج-4-منع-إعادة-التشغيل-أثناء-الدوام">ج-4) منع إعادة التشغيل أثناء الدوام</h3>
+<p><strong>Settings ← Windows Update ← Advanced options ← Active hours</strong> — حدّد <strong>7ص – 7م</strong>.</p>
+<h3 id="ج-5-تشفير-القرص-bitlocker">ج-5) تشفير القرص (BitLocker)</h3>
+<div class="call info">
+<p><strong>لماذا؟</strong> لو سُرق الجهاز، لا يستطيع أحدٌ قراءة قاعدة البيانات ولا <strong>مفاتيح التوقيع</strong>.</p>
+</div>
+<p>⚠️ <strong>على Windows Server يجب تثبيت الميزة أولاً</strong> (على Windows 11 Pro تجاوز هذا السطر):</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Install-WindowsFeature BitLocker -IncludeAllSubFeature -IncludeManagementTools -Restart
+</code></pre></div>
+<p>بعد إعادة التشغيل: <strong>Control Panel ← BitLocker Drive Encryption</strong> ← <strong>Turn on BitLocker</strong>
+على <code>C:</code>:</p>
+<ul>
+<li>احفظ <strong>مفتاح الاسترداد</strong> على <strong>فلاشة أو ملفّ خارج الجهاز</strong> — 🔴 بلا هذا المفتاح لن تفتح
+  القرص إن تعطّل اللوح الأمّ.</li>
+<li>اختر <strong>Encrypt entire drive</strong> ← <strong>Start encrypting</strong>.</li>
+<li>كرّر لأي قرصٍ آخر يحمل بيانات.</li>
+</ul>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p>إن لم يكن في الجهاز <strong>TPM</strong>، ستطلب منك ويندوز تفعيل خيار «BitLocker بلا TPM» من
+<code>gpedit.msc</code> — والأسهل تفعيل TPM من BIOS إن كان موجوداً ومعطّلاً.</p>
+</div>
+<h3 id="ج-6-سطح-المكتب-البعيد">ج-6) سطح المكتب البعيد</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name &quot;fDenyTSConnections&quot; -Value 0
+Enable-NetFirewallRule -DisplayGroup &quot;Remote Desktop&quot;
+</code></pre></div>
+<p><strong>للاستعمال:</strong> من جهازك افتح <code>mstsc</code> واكتب <code>192.168.1.100</code>.</p>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>من داخل المكتب فقط.</strong> لا تفتح RDP على الإنترنت أبداً — فهو الهدف الأول لهجمات
+التخمين. للوصول من الخارج: <a href="#ز-6-إعدادات-الأمان-في-cloudflare">Cloudflare Access</a> أو اذهب للمكتب.</p>
+</div>
+<h3 id="ج-7-ups">ج-7) UPS</h3>
+<ol>
+<li>وصّل UPS بالكهرباء، والـMini PC بـUPS (مخرج <strong>Battery Backup</strong> لا <strong>Surge Only</strong>).</li>
+<li>وصّل كيبل USB بين UPS والجهاز، وثبّت برنامجه (PowerChute أو ما يرافقه).</li>
+<li>اضبطه على <strong>إطفاءٍ آمن</strong> بعد ٥ دقائق من الانقطاع.</li>
+</ol>
+<hr />
+<h2 id="5-المرحلة-د--البرامج-الأساسية"><span class="step">5</span>المرحلة د — البرامج الأساسية</h2>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p>🧪 <strong>في التجربة:</strong> إن كان على حاسبتك SQL Server أصلاً فاستعمله ولا تُثبّت آخر —
+<strong>لكن بقاعدةٍ باسمٍ آخر: <code>DmsTrial</code></strong>، وتُمرَّر في <a href="#و-1-توليد-أسرار-الإنتاج--مرّة-واحدة-في-عمر-النظام">§و-1</a>
+بـ<code>--db-name DmsTrial</code>.</p>
+<p> <strong>ولا تستعمل <code>DmsDb</code> إطلاقاً</strong> إن كانت على الجهاز: هي قاعدة عملك الحاليّ،
+و<code>Dms.Api</code> <strong>يطبّق المهاجرات عند كل إقلاعٍ بلا سؤال</strong> — فإقلاعةٌ واحدة بالإعداد الخطأ
+تكفي لتغيير مخطّطها.</p>
+</div>
+<h3 id="د-1-sql-server-express">د-1) SQL Server Express</h3>
+<p><strong>لماذا Express؟</strong> مجاني، وحدّه <strong>10 جيجا للقاعدة</strong> — يكفي مئات آلاف الكتب (المرفقات
+تُخزَّن كملفات على القرص لا في القاعدة).</p>
+<ol>
+<li><code>https://www.microsoft.com/en-us/sql-server/sql-server-downloads</code> ← <strong>SQL Server 2022 Express</strong></li>
+<li>شغّل الملف ← اختر <strong>Basic</strong> ← اقبل الترخيص ← أكمل.</li>
+<li>📝 <strong>دوّن اسم المثيل</strong> الظاهر في نهاية التثبيت — عادةً <strong><code>SQLEXPRESS</code></strong>.</li>
+</ol>
+<p><strong>ثبّت SSMS</strong> (أداة إدارة القاعدة): اضغط <strong>Install SSMS</strong> في نهاية التثبيت، أو من
+<code>https://aka.ms/ssmsfullsetup</code>.</p>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>لا حاجة لتفعيل TCP/IP ولا للمنفذ 1433</strong> — التطبيق على <strong>الجهاز نفسه</strong> ويتصل عبر
+الذاكرة المشتركة. وفتحُ TCP بلا داعٍ يوسّع سطح الهجوم. (النسخة السابقة من الدليل طلبته.)</p>
+</div>
+<p><strong>تحقّق أن الخدمة تعمل:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Get-Service 'MSSQL$SQLEXPRESS'
+</code></pre></div>
+<h3 id="د-2-net-9-runtime">د-2) .NET 9 Runtime</h3>
+<ol>
+<li><code>https://dotnet.microsoft.com/download/dotnet/9.0</code></li>
+<li>من قسم <strong>.NET Runtime</strong> اختر <strong>ASP.NET Core Runtime 9.x.x</strong> ← <strong>Windows x64 Installer</strong>.</li>
+<li>ثبّته.</li>
+</ol>
+<p><strong>تحقّق:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">dotnet --list-runtimes
+</code></pre></div>
+<p>يجب أن ترى سطراً يبدأ بـ<code>Microsoft.AspNetCore.App 9.</code></p>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>لا تستعمل <code>dotnet --version</code></strong> — فهو يسأل عن الـSDK وهو غير مثبَّت (ولا يلزم).</p>
+</div>
+<h3 id="د-3-iis-لخدمة-الواجهة">د-3) IIS لخدمة الواجهة</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># على Windows Server:
+Install-WindowsFeature -Name Web-Server -IncludeManagementTools
+
+# على Windows 11 Pro بدلاً منه:
+# Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole, IIS-WebServer, IIS-StaticContent, IIS-DefaultDocument, IIS-ManagementConsole -All
+</code></pre></div>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>بلا <code>Web-Asp-Net45</code></strong> — الواجهة <strong>ملفات ثابتة فقط</strong>، وتثبيت ASP.NET القديم يضيف
+سطح هجومٍ بلا فائدة. (النسخة السابقة كانت تطلبه.)</p>
+</div>
+<h3 id="د-4-هيكل-المجلدات">د-4) هيكل المجلدات</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">'C:\DMS\api','C:\DMS\app','C:\DMS\data\storage','C:\DMS\data\backups','C:\DMS\releases' |
+    ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
+
+# 🔴 محرّك SQL يكتب النسخة بحسابه هو لا بحساب التطبيق — فبلا هذا الإذن تفشل كل نسخة
+#    احتياطية بـ«Operating system error 5 (Access is denied)».
+icacls &quot;C:\DMS\data\backups&quot; /grant '&quot;NT SERVICE\MSSQL$SQLEXPRESS&quot;:(OI)(CI)(M)'
+
+Get-ChildItem C:\DMS
+</code></pre></div>
+<hr />
+<h2 id="6-المرحلة-هـ--بناء-النظام-ونقله"><span class="step">6</span>المرحلة هـ — بناء النظام ونقله</h2>
+<div class="call info">
+<p><strong>كل ما في هذه المرحلة يُنفَّذ على جهاز التطوير (<code>D:\DMS</code>) لا على السيرفر.</strong></p>
+</div>
+<h3 id="هـ-1-بناء-الباك-إند">هـ-1) بناء الباك-إند</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cd D:\DMS\backend
+dotnet publish Dms.Api -c Release -r win-x64 --self-contained false -o &quot;C:\temp\dms-publish&quot;
+</code></pre></div>
+<div class="call info">
+<p><code>--self-contained false</code> يعني الاعتماد على .NET المثبَّت على السيرفر — حجمٌ أصغر
+وتحديثات أمنية تصل عبر Windows Update.</p>
+</div>
+<p><strong>تحقّق أن السكربت التشغيليّ وصل، وأن أسرار التطوير لم تصل:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Test-Path &quot;C:\temp\dms-publish\ops\update-dms.ps1&quot;          # يجب True
+Test-Path &quot;C:\temp\dms-publish\appsettings.Development.json&quot; # يجب False
+</code></pre></div>
+<h3 id="هـ-2-بناء-الواجهة---بعنوان-دومينك">هـ-2) بناء الواجهة — 🔴 <strong>بعنوان دومينك</strong></h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cd D:\DMS\app
+flutter build web --release --dart-define=API_BASE_URL=https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>/api
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>هذه أخطر خطوةٍ يسهل الخطأ فيها.</strong> العنوان <strong>يُخبَز داخل حزمة الواجهة</strong>. لو بنيتَها
+بلا الوسم، بقي العنوان <code>http://localhost:5080/api</code> — ومعناه أن <strong>كل متصفّح سيطلب الـAPI
+من جهاز صاحبه هو</strong>: شاشة الدخول تظهر، وزرّ الدخول لا يعمل، بلا رسالة خطأٍ مفهومة.</p>
+</div>
+<p><strong>تأكّد أن العنوان دخل فعلاً في البناء:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Select-String -Path &quot;D:\DMS\app\build\web\main.dart.js&quot; -Pattern &quot;dms\.<span data-dom="root" class="dom">&lt;دومينك&gt;</span>\.com&quot; -Quiet
+</code></pre></div>
+<p>يجب أن يطبع <strong><code>True</code></strong>. لو طبع <code>False</code> أعِد البناء — ولا تنشر.</p>
+<div class="call trial"><p class="tag">🧪 التجربة</p>
+<p><strong>وهذا البناء يصلح للمرحلتين.</strong> ما دمتَ تستعمل <strong>العنوان النهائيّ نفسه</strong> في التجربة
+(<a href="#أ-3-اكتب-عنوانك-النهائيّ-الآن">§أ-3</a>)، فحزمةُ الواجهة تُبنى <strong>مرّة واحدة</strong>، وتُنسخ
+إلى حاسبة التجربة ثم إلى الـMini PC بلا إعادة بناء.</p>
+<p>⚠️ <strong>وإن غيّرتَ العنوان لأيّ سبب — أعِد البناء والنشر معاً.</strong> تصحيحُ العنوان في ملفٍّ
+على السيرفر <strong>لا يُصلح شيئاً</strong>: هو مخبوزٌ داخل <code>main.dart.js</code>.</p>
+</div>
+<h3 id="هـ-3-النقل-إلى-السيرفر">هـ-3) النقل إلى السيرفر</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">$dest = &quot;\\192.168.1.100\c$\DMS&quot;
+robocopy &quot;C:\temp\dms-publish&quot;      &quot;$dest\api&quot; /E /NFL /NDL /NJH /NJS
+robocopy &quot;D:\DMS\app\build\web&quot;     &quot;$dest\app&quot; /MIR /NFL /NDL /NJH /NJS
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>لاحظ الفرق:</strong> <code>api</code> بـ<strong><code>/E</code></strong> لا <code>/MIR</code>.
+<code>/MIR</code> <strong>يحذف كل ما في الوجهة وليس في المصدر</strong> — أي أنه سيمحو <code>appsettings.Production.json</code>
+(<strong>مفاتيح التوقيع</strong>) في أول تحديثٍ لاحق. أما <code>app</code> فمرآةٌ نظيفة (ملفات ثابتة لا غير).
+<strong>وللتحديثات المستقبلية استعمل <a href="#14-تحديث-النظام">سكربت التحديث</a> لا هذه الأوامر.</strong></p>
+</div>
+<hr />
+<h2 id="7-المرحلة-و--الأسرار-والقاعدة-والخدمة"><span class="step">7</span>المرحلة و — الأسرار والقاعدة والخدمة</h2>
+<div class="call info">
+<p><strong>كل ما يلي يُنفَّذ على السيرفر</strong> في PowerShell <strong>كمسؤول</strong>.</p>
+</div>
+<h3 id="و-1-توليد-أسرار-الإنتاج--مرّة-واحدة-في-عمر-النظام">و-1) توليد أسرار الإنتاج — <strong>مرّة واحدة في عمر النظام</strong></h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cd C:\DMS\api
+.\Dms.Api.exe generate-secrets `
+    --out      C:\DMS\api\appsettings.Production.json `
+    --origins  https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span> `
+    --db-server &quot;.\SQLEXPRESS&quot; `
+    --db-name  DmsDb `
+    --storage  C:\DMS\data\storage `
+    --backup   C:\DMS\data\backups
+</code></pre></div>
+<p><strong>ما يفعله الأمر تلقائياً:</strong></p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>المفتاح</th>
+<th>القيمة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Jwt:SigningKey</code></td>
+<td>مفتاح عشوائي ٦٤ بايت</td>
+</tr>
+<tr>
+<td><code>QrSigning:PrivateKeyBase64</code> / <code>PublicKeyBase64</code></td>
+<td>زوج ECDSA P-256</td>
+</tr>
+<tr>
+<td><code>QrSigning:PublicBaseUrl</code></td>
+<td><strong>يُشتقّ من <code>--origins</code></strong> ← صفحة التحقق العامّة</td>
+</tr>
+<tr>
+<td><code>Urls</code></td>
+<td><code>http://localhost:5080</code></td>
+</tr>
+<tr>
+<td><code>Seed:AdminUsername</code> / <code>AdminPassword</code></td>
+<td><code>admin</code> + <strong>كلمة مرور عشوائية فريدة تُطبع على الشاشة</strong></td>
+</tr>
+<tr>
+<td><code>ConnectionStrings:Default</code></td>
+<td>اتصالٌ بمصادقة ويندوز</td>
+</tr>
+<tr>
+<td><code>AllowedOrigins</code></td>
+<td>دومينك</td>
+</tr>
+</tbody>
+</table></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>اكتب كلمة مرور المدير الظاهرة على الشاشة الآن</strong> — تُطبع مرّة واحدة، وهي في الملف
+أيضاً. النظام يُجبرك على تغييرها عند أول دخول.</p>
+<p>⚠️ <strong><code>--db-server ".\SQLEXPRESS"</code> بالنقطة والشرطة المائلة</strong> — النسخة Express تُثبَّت
+<strong>مثيلاً مُسمّى</strong>، و<code>.</code> وحدها تعني المثيل الافتراضيّ غير الموجود.</p>
+<p>🧪 <strong>وفي التجربة تُولَّد أسرارٌ منفصلة</strong> بالأمر نفسه مع <code>--db-name DmsTrial</code>.</p>
+<p> <strong>ولا تُنقَل أسرار التجربة إلى الـMini PC أبداً</strong> — يُعاد توليدها هناك من الصفر.
+<strong>السبب:</strong> مفتاح توقيع الـQR هو <strong>أثمن ما في النظام</strong>، وقد عاش في التجربة على حاسبةٍ
+بلا BitLocker وربّما نُسخ بين مجلّدات. <strong>وتوليدُه من جديد مجّانيّ ما دام لم يُوقَّع كتابٌ
+رسميّ حقيقيّ</strong> — وهو حالُك بالضبط.</p>
+<p>⚠️ <strong>و«مرّة واحدة في عمر النظام» تبدأ من أوّل كتابٍ رسميّ لا من أوّل توليد.</strong> فما قبل
+ذلك تستطيع إعادة التوليد كما تشاء؛ وما بعده <strong>يُبطل التحقق من كل كتابٍ سابق</strong>.</p>
+</div>
+<h3 id="و-2-تأمين-ملف-الأسرار">و-2) تأمين ملف الأسرار</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">icacls &quot;C:\DMS\api\appsettings.Production.json&quot; /inheritance:r /grant:r &quot;SYSTEM:(R)&quot; /grant:r &quot;Administrators:(F)&quot;
+</code></pre></div>
+<p>🔴 <strong>وانسخ الملف الآن إلى مكانٍ آمن خارج السيرفر</strong> (فلاشة مشفّرة أو مدير كلمات مرور).
+بلا هذه النسخة، عطلٌ في الجهاز يعني <strong>أن كل كتابٍ وقّعته الشركة لم يعُد يمكن التحقق منه</strong>.</p>
+<h3 id="و-3-أول-إقلاع--تطبيق-قاعدة-البيانات">و-3) أول إقلاع — تطبيق قاعدة البيانات</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cd C:\DMS\api
+$env:ASPNETCORE_ENVIRONMENT = &quot;Production&quot;
+.\Dms.Api.exe
+</code></pre></div>
+<p>انتظر حتى تظهر:</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">نصّ</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code>info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5080
+</code></pre></div>
+<p>ثم <strong>Ctrl+C</strong> لإيقافه. التطبيق أنشأ القاعدة، وطبّق <strong>٢٨ مهاجرة</strong>، وأنشأ حساب المدير.</p>
+<p><strong>تحقّق في SSMS</strong> (Server name: <code>.\SQLEXPRESS</code> · Windows Authentication):</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-sql">USE DmsDb;
+SELECT COUNT(*) AS Migrations FROM __EFMigrationsHistory;   -- يجب 28
+SELECT Username, Role, MustChangePassword FROM Users;        -- يجب admin / SuperAdmin / 1
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>لو ظهر <code>Username</code> فارغاً، توقّف</strong> — ملف الأسرار بلا قسم <code>Seed</code>. احذف صفّ المستخدم
+وأعِد توليد الملف بـ<code>--force</code> بعد أخذ نسخةٍ منه.</p>
+<p><strong>لو فشل الاتصال بالقاعدة</strong>: التطبيق يتصل بمصادقة ويندوز، وسيعمل لاحقاً بحساب
+<code>NT AUTHORITY\SYSTEM</code> (الخدمة). SQL Server يمنحه صلاحيةً كاملة افتراضياً. لو لم يفعل:
+<code>sql
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'NT AUTHORITY\SYSTEM')
+    CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS;
+ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];</code>
+⚠️ <strong>ولماذا <code>sysadmin</code> لا <code>db_owner</code>؟</strong> لأن <strong>استعادة النسخة الاحتياطية</strong>
+(<code>RESTORE DATABASE</code>) تحتاج صلاحيةً على مستوى الخادم لا على مستوى القاعدة. وحسابٌ بـ
+<code>db_owner</code> وحده يجعل زرّ «استعادة» يفشل <strong>يوم تحتاجه فعلاً</strong> لا قبله.</p>
+</div>
+<h3 id="و-4-تسجيل-الخدمة">و-4) تسجيل الخدمة</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">sc.exe create DmsApi binPath= &quot;C:\DMS\api\Dms.Api.exe&quot; start= auto DisplayName= &quot;DMS API Service&quot;
+sc.exe description DmsApi &quot;نظام إدارة الوثائق الإلكتروني&quot;
+
+# 🔴 لا تُقلع قبل قاعدة البيانات — وإلا تعطّلت عند كل إعادة تشغيلٍ للجهاز.
+sc.exe config DmsApi depend= 'MSSQL$SQLEXPRESS'
+
+# تعافٍ تلقائي من أي توقّف
+sc.exe failure DmsApi reset= 86400 actions= restart/30000/restart/30000/restart/60000
+
+# بيئة الإنتاج صراحةً
+Set-ItemProperty -Path &quot;HKLM:\SYSTEM\CurrentControlSet\Services\DmsApi&quot; `
+    -Name &quot;Environment&quot; -Value @(&quot;ASPNETCORE_ENVIRONMENT=Production&quot;) -Type MultiString
+
+Start-Service DmsApi
+Get-Service DmsApi
+</code></pre></div>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong><code>depend=</code> بعلامتَي اقتباس مفردتين</strong> — لأن <code>$</code> في PowerShell يعني «متغيّر»، وبالمزدوجة
+يتحوّل <code>MSSQL$SQLEXPRESS</code> إلى <code>MSSQL</code> فتفشل التبعية بصمت.</p>
+</div>
+<p><strong>تحقّق أن الـAPI يستجيب:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Invoke-RestMethod -Uri &quot;http://localhost:5080/api/system/status&quot;
+</code></pre></div>
+<p>يجب أن يعيد: <code>maintenance : False</code></p>
+<h3 id="و-5-نشر-الواجهة-على-iis">و-5) نشر الواجهة على IIS</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Import-Module WebAdministration
+
+# 🔴 أوقف الموقع الافتراضي أولاً — وإلا تعارض المنفذ 80 ولم يُقلع موقعك.
+Stop-Website -Name &quot;Default Web Site&quot; -ErrorAction SilentlyContinue
+
+New-Website -Name &quot;DmsApp&quot; -Port 80 -PhysicalPath &quot;C:\DMS\app&quot; -Force
+Start-Website -Name &quot;DmsApp&quot;
+
+# قراءةٌ لحساب IIS
+icacls &quot;C:\DMS\app&quot; /grant &quot;IIS_IUSRS:(OI)(CI)(RX)&quot;
+
+Get-Website | Select-Object Name, State, PhysicalPath
+</code></pre></div>
+<p><strong>تحقّق على السيرفر نفسه:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">(Invoke-WebRequest &quot;http://localhost/&quot; -UseBasicParsing).StatusCode        # 200
+(Invoke-WebRequest &quot;http://localhost/canvaskit/canvaskit.wasm&quot; -UseBasicParsing).StatusCode  # 200
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>الطلب الثاني هو المهمّ.</strong> IIS لا يعرف نوع <code>.wasm</code> افتراضياً فيردّ <strong>404</strong>، ومحرّك
+الرسم لا يُقلع فتظهر <strong>صفحةٌ بيضاء بلا خطأ</strong>. يعالجها ملفّ <code>web.config</code> المرافق للواجهة —
+وهو يُبنى معها تلقائياً. <strong>لو ردّ 404 فالملف لم يصل؛ تأكّد من نسخ مجلد <code>build\web</code> كاملاً.</strong></p>
+</div>
+<hr />
+<h2 id="8-المرحلة-ز--نفق-cloudflare"><span class="step">8</span>المرحلة ز — نفق Cloudflare</h2>
+<div class="call info">
+<p><strong>ما هو؟</strong> بدل فتح منافذ في راوترك (خطير)، برنامجٌ صغير على السيرفر يفتح <strong>هو</strong> اتصالاً
+صادراً آمناً إلى Cloudflare. الزوّار يصلون Cloudflare وهو يمرّر الطلبات عبر النفق.
+<strong>صفر منافذ مفتوحة.</strong></p>
+<p>🧪 <strong>في التجربة تُنفَّذ هذه المرحلة كاملةً على حاسبة التجربة</strong> — وهي أهمّ ما تُثبته
+التجربة، لأن النفق هو ما يجعل الدومين يصل إلى جهازك.</p>
+<p>🔄 <strong>وعند الانتقال إلى الـMini PC يُنقل النفق أو يُنشأ من جديد</strong> — الخطوات في
+<a href="#10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc">§10ب</a>.
+🔴 <strong>ولا يعمل الجهازان معاً بالنفق نفسه</strong> — Cloudflare توزّع الزيارات بين كل مثيلٍ
+يعمل، فيصل نصفُ الطلبات إلى الجهاز الخطأ، <strong>وتظهر العلّة «متقطّعة» فيصعب تشخيصها.</strong></p>
+</div>
+<h3 id="ز-1-تثبيت-cloudflared">ز-1) تثبيت cloudflared</h3>
+<ol>
+<li>من <code>https://github.com/cloudflare/cloudflared/releases/latest</code> نزّل <strong><code>cloudflared-windows-amd64.msi</code></strong></li>
+<li>انقله للسيرفر وثبّته.</li>
+</ol>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cloudflared --version
+</code></pre></div>
+<h3 id="ز-2-تسجيل-الدخول-وإنشاء-النفق">ز-2) تسجيل الدخول وإنشاء النفق</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cloudflared tunnel login          # سيفتح المتصفح: سجّل الدخول واختر دومينك ← Authorize
+cloudflared tunnel create dms-tunnel
+cloudflared tunnel list
+</code></pre></div>
+<p>📝 <strong>دوّن الـID الظاهر</strong> (<code>xxxxxxxx-xxxx-…</code>) — ستحتاجه في الخطوة التالية.</p>
+<h3 id="ز-3-ملف-الإعدادات---بمسارَين-لا-مسارٍ-واحد">ز-3) ملف الإعدادات — 🔴 <strong>بمسارَين لا مسارٍ واحد</strong></h3>
+<p>أنشئ <code>C:\Users\Administrator\.cloudflared\config.yml</code> بهذا المحتوى:</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">YAML</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-yaml">tunnel: &lt;الـID الذي دوّنته&gt;
+credentials-file: C:\Users\Administrator\.cloudflared\&lt;الـID&gt;.json
+
+ingress:
+  # 1️⃣ الـAPI وصفحة التحقق العامّة ← تطبيق DMS على 5080
+  #    🔴 هذه القاعدة **قبل** التالية — النفق يطابق بالترتيب وأول مطابقةٍ تفوز.
+  - hostname: <span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>
+    path: ^/(api|v)(/|$)
+    service: http://localhost:5080
+
+  # 2️⃣ كل ما عداه ← الواجهة على IIS
+  - hostname: <span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>
+    service: http://localhost:80
+
+  # 3️⃣ أي مضيفٍ آخر يُردّ
+  - service: http_status:404
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>هذا أهمّ ملفٍّ في المرحلة كلّها.</strong> النسخة السابقة من الدليل كانت تمرّر <strong>كل شيء</strong>
+إلى المنفذ 80 — أي إلى IIS الذي لا يحمل إلا ملفاتٍ ثابتة. النتيجة: <strong><code>/api</code> و<code>/v</code>
+يردّان 404</strong>، فلا دخول ولا تحقّق ولا أيّ وظيفة.</p>
+<ul>
+<li><strong><code>/api/*</code></strong> → كل نداءات الواجهة</li>
+<li><strong><code>/v/*</code></strong> → صفحة التحقق التي تفتحها كاميرا الهاتف (ADR-043)</li>
+</ul>
+</div>
+<h3 id="ز-4-ربط-الدومين-بالنفق">ز-4) ربط الدومين بالنفق</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cloudflared tunnel route dns dms-tunnel <span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>
+</code></pre></div>
+<h3 id="ز-5-الاختبار-ثم-التثبيت-كخدمة">ز-5) الاختبار ثم التثبيت كخدمة</h3>
+<p><strong>اختبر يدوياً أولاً:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cloudflared tunnel run dms-tunnel
+</code></pre></div>
+<p>من <strong>هاتفك على بيانات الجوال</strong> (لا واي-فاي المكتب): افتح <code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span></code>
+← يجب أن تظهر شاشة دخول DMS. ثم <strong>Ctrl+C</strong>.</p>
+<p><strong>ثبّته خدمةً تعمل مع الإقلاع:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cloudflared service install
+
+# ⚠️ الخدمة تعمل بحساب SYSTEM وتقرأ إعداداتها من مجلدٍ آخر — انسخها إليه صراحةً.
+$sys = &quot;C:\Windows\System32\config\systemprofile\.cloudflared&quot;
+New-Item -ItemType Directory -Force -Path $sys | Out-Null
+Copy-Item &quot;$env:USERPROFILE\.cloudflared\*&quot; $sys -Force
+
+Restart-Service Cloudflared
+Get-Service Cloudflared
+</code></pre></div>
+<p>يجب أن تقرأ <strong><code>Running</code></strong>.</p>
+<h3 id="ز-6-إعدادات-الأمان-في-cloudflare">ز-6) إعدادات الأمان في Cloudflare</h3>
+<p>من لوحة Cloudflare ← اختر دومينك:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>الإعداد</th>
+<th>الموضع</th>
+<th>القيمة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Always Use HTTPS</strong></td>
+<td>SSL/TLS ← Edge Certificates</td>
+<td>✅ مُفعّل</td>
+</tr>
+<tr>
+<td><strong>Automatic HTTPS Rewrites</strong></td>
+<td>SSL/TLS ← Edge Certificates</td>
+<td>✅ مُفعّل</td>
+</tr>
+<tr>
+<td><strong>Encryption Mode</strong></td>
+<td>SSL/TLS ← Overview</td>
+<td><strong>Full</strong></td>
+</tr>
+<tr>
+<td><strong>Bot Fight Mode</strong></td>
+<td>Security ← Bots</td>
+<td>✅ مُفعّل</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>(اختياري) حماية إضافية:</strong></p>
+<ul>
+<li><strong>Security ← WAF ← Tools</strong> — اسمح بالعراق ودول موظفيك فقط.</li>
+<li><strong>Cloudflare Access</strong> (تسجيل دخولٍ ثانٍ قبل الوصول للنظام):<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>إن فعّلته فاستثنِ <code>/v/*</code> و<code>/api/verify</code></strong> — وإلا حُجبت <strong>الجهات الخارجية كلُّها</strong>
+عن صفحة التحقق، وهي المقصودة بالميزة أصلاً (وزارة تمسح ختم كتابك بكاميرا هاتفها لا
+تملك حساباً عندك ولن تُنشئ واحداً).</p>
+</div>
+</li>
+</ul>
+<hr />
+<h2 id="9-المرحلة-ح--النسخ-الاحتياطي"><span class="step">9</span>المرحلة ح — النسخ الاحتياطي</h2>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>المبدأ ٣-٢-١:</strong> ثلاث نسخ · على وسيطين مختلفين · واحدة <strong>خارج المبنى</strong>.
+<strong>والنسخة التي لا تُستعاد ليست نسخة.</strong></p>
+</div>
+<h3 id="ح-1-النسخة-الأولى--تلقائية-على-قرص-السيرفر">ح-1) النسخة الأولى — تلقائية على قرص السيرفر</h3>
+<p>من داخل النظام بحساب <strong>SuperAdmin</strong> ← <strong>الإعدادات ← النسخ الاحتياطي</strong>:</p>
+<ol>
+<li>فعّل <strong>الجدولة التلقائية</strong></li>
+<li><strong>يومي</strong> على الساعة <strong>٢ صباحاً</strong></li>
+<li>احفظ</li>
+</ol>
+<p><strong>النظام يحتفظ تلقائياً بـ</strong>: آخر ٧ يومية · ٤ أسبوعية · ١٢ شهرية — ويحذف الأقدم.</p>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>النسخ المجدولة قاعدة البيانات فقط</strong> (خفيفة وسريعة) — والمرفقات تُنسَخ بالمرآة اليدوية
+في ح-3. هذا قرارٌ مقصود (ADR-020) لا نقص.</p>
+</div>
+<h3 id="ح-2-النسخة-الثانية--سحابية-onedrive">ح-2) النسخة الثانية — سحابية (OneDrive)</h3>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>لماذا لا نجعل مسار النسخ داخل OneDrive مباشرةً؟</strong> لأن أمر النسخ ينفّذه <strong>محرّك SQL
+Server بحسابه هو</strong>، وهو لا يملك صلاحيةً على مجلدٍ داخل ملفّ مستخدم. الصحيح: SQL يكتب
+محلياً، <strong>ومهمّةٌ مجدولة تنسخ</strong> — وهي تعمل بحسابك أنت.</p>
+</div>
+<ol>
+<li>ثبّت OneDrive وسجّل الدخول <strong>بحسابٍ يخصّك وحدك</strong> لا يعرفه أيّ موظف.</li>
+<li>أنشئ مجلداً باسم <code>DMS-Backups</code> داخل OneDrive.</li>
+<li>أنشئ مهمّة يومية تنسخ إليه:</li>
+</ol>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">$src = &quot;C:\DMS\data\backups&quot;
+$dst = &quot;$env:USERPROFILE\OneDrive\DMS-Backups&quot;
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+
+$action  = New-ScheduledTaskAction -Execute &quot;robocopy.exe&quot; `
+           -Argument &quot;`&quot;$src`&quot; `&quot;$dst`&quot; /MIR /R:2 /W:5 /NFL /NDL /NJH /NJS&quot;
+$trigger = New-ScheduledTaskTrigger -Daily -At 3:00AM
+Register-ScheduledTask -TaskName &quot;DMS-Backup-To-OneDrive&quot; -Action $action -Trigger $trigger `
+    -RunLevel Highest -Description &quot;رفع النسخ الاحتياطية إلى OneDrive&quot;
+
+Start-ScheduledTask -TaskName &quot;DMS-Backup-To-OneDrive&quot;   # جرّبها الآن
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>OneDrive لا يزامن والجهاز مسجَّلٌ خروجه.</strong> أبقِ حساب Administrator <strong>مسجَّلاً دخوله
+والشاشة مقفلة</strong> (<code>Win+L</code>) — لا «Sign out». وتحقّق شهرياً أن الملفات تصل فعلاً.</p>
+</div>
+<h3 id="ح-3-النسخة-الثالثة--مرآة-كاملة-على-قرصٍ-خارجي-شهرياً">ح-3) النسخة الثالثة — مرآة كاملة على قرصٍ خارجي (شهرياً)</h3>
+<ol>
+<li>وصّل القرص الخارجي بالسيرفر (لنقل أنه <code>E:</code>).</li>
+<li>من النظام: <strong>النسخ الاحتياطي ← مرآة كاملة إلى مسار خارجي</strong> ← اكتب <code>E:\DMS-Mirror</code>.</li>
+<li>انتظر انتهاءها (تشمل <strong>القاعدة + كل المرفقات</strong>).</li>
+<li>🔴 <strong>افصل القرص واحمله خارج المبنى</strong> — حريقٌ أو سرقةٌ تأخذ الجهاز والقرص معاً إن بقيا معاً.</li>
+</ol>
+<hr />
+<h2 id="10-المرحلة-ط--الاختبار-النهائي"><span class="step">10</span>المرحلة ط — الاختبار النهائي</h2>
+<div class="call trial"><p class="tag">🧪 التجربة</p>
+<p><strong>لا تُعلن النظام جاهزاً قبل أن تضع علامةً على كل سطر.</strong></p>
+<p><strong>في التجربة:</strong> نفّذ <strong>(أ) و(ب) و(ج)</strong> فقط — وهي ما تُثبته حاسبةٌ عادية.
+و<strong>(د) الاستمرارية</strong> و<strong>(هـ) الاستعادة</strong> تُؤجَّلان للـMini PC لأنهما يخصّان الجهاز نفسه
+(خدمة · إقلاع تلقائيّ · UPS · قرصٌ نظيف).</p>
+<p>🔴 <strong>وعلى الـMini PC تُنفَّذ الخمسة كلُّها من جديد</strong> — ولا يُشطب بندٌ لأنه نجح في التجربة.
+<strong>الذي نجح على اللابتوب أثبت أن البرنامج سليم، لا أن هذا الجهاز مُعَدٌّ صحيحاً.</strong></p>
+</div>
+<h3 id="أ-الوصول">أ) الوصول</h3>
+<div class="checkhead"><span class="pill">0 / 5</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck1"><label for="ck1"><code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span></code> يفتح من <strong>كمبيوتر داخل المكتب</strong></label></li>
+<li><input type="checkbox" id="ck2"><label for="ck2">يفتح من <strong>هاتف على بيانات الجوال</strong> (لا واي-فاي المكتب)</label></li>
+<li><input type="checkbox" id="ck3"><label for="ck3"><strong>القفل الأخضر</strong> (شهادة HTTPS) ظاهر في المتصفح</label></li>
+<li><input type="checkbox" id="ck4"><label for="ck4">الدخول بـ<code>admin</code> وكلمة المرور المولَّدة يعمل، <strong>ويطلب تغييرها</strong></label></li>
+<li><input type="checkbox" id="ck5"><label for="ck5">بعد التغيير، الخروج والدخول بالكلمة الجديدة يعمل</label></li>
+</ul>
+<h3 id="ب-الوظائف-الأساسية">ب) الوظائف الأساسية</h3>
+<div class="checkhead"><span class="pill">0 / 7</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck6"><label for="ck6">إنشاء شركة (سوبر أدمن) ← ثم جهة ← ثم قالب</label></li>
+<li><input type="checkbox" id="ck7"><label for="ck7">إنشاء مستخدمٍ جديد ومنحه صلاحيات، والدخول به</label></li>
+<li><input type="checkbox" id="ck8"><label for="ck8">إنشاء <strong>كتاب صادر</strong> واعتماده ← يحصل على <strong>رقمٍ رسميّ</strong></label></li>
+<li><input type="checkbox" id="ck9"><label for="ck9">توليد <strong>PDF</strong> يعمل، وفيه الترويسة <strong>وختم QR</strong></label></li>
+<li><input type="checkbox" id="ck10"><label for="ck10">رفع <strong>مرفق</strong> يعمل، وفتحه يعمل</label></li>
+<li><input type="checkbox" id="ck11"><label for="ck11">إنشاء <strong>كتاب وارد</strong> وإحالته لقسم</label></li>
+<li><input type="checkbox" id="ck12"><label for="ck12"><strong>تقرير</strong> واحد على الأقل يُصدَّر PDF وExcel</label></li>
+</ul>
+<h3 id="ج--التحقق-بكاميرا-الهاتف-الميزة-الجديدة">ج) 🔴 التحقق بكاميرا الهاتف (الميزة الجديدة)</h3>
+<div class="checkhead"><span class="pill">0 / 6</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck13"><label for="ck13">افتح كاميرا هاتفك <strong>العادية</strong> ووجّهها لختم QR في الـPDF المطبوع أو على الشاشة</label></li>
+<li><input type="checkbox" id="ck14"><label for="ck14">يظهر إشعارٌ برابط <code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>/v/…</code> ← اضغطه</label></li>
+<li><input type="checkbox" id="ck15"><label for="ck15">تفتح صفحةٌ عربية: <strong>«تم إصدار هذا الكتاب فعلاً من الشركة»</strong> مع الرقم والتاريخ والجهة</label></li>
+<li><input type="checkbox" id="ck16"><label for="ck16"><strong>لا يظهر المبلغ</strong> في الصفحة</label></li>
+<li><input type="checkbox" id="ck17"><label for="ck17">زرّ <strong>«تنزيل الكتاب PDF»</strong> يعمل</label></li>
+<li><input type="checkbox" id="ck18"><label for="ck18">جرّب رابطاً مُبدَّل الحروف ← <strong>«تم التلاعب بالكتاب»</strong> بلا أي بيانات</label></li>
+</ul>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>لو ظهر نصٌّ خامّ بدل رابط</strong>، فـ<code>PublicBaseUrl</code> لم يُضبط قبل اعتماد الكتاب.
+راجع <a href="#11-أول-كتاب-رسمي--نقطة-اللاعودة">§11</a> <strong>قبل</strong> إصدار أي كتابٍ رسميّ.</p>
+</div>
+<h3 id="د-استمرارية-الخدمة">د) استمرارية الخدمة</h3>
+<div class="checkhead"><span class="pill">0 / 4</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck19"><label for="ck19"><strong>أعِد تشغيل الـMini PC</strong> ← يعود النظام تلقائياً خلال دقيقتين بلا تدخّل</label></li>
+<li><input type="checkbox" id="ck20"><label for="ck20"><code>Get-Service DmsApi, Cloudflared, 'MSSQL$SQLEXPRESS'</code> ← ثلاثتها <code>Running</code></label></li>
+<li><input type="checkbox" id="ck21"><label for="ck21"><strong>افصل كيبل الكهرباء عن UPS</strong> ← الجهاز يبقى يعمل، والبرنامج ينبّه ← أعِد التوصيل</label></li>
+<li><input type="checkbox" id="ck22"><label for="ck22">شاشة <strong>سجلّ التدقيق</strong> تعرض ما فعلتَه أعلاه</label></li>
+</ul>
+<h3 id="هـ--اختبار-الاستعادة--غير-قابل-للتفاوض">هـ) 🔴 اختبار الاستعادة — <strong>غير قابل للتفاوض</strong></h3>
+<ol>
+<li>خذ نسخةً يدوية: <strong>النسخ الاحتياطي ← نسخة الآن</strong></li>
+<li>أنشئ كتاباً صادراً بعنوان <strong>«اختبار الاستعادة»</strong> واعتمده</li>
+<li><strong>استعِد النسخة التي أخذتَها في الخطوة 1</strong> من شاشة الاستعادة</li>
+<li>✅ <strong>الكتاب اختفى</strong> ← الاستعادة تعمل فعلاً</li>
+</ol>
+<div class="call info">
+<p><strong>لماذا هذا إلزاميّ؟</strong> نسخةٌ لم تُختبر استعادتها <strong>ليست نسخة — هي أمنيةٌ وهمية</strong>.
+اليوم الذي تحتاجها فيه ليس اليوم المناسب لاكتشاف أنها لا تعمل.</p>
+</div>
+<hr />
+<h2 id="10ب-الانتقال-من-جهاز-التجربة-إلى-الـmini-pc"><span class="step">10ب</span>الانتقال من جهاز التجربة إلى الـMini PC</h2>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p>تُنفَّذ <strong>بعد</strong> نجاح بنود (أ · ب · ج) من المرحلة ط على حاسبة التجربة،
+و<strong>قبل</strong> تنفيذ المرحلة ط كاملةً على الـMini PC.</p>
+<p><strong>المبدأ الحاكم: يُنقل البرنامج، ولا تُنقل البيانات ولا الأسرار.</strong></p>
+</div>
+<h3 id="١-أوقِف-نفق-التجربة--أوّلاً-وقبل-أي-شيء">١) أوقِف نفق التجربة — <strong>أوّلاً وقبل أي شيء</strong></h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># على حاسبة التجربة
+Stop-Service Cloudflared -ErrorAction SilentlyContinue
+Set-Service  Cloudflared -StartupType Disabled -ErrorAction SilentlyContinue
+Get-Service  Cloudflared
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p><strong>لماذا أوّلاً؟</strong> Cloudflare <strong>توزّع الزيارات بين كل مثيلٍ يعمل بالنفق نفسه</strong>. فلو بقي
+اللابتوب يعمل بينما أقلعَ الـMini PC، <strong>وصل نصفُ الطلبات إلى الجهاز الخطأ</strong>: مستخدمٌ يدخل
+وآخرُ يُرفَض، وكتابٌ يُحفظ في قاعدةٍ وآخرُ في أخرى. <strong>والعلّة تظهر «متقطّعة» فيصعب
+تشخيصها</strong> — وقد تُضيّع يوماً كاملاً.</p>
+</div>
+<p><strong>وأوقِف معه خدمة الـAPI على حاسبة التجربة</strong> حتى لا تبقى تكتب في <code>DmsTrial</code>:</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Stop-Service DmsApi -ErrorAction SilentlyContinue
+Set-Service  DmsApi -StartupType Disabled -ErrorAction SilentlyContinue
+</code></pre></div>
+<h3 id="٢-ماذا-يُنقَل-وماذا-لا-يُنقَل">٢) ماذا يُنقَل وماذا لا يُنقَل</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>العنصر</th>
+<th>يُنقَل؟</th>
+<th>لماذا</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>مخرج <code>dotnet publish</code></td>
+<td>✅ <strong>كما هو</strong></td>
+<td>برنامجٌ لا بيانات</td>
+</tr>
+<tr>
+<td>حزمة الواجهة <code>build\web</code></td>
+<td>✅ <strong>كما هي</strong></td>
+<td>بُنيت بالعنوان النهائيّ (<a href="#هـ-2-بناء-الواجهة---بعنوان-دومينك">§هـ-2</a>)</td>
+</tr>
+<tr>
+<td>بيانات اعتماد النفق (<code>.cloudflared</code>)</td>
+<td>✅ <strong>أو</strong> نفقٌ جديد</td>
+<td>الخياران في <a href="#٣-نقل-النفق--خياران">§٣</a></td>
+</tr>
+<tr>
+<td>🔴 <strong>قاعدة <code>DmsTrial</code></strong></td>
+<td>❌ <strong>لا</strong></td>
+<td><strong>قرار المالك: الـMini PC يبدأ من الصفر والترقيم من ١</strong></td>
+</tr>
+<tr>
+<td>🔴 <strong><code>appsettings.Production.json</code> للتجربة</strong></td>
+<td>❌ <strong>لا</strong></td>
+<td>يُولَّد جديداً — <a href="#و-1-توليد-أسرار-الإنتاج--مرّة-واحدة-في-عمر-النظام">§و-1</a></td>
+</tr>
+<tr>
+<td>مجلد <code>storage</code> للتجربة</td>
+<td>❌ لا</td>
+<td>مرفقاتُ تجربةٍ لا قيمة لها</td>
+</tr>
+<tr>
+<td>الشركات · القوالب · المستخدمون · الأقسام · الجهات</td>
+<td>❌ <strong>تُعاد يدوياً</strong></td>
+<td>⚠️ ولهذا <strong>لا تُتعب نفسك في ضبطها أثناء التجربة</strong></td>
+</tr>
+</tbody>
+</table></div>
+<div class="call key"><p class="tag">🔑 قاعدة</p>
+<p><strong>ولا تحاول «تنظيف» قاعدة التجربة ونقلها.</strong> حذفُ كتبِ التجربة يدوياً يترك
+<strong>جدول العدّادات</strong> فيبدأ أوّلُ كتابٍ حقيقيّ برقم ١١ لا ١، ويُخلّف صفوفاً يتيمة في
+الروابط والمرفقات والإصدارات والمعاملات. <strong>قاعدةٌ جديدة أنظفُ وأسرع وأأمن.</strong></p>
+</div>
+<h3 id="٣-نقل-النفق--خياران">٣) نقل النفق — خياران</h3>
+<p><strong>الخيار أ — نقل النفق نفسه (الأسهل، وبلا لمس DNS):</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># انسخ من حاسبة التجربة إلى الـMini PC:
+#   %USERPROFILE%\.cloudflared\config.yml
+#   %USERPROFILE%\.cloudflared\&lt;الـID&gt;.json
+# ثم على الـMini PC:
+cloudflared service install
+$sys = &quot;C:\Windows\System32\config\systemprofile\.cloudflared&quot;
+New-Item -ItemType Directory -Force -Path $sys | Out-Null
+Copy-Item &quot;$env:USERPROFILE\.cloudflared\*&quot; $sys -Force
+Restart-Service Cloudflared
+</code></pre></div>
+<p>سجلّ DNS <strong>لا يتغيّر</strong> لأن النفق هو هو — تغيّر مكانُ تشغيله فقط.</p>
+<p><strong>الخيار ب — نفقٌ جديد (أنظف إن أردت قطع صلة التجربة تماماً):</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># على الـMini PC
+cloudflared tunnel create dms-tunnel-prod
+cloudflared tunnel route dns dms-tunnel-prod <span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>   # يُحدّث الـCNAME تلقائياً
+# ثم أنشئ config.yml كما في §ز-3 بالـID الجديد، وثبّته خدمةً كما في §ز-5
+# وأخيراً احذف نفق التجربة من حسابك:
+cloudflared tunnel delete dms-tunnel
+</code></pre></div>
+<div class="call danger"><p class="tag">🔴 حرج</p>
+<p>⚠️ <strong>بعد أيّ من الخيارين تحقّق أن المضيف يشير إلى نفقٍ واحد:</strong>
+<code>powershell
+cloudflared tunnel list</code>
+<strong>ولا يبقى نفقان يحملان <code><span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span></code> معاً.</strong></p>
+</div>
+<h3 id="٤-ثم-أكمِل-على-الـmini-pc-بالترتيب">٤) ثم أكمِل على الـMini PC بالترتيب</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>الخطوة</th>
+<th>المرحلة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><a href="#3-المرحلة-ب--تثبيت-ويندوز">ب — تثبيت ويندوز</a> و<a href="#4-المرحلة-ج--الشبكة-والجهاز">ج — الشبكة والتشفير</a> <strong>كاملتين</strong></td>
+</tr>
+<tr>
+<td>2</td>
+<td><a href="#5-المرحلة-د--البرامج-الأساسية">د — SQL و.NET وIIS</a> — بقاعدة <strong><code>DmsDb</code></strong></td>
+</tr>
+<tr>
+<td>3</td>
+<td><a href="#هـ-3-النقل-إلى-السيرفر">هـ-3 — نسخ البرنامج</a> — <strong>بلا إعادة بناء</strong></td>
+</tr>
+<tr>
+<td>4</td>
+<td>🔴 <a href="#7-المرحلة-و--الأسرار-والقاعدة-والخدمة">و — أسرارٌ <strong>جديدة</strong></a> وقاعدةٌ جديدة وخدمة</td>
+</tr>
+<tr>
+<td>5</td>
+<td><a href="#8-المرحلة-ز--نفق-cloudflare">ز — النفق</a> حسب §٣ أعلاه</td>
+</tr>
+<tr>
+<td>6</td>
+<td><a href="#9-المرحلة-ح--النسخ-الاحتياطي">ح — النسخ الاحتياطي ٣-٢-١</a> <strong>كاملةً</strong></td>
+</tr>
+<tr>
+<td>7</td>
+<td>🔴 <a href="#10-المرحلة-ط--الاختبار-النهائي">ط — الاختبار النهائي</a> <strong>بالبنود الخمسة كلِّها</strong></td>
+</tr>
+<tr>
+<td>8</td>
+<td><a href="#11-أول-كتاب-رسمي--نقطة-اللاعودة">11 — قائمة ما قبل أوّل كتاب</a></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="٥--قائمة-تحقّقٍ-قبل-أن-تُعلن-الانتقال-ناجحاً">٥) ✅ قائمة تحقّقٍ قبل أن تُعلن الانتقال ناجحاً</h3>
+<div class="checkhead"><span class="pill">0 / 8</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck23"><label for="ck23">نفق حاسبة التجربة <strong>موقوفٌ ومعطَّل الإقلاع</strong>، وخدمة <code>DmsApi</code> عليها كذلك</label></li>
+<li><input type="checkbox" id="ck24"><label for="ck24"><code>cloudflared tunnel list</code> يُظهر <strong>نفقاً واحداً</strong> يخدم دومينك</label></li>
+<li><input type="checkbox" id="ck25"><label for="ck25"><code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span></code> يفتح من <strong>هاتفٍ على بيانات الجوال</strong> ويصل <strong>الـMini PC</strong></label></li>
+<li><input type="checkbox" id="ck26"><label for="ck26">الدخول بحساب <code>admin</code> <strong>بكلمة المرور الجديدة</strong> المولَّدة على الـMini PC (لا كلمة التجربة)</label></li>
+<li><input type="checkbox" id="ck27"><label for="ck27">قاعدة <code>DmsDb</code> <strong>جديدة</strong>: لا كتبَ ولا شركاتٍ من التجربة</label></li>
+<li><input type="checkbox" id="ck28"><label for="ck28"><strong>أوّل كتابٍ تُنشئه يأخذ الرقم ١</strong> — وهذا هو الدليل القاطع أن العدّادات نظيفة</label></li>
+<li><input type="checkbox" id="ck29"><label for="ck29">نسخةٌ من <code>appsettings.Production.json</code> الجديد <strong>محفوظةٌ خارج السيرفر</strong></label></li>
+<li><input type="checkbox" id="ck30"><label for="ck30">🔴 <strong>حُذف ملفّ أسرار التجربة</strong> من حاسبة التجربة، أو أُتلف القرص المؤقّت الذي حمله</label></li>
+</ul>
+<hr />
+<h2 id="11-أول-كتاب-رسمي--نقطة-اللاعودة"><span class="step">11</span>أول كتاب رسمي — نقطة اللاعودة</h2>
+<div class="call key"><p class="tag">🔑 قاعدة</p>
+<p><strong>اقرأ هذا القسم قبل أن يُصدر أحدٌ في شركتك كتاباً رسمياً واحداً.</strong></p>
+<p><strong>وانتبه إلى ما تعنيه «نقطة اللاعودة» بالضبط</strong> (<a href="#0ب-مرحلتان-لا-واحدة--التجربة-ثم-الإنتاج">§0ب</a>):
+هي <strong>هذا الكتاب</strong> لا التثبيت ولا توليد المفاتيح. فكلُّ ما سبق من مراحل <strong>قابلٌ للإعادة
+والتغيير</strong>، وكلُّ ما يلي هذا الكتاب <strong>لا</strong>.</p>
+<p>⚠️ <strong>وكتبُ التجربة لا تدخل في هذا الحساب</strong> — تُمحى مع قاعدة التجربة، ولا يُعتدّ بها.
+<strong>فاحرص ألّا يخرج كتابُ تجربةٍ إلى جهةٍ خارجية</strong>، لأن ختمه سيُبطله مفتاحُ الإنتاج الجديد
+فيُقرأ لاحقاً على أنه <strong>«تم التلاعب بالكتاب»</strong>.</p>
+</div>
+<h3 id="-ثلاثة-أشياء-تُخبَز-في-الـpdf-لحظة-الاعتماد"><span class="hicon">🔴</span> ثلاثة أشياء تُخبَز في الـPDF لحظة الاعتماد</h3>
+<p>عند اعتماد أيّ كتاب، يُولَّد ختم QR <strong>ويُدفن في ملف الـPDF نهائياً</strong>. وهو يحمل:</p>
+<ol>
+<li><strong>توقيعاً بمفتاح <code>QrSigning:PrivateKeyBase64</code></strong> — تغيير المفتاح يُبطل التحقق من كل
+   كتابٍ سابق.</li>
+<li><strong>رابطاً مبنياً على <code>QrSigning:PublicBaseUrl</code></strong> — تغيير الدومين يجعل كل رابطٍ سابق ميتاً.</li>
+<li><strong>رقم الكتاب</strong> — من تسلسل الشركة.</li>
+</ol>
+<p><strong>فتصحيح أيٍّ من هذين لاحقاً لا يمسّ ورقةً طُبعت.</strong> الكتب القديمة تبقى بالقيم القديمة <strong>إلى
+الأبد</strong>.</p>
+<h3 id="-قائمة-ما-قبل-أول-كتاب"><span class="hicon">✅</span> قائمة ما قبل أول كتاب</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># اقرأ ملف الإنتاج وتأكّد أن الثلاثة مضبوطة
+$cfg = Get-Content C:\DMS\api\appsettings.Production.json -Raw | ConvertFrom-Json
+$cfg.QrSigning.PublicBaseUrl      # يجب: https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>  (لا فارغاً)
+$cfg.QrSigning.PrivateKeyBase64.Length -gt 100   # يجب True
+$cfg.AllowedOrigins               # يجب: https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>
+</code></pre></div>
+<div class="checkhead"><span class="pill">0 / 5</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck31"><label for="ck31"><code>PublicBaseUrl</code> = دومينك النهائيّ <strong>بلا <code>/</code> في آخره</strong></label></li>
+<li><input type="checkbox" id="ck32"><label for="ck32">نسخةٌ من <code>appsettings.Production.json</code> محفوظة <strong>خارج السيرفر</strong> في مكانٍ مشفّر</label></li>
+<li><input type="checkbox" id="ck33"><label for="ck33">اجتزتَ اختبار كاميرا الهاتف في <a href="#ج--التحقق-بكاميرا-الهاتف-الميزة-الجديدة">§10-ج</a></label></li>
+<li><input type="checkbox" id="ck34"><label for="ck34">اجتزتَ اختبار الاستعادة في <a href="#هـ--اختبار-الاستعادة--غير-قابل-للتفاوض">§10-هـ</a></label></li>
+<li><input type="checkbox" id="ck35"><label for="ck35">الدومين عليه <strong>تجديدٌ تلقائي</strong> وبطاقتك سارية</label></li>
+</ul>
+<hr />
+<h2 id="12-كيفية-الدخول-على-النظام"><span class="step">12</span>كيفية الدخول على النظام</h2>
+<h3 id="للموظفين--من-المكتب-أو-البيت-أو-الخارج">للموظفين — من المكتب أو البيت أو الخارج</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">نصّ</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code>1. افتح المتصفح (Chrome أو Edge أو Firefox)
+2. https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>
+3. اسم المستخدم وكلمة المرور
+</code></pre></div>
+<ul>
+<li><strong>نفس الرابط</strong> في كل مكان — لا إعدادات ولا VPN</li>
+<li><strong>بلا تثبيت أي برنامج</strong> — المتصفح يكفي</li>
+<li>يعمل على ويندوز وماك، <strong>وعلى الهواتف للاطّلاع</strong></li>
+</ul>
+<h3 id="للجهات-الخارجية--بلا-حساب-أصلاً">للجهات الخارجية — بلا حساب أصلاً</h3>
+<p>تمسح ختم QR على الكتاب <strong>بكاميرا هاتفها العادية</strong> ← تفتح صفحة التحقق مباشرةً.
+<strong>لا حساب، ولا تطبيق، ولا تسجيل.</strong></p>
+<h3 id="لك--إدارة-السيرفر">لك — إدارة السيرفر</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">نصّ</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code>mstsc  →  192.168.1.100  →  Administrator
+</code></pre></div>
+<p>من داخل المكتب. (من الخارج: اذهب للمكتب، أو فعّل Cloudflare Access لاحقاً.)</p>
+<hr />
+<h2 id="13-التشغيل-اليومي"><span class="step">13</span>التشغيل اليومي</h2>
+<h3 id="يومياً--تلقائيّ-بلا-تدخّل">يومياً — تلقائيّ بلا تدخّل</h3>
+<p>✅ نسخة احتياطية ٢ صباحاً · ✅ رفعها لـOneDrive ٣ صباحاً · ✅ حماية Cloudflare
+· ✅ تعافي الخدمة تلقائياً من أي توقّف</p>
+<h3 id="أسبوعياً--دقيقتان">أسبوعياً — دقيقتان</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Get-Service DmsApi, Cloudflared, 'MSSQL$SQLEXPRESS' | Format-Table Name, Status
+Get-ChildItem C:\DMS\data\backups | Sort-Object LastWriteTime -Descending | Select-Object -First 3 Name, Length, LastWriteTime
+</code></pre></div>
+<div class="checkhead"><span class="pill">0 / 3</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck36"><label for="ck36">الخدمات الثلاث <code>Running</code></label></li>
+<li><input type="checkbox" id="ck37"><label for="ck37">أحدث نسخة <strong>من الليلة الماضية</strong> وحجمها معقول</label></li>
+<li><input type="checkbox" id="ck38"><label for="ck38">لوحة Cloudflare بلا تحذيرات</label></li>
+</ul>
+<h3 id="شهرياً">شهرياً</h3>
+<div class="checkhead"><span class="pill">0 / 4</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck39"><label for="ck39"><strong>المرآة الكاملة</strong> على القرص الخارجي (<a href="#ح-3-النسخة-الثالثة--مرآة-كاملة-على-قرصٍ-خارجي-شهرياً">§9-ح-3</a>)</label></li>
+<li><input type="checkbox" id="ck40"><label for="ck40"><strong>احمل القرص خارج المبنى</strong></label></li>
+<li><input type="checkbox" id="ck41"><label for="ck41">تأكّد أن OneDrive يزامن فعلاً (افتحه من هاتفك وشاهد التواريخ)</label></li>
+<li><input type="checkbox" id="ck42"><label for="ck42"><code>Get-PSDrive C | Select-Object Used, Free</code> — الفضاء الحرّ فوق ٢٠٪</label></li>
+</ul>
+<h3 id="سنوياً">سنوياً</h3>
+<div class="checkhead"><span class="pill">0 / 4</span></div><ul class="checklist">
+<li><input type="checkbox" id="ck43"><label for="ck43"><strong>أعِد اختبار الاستعادة</strong> كاملاً (<a href="#هـ--اختبار-الاستعادة--غير-قابل-للتفاوض">§10-هـ</a>)</label></li>
+<li><input type="checkbox" id="ck44"><label for="ck44">تأكّد أن بطاقة تجديد الدومين <strong>غير منتهية</strong></label></li>
+<li><input type="checkbox" id="ck45"><label for="ck45">ثبّت تحديثات ويندوز المتراكمة في عطلة نهاية أسبوع</label></li>
+<li><input type="checkbox" id="ck46"><label for="ck46">غيّر كلمة مرور Administrator وكلمة مرور Cloudflare</label></li>
+</ul>
+<hr />
+<h2 id="14-تحديث-النظام"><span class="step">14</span>تحديث النظام</h2>
+<p><strong>على جهاز التطوير:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cd D:\DMS\backend
+dotnet publish Dms.Api -c Release -r win-x64 --self-contained false -o &quot;C:\temp\dms-new&quot;
+
+cd D:\DMS\app
+flutter build web --release --dart-define=API_BASE_URL=https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>/api
+</code></pre></div>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>الوسم مطلوبٌ في كل بناء</strong> — نسيانُه يُنتج واجهةً تشير إلى <code>localhost</code> وتتعطّل عند
+كل مستخدم.</p>
+</div>
+<p><strong>النقل:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">robocopy &quot;C:\temp\dms-new&quot;          &quot;\\192.168.1.100\c$\temp\dms-new&quot; /MIR /NFL /NDL /NJH /NJS
+robocopy &quot;D:\DMS\app\build\web&quot;     &quot;\\192.168.1.100\c$\DMS\app&quot;      /MIR /NFL /NDL /NJH /NJS
+</code></pre></div>
+<p><strong>على السيرفر — سكربتٌ واحد يفعل كل شيء بأمان:</strong></p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">powershell -File &quot;C:\DMS\api\ops\update-dms.ps1&quot; -SourceDir &quot;C:\temp\dms-new&quot;
+</code></pre></div>
+<p>يفعل بالترتيب: تحقّق من المتطلبات → <strong>يطلب نسخةً احتياطية</strong> → يوقف الخدمة → <strong>يؤرشف
+الإصدار الحالي</strong> في <code>C:\DMS\releases\</code> → ينسخ الجديد <strong>مع استثناء ملف الأسرار وبيانات
+التشغيل</strong> → يشغّل الخدمة → يفحص الصحّة. وإن فشل الفحص <strong>طبع لك أمر الرجوع</strong>.</p>
+<hr />
+<h2 id="15-استكشاف-الأخطاء"><span class="step">15</span>استكشاف الأخطاء</h2>
+<h3 id="النظام-يعمل-أحياناً-ولا-يعمل-أحياناً--والبيانات-تختلف-بين-محاولة-وأخرى">النظام يعمل <strong>أحياناً</strong> ولا يعمل أحياناً — والبيانات تختلف بين محاولة وأخرى</h3>
+<p>🔴 <strong>السبب الأرجح: نفقان يعملان معاً بالمضيف نفسه</strong> — غالباً حاسبة التجربة بقيت تعمل بعد
+الانتقال إلى الـMini PC (<a href="#١-أوقِف-نفق-التجربة--أوّلاً-وقبل-أي-شيء">§10ب-١</a>).</p>
+<p>Cloudflare <strong>توزّع الزيارات بين كل مثيلٍ متّصل</strong>، فيصل جزءٌ من الطلبات إلى الجهاز القديم:
+مستخدمٌ يدخل وآخرُ يُرفَض · كتابٌ يُحفظ ولا يظهر · وقائمةٌ تتغيّر عند كل تحديث.</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">cloudflared tunnel list           # هل أكثر من نفقٍ نشط؟
+cloudflared tunnel info &lt;اسم-النفق&gt;   # يعرض **الاتصالات النشطة** ومن أين
+</code></pre></div>
+<p><strong>العلاج:</strong> أوقِف النفق على كل جهازٍ عدا الـMini PC، وعطّل إقلاعه:</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Stop-Service Cloudflared; Set-Service Cloudflared -StartupType Disabled
+</code></pre></div>
+<div class="call key"><p class="tag">🔑 قاعدة</p>
+<p><strong>وهذه العلّة تُضيّع وقتاً أطول ممّا تستحق</strong> لأنها <strong>لا تُشبه عطلاً</strong>: النظام «يعمل»،
+فيُظنّ الخلل في البرنامج أو الشبكة. <strong>فابدأ بعدّ الأنفاق قبل أي تشخيصٍ آخر.</strong></p>
+</div>
+<h3 id="لا-يفتح-الموقع-إطلاقاً">لا يفتح الموقع إطلاقاً</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># 1) الخدمات الثلاث
+Get-Service DmsApi, Cloudflared, 'MSSQL$SQLEXPRESS'
+
+# 2) الـAPI محلياً
+Invoke-RestMethod &quot;http://localhost:5080/api/system/status&quot;
+
+# 3) الواجهة محلياً
+(Invoke-WebRequest &quot;http://localhost/&quot; -UseBasicParsing).StatusCode
+
+# 4) سجلّ التطبيق (لاحظ: المصدر Dms.Api لا DmsApi)
+Get-EventLog -LogName Application -Source &quot;Dms.Api&quot; -Newest 20 | Format-List TimeGenerated, Message
+</code></pre></div>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>النتيجة</th>
+<th>السبب والعلاج</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>خدمةٌ متوقّفة</td>
+<td><code>Start-Service &lt;الاسم&gt;</code> — ثم افحص السجلّ لمعرفة سبب التوقّف</td>
+</tr>
+<tr>
+<td>1 و2 و3 تعمل والموقع لا يفتح</td>
+<td><strong>النفق</strong> — <code>Restart-Service Cloudflared</code>، وراجع <code>config.yml</code></td>
+</tr>
+<tr>
+<td>DmsApi تتوقّف فور تشغيلها</td>
+<td>أسرارٌ ناقصة أو قاعدةٌ غير متاحة — السجلّ يقول أيّهما</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="الصفحة-تفتح-بيضاء">الصفحة تفتح بيضاء</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">(Invoke-WebRequest &quot;http://localhost/canvaskit/canvaskit.wasm&quot; -UseBasicParsing).StatusCode
+</code></pre></div>
+<p><strong>404</strong> ⇒ ملف <code>web.config</code> غير موجود في <code>C:\DMS\app</code> — أعِد نسخ <code>build\web</code> كاملاً.</p>
+<h3 id="شاشة-الدخول-تظهر-وزرّ-الدخول-لا-يفعل-شيئاً">شاشة الدخول تظهر وزرّ الدخول لا يفعل شيئاً</h3>
+<p>🔴 <strong>الواجهة بُنيت بلا <code>--dart-define</code>.</strong> افتح أدوات المطوّر (F12) ← <strong>Network</strong> ← ستجد
+طلباتٍ إلى <code>localhost:5080</code> فاشلة. <strong>العلاج: أعِد البناء بالوسم وانشر</strong> (<a href="#14-تحديث-النظام">§14</a>).</p>
+<h3 id="api-أو-v-يردّان-404-من-الإنترنت-وهما-يعملان-محلياً"><code>/api</code> أو <code>/v</code> يردّان 404 من الإنترنت وهما يعملان محلياً</h3>
+<p>قاعدة المسار في <code>config.yml</code> ناقصةٌ أو ترتيبها خاطئ (<a href="#ز-3-ملف-الإعدادات---بمسارَين-لا-مسارٍ-واحد">§8-ز-3</a>).
+قاعدة <code>path:</code> <strong>يجب أن تسبق</strong> قاعدة المنفذ 80.</p>
+<h3 id="كل-النسخ-الاحتياطية-تفشل">كل النسخ الاحتياطية تفشل</h3>
+<p>رسالة <code>Operating system error 5</code> ⇒ محرّك SQL لا يملك صلاحية الكتابة:</p>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">icacls &quot;C:\DMS\data\backups&quot; /grant '&quot;NT SERVICE\MSSQL$SQLEXPRESS&quot;:(OI)(CI)(M)'
+Restart-Service 'MSSQL$SQLEXPRESS'
+</code></pre></div>
+<h3 id="امتلأ-القرص">امتلأ القرص</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell">Get-PSDrive C | Select-Object Used, Free
+Get-ChildItem &quot;C:\DMS\data\backups&quot; | Sort-Object LastWriteTime | Select-Object -First 5
+Get-ChildItem &quot;C:\DMS\releases&quot;     | Sort-Object LastWriteTime   # نقاط رجوع قديمة — احذف الأقدم
+</code></pre></div>
+<p>النظام يحذف النسخ المتقادمة تلقائياً؛ نقاط الرجوع في <code>releases\</code> <strong>لا</strong> تُحذف تلقائياً.</p>
+<h3 id="نسيت-كلمة-مرور-المدير">نسيت كلمة مرور المدير</h3>
+<ul>
+<li><strong>الحلّ الأول:</strong> ادخل بحساب سوبر أدمن ثانٍ وأعِد تعيينها من شاشة المستخدمين.
+  🔑 <strong>ولهذا أنشئ حساب سوبر أدمن احتياطياً من اليوم الأول.</strong></li>
+<li><strong>إن لم يوجد:</strong> تواصل مع المطوّر — تُعاد التهيئة من قاعدة البيانات.</li>
+</ul>
+<h3 id="انتهت-شهادة-https">انتهت شهادة HTTPS</h3>
+<p>لا يحدث — <strong>Cloudflare يجدّدها تلقائياً</strong> بلا تدخّل.</p>
+<hr />
+<h2 id="16-المرجع-السريع"><span class="step">16</span>المرجع السريع</h2>
+<h3 id="عناوين-ومسارات">عناوين ومسارات</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>ما هو</th>
+<th>القيمة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>عنوان النظام للجميع</td>
+<td><code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span></code></td>
+</tr>
+<tr>
+<td>صفحة التحقق العامّة</td>
+<td><code>https://<span data-dom="full" class="dom">dms.&lt;دومينك&gt;.com</span>/v/&lt;token&gt;</code></td>
+</tr>
+<tr>
+<td>IP السيرفر داخل المكتب</td>
+<td><code>192.168.1.100</code></td>
+</tr>
+<tr>
+<td>الـAPI (على السيرفر)</td>
+<td><code>http://localhost:5080</code></td>
+</tr>
+<tr>
+<td>الواجهة (على السيرفر)</td>
+<td><code>http://localhost:80</code></td>
+</tr>
+<tr>
+<td>مجلد التطبيق</td>
+<td><code>C:\DMS\api\</code></td>
+</tr>
+<tr>
+<td>مجلد الواجهة</td>
+<td><code>C:\DMS\app\</code></td>
+</tr>
+<tr>
+<td>المرفقات</td>
+<td><code>C:\DMS\data\storage\</code></td>
+</tr>
+<tr>
+<td>النسخ الاحتياطية</td>
+<td><code>C:\DMS\data\backups\</code></td>
+</tr>
+<tr>
+<td>نقاط الرجوع</td>
+<td><code>C:\DMS\releases\</code></td>
+</tr>
+<tr>
+<td><strong>ملف الأسرار</strong> 🔑</td>
+<td><code>C:\DMS\api\appsettings.Production.json</code></td>
+</tr>
+<tr>
+<td>إعداد النفق</td>
+<td><code>C:\Users\Administrator\.cloudflared\config.yml</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="أوامر-الطوارئ">أوامر الطوارئ</h3>
+<div class="code"><div class="head"><span class="dot"></span><span class="lang">PowerShell</span><span class="grow"></span><button type="button" class="copy">نسخ</button></div><pre><code class="language-powershell"># إعادة تشغيل النظام كاملاً
+Restart-Service 'MSSQL$SQLEXPRESS'; Start-Sleep 10; Restart-Service DmsApi; Restart-Service Cloudflared
+
+# حالة كل شيء
+Get-Service DmsApi, Cloudflared, 'MSSQL$SQLEXPRESS' | Format-Table Name, Status, StartType
+
+# فحص صحّة
+Invoke-RestMethod &quot;http://localhost:5080/api/system/status&quot;
+
+# آخر الأخطاء
+Get-EventLog -LogName Application -EntryType Error -Newest 10 | Format-List TimeGenerated, Source, Message
+
+# نسخة احتياطية فورية: من داخل النظام ← الإعدادات ← النسخ الاحتياطي ← «نسخة الآن»
+</code></pre></div>
+<h3 id="مفاتيح-يجب-حفظها">مفاتيح يجب حفظها</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>المفتاح</th>
+<th>أين</th>
+<th>ماذا يحدث لو ضاع</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>كلمة مرور Administrator (ويندوز)</td>
+<td>مدير كلمات مرور</td>
+<td><strong>لا دخول للسيرفر إطلاقاً</strong></td>
+</tr>
+<tr>
+<td><strong>مفتاح استرداد BitLocker</strong></td>
+<td>فلاشة خارج الجهاز</td>
+<td><strong>لا يُفتح القرص</strong> لو تعطّل اللوح الأمّ</td>
+</tr>
+<tr>
+<td>🔴 <strong><code>appsettings.Production.json</code></strong></td>
+<td>نسخة مشفّرة خارج السيرفر</td>
+<td><strong>كل كتابٍ وقّعته الشركة لا يُتحقّق منه بعد اليوم</strong></td>
+</tr>
+<tr>
+<td>كلمة مرور Cloudflare + رموز الاسترداد</td>
+<td>مدير كلمات مرور</td>
+<td><strong>فقدان السيطرة على الدومين</strong></td>
+</tr>
+<tr>
+<td>كلمة مرور مدير DMS</td>
+<td>+ حساب سوبر أدمن ثانٍ للطوارئ</td>
+<td>قابل للحل بالحساب الثاني</td>
+</tr>
+</tbody>
+</table></div>
+<div class="call warn"><p class="tag">⚠️ انتبه</p>
+<p><strong>الأخطر بلا منازع:</strong> <code>QrSigning:PrivateKeyBase64</code> داخل ملف الأسرار. احتفظ بنسخةٍ
+مشفّرة منه <strong>خارج السيرفر</strong>، وجدّد هذه النسخة إن أعدتَ توليد الملف يوماً.</p>
+</div>
+<hr />
+<h2 id="ملحق-ما-صُحِّح-ولماذا">ملحق: ما صُحِّح ولماذا</h2>
+<div class="call info">
+<p>راجعتُ نسخة <strong>2026-08-18</strong> سطراً بسطر مقابل الكود قبل كتابة هذه. الأخطاء التالية كانت
+فيها، وكلُّها <strong>مقيسة على الكود لا مُستنتَجة</strong>.</p>
+</div>
+<h3 id="خمسةٌ-كانت-ستمنع-النظام-من-العمل">خمسةٌ كانت ستمنع النظام من العمل</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>العطل في النسخة السابقة</th>
+<th>الأثر</th>
+<th>العلاج هنا</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>١</td>
+<td>لا ذكر لعنوان الـAPI في الواجهة (كان مثبّتاً على <code>localhost:5080</code>)</td>
+<td>كل متصفّح يطلب الـAPI <strong>من جهاز صاحبه</strong> — لا دخول إطلاقاً</td>
+<td><code>--dart-define=API_BASE_URL</code> + تحقّقٌ بعد البناء (<a href="#هـ-2-بناء-الواجهة---بعنوان-دومينك">هـ-2</a>)</td>
+</tr>
+<tr>
+<td>٢</td>
+<td>النفق يمرّر <strong>كل شيء</strong> إلى المنفذ 80</td>
+<td><code>/api</code> و<code>/v</code> يردّان 404</td>
+<td>قاعدة <code>path:</code> قبل قاعدة المنفذ 80 (<a href="#ز-3-ملف-الإعدادات---بمسارَين-لا-مسارٍ-واحد">ز-3</a>)</td>
+</tr>
+<tr>
+<td>٣</td>
+<td>افتراض المنفذ 5080 بلا مصدرٍ في الإنتاج</td>
+<td>الخادم يستمع على <strong>5000</strong> فلا يجده النفق</td>
+<td><code>Urls</code> يُكتب في ملف الأسرار تلقائياً</td>
+</tr>
+<tr>
+<td>٤</td>
+<td>لا تنبيه لفخّ حساب المدير الأول</td>
+<td>سوبر أدمن <strong>باسمٍ وكلمة مرورٍ فارغين</strong> — قفلٌ تامّ</td>
+<td>كلمةٌ عشوائية تُولَّد وتُطبع + معالجةٌ في الكود</td>
+</tr>
+<tr>
+<td>٥</td>
+<td>لا ذكر لـ<code>PublicBaseUrl</code> (الدليل أسبق من الميزة)</td>
+<td>كاميرا الهاتف لا تفتح شيئاً — <strong>ولا يُصلَح بأثرٍ رجعيّ</strong></td>
+<td>يُشتقّ من <code>--origins</code> تلقائياً + <a href="#11-أول-كتاب-رسمي--نقطة-اللاعودة">§11</a></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="سبعةٌ-كانت-ستُعطّل-جزءاً">سبعةٌ كانت ستُعطّل جزءاً</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>العطل</th>
+<th>العلاج</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IIS بلا نوع <code>.wasm</code> ⇒ صفحةٌ بيضاء</td>
+<td><code>web.config</code> يُبنى مع الواجهة تلقائياً</td>
+</tr>
+<tr>
+<td><code>robocopy /MIR</code> على مجلد التطبيق ⇒ <strong>يمحو ملف الأسرار</strong></td>
+<td><code>/E</code> للنشر الأول، وسكربت التحديث بعده</td>
+</tr>
+<tr>
+<td>مسار النسخ داخل OneDrive ⇒ محرّك SQL لا يملك صلاحيته</td>
+<td>نسخٌ محليّ + <strong>مهمّة مجدولة</strong> ترفع (<a href="#ح-2-النسخة-الثانية--سحابية-onedrive">ح-2</a>)</td>
+</tr>
+<tr>
+<td>«غيّر مسار النسخ من شاشة النظام» — <strong>شاشةٌ لا وجود لها</strong></td>
+<td>المسار من ملف الإعدادات، والمرآة اليدوية لها شاشتها</td>
+</tr>
+<tr>
+<td>OneDrive لا يزامن والجهاز مسجَّلٌ خروجه</td>
+<td>تنبيهٌ صريح: أقفل الشاشة ولا تسجّل الخروج</td>
+</tr>
+<tr>
+<td>مسار <code>ops\update-dms.ps1</code> خاطئ ولا يصل السيرفر</td>
+<td>صار يُنشَر مع التطبيق تلقائياً</td>
+</tr>
+<tr>
+<td>BitLocker غير مثبّت على Windows Server</td>
+<td><code>Install-WindowsFeature BitLocker</code> أولاً</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="وستُّ-نقاط-دقّة">وستُّ نقاط دقّة</h3>
+<ul>
+<li><strong>الترخيص</strong>: التقييمية تعمل ١٨٠ يوماً ثم يُطفأ الجهاز كل ساعة — صار تحذيراً صريحاً.</li>
+<li><strong><code>dotnet --version</code></strong> يسأل عن SDK غير المثبَّت ⇒ <code>dotnet --list-runtimes</code>.</li>
+<li><strong>عدد المهاجرات 28</strong> لا «23 أو أكثر».</li>
+<li><strong>مصدر سجلّ الأحداث <code>Dms.Api</code></strong> لا <code>DmsApi</code>.</li>
+<li><strong>TCP/IP والمنفذ 1433 لا يلزمان</strong> — التطبيق على الجهاز نفسه.</li>
+<li><strong><code>sysadmin</code> لا <code>db_owner</code></strong> — لأن <strong>الاستعادة</strong> تحتاج صلاحيةً على مستوى الخادم، وحسابٌ
+  بـ<code>db_owner</code> يجعل زرّ الاستعادة يفشل <strong>يوم تحتاجه</strong>.</li>
+</ul>
+<h3 id="وثلاثة-إصلاحاتٍ-في-الكود-رافقت-هذه-المراجعة">وثلاثة إصلاحاتٍ في الكود رافقت هذه المراجعة</h3>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>الإصلاح</th>
+<th>لماذا</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>UseForwardedHeaders</code></td>
+<td>خلف النفق كان كلُّ زوّار العالم يظهرون بعنوان <code>127.0.0.1</code>: <strong>حدُّ الطلبات «لكل IP» يصير حدّاً عاماً واحداً</strong> (متحقّقٌ مُسيءٌ واحد يحجب الجميع)، وسجلّ التدقيق يدوّن عنواناً بلا معنى</td>
+</tr>
+<tr>
+<td><code>appsettings.Development.json</code> <strong>لا يُنشَر</strong></td>
+<td>كان يصل السيرفر ومعه <strong>مفتاح توقيع QR للتطوير</strong>، ولو غاب متغيّر البيئة أقلع النظام بيئةَ تطوير: <code>AllowAnyOrigin</code> وSwagger و<strong>نقطة تصفير القاعدة</strong> مفتوحة</td>
+</tr>
+<tr>
+<td><code>SeedCredentials</code></td>
+<td>معالجة فخّ «السلسلة الفارغة ليست <code>null</code>» في جذره</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<p><em>مرجعٌ حيّ — يُحدَّث مع كل تغييرٍ يمسّ النشر. التوثيق التقنيّ الكامل في <code>.claude/docs/</code>.</em></p>
+
+    </div>
+  </main>
+</div>
+
+<button type="button" class="totop" id="totop" title="إلى الأعلى">↑</button>
+
+<script>
+/* دليل النشر — نظام DMS : سلوك الصفحة */
+(function () {
+  "use strict";
+
+  var LS = {
+    get: function (k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ── 1) السِّمة ─────────────────────────────────────────────── */
+  var themeBtn = $("#theme");
+  function applyTheme(t) {
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    else document.documentElement.removeAttribute("data-theme");
+    if (themeBtn) {
+      themeBtn.textContent = t === "light" ? "☀" : t === "dark" ? "☾" : "◐";
+      themeBtn.title = "المظهر: " + (t === "light" ? "نهاريّ" : t === "dark" ? "ليليّ" : "تلقائيّ");
+    }
+  }
+  var theme = LS.get("dms.theme", "system");
+  applyTheme(theme);
+  if (themeBtn) themeBtn.addEventListener("click", function () {
+    theme = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
+    LS.set("dms.theme", theme); applyTheme(theme);
+  });
+
+  /* ── 2) الدومين — يُكتب مرّة فيسري في كل أمرٍ في الصفحة ──────── */
+  var DOM_PLACEHOLDER = "dms.<دومينك>.com";
+  var domInput = $("#domain"), domApply = $("#domain-apply"), domNote = $("#domain-note");
+
+  function setDomain(host) {
+    host = (host || "").trim()
+      .replace(/^https?:\/\//i, "").replace(/\/+$/, "").replace(/\s+/g, "");
+    var full = host || DOM_PLACEHOLDER;
+    var root = host ? host.split(".").slice(1).join(".") || host : "<دومينك>";
+    $$("[data-dom]").forEach(function (el) {
+      el.textContent = el.getAttribute("data-dom") === "root" ? root : full;
+      el.classList.toggle("dom", !host);
+    });
+    if (domNote) {
+      domNote.textContent = host
+        ? "✔ كُتب في " + $$("[data-dom]").length + " موضعاً — والأوامر أدناه صارت جاهزةً للنسخ."
+        : "لم يُضبط بعد، فالعنوان يظهر كقالب. اكتبه مرّةً ليسري في كل أمرٍ وكل رابطٍ في الصفحة.";
+    }
+    LS.set("dms.domain", host);
+  }
+  var savedDomain = LS.get("dms.domain", "");
+  if (domInput) domInput.value = savedDomain;
+  setDomain(savedDomain);
+  if (domApply) domApply.addEventListener("click", function () { setDomain(domInput.value); });
+  if (domInput) {
+    domInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); setDomain(domInput.value); } });
+    domInput.addEventListener("input", function () { setDomain(domInput.value); });
+  }
+
+  /* ── 3) قوائم التحقق — تُحفظ في المتصفّح ─────────────────────── */
+  var boxes = $$(".checklist input[type=checkbox]");
+  var meterVal = $("#meter-val"), meterBar = $("#meter-bar"), meterReset = $("#meter-reset");
+
+  function refreshPills() {
+    $$(".checklist").forEach(function (list) {
+      var pill = list.previousElementSibling && list.previousElementSibling.querySelector(".pill");
+      if (!pill) return;
+      var all = $$("input[type=checkbox]", list);
+      var done = all.filter(function (b) { return b.checked; }).length;
+      pill.textContent = done + " / " + all.length;
+      pill.classList.toggle("full", all.length > 0 && done === all.length);
+    });
+  }
+  function refreshMeter() {
+    var done = boxes.filter(function (b) { return b.checked; }).length;
+    var pct = boxes.length ? Math.round((done / boxes.length) * 100) : 0;
+    if (meterVal) meterVal.textContent = done + " / " + boxes.length;
+    if (meterBar) meterBar.style.width = pct + "%";
+    refreshPills();
+  }
+  boxes.forEach(function (b) {
+    if (LS.get("dms.ck." + b.id, "") === "1") b.checked = true;
+    b.addEventListener("change", function () {
+      if (b.checked) LS.set("dms.ck." + b.id, "1"); else LS.del("dms.ck." + b.id);
+      refreshMeter();
+    });
+  });
+  refreshMeter();
+  if (meterReset) meterReset.addEventListener("click", function () {
+    if (!confirm("مسحُ كل العلامات في قوائم التحقق؟")) return;
+    boxes.forEach(function (b) { b.checked = false; LS.del("dms.ck." + b.id); });
+    refreshMeter();
+  });
+
+  /* ── 4) نسخ الأوامر ─────────────────────────────────────────── */
+  $$(".code .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.closest(".code").querySelector("pre");
+      var text = pre ? pre.innerText : "";
+      var done = function () {
+        var old = btn.textContent;
+        btn.textContent = "✔ نُسخ"; btn.classList.add("done");
+        setTimeout(function () { btn.textContent = old; btn.classList.remove("done"); }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+
+  /* ── 5) تتبّع التمرير في الرِّف ───────────────────────────────── */
+  var sections = $$(".doc h2[id]");
+  var tocLinks = {}, tocItems = {};
+  $$(".toc a[data-for]").forEach(function (a) {
+    tocLinks[a.getAttribute("data-for")] = a;
+    var li = a.closest("li");
+    if (li && li.parentElement && li.parentElement.classList.contains("toc")) tocItems[a.getAttribute("data-for")] = li;
+  });
+  var subLinks = $$(".toc .sub a[data-for]");
+  var allHeads = $$(".doc h2[id], .doc h3[id]");
+  var currentTop = null;
+
+  function spy() {
+    var y = window.scrollY + 130, topId = null, subId = null;
+    sections.forEach(function (h) { if (h.offsetTop <= y) topId = h.id; });
+    allHeads.forEach(function (h) { if (h.offsetTop <= y) subId = h.id; });
+
+    Object.keys(tocLinks).forEach(function (id) { tocLinks[id].classList.toggle("on", id === topId); });
+    subLinks.forEach(function (a) { a.classList.toggle("on", a.getAttribute("data-for") === subId); });
+
+    if (topId !== currentTop) {
+      currentTop = topId;
+      Object.keys(tocItems).forEach(function (id) { tocItems[id].classList.toggle("open", id === topId); });
+      var act = topId && tocLinks[topId];
+      if (act && window.innerWidth > 1040) {
+        var rail = $(".rail"), r = act.getBoundingClientRect(), rr = rail.getBoundingClientRect();
+        if (r.top < rr.top + 40 || r.bottom > rr.bottom - 40) {
+          rail.scrollTop += r.top - rr.top - rail.clientHeight / 3;
+        }
+      }
+    }
+    var tt = $("#totop"); if (tt) tt.classList.toggle("show", window.scrollY > 700);
+  }
+  var ticking = false;
+  window.addEventListener("scroll", function () {
+    if (ticking) return; ticking = true;
+    requestAnimationFrame(function () { spy(); ticking = false; });
+  }, { passive: true });
+  spy();
+
+  var tt = $("#totop");
+  if (tt) tt.addEventListener("click", function () { window.scrollTo({ top: 0, behavior: "smooth" }); });
+
+  /* ── 6) البحث ───────────────────────────────────────────────── */
+  var q = $("#q"), doc = $(".doc");
+  var blocks = $$(".doc > *").filter(function (el) { return !el.classList.contains("hero"); });
+  var empty = document.createElement("p");
+  empty.className = "noresult"; empty.hidden = true;
+  empty.textContent = "لا نتيجة.";
+  if (doc) doc.appendChild(empty);
+
+  function clearMarks(el) {
+    $$("mark.hit", el).forEach(function (m) {
+      var t = document.createTextNode(m.textContent);
+      m.parentNode.replaceChild(t, m);
+    });
+    el.normalize();
+  }
+  function mark(el, needle) {
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    var nodes = [], n;
+    while ((n = walker.nextNode())) if (n.nodeValue.toLowerCase().indexOf(needle) !== -1) nodes.push(n);
+    nodes.forEach(function (node) {
+      var frag = document.createDocumentFragment(), s = node.nodeValue, low = s.toLowerCase(), i = 0, p;
+      while ((p = low.indexOf(needle, i)) !== -1) {
+        if (p > i) frag.appendChild(document.createTextNode(s.slice(i, p)));
+        var m = document.createElement("mark");
+        m.className = "hit"; m.textContent = s.slice(p, p + needle.length);
+        frag.appendChild(m); i = p + needle.length;
+      }
+      if (i < s.length) frag.appendChild(document.createTextNode(s.slice(i)));
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
+  var searchTimer = null;
+  function runSearch() {
+    var needle = (q.value || "").trim().toLowerCase();
+    var shown = 0;
+    blocks.forEach(function (el) {
+      clearMarks(el);
+      if (!needle) { el.classList.remove("dimmed"); shown++; return; }
+      var hit = el.textContent.toLowerCase().indexOf(needle) !== -1;
+      el.classList.toggle("dimmed", !hit);
+      if (hit) { shown++; mark(el, needle); }
+    });
+    empty.hidden = !(needle && shown === 0);
+    empty.classList.remove("dimmed");
+    if (needle) { document.querySelectorAll(".toc li").forEach(function (li) { li.classList.remove("open"); }); }
+    else { currentTop = null; spy(); }
+  }
+  if (q) {
+    q.addEventListener("input", function () {
+      clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 140);
+    });
+    q.addEventListener("keydown", function (e) { if (e.key === "Escape") { q.value = ""; runSearch(); q.blur(); } });
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); q.focus(); q.select(); }
+    });
+  }
+
+  /* ── 7) الطباعة ─────────────────────────────────────────────── */
+  var pb = $("#print");
+  if (pb) pb.addEventListener("click", function () { window.print(); });
+})();
+
+</script>
+</body>
+</html>
