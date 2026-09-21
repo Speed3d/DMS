@@ -7,11 +7,11 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../core/api_client.dart';
 import '../core/quill_html.dart';
 import '../core/quill_toolbar.dart';
-import '../widgets/currency_selector.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/financial_bar.dart';
 import '../widgets/pdf_preview_pane.dart';
 
 /// Hint: شاشة تعديل كتاب معتمد لإنشاء إصدار جديد (Version)
@@ -219,266 +219,232 @@ class _OutgoingEditApprovedScreenState extends ConsumerState<OutgoingEditApprove
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1700),
-              child: Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    flex: 4,
-                    child: ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppColors.warn.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.warn.withValues(alpha: 0.3)),
-                          ),
-                          child: const Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.warning_amber_rounded, color: AppColors.warn),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'تنبيه: هذا الكتاب معتمد. أي حفظ للتعديلات سيولد (إصدار جديد) منه مع إعادة توليد الـ PDF والـ QR. رقم الكتاب لن يتغير.',
-                                  style: TextStyle(height: 1.5, fontSize: 13, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        CustomCard(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('معلومات الإصدار الجديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              const Divider(height: 32),
-                              
-                              DropdownButtonFormField<int>(
-                                isExpanded: true,
-                                initialValue: _entityId,
-                                decoration: _inputDecoration('الجهة المستلمة', Icons.business_rounded),
-                                items: refs.entities.map((e) => DropdownMenuItem(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))).toList(),
-                                onChanged: (v) => setState(() => _entityId = v ?? _entityId),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              DropdownButtonFormField<int>(
-                                isExpanded: true,
-                                initialValue: _templateId,
-                                decoration: _inputDecoration('القالب المعتمد', Icons.style_rounded),
-                                items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name, overflow: TextOverflow.ellipsis))).toList(),
-                                onChanged: (v) => setState(() => _templateId = v ?? _templateId),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              InkWell(
-                                onTap: () async {
-                                  final d = await showDatePicker(
-                                    context: context,
-                                    initialDate: _date,
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime(2100),
-                                  );
-                                  if (d != null) setState(() => _date = d);
-                                },
-                                borderRadius: BorderRadius.circular(12),
-                                child: InputDecorator(
-                                  decoration: _inputDecoration('تاريخ الكتاب', Icons.calendar_today_rounded),
-                                  child: Text(DateFormat('yyyy/MM/dd').format(_date), style: const TextStyle(fontWeight: FontWeight.w600)),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              TextField(
-                                controller: _subject,
-                                decoration: _inputDecoration('موضوع الكتاب', Icons.subject_rounded),
-                              ),
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: _headerPhrase,
-                                decoration: _inputDecoration('عبارة رأسية اختيارية (إلى، أمر إداري، إلخ)', Icons.title_rounded),
-                              ),
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: _signatoryName,
-                                decoration: _inputDecoration('اسم الموقّع (اختياري)', Icons.person_rounded),
-                              ),
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: _signatoryTitle,
-                                decoration: _inputDecoration('المنصب (اختياري)', Icons.badge_rounded),
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 24),
-                        
-                        CustomCard(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Expanded(child: Text('التفاصيل المالية والملاحظات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-                                  Switch(
-                                    value: _showFinancials,
-                                    activeThumbColor: AppColors.gold,
-                                    onChanged: (v) => setState(() => _showFinancials = v),
-                                  ),
-                                ],
-                              ),
-                              if (_showFinancials) ...[
-                                const Divider(height: 32),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 2,
-                                      child: TextField(
-                                        controller: _amount,
-                                        keyboardType: TextInputType.number,
-                                        decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      flex: 2,
-                                      child: CurrencySelector(
-                                        value: _currency,
-                                        onChanged: (v) => setState(() => _currency = v),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (_currency == 'USD') ...[
-                                  const SizedBox(height: 16),
-                                  TextField(
-                                    controller: _rate,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _inputDecoration('سعر الصرف', Icons.price_change_rounded),
-                                  ),
-                                ],
-                              ],
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: _note,
-                                decoration: _inputDecoration('ملاحظة التغيير (اختياري)', Icons.edit_note_rounded),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                  // 🔴 **الشريط الماليّ فوق الأعمدة الثلاثة** (بلاغ المالك 2026-09-21):
+                  //    كان بطاقةً في أسفل عمود البيانات فلا تُرى إلا بتمرير.
+                  //    🔑 **وودجةٌ واحدة تخدم الشاشات الثلاث** فلا تتباعد النسخ.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                    child: FinancialBar(
+                      title: 'التفاصيل المالية والملاحظات',
+                      enabled: _showFinancials,
+                      onEnabledChanged: (v) => setState(() => _showFinancials = v),
+                      amount: _amount,
+                      rate: _rate,
+                      currency: _currency,
+                      onCurrencyChanged: (v) => setState(() => _currency = v),
                     ),
                   ),
-                  
-                  // القسم الأيسر (المحرر)
                   Expanded(
-                    flex: 6,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
-                      child: Column(
-                        children: [
-                          Expanded(
-                            child: CustomCard(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                    child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.warn.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.warn.withValues(alpha: 0.3)),
+                              ),
+                              child: const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.edit_document, color: AppColors.action(context)),
-                                      const SizedBox(width: 12),
-                                      const Text('تعديل نص الكتاب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                      const Spacer(),
-                                      if (_error != null)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                                          child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
-                                        ),
-                                    ],
-                                  ),
-                                  const Divider(height: 24),
-                                  
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: isDark ? theme.colorScheme.surfaceContainerHighest : Colors.grey.shade100,
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                                      border: Border.all(color: theme.dividerColor),
-                                    ),
-                                    padding: const EdgeInsets.all(8),
-                                    child: quill.QuillSimpleToolbar(
-                                      controller: _quillController,
-                                      config: kQuillToolbarConfig,
-                                    ),
-                                  ),
-                                  
+                                  Icon(Icons.warning_amber_rounded, color: AppColors.warn),
+                                  SizedBox(width: 12),
                                   Expanded(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          left: BorderSide(color: theme.dividerColor),
-                                          right: BorderSide(color: theme.dividerColor),
-                                          bottom: BorderSide(color: theme.dividerColor),
-                                        ),
-                                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                                      ),
-                                      padding: const EdgeInsets.all(16),
-                                      child: quill.QuillEditor.basic(
-                                        controller: _quillController,
-                                      ),
+                                    child: Text(
+                                      'تنبيه: هذا الكتاب معتمد. أي حفظ للتعديلات سيولد (إصدار جديد) منه مع إعادة توليد الـ PDF والـ QR. رقم الكتاب لن يتغير.',
+                                      style: TextStyle(height: 1.5, fontSize: 13, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 24),
-                          
-                          // المعاينة بجانب الحفظ — تُظهر شكل الكتاب بعد التعديل قبل إصداره.
-                          Row(
+                            const SizedBox(height: 24),
+                        
+                            CustomCard(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('معلومات الإصدار الجديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  const Divider(height: 32),
+                              
+                                  DropdownButtonFormField<int>(
+                                    isExpanded: true,
+                                    initialValue: _entityId,
+                                    decoration: _inputDecoration('الجهة المستلمة', Icons.business_rounded),
+                                    items: refs.entities.map((e) => DropdownMenuItem(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))).toList(),
+                                    onChanged: (v) => setState(() => _entityId = v ?? _entityId),
+                                  ),
+                                  const SizedBox(height: 16),
+                              
+                                  DropdownButtonFormField<int>(
+                                    isExpanded: true,
+                                    initialValue: _templateId,
+                                    decoration: _inputDecoration('القالب المعتمد', Icons.style_rounded),
+                                    items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name, overflow: TextOverflow.ellipsis))).toList(),
+                                    onChanged: (v) => setState(() => _templateId = v ?? _templateId),
+                                  ),
+                                  const SizedBox(height: 16),
+                              
+                                  InkWell(
+                                    onTap: () async {
+                                      final d = await showDatePicker(
+                                        context: context,
+                                        initialDate: _date,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2100),
+                                      );
+                                      if (d != null) setState(() => _date = d);
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: InputDecorator(
+                                      decoration: _inputDecoration('تاريخ الكتاب', Icons.calendar_today_rounded),
+                                      child: Text(DateFormat('yyyy/MM/dd').format(_date), style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                              
+                                  TextField(
+                                    controller: _subject,
+                                    decoration: _inputDecoration('موضوع الكتاب', Icons.subject_rounded),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextField(
+                                    controller: _headerPhrase,
+                                    decoration: _inputDecoration('عبارة رأسية اختيارية (إلى، أمر إداري، إلخ)', Icons.title_rounded),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextField(
+                                    controller: _signatoryName,
+                                    decoration: _inputDecoration('اسم الموقّع (اختياري)', Icons.person_rounded),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextField(
+                                    controller: _signatoryTitle,
+                                    decoration: _inputDecoration('المنصب (اختياري)', Icons.badge_rounded),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        
+                          ],
+                        ),
+                      ),
+                  
+                      // القسم الأيسر (المحرر)
+                      Expanded(
+                        flex: 6,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                          child: Column(
                             children: [
                               Expanded(
-                                flex: 2,
-                                child: SizedBox(
-                                  height: 56,
-                                  child: FilledButton.icon(
-                                    onPressed: _busy ? null : _save,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: AppColors.warn,
-                                      foregroundColor: Colors.black,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      elevation: 8,
-                                      shadowColor: AppColors.warn.withValues(alpha: 0.5),
-                                    ),
-                                    icon: _busy
-                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                                      : const Icon(Icons.save_rounded),
-                                    label: Text(
-                                      _busy ? 'جارٍ الحفظ...' : 'حفظ كإصدار جديد',
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                    ),
+                                child: CustomCard(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.edit_document, color: AppColors.action(context)),
+                                          const SizedBox(width: 12),
+                                          const Text('تعديل نص الكتاب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                          const Spacer(),
+                                          if (_error != null)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                              decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                              child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
+                                            ),
+                                        ],
+                                      ),
+                                      const Divider(height: 24),
+                                  
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: isDark ? theme.colorScheme.surfaceContainerHighest : Colors.grey.shade100,
+                                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                          border: Border.all(color: theme.dividerColor),
+                                        ),
+                                        padding: const EdgeInsets.all(8),
+                                        child: quill.QuillSimpleToolbar(
+                                          controller: _quillController,
+                                          config: kQuillToolbarConfig,
+                                        ),
+                                      ),
+                                  
+                                      Expanded(
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              left: BorderSide(color: theme.dividerColor),
+                                              right: BorderSide(color: theme.dividerColor),
+                                              bottom: BorderSide(color: theme.dividerColor),
+                                            ),
+                                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                                          ),
+                                          padding: const EdgeInsets.all(16),
+                                          child: quill.QuillEditor.basic(
+                                            controller: _quillController,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 24),
+                          
+                              // المعاينة بجانب الحفظ — تُظهر شكل الكتاب بعد التعديل قبل إصداره.
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: SizedBox(
+                                      height: 56,
+                                      child: FilledButton.icon(
+                                        onPressed: _busy ? null : _save,
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: AppColors.warn,
+                                          foregroundColor: Colors.black,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          elevation: 8,
+                                          shadowColor: AppColors.warn.withValues(alpha: 0.5),
+                                        ),
+                                        icon: _busy
+                                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                                          : const Icon(Icons.save_rounded),
+                                        label: Text(
+                                          _busy ? 'جارٍ الحفظ...' : 'حفظ كإصدار جديد',
+                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                  // القسم الأيسر: المعاينة بجانب نص الكتاب (نفس شاشة الإنشاء).
-                  Expanded(
-                    flex: 5,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
-                      child: _previewPane(),
+                      // القسم الأيسر: المعاينة بجانب نص الكتاب (نفس شاشة الإنشاء).
+                      Expanded(
+                        flex: 5,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                          child: _previewPane(),
+                        ),
+                      ),
+                    ],
                     ),
                   ),
                 ],

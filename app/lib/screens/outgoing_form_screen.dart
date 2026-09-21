@@ -7,7 +7,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import '../core/api_client.dart';
 import '../core/quill_html.dart';
 import '../core/quill_toolbar.dart';
-import '../widgets/currency_selector.dart';
+import '../widgets/financial_bar.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
 import '../core/local_storage.dart';
@@ -451,71 +451,21 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                       ),
                     ),
                     
-                    const SizedBox(height: 24),
-                    
-                    // التفاصيل المالية
-                    CustomCard(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
-                                child: const Icon(Icons.monetization_on_rounded, color: AppColors.gold),
-                              ),
-                              const SizedBox(width: 12),
-                              const Flexible(child: Text('التفاصيل المالية (اختياري)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                              const Spacer(),
-                              Switch(
-                                value: _showFinancials,
-                                activeThumbColor: AppColors.gold,
-                                onChanged: (v) => setState(() => _showFinancials = v),
-                              ),
-                            ],
-                          ),
-                          
-                          if (_showFinancials) ...[
-                            const Divider(height: 32),
-                            Builder(builder: (context) {
-                              final children = [
-                                Expanded(
-                                  flex: 2,
-                                  child: TextField(
-                                    controller: _amount,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _inputDecoration('المبلغ', Icons.payments_rounded),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  flex: 2,
-                                  child: CurrencySelector(
-                                    value: _currency,
-                                    onChanged: (v) => setState(() => _currency = v),
-                                  ),
-                                ),
-                              ];
-                              if (isSmall) {
-                                return Column(children: children.map((e) => Padding(padding: const EdgeInsets.only(bottom: 12), child: e)).toList());
-                              }
-                              return Row(children: children);
-                            }),
-                            if (_currency == 'USD') ...[
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: _rate,
-                                keyboardType: TextInputType.number,
-                                decoration: _inputDecoration('سعر الصرف لدينار', Icons.price_change_rounded),
-                              ),
-                            ],
-                          ],
-                        ],
-                      ),
-                    ),
                   ];
+
+                  // ═══ الشريط الماليّ — **فوق الأعمدة الثلاثة** (بلاغ المالك 2026-09-21) ═══
+                  //
+                  // 🔴 **كان بطاقةً في أسفل عمود البيانات** فلا تُرى إلا بتمرير، ومَن لا
+                  //    يرى الحقل لا يملؤه. والشريط يجعله **أوّل ما تقع عليه العين**.
+                  // 🔑 **وودجةٌ واحدة تخدم الشاشات الثلاث** — فلا تتباعد ثلاثُ نسخ.
+                  final financialBar = FinancialBar(
+                    enabled: _showFinancials,
+                    onEnabledChanged: (v) => setState(() => _showFinancials = v),
+                    amount: _amount,
+                    rate: _rate,
+                    currency: _currency,
+                    onCurrencyChanged: (v) => setState(() => _currency = v),
+                  );
 
                   final editorSection = CustomCard(
                     padding: const EdgeInsets.all(24),
@@ -644,6 +594,10 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                                 ListView(
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                                   children: [
+                                    // ⚠️ **وفي الضيّقة يتصدّر التبويب** — الموضع نفسه بالمعنى:
+                                    //    أوّلُ ما يُرى، لا آخرُ ما يُبلَغ بالتمرير.
+                                    financialBar,
+                                    const SizedBox(height: 20),
                                     ...rightPanelContent,
                                     const SizedBox(height: 24),
                                     editorSection,
@@ -663,39 +617,51 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                     );
                   }
 
-                  return Row(
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // القسم الأيمن (البيانات الأساسية والمالية)
-                      Expanded(
-                        flex: 4,
-                        child: ListView(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                          children: rightPanelContent,
-                        ),
+                      // 🔴 **الشريط يمتدّ فوق الأعمدة الثلاثة** لا داخل أحدها.
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        child: financialBar,
                       ),
-                      
-                      // القسم الأوسط (المحرر والنص)
                       Expanded(
-                        flex: 6,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
-                          child: Column(
-                            children: [
-                              Expanded(child: editorSection),
-                              const SizedBox(height: 24),
-                              actionButtons,
-                            ],
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                          // القسم الأيمن (البيانات الأساسية)
+                          Expanded(
+                            flex: 4,
+                            child: ListView(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                              children: rightPanelContent,
+                            ),
                           ),
-                        ),
-                      ),
+                      
+                          // القسم الأوسط (المحرر والنص)
+                          Expanded(
+                            flex: 6,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                              child: Column(
+                                children: [
+                                  Expanded(child: editorSection),
+                                  const SizedBox(height: 24),
+                                  actionButtons,
+                                ],
+                              ),
+                            ),
+                          ),
 
-                      // القسم الأيسر: المعاينة **بجانب نص الكتاب** كما طلب المالك.
-                      Expanded(
-                        flex: 5,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
-                          child: _previewPane(),
+                          // القسم الأيسر: المعاينة **بجانب نص الكتاب** كما طلب المالك.
+                          Expanded(
+                            flex: 5,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 24, top: 32, bottom: 32),
+                              child: _previewPane(),
+                            ),
+                          ),
+                          ],
                         ),
                       ),
                     ],
