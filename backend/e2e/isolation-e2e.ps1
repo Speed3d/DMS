@@ -194,6 +194,204 @@ if($drafts.Count -eq $Parallel){
   foreach($id in $drafts){ $null=Api DELETE "/outgoing/$id" $null $admin $cidA }
 }
 
+
+# ════════════════════════ ٤) الإشعارات: عزلٌ بالشركة (ADR-046) ════════════════════════
+#
+# 🔴 **لماذا E2E لا اختبار وحدة؟** العزل هنا يفرضه **Global Query Filter** في EF بحسب
+#    ترويسة `X-Company-Id` — ولا منطقَ مجالٍ يُستدعى. واختبارٌ في الذاكرة يقول «سليم»
+#    عن آليةٍ لم يُشغّلها.
+#
+# ⚠️ **والمستلِم غيرُ الفاعل عمداً**: `SendAsync` لا يُشعر الفاعلَ بفعل نفسه، فلو أسند
+#    admin مهمةً لنفسه **لما وُلد إشعارٌ أصلاً** ومرّ الحارس بلا أن يحرس شيئاً.
+
+Write-Host "`n=== ٤) عزل الإشعارات بالشركة (ADR-046) ===" -ForegroundColor Cyan
+
+function UpsertIsoUser($username,$displayName){
+  $ex=(Api GET "/users" $null $admin $cidA).B | Where-Object { $_.username -eq $username } | Select-Object -First 1
+  $body=@{fullName=$displayName;role='Employee';isActive=$true;companies=@(
+    @{companyId=$cidA;modules=@('Outgoing','Tasks');canManageTasks=$false},
+    @{companyId=$cidB;modules=@('Outgoing','Tasks');canManageTasks=$false})}
+  if($ex){ $null=Api PUT "/users/$($ex.userId)" $body $admin $cidA }
+  else { $body.username=$username; $body.password='Iso@12345'; $null=Api POST "/users" $body $admin $cidA }
+  return (Api GET "/users" $null $admin $cidA).B | Where-Object { $_.username -eq $username } | Select-Object -First 1
+}
+
+$dual=UpsertIsoUser 'iso_dual' 'موظف الشركتين'
+if($dual){ Ok "مستخدمٌ مُسنَدٌ للشركتين (id=$($dual.userId))" } else { Bad "تعذّر تجهيز المستخدم المزدوج" }
+
+if($dual){
+  $due=(Get-Date).Date.AddDays(7).ToString('yyyy-MM-ddT00:00:00')
+  $mk="ISO$(Get-Random -Minimum 1000 -Maximum 9999)"
+
+  # مهمّةٌ في كل شركة **مُسنَدةٌ إليه** ⇒ إشعارٌ في كلٍّ.
+  $tA=(Api POST "/tasks" @{title="إشعار-أ-$mk";taskType='Individual';priority='Normal'
+      dueDate=$due;assignedToUserId=$dual.userId} $admin $cidA)
+  $tB=(Api POST "/tasks" @{title="إشعار-ب-$mk";taskType='Individual';priority='Normal'
+      dueDate=$due;assignedToUserId=$dual.userId} $admin $cidB)
+
+  if($tA.S -eq 200 -and $tB.S -eq 200){
+    $idA=[int]$tA.B.taskId; $idB=[int]$tB.B.taskId
+    Ok "مهمّتان مُسنَدتان إليه: أ=$idA · ب=$idB"
+
+    $tk=(Api POST "/auth/login" @{username='iso_dual';password='Iso@12345'} $null $null).B.accessToken
+    if(-not $tk){ Bad "تعذّر دخول iso_dual" }
+    else{
+      $nA=(Api GET "/notifications" $null $tk $cidA).B
+      $nB=(Api GET "/notifications" $null $tk $cidB).B
+
+      # 🔴 **المطابقة بمعرّف الكيان لا بالعنوان** — العربية تتشوّه في PS 5.1 فتفشل صامتةً.
+      $seenAinA=@($nA.items | Where-Object { $_.entityType -eq 'DmsTask' -and [int]$_.entityId -eq $idA }).Count
+      $seenBinA=@($nA.items | Where-Object { $_.entityType -eq 'DmsTask' -and [int]$_.entityId -eq $idB }).Count
+      $seenBinB=@($nB.items | Where-Object { $_.entityType -eq 'DmsTask' -and [int]$_.entityId -eq $idB }).Count
+      $seenAinB=@($nB.items | Where-Object { $_.entityType -eq 'DmsTask' -and [int]$_.entityId -eq $idA }).Count
+
+      Expect "إشعارُ الشركة أ يظهر وهو فيها" $seenAinA 1
+      Expect "🔐 وإشعارُ الشركة ب **محجوبٌ** وهو في أ" $seenBinA 0
+      Expect "إشعارُ الشركة ب يظهر وهو فيها" $seenBinB 1
+      Expect "🔐 وإشعارُ الشركة أ **محجوبٌ** وهو في ب" $seenAinB 0
+
+      # ── الإعلان يسدّ ثغرة الفقد الصامت ──
+      $otherInA=@($nA.otherCompanies | Where-Object { [int]$_.companyId -eq $cidB })
+      $otherInB=@($nB.otherCompanies | Where-Object { [int]$_.companyId -eq $cidA })
+      if($otherInA.Count -eq 1 -and [int]$otherInA[0].unread -ge 1){
+        Ok "✅ والمحجوب **يُعلَن**: شركة ب فيها $($otherInA[0].unread) غير مقروء"
+      } else { Bad "سطرُ «شركاتك الأخرى» غائبٌ في أ" }
+      if($otherInB.Count -eq 1 -and [int]$otherInB[0].unread -ge 1){
+        Ok "✅ والعكس: شركة أ فيها $($otherInB[0].unread) غير مقروء" 
+      } else { Bad "سطرُ «شركاتك الأخرى» غائبٌ في ب" }
+
+      # 🔐 **بالعدد واسم الشركة فقط** — لا عنوان ولا متن ولا معرّف كيان يتسرّب.
+      $leak=@($otherInA[0].PSObject.Properties.Name | Where-Object { $_ -notin @('companyId','companyName','unread') }).Count
+      Expect "🔐 ولا حقلَ زائداً في الإعلان (عددٌ واسمٌ فقط)" $leak 0
+
+      # ── الشارة تتبع الشركة الفعّالة ──
+      $cA=[int](Api GET "/notifications/unread-count" $null $tk $cidA).B
+      $cB=[int](Api GET "/notifications/unread-count" $null $tk $cidB).B
+      if($cA -ge 1 -and $cB -ge 1){ Ok "شارةُ الجرس تُحسب لكل شركة ($cA في أ · $cB في ب)" }
+      else { Bad "شارةٌ صفرٌ في إحداهما: أ=$cA ب=$cB" }
+
+      # 🔐 **الوسمُ بالمقروء يمرّ من القُمع نفسه** — فإشعارُ شركةٍ أخرى **404 لا 403**.
+      $bNotifId=@($nB.items | Where-Object { $_.entityType -eq 'DmsTask' -and [int]$_.entityId -eq $idB })[0].notificationId
+      if($bNotifId){
+        $mark=Api POST "/notifications/$bNotifId/read" $null $tk $cidA
+        Expect "🔐 وسمُ إشعارِ شركةٍ أخرى مقروءاً ⇒ 404 (لا يُفشى وجودُه)" $mark.S 404
+        $markOk=Api POST "/notifications/$bNotifId/read" $null $tk $cidB
+        Expect "   ونجاحُه من شركته هو" $markOk.S 204
+      } else { Bad "تعذّر التقاط معرّف إشعار ب" }
+
+      # 🔴 **تعليم الكل مقروءاً لا يتجاوز الشركة** — وإلا مسح إشعاراتٍ لم يرها أصلاً.
+      $null=Api POST "/notifications/read-all" $null $tk $cidA
+      $stillB=[int](Api GET "/notifications/unread-count" $null $tk $cidB).B
+      $nowA=[int](Api GET "/notifications/unread-count" $null $tk $cidA).B
+      Expect "«تحديد الكل كمقروء» في أ يُصفّرها" $nowA 0
+      if($stillB -ge 0){ Ok "   ولا يمسّ شركة ب (بقي $stillB)" }
+    }
+  } else { Bad "تعذّر إنشاء المهمّتين: أ=$($tA.S) ب=$($tB.S)" }
+}
+
+
+# ══════════════ ٥) دورة حياة الشركة: التعطيل ثم الحذف (ADR-047) ══════════════
+#
+# 🔴 **وُلدت هذه الحرّاس من حادثةٍ وقعت 2026-09-21**: بابا حذف الجهة والشركة أُغلقا
+#    بسبب كتابٍ **محذوف ناعماً**، برسالتين غامضتين — فذهب المالك إلى زرّ تصفير القاعدة.
+#
+# ⚠️ **E2E لا اختبار وحدة**: القواعد النقيّة يحرسها `CompanyLifecycleTests`، وما هنا
+#    **التوصيل**: معامل `confirm` · نقطة البيان · النسخة قبل الحذف · وتصفية القائمة.
+
+Write-Host "`n=== ٥) التعطيل ثم الحذف (ADR-047) ===" -ForegroundColor Cyan
+
+$pfx = "DEL$(Get-Random -Minimum 100 -Maximum 999)"
+$tmp = (Api POST "/companies" @{name="شركة الحذف $pfx";prefix=$pfx;isActive=$true} $admin $null)
+if($tmp.S -ne 200){ Bad "تعذّر إنشاء شركة الاختبار: $($tmp.S)" }
+else{
+  $cidT = [int]$tmp.B.companyId
+  $nameT = "شركة الحذف $pfx"
+  Ok "شركةٌ للاختبار: $cidT"
+
+  # ── القائمة: النشِطة افتراضاً، والمعطَّلة بطلبٍ صريح ──
+  $inDefault = @((Api GET "/companies" $null $admin $null).B | Where-Object { [int]$_.companyId -eq $cidT }).Count
+  Expect "الشركة النشِطة تظهر في القائمة الافتراضية" $inDefault 1
+
+  # ── ١) الحذف مرفوضٌ ما دامت مفعَّلة ──
+  $d1 = Api DELETE "/companies/$cidT`?confirm=$([uri]::EscapeDataString($nameT))" $null $admin $null
+  Expect "🔴 حذفُ شركةٍ **مفعَّلة** مرفوض (خطوتان لا واحدة)" $d1.S 409
+
+  # ── ٢) التعطيل ──
+  $upd = Api PUT "/companies/$cidT" @{name=$nameT;prefix=$pfx;isActive=$false} $admin $null
+  Expect "التعطيل ينجح" $upd.S 200
+
+  $inDefault2 = @((Api GET "/companies" $null $admin $null).B | Where-Object { [int]$_.companyId -eq $cidT }).Count
+  Expect "🔐 والمعطَّلة **تختفي** من القائمة الافتراضية (مبدّل الشركات)" $inDefault2 0
+  $inAll = @((Api GET "/companies?includeInactive=true" $null $admin $null).B | Where-Object { [int]$_.companyId -eq $cidT }).Count
+  Expect "   وتظهر في شاشة الإعدادات بـincludeInactive" $inAll 1
+
+  # ── ٣) البيان قبل الحذف ──
+  $pv = Api GET "/companies/$cidT/delete-preview" $null $admin $null
+  if($pv.S -eq 200){
+    Ok "نقطةُ البيان تعمل"
+    Expect "   والبيان يقول إن الحذف جائز" $pv.B.canDelete "True"
+    Expect "   وسببُ المنع None" $pv.B.blockReason "None"
+    Expect "   وعددُ ما سيُمحى صفرٌ لشركةٍ فارغة" ([int]$pv.B.willBeErased) 0
+  } else { Bad "نقطة البيان: $($pv.S)" }
+
+  # ── ٤) التأكيد إلزاميّ ──
+  $d2 = Api DELETE "/companies/$cidT" $null $admin $null
+  Expect "🔐 الحذف **بلا تأكيد** مرفوض" $d2.S 409
+  $d3 = Api DELETE "/companies/$cidT`?confirm=اسم-خاطئ" $null $admin $null
+  Expect "🔐 وبتأكيدٍ **لا يطابق الاسم** مرفوض" $d3.S 409
+
+  # ── ٥) سجلٌّ حيّ يمنع · والمحذوف ناعماً **لا يمنع** (بلاغ المالك) ──
+  $entT = (Api POST "/entities" @{name="جهة الحذف $pfx";kind='Both';isActive=$true} $admin $cidT).B.entityId
+  $tplT = (Api POST "/templates" @{companyId=$cidT;name="قالب $pfx";watermarkOpacity=10
+      marginTop=20;marginRight=20;marginBottom=20;marginLeft=20
+      pageSize='A4';fontFamily='Amiri';isActive=$true} $admin $cidT).B.templateId
+
+  if($entT -and $tplT){
+    $bk = Api POST "/outgoing" @{companyId=$cidT;entityId=$entT;templateId=$tplT
+        date=(Get-Date).ToString("yyyy-MM-dd");subject="كتاب الحذف";bodyHtml="<p>x</p>"} $admin $cidT
+    if($bk.S -eq 200){
+      $bid = [int]$bk.B.outgoingId
+      $null = Api POST "/outgoing/$bid/approve" $null $admin $cidT
+
+      $pv2 = (Api GET "/companies/$cidT/delete-preview" $null $admin $null).B
+      Expect "🔴 وكتابٌ **حيّ** يمنع الحذف" $pv2.canDelete "False"
+      Expect "   والسبب HasLiveRecords" $pv2.blockReason "HasLiveRecords"
+      Expect "   والبيان يعدّه صادراً حيّاً" ([int]$pv2.liveOutgoing) 1
+
+      # حذفٌ ناعم للكتاب — وهذا ما فعله المالك
+      $null = Api DELETE "/outgoing/$bid" $null $admin $cidT
+
+      $pv3 = (Api GET "/companies/$cidT/delete-preview" $null $admin $null).B
+      Expect "✅ **وبعد حذفه ناعماً صار الحذف جائزاً** (عين بلاغ المالك)" $pv3.canDelete "True"
+      Expect "   والبيان ينقله إلى «محذوف» لا يمحوه" ([int]$pv3.deletedOutgoing) 1
+      Expect "   والحيُّ صار صفراً" ([int]$pv3.liveOutgoing) 0
+      if([int]$pv3.willBeErased -ge 1){ Ok "   ويُعلَن أنه **سيُمحى فعلياً** ($($pv3.willBeErased))" }
+      else { Bad "willBeErased لا يعدّ المحذوف" }
+
+      # 🔴 والجهة: رسالتُها تذكر **المحذوف** صراحةً
+      $delEnt = Api DELETE "/entities/$entT" $null $admin $cidT
+      $entMsg = if($delEnt.B.message){ $delEnt.B.message } elseif($delEnt.B.detail){ $delEnt.B.detail } else { "$($delEnt.B)" }
+      if($delEnt.S -eq 409 -and $entMsg -match "محذوف"){
+        Ok "✅ ورسالةُ حذف الجهة **تقول إن الكتاب محذوف** لا «1 صادر» فقط"
+      } elseif($delEnt.S -eq 409) { Bad "الجهة مرفوضة لكن الرسالة لا تذكر المحذوف" }
+      else { Bad "حذفُ الجهة ردّ $($delEnt.S) بدل 409" }
+    } else { Bad "تعذّر إنشاء كتاب الاختبار: $($bk.S)" }
+  } else { Bad "تعذّر تجهيز جهة/قالب لشركة الحذف" }
+
+  # ── ٦) الحذف الناجح — ونسخةٌ قبله ──
+  $backupsBefore = @((Api GET "/backup" $null $admin $null).B).Count
+  $d4 = Api DELETE "/companies/$cidT`?confirm=$([uri]::EscapeDataString($nameT))" $null $admin $null
+  Expect "✅ الحذف ينجح بعد التعطيل والتأكيد" $d4.S 204
+
+  if($d4.S -eq 204){
+    $gone = Api GET "/companies/$cidT" $null $admin $null
+    Expect "   والشركة اختفت" $gone.S 404
+    $backupsAfter = @((Api GET "/backup" $null $admin $null).B).Count
+    if($backupsAfter -gt $backupsBefore){ Ok "🗄️ **ونسخةٌ احتياطية أُخذت قبل الحذف** ($backupsBefore ⟵ $backupsAfter)" }
+    else { Bad "لم تُؤخذ نسخةٌ قبل الحذف (قبل=$backupsBefore بعد=$backupsAfter)" }
+  }
+}
+
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
 Write-Host "فشل: $fail" -ForegroundColor $(if($fail -eq 0){'Green'}else{'Red'})

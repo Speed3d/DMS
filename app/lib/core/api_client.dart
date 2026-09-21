@@ -110,8 +110,19 @@ class ApiClient {
       _post('/auth/change-password', {'currentPassword': current, 'newPassword': next});
 
   // ---------- القوائم المرجعية ----------
-  Future<List<Company>> companies() async =>
-      (await _get('/companies') as List).map((e) => Company.fromJson(e)).toList();
+  /// الشركات — **النشِطة وحدها افتراضاً** (ADR-047).
+  ///
+  /// 🔴 **ولا يمرَّر `includeInactive` إلا من شاشة الإعدادات**: مُبدّل الشركات يجب ألّا
+  /// يعرض شركةً معطَّلة، وإلا صار «التعطيل» إخفاءً في مكانٍ وظهوراً في آخر.
+  Future<List<Company>> companies({bool includeInactive = false}) async =>
+      (await _get('/companies',
+              query: includeInactive ? {'includeInactive': 'true'} : null) as List)
+          .map((e) => Company.fromJson(e))
+          .toList();
+
+  /// بيانُ ما سيُحذف مع الشركة — يُقرأ **قبل** عرض حوار التأكيد (ADR-047).
+  Future<CompanyDeletePreview> companyDeletePreview(int id) async =>
+      CompanyDeletePreview.fromJson(await _get('/companies/$id/delete-preview'));
 
   Future<Company> createCompany(String name, String prefix, {String? defaultSignatoryName, String? defaultSignatoryTitle}) async =>
       Company.fromJson(await _post('/companies', {'name': name, 'prefix': prefix, 'isActive': true, 'defaultSignatoryName': defaultSignatoryName, 'defaultSignatoryTitle': defaultSignatoryTitle}));
@@ -121,7 +132,11 @@ class ApiClient {
 
   Future<Company> getCompany(int id) async => Company.fromJson(await _get('/companies/$id'));
   
-  Future<void> deleteCompany(int id) => _delete('/companies/$id');
+  /// حذف الشركة — **بتأكيدٍ بكتابة اسمها** (ADR-047).
+  ///
+  /// ⚠️ **الخادم يفرض التأكيد لا الواجهة** — فحوارٌ يُلتفّ عليه لا يحذف شيئاً.
+  Future<void> deleteCompany(int id, {required String confirm}) =>
+      _delete('/companies/$id', query: {'confirm': confirm});
 
   Future<void> resetDb() async => _post('/system/reset-db', {});
 
@@ -1452,9 +1467,9 @@ class ApiClient {
     }
   }
 
-  Future<void> _delete(String path) async {
+  Future<void> _delete(String path, {Map<String, dynamic>? query}) async {
     try {
-      await _dio.delete(path);
+      await _dio.delete(path, queryParameters: query);
     } on DioException catch (e) {
       throw _map(e);
     }

@@ -112,7 +112,27 @@ public sealed class AuthService(
 
     private async Task<AuthResult> IssueAsync(User user, CancellationToken ct)
     {
-        var pair = tokens.Create(user);
+        // 🔴 **الشركة المعطَّلة تخرج من الرمز — وهنا وحدها (ADR-047).**
+        //    `HttpCurrentUser.ActiveCompanyId` يفحص `AllowedCompanyIds` المشتقّة من الرمز،
+        //    فإخراجُها هنا يجعل التعطيل **حارساً حقيقياً في الخادم** لا إخفاءً في الواجهة —
+        //    بلا middleware جديد ولا ذاكرةِ تخبئة، وبموضعٍ واحد يمرّ منه الدخول والتجديد معاً.
+        //
+        // ⚠️ **وأثرُه يتأخّر إلى أوّل تجديدٍ للرمز** لمن كان داخلاً وقت التعطيل — مقبولٌ
+        //    لأن التعطيل **تنظيمٌ تشغيليّ لا حاجزُ أمان**، والرموز تُدوَّر كل ساعة.
+        //
+        // ⚠️ **والسوبر أدمن لا يتأثّر**: `ActiveCompanyId` يعيد له الترويسة بلا فحص —
+        //    وهو **مقصود**، فهو مَن يعطّل الشركة ويحتاج الدخول إليها ليديرها أو يحذفها.
+        var assignedIds = user.AssignedCompanies.Select(c => c.CompanyId).ToList();
+        var disabled = await db.Companies.IgnoreQueryFilters()
+            .Where(c => assignedIds.Contains(c.CompanyId) && !c.IsActive)
+            .Select(c => c.CompanyId)
+            .ToListAsync(ct);
+
+        var links = disabled.Count == 0
+            ? user.AssignedCompanies.ToList()
+            : user.AssignedCompanies.Where(c => !disabled.Contains(c.CompanyId)).ToList();
+
+        var pair = tokens.Create(user, links);
         db.RefreshTokens.Add(new RefreshToken
         {
             UserId = user.UserId,
@@ -121,13 +141,12 @@ public sealed class AuthService(
             CreatedAt = DateTime.UtcNow,
         });
         // SaveChanges يتم في المستدعي
-        await Task.CompletedTask;
-        var companyIds = user.AssignedCompanies.Select(c => c.CompanyId).ToList();
+        var companyIds = links.Select(c => c.CompanyId).ToList();
 
         // الوصول **لكل شركة** (ADR-017) — تحتاجه الواجهة لتحدّث قائمتها الجانبية عند تبديل
         // الشركة بلا إعادة دخول. الأدوار المعفاة (سوبر أدمن/رئيس) تُرسَل بكل الأقسام.
         var exempt = user.Role is UserRole.SuperAdmin or UserRole.President;
-        var access = user.AssignedCompanies
+        var access = links
             .Select(c => new CompanyAccess(
                 c.CompanyId,
                 // `AllWithHr` للمعفَين: `All` تستثني HR عمداً لأنها الافتراض في مواضع صامتة،

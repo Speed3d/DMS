@@ -58,19 +58,48 @@ public sealed class EntitiesController(AppDbContext db, ICurrentUser current, IA
                 ?? throw new NotFoundException("الجهة غير موجودة.");
 
         // الفحص يشمل المحذوف ناعماً أيضاً (IgnoreQueryFilters) — السجل يبقى ويجب أن يبقى اسم جهته.
-        var inOutgoing = await db.OutgoingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id, ct);
-        var inIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id, ct);
-        var inArchive = await db.ArchiveDocs.IgnoreQueryFilters()
-            .CountAsync(a => a.FromEntityId == id || a.ToEntityId == id, ct);
+        //
+        // 🔴 **لكنّ الرسالة كانت تكذب** (بلاغ المالك 2026-09-21): كتابٌ حذفه المستخدم بنفسه
+        //    يبقى يمنع حذف الجهة، والرسالة تقول «1 صادر» **وهو لا يرى كتاباً واحداً في
+        //    الشاشة**. فيبدو النظام معطوباً وهو يعمل بقاعدةٍ لم يُخبره بها.
+        // 🔑 **رسالةٌ تقول «لا» بلا سببٍ مفهوم تدفع المستخدم إلى البحث عن مخرجٍ آخر** —
+        //    وقد فعل: ذهب إلى زرّ تصفير القاعدة. ⇒ **يُفصل الحيّ عن المحذوف صراحةً.**
+        var liveOutgoing = await db.OutgoingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id && !b.IsDeleted, ct);
+        var deadOutgoing = await db.OutgoingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id && b.IsDeleted, ct);
+        var liveIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id && !b.IsDeleted, ct);
+        var deadIncoming = await db.IncomingBooks.IgnoreQueryFilters().CountAsync(b => b.EntityId == id && b.IsDeleted, ct);
+        var liveArchive = await db.ArchiveDocs.IgnoreQueryFilters()
+            .CountAsync(a => (a.FromEntityId == id || a.ToEntityId == id) && !a.IsDeleted, ct);
+        var deadArchive = await db.ArchiveDocs.IgnoreQueryFilters()
+            .CountAsync(a => (a.FromEntityId == id || a.ToEntityId == id) && a.IsDeleted, ct);
 
-        if (inOutgoing + inIncoming + inArchive > 0)
+        var live = liveOutgoing + liveIncoming + liveArchive;
+        var dead = deadOutgoing + deadIncoming + deadArchive;
+
+        if (live + dead > 0)
         {
             var used = new List<string>();
-            if (inOutgoing > 0) used.Add($"{inOutgoing} صادر");
-            if (inIncoming > 0) used.Add($"{inIncoming} وارد");
-            if (inArchive > 0) used.Add($"{inArchive} أرشيف");
-            throw new ConflictException(
-                $"لا يمكن حذف الجهة «{e.Name}» لأنها مستخدَمة في: {string.Join(" · ", used)}.");
+            if (liveOutgoing > 0) used.Add($"{liveOutgoing} صادر");
+            if (liveIncoming > 0) used.Add($"{liveIncoming} وارد");
+            if (liveArchive > 0) used.Add($"{liveArchive} أرشيف");
+
+            var deleted = new List<string>();
+            if (deadOutgoing > 0) deleted.Add($"{deadOutgoing} صادر");
+            if (deadIncoming > 0) deleted.Add($"{deadIncoming} وارد");
+            if (deadArchive > 0) deleted.Add($"{deadArchive} أرشيف");
+
+            var msg = $"لا يمكن حذف الجهة «{e.Name}»";
+            if (live > 0) msg += $" لأنها مستخدَمة في: {string.Join(" · ", used)}";
+            if (dead > 0)
+            {
+                msg += live > 0 ? "، و" : " لأنها مستخدَمة في ";
+                msg += $"{string.Join(" · ", deleted)} **محذوف** — والمحذوف يبقى في السجلّ ويحتفظ باسم جهته";
+            }
+            msg += ".";
+            if (live == 0 && dead > 0)
+                msg += " لإزالتها نهائياً احذف الشركة كلَّها بعد تعطيلها (الإعدادات ← الشركات).";
+
+            throw new ConflictException(msg);
         }
 
         db.Entities.Remove(e);

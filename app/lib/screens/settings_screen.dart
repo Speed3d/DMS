@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 
 import 'company_edit_screen.dart';
 import 'hr_settings_screen.dart';
@@ -12,34 +14,85 @@ import 'template_edit_screen.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
+  /// تصفيرُ القاعدة — **منطقة خطر: بيئة التطوير وحدها، وبتأكيدٍ بالكتابة** (ADR-047).
+  ///
+  /// 🔴 **وُلد هذا العلاج من حادثةٍ وقعت 2026-09-21**: كان زرّاً بأيقونة
+  /// `delete_forever` حمراء **في شريط تبويبات الإعدادات، بجوار تبويب «الشركات»** —
+  /// أي بجوار المكان الذي تُحذف منه الشركات. فلمّا أُغلق في وجه المالك بابا حذف الجهة
+  /// وحذف الشركة برسالتين غامضتين، ضغط الزرّ الأحمر الثالث ظانّاً أنه «حذفُ الشركة
+  /// بالكامل» — **فأُسقطت القاعدة كلُّها وخرج من النظام مقفولاً خارجه**.
+  ///
+  /// **وثلاثة تغييرات، لا تحذيرٌ أشدّ:**
+  /// 1. **خرج من شريط التبويبات** إلى قائمةٍ منسدلة — إيماءةٌ مختلفة لا تُضغط مصادفةً.
+  /// 2. **`kDebugMode` وحده** — فلا وجود له في نسخة الإنتاج أصلاً.
+  /// 3. **كتابةُ «تصفير»** بدل زرّ «نعم» — والكتابة لا تقع بالخطأ.
   void _confirmReset(BuildContext context, WidgetRef ref) {
+    final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تحذير خطير!', style: TextStyle(color: Colors.red)),
-        content: const Text('هل أنت متأكد من تصفير قاعدة البيانات بالكامل؟\nسيتم حذف جميع المستخدمين والكتب والشركات وكل شيء!'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final msg = ScaffoldMessenger.of(context);
-              try {
-                await ref.read(apiClientProvider).resetDb();
-                msg.showSnackBar(const SnackBar(content: Text('تم تصفير قاعدة البيانات بنجاح. يرجى تسجيل الدخول مجدداً.')));
-                await ref.read(sessionProvider.notifier).logout();
-                if (!context.mounted) return;
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              } catch (e) {
-                msg.showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('نعم، قم بالتصفير'),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) {
+          final ok = ctrl.text.trim() == 'تصفير';
+          return AlertDialog(
+            title: const Text('منطقة خطر — تصفير قاعدة البيانات',
+                style: TextStyle(color: Colors.red)),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                      'سيُحذف **كل شيء**: الشركات والمستخدمون والكتب والأرشيف والموظفون '
+                      'والرواتب والمهام — ولا تراجع.\n\n'
+                      'هذا ليس «حذف شركة». لحذف شركةٍ واحدة: الإعدادات ← الشركات ← '
+                      'عطّلها ثم احذفها.',
+                      style: TextStyle(height: 1.8)),
+                  const SizedBox(height: 16),
+                  const Text('للتأكيد اكتب كلمة: تصفير'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                        border: OutlineInputBorder(), isDense: true),
+                    onChanged: (_) => setInner(() {}),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إلغاء')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: !ok
+                    ? null
+                    : () async {
+                        Navigator.pop(ctx);
+                        final msg = ScaffoldMessenger.of(context);
+                        try {
+                          await ref.read(apiClientProvider).resetDb();
+                          msg.showSnackBar(const SnackBar(
+                              content: Text(
+                                  'تم تصفير قاعدة البيانات. سجّل الدخول بحساب المدير المبذور.')));
+                          await ref.read(sessionProvider.notifier).logout();
+                          if (!context.mounted) return;
+                          Navigator.of(context).popUntil((route) => route.isFirst);
+                        } catch (e) {
+                          msg.showSnackBar(SnackBar(
+                              content: Text('خطأ: $e'),
+                              backgroundColor: Colors.red));
+                        }
+                      },
+                child: const Text('صفّر كل شيء'),
+              ),
+            ],
+          );
+        },
       ),
-    );
+    ).then((_) => ctrl.dispose());
   }
 
   @override
@@ -67,13 +120,24 @@ class SettingsScreen extends ConsumerWidget {
                   if (showHr) const Tab(text: 'الموظفون والرواتب'),
                 ]),
               ),
-              if (isSuper)
+              // 🔴 **قائمةٌ لا زرّ، وبيئةُ تطويرٍ لا إنتاج** (ADR-047): أيقونةُ حذفٍ
+              //    حمراء بجوار تبويب «الشركات» كانت تُضغط مكان «حذف الشركة».
+              if (isSuper && kDebugMode)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: IconButton(
-                    icon: const Icon(Icons.delete_forever, color: Colors.red),
-                    tooltip: 'تصفير قاعدة البيانات',
-                    onPressed: () => _confirmReset(context, ref),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'أدوات المطوّر',
+                    onSelected: (v) {
+                      if (v == 'reset') _confirmReset(context, ref);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'reset',
+                        child: Text('منطقة خطر — تصفير قاعدة البيانات',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -203,8 +267,33 @@ class _CompaniesTab extends ConsumerStatefulWidget {
 class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
   late Future _f;
   @override
-  void initState() { super.initState(); _f = ref.read(apiClientProvider).companies(); }
-  void _reload() => setState(() { _f = ref.read(apiClientProvider).companies(); });
+  // ⚠️ **`includeInactive` هنا وحدها** (ADR-047): هذه شاشة الإدارة، فتُظهر المعطَّلة
+  //    رماديةً بزرّ إعادة تفعيل. **ومبدّلُ الشركات لا يمرّرها** فلا تظهر فيه.
+  @override
+  void initState() { super.initState(); _f = _fetch(); }
+  Future _fetch() => ref.read(apiClientProvider).companies(includeInactive: true);
+  void _reload() => setState(() { _f = _fetch(); });
+
+  /// تفعيل/تعطيل — **والخادم يرفض تعطيلاً يُقفل مستخدماً خارج النظام**.
+  ///
+  /// 🔑 **التعطيل هو الحذف الناعم للشركة**: تختفي من المبدّل ومن رموز المستخدمين،
+  /// **وبياناتها تبقى كاملة**. وهو الجواب الصحيح لـ«شركةٌ توقّفنا عن العمل بها».
+  Future<void> _toggleActive(Company c) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiClientProvider).updateCompany(
+          c.companyId, c.name, c.prefix, !c.isActive,
+          defaultSignatoryName: c.defaultSignatoryName,
+          defaultSignatoryTitle: c.defaultSignatoryTitle);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(
+          c.isActive ? 'عُطّلت «${c.name}» — لم تعُد تظهر في مبدّل الشركات.'
+                     : 'فُعّلت «${c.name}».')));
+      _reload();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
 
   Future<void> _add() async {
     final navigator = Navigator.of(context);
@@ -238,19 +327,42 @@ class _CompaniesTabState extends ConsumerState<_CompaniesTab> {
             children: [
               for (final c in list)
                 ListTile(
-                  leading: const Icon(Icons.business),
-                  title: Text(c.name),
-                  subtitle: Text('الرمز: ${c.prefix}${c.defaultSignatoryName != null && c.defaultSignatoryName!.isNotEmpty ? ' | الموقّع: ${c.defaultSignatoryName}' : ''}'),
-                  trailing: widget.canCreate
-                      ? IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () async {
-                            await Navigator.push(context, MaterialPageRoute(builder: (_) => CompanyEditScreen(companyId: c.companyId)));
-                            if (mounted) _reload();
-                          },
-                        )
-                      : null,
-                )
+                  leading: Icon(Icons.business,
+                      color: c.isActive ? null : Theme.of(context).disabledColor),
+                  title: Text(c.name,
+                      style: TextStyle(
+                          color: c.isActive ? null : Theme.of(context).disabledColor,
+                          decoration: c.isActive ? null : TextDecoration.lineThrough)),
+                  subtitle: Text(c.isActive
+                      ? 'الرمز: ${c.prefix}'
+                      : 'الرمز: ${c.prefix} · معطَّلة — مخفيّة عن مبدّل الشركات'),
+                  trailing: !widget.canCreate
+                      ? null
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                  c.isActive ? Icons.toggle_on : Icons.toggle_off,
+                                  size: 28,
+                                  color: c.isActive
+                                      ? AppColors.success
+                                      : Theme.of(context).disabledColor),
+                              tooltip: c.isActive ? 'تعطيل' : 'تفعيل',
+                              onPressed: () => _toggleActive(c),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              tooltip: 'تعديل',
+                              onPressed: () async {
+                                await Navigator.push(context, MaterialPageRoute(
+                                    builder: (_) => CompanyEditScreen(companyId: c.companyId)));
+                                if (mounted) _reload();
+                              },
+                            ),
+                          ],
+                        ),
+                                )
             ],
           );
         },

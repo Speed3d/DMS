@@ -375,7 +375,7 @@ class _UsersApi extends ApiClient {
   Future<List<UserModel>> users() async => const [];
 
   @override
-  Future<List<Company>> companies() async => const [];
+  Future<List<Company>> companies({bool includeInactive = false}) async => const [];
 
   @override
   Future<List<DelegationModel>> delegations() async {

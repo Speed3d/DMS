@@ -282,7 +282,7 @@ class _ShellApi extends ApiClient {
       );
 
   @override
-  Future<List<Company>> companies() async => [];
+  Future<List<Company>> companies({bool includeInactive = false}) async => [];
 
   // ⚠️ **الأربعةُ الباقية إلزامية**: أوّلَ مرّةٍ نقصت، فذهب الطلب إلى شبكةٍ حقيقية وأخفق —
   //    **فبدت الشارات الأربعُ معطوبةً وهي سليمة**. خامسُ تكرارٍ لدرس «قبل تصديق فشلٍ،

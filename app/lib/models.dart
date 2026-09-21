@@ -227,6 +227,94 @@ class Company {
       );
 }
 
+/// بيانُ ما سيُحذف مع الشركة (ADR-047).
+///
+/// 🔑 **«لا تحذف ما لا تراه»** — هذه الأرقام تُعرض قبل أن يكتب المالك اسم الشركة.
+/// ⚠️ **والمحذوف ناعماً مذكورٌ منفصلاً**: لا يمنع الحذف (قرار المالك) **لكنه يُمحى معه**،
+/// فإخفاؤه يعني موافقةً على ما لا يُرى.
+class CompanyDeletePreview {
+  final int companyId;
+  final String name;
+  final String prefix;
+  final bool isActive;
+
+  final int liveOutgoing, deletedOutgoing;
+  final int liveIncoming, deletedIncoming;
+  final int archive, employees, tasks, caseFiles;
+  final int users, soleCompanyUsers;
+  final int departments, entities, templates;
+  final int willBeErased;
+
+  /// هل يجوز الحذف الآن؟ — **يُحسب في الخادم** والواجهة مرآةٌ له.
+  final bool canDelete;
+  final String blockReason;
+  final String? blockMessage;
+
+  const CompanyDeletePreview({
+    required this.companyId,
+    required this.name,
+    required this.prefix,
+    required this.isActive,
+    required this.liveOutgoing,
+    required this.deletedOutgoing,
+    required this.liveIncoming,
+    required this.deletedIncoming,
+    required this.archive,
+    required this.employees,
+    required this.tasks,
+    required this.caseFiles,
+    required this.users,
+    required this.soleCompanyUsers,
+    required this.departments,
+    required this.entities,
+    required this.templates,
+    required this.willBeErased,
+    required this.canDelete,
+    required this.blockReason,
+    this.blockMessage,
+  });
+
+  factory CompanyDeletePreview.fromJson(Map<String, dynamic> j) => CompanyDeletePreview(
+        companyId: j['companyId'] ?? 0,
+        name: j['name'] ?? '',
+        prefix: j['prefix'] ?? '',
+        isActive: j['isActive'] ?? true,
+        liveOutgoing: j['liveOutgoing'] ?? 0,
+        deletedOutgoing: j['deletedOutgoing'] ?? 0,
+        liveIncoming: j['liveIncoming'] ?? 0,
+        deletedIncoming: j['deletedIncoming'] ?? 0,
+        archive: j['archive'] ?? 0,
+        employees: j['employees'] ?? 0,
+        tasks: j['tasks'] ?? 0,
+        caseFiles: j['caseFiles'] ?? 0,
+        users: j['users'] ?? 0,
+        soleCompanyUsers: j['soleCompanyUsers'] ?? 0,
+        departments: j['departments'] ?? 0,
+        entities: j['entities'] ?? 0,
+        templates: j['templates'] ?? 0,
+        willBeErased: j['willBeErased'] ?? 0,
+        canDelete: j['canDelete'] ?? false,
+        blockReason: j['blockReason'] ?? '',
+        blockMessage: j['blockMessage'],
+      );
+
+  /// الأسطر التي تُعرض في البيان — **ما فيه صفرٌ لا يُذكر**.
+  List<(String, int, bool)> get rows => [
+        ('صادر', liveOutgoing, false),
+        ('صادر محذوف', deletedOutgoing, true),
+        ('وارد', liveIncoming, false),
+        ('وارد محذوف', deletedIncoming, true),
+        ('أرشيف', archive, false),
+        ('موظفون مُسنَدون', employees, false),
+        ('مهام', tasks, false),
+        ('معاملات', caseFiles, false),
+        ('مستخدمون مُسنَدون', users, false),
+        ('أقسام', departments, false),
+        ('جهات', entities, false),
+        ('قوالب', templates, false),
+      ].where((r) => r.$2 > 0).toList();
+}
+
 class EntityModel {
   final int entityId;
   final int companyId;

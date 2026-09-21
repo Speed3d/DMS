@@ -43,7 +43,16 @@ public sealed record TokenPair(string AccessToken, DateTime AccessExpires, strin
 
 public interface IJwtTokenService
 {
-    TokenPair Create(User user);
+    /// <summary>
+    /// يبني الرمز — و<paramref name="onlyCompanies"/> يقصره على إسنادات بعينها (ADR-047).
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **لماذا وسيطٌ لا فلترةٌ داخلية؟** لأن القرار «أيُّ الشركات تدخل الرمز» يحتاج
+    /// استعلامَ قاعدةٍ (<c>Company.IsActive</c>)، وهذه الخدمة **لا تلمس القاعدة**.
+    /// ⚠️ **ولا يُفلتَر <c>user.AssignedCompanies</c> مباشرةً**: الكيان **متعقَّبٌ** من EF،
+    /// فحذفُ عناصر من مجموعته يُترجَم إلى **حذف صفوفٍ حقيقيّ** عند أوّل حفظ.
+    /// </remarks>
+    TokenPair Create(User user, IReadOnlyCollection<UserCompany>? onlyCompanies = null);
     string HashRefreshToken(string refreshToken);
 }
 
@@ -51,7 +60,7 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
 {
     private readonly JwtSettings _s = options.Value;
 
-    public TokenPair Create(User user)
+    public TokenPair Create(User user, IReadOnlyCollection<UserCompany>? onlyCompanies = null)
     {
         var now = DateTime.UtcNow;
         var accessExpires = now.AddMinutes(_s.AccessTokenMinutes);
@@ -66,7 +75,9 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
         };
 
         // الصلاحيات والقسم تختلف باختلاف الشركة (ADR-017) ⇒ تُرمَّز خرائطَ «شركة:قيمة».
-        var links = user.AssignedCompanies.ToList();
+        var links = onlyCompanies is not null
+            ? onlyCompanies.ToList()
+            : user.AssignedCompanies.ToList();
         if (links.Count > 0)
         {
             claims.Add(new Claim(DmsClaims.CompanyIds, string.Join(",", links.Select(c => c.CompanyId))));

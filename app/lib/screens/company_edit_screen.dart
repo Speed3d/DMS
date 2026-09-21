@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
+import '../models.dart';
 
 class CompanyEditScreen extends ConsumerStatefulWidget {
   final int companyId;
@@ -93,33 +95,44 @@ class _State extends ConsumerState<CompanyEditScreen> {
     }
   }
 
+  /// حذفُ الشركة — **بيانٌ بالأرقام أولاً، ثم كتابةُ الاسم** (ADR-047).
+  ///
+  /// 🔴 **حوارُ التحذير العامّ استُبدل ببيان**: القديم كان يقول «سيُحذف كيان الشركة
+  /// وإعداداتها… هل أنت متأكد؟» **بلا رقمٍ واحد** — فالموافقة عليه موافقةٌ على المجهول.
+  /// 🔑 **«لا تحذف ما لا تراه.»**
+  ///
+  /// ⚠️ **والزرّ الأحمر استُبدل بكتابة الاسم**: ضغطةٌ واحدة تقع بالخطأ، وكتابةُ اسمٍ لا تقع.
+  /// وهو نمطُ شاشة الاستعادة القائم في النظام أصلاً.
   Future<void> _delete() async {
-    final confirm = await showDialog<bool>(
+    final messenger = ScaffoldMessenger.of(context);
+    final api = ref.read(apiClientProvider);
+
+    // البيان يُقرأ من الخادم — فالأرقام **محسوبةٌ هناك** لا مُخمَّنةٌ هنا.
+    CompanyDeletePreview preview;
+    setState(() => _busy = true);
+    try {
+      preview = await api.companyDeletePreview(widget.companyId);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    final typed = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد حذف الشركة', style: TextStyle(color: Colors.red)),
-        content: const Text(
-            'سيُحذف كيان الشركة وإعداداتها (القوالب والجهات والأنواع وأسعار الصرف والمسودات).\n\n'
-            'ملاحظة: لا يمكن حذف شركة لها كتب صادرة معتمدة أو أرشيف — في هذه الحالة استخدم «تعطيل الشركة» بدل الحذف.\n\n'
-            'هذا الإجراء لا يمكن التراجع عنه. هل أنت متأكد؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('نعم، احذف نهائياً'),
-          ),
-        ],
-      ),
+      builder: (ctx) => DeleteCompanyDialog(preview: preview),
     );
-    if (confirm != true || !mounted) return;
+    if (typed == null || !mounted) return;
 
     setState(() => _busy = true);
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      await ref.read(apiClientProvider).deleteCompany(widget.companyId);
-      messenger.showSnackBar(const SnackBar(content: Text('تم حذف الشركة بالكامل بنجاح')));
+      await api.deleteCompany(widget.companyId, confirm: typed);
+      messenger.showSnackBar(SnackBar(
+          content: Text('حُذفت «${preview.name}» — وأُخذت نسخةٌ احتياطية قبل الحذف.')));
       navigator.pop(); // إغلاق شاشة التعديل
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
@@ -234,6 +247,138 @@ class _State extends ConsumerState<CompanyEditScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// حوارُ حذف الشركة — **بيانٌ بالأرقام وتأكيدٌ بالكتابة** (ADR-047).
+///
+/// 🔴 **وُلد من حادثةٍ وقعت**: حوارٌ أحمر عامّ بزرّ «نعم» كان يجاور زرّاً آخر أحمر يصفّر
+/// القاعدة كلَّها — فضُغط الخطأ مكان الصواب. **والعلاج ليس تحذيراً أشدّ بل إجراءً مختلفاً:**
+/// أرقامٌ تُقرأ، واسمٌ يُكتب.
+class DeleteCompanyDialog extends StatefulWidget {
+  final CompanyDeletePreview preview;
+  const DeleteCompanyDialog({super.key, required this.preview});
+
+  @override
+  State<DeleteCompanyDialog> createState() => DeleteCompanyDialogState();
+}
+
+class DeleteCompanyDialogState extends State<DeleteCompanyDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.preview;
+    final theme = Theme.of(context);
+    final danger = theme.brightness == Brightness.dark
+        ? AppColors.dangerDark
+        : AppColors.danger;
+
+    // ⚠️ **المطابقة بعد التشذيب** — مسافةٌ لاصقة من اللصق كانت تُفشل اسماً صحيحاً.
+    final matches = _ctrl.text.trim() == p.name.trim();
+    final rows = p.rows;
+
+    return AlertDialog(
+      title: Text('حذف «${p.name}»', style: TextStyle(color: danger)),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!p.canDelete) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: danger.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: danger.withValues(alpha: 0.35)),
+                  ),
+                  child: Text(p.blockMessage ?? 'لا يمكن حذف هذه الشركة الآن.',
+                      style: TextStyle(color: danger, height: 1.7)),
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              // ── البيان: ما سيُمحى فعلاً ──
+              Text('ما سيُمحى نهائياً', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 6),
+              if (rows.isEmpty)
+                Text('لا سجلّات — الشركة فارغة.',
+                    style: theme.textTheme.bodySmall)
+              else
+                ...rows.map((r) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Icon(r.$3 ? Icons.delete_outline : Icons.circle,
+                              size: r.$3 ? 15 : 7,
+                              color: theme.textTheme.bodySmall?.color),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(r.$1)),
+                          Text('${r.$2}',
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )),
+
+              const SizedBox(height: 14),
+              Row(children: [
+                Icon(Icons.backup_outlined, size: 16, color: AppColors.action(context)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('ستُؤخذ نسخةٌ احتياطية كاملة قبل الحذف تلقائياً.',
+                      style: theme.textTheme.bodySmall),
+                ),
+              ]),
+
+              if (p.canDelete) ...[
+                const SizedBox(height: 16),
+                Text('للتأكيد اكتب اسم الشركة حرفياً:',
+                    style: theme.textTheme.bodyMedium),
+                const SizedBox(height: 6),
+                SelectableText(p.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _ctrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    hintText: 'اسم الشركة',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء')),
+        // 🔴 **الزرّ معطَّلٌ حتى يطابق الاسم** — والواجهة مرآةٌ للخادم لا حارسٌ ثانٍ:
+        //    الخادم يفحص التأكيد أيضاً، فالالتفاف على الحوار لا يحذف شيئاً.
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: danger),
+          onPressed: (p.canDelete && matches)
+              ? () => Navigator.pop(context, _ctrl.text)
+              : null,
+          child: const Text('احذف نهائياً'),
+        ),
+      ],
     );
   }
 }

@@ -2,6 +2,7 @@ using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Documents.Storage;
 using Dms.Domain;
+using Dms.Infrastructure.Backup;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -13,12 +14,25 @@ namespace Dms.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/[controller]")]
-public sealed class CompaniesController(AppDbContext db, IAuditService audit, IFileStorage storage, ICurrentUser currentUser) : ControllerBase
+public sealed class CompaniesController(
+    AppDbContext db, IAuditService audit, IFileStorage storage,
+    ICurrentUser currentUser, IBackupService backups) : ControllerBase
 {
+    /// <summary>شركاتي — **النشِطة وحدها افتراضاً** (ADR-047).</summary>
+    /// <remarks>
+    /// 🔴 **الافتراض «النشِطة فقط» لا «الكل»** — لأن أكثر قارئٍ لهذه النقطة هو **مُبدّل
+    /// الشركات**، والشركة المعطَّلة يجب ألّا تظهر فيه. وشاشةُ الإعدادات وحدها تطلب
+    /// <c>includeInactive=true</c> لتُظهرها رماديةً مع زرّ إعادة التفعيل.
+    ///
+    /// ⚠️ **ومقصورٌ على السوبر أدمن** — فغيرُه لا يملك إدارة الشركات أصلاً، وإظهارُها له
+    /// يعني اسمَ شركةٍ لا يستطيع دخولها ولا تفعيلها.
+    /// </remarks>
     [HttpGet]
-    public async Task<ActionResult<List<CompanyResponse>>> List(CancellationToken ct)
+    public async Task<ActionResult<List<CompanyResponse>>> List(
+        [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
         var q = db.Companies.IgnoreQueryFilters().AsQueryable();
+        if (!includeInactive || !currentUser.IsSuperAdmin) q = q.Where(c => c.IsActive);
         if (!currentUser.IsSuperAdmin)
         {
             var allowed = currentUser.AllowedCompanyIds;
@@ -95,6 +109,18 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
         if (await db.Companies.IgnoreQueryFilters().AnyAsync(x => x.Prefix == req.Prefix && x.CompanyId != id, ct))
             throw new ConflictException("رمز الترقيم مستخدم بالفعل.");
 
+        // 🔴 **تعطيلٌ يُقفل مستخدماً خارج النظام يُرفض** (ADR-047): التعطيل يُخرج الشركة
+        //    من الرمز، فمن لا يملك غيرها يصير بلا شركةٍ فعّالة — **فلا يرى شيئاً ولا يفهم
+        //    لماذا**. والقاعدة في `Dms.Domain/CompanyLifecycle.cs` وحدها.
+        if (c.IsActive && !req.IsActive)
+        {
+            var sole = await SoleCompanyUsersAsync(id, ct);
+            var block = CompanyLifecycle.CanDeactivate(sole);
+            if (block != CompanyBlockReason.None)
+                throw new ConflictException(CompanyLifecycle.Explain(
+                    block, c.Name, EmptyContents with { SoleCompanyUsers = sole }));
+        }
+
         c.Name = req.Name.Trim();
         c.Prefix = req.Prefix.Trim().ToUpperInvariant();
         c.IsActive = req.IsActive;
@@ -140,29 +166,125 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
         return Ok();
     }
 
+    // ═════════════ دورة حياة الشركة: التعطيل ثم الحذف (ADR-047) ═════════════
+
+    private static readonly CompanyContents EmptyContents = new(0,0,0,0,0,0,0,0,0,0,0,0,0);
+
+    private async Task<Company> FindAnyAsync(int id, CancellationToken ct) =>
+        await db.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.CompanyId == id, ct)
+        ?? throw new NotFoundException("الشركة غير موجودة.");
+
+    /// <summary>مَن تكون هذه الشركة إسنادَه الوحيد — **عدا السوبر أدمن**.</summary>
+    /// <remarks>
+    /// ⚠️ **السوبر أدمن مستثنى عمداً**: هو بلا فلتر شركة أصلاً (`AppDbContext`)، فيبقى
+    /// يرى كل شيء ولو لم يُسنَد لشركةٍ واحدة — وعدُّه هنا كان **يمنع تعطيل أيّ شركةٍ
+    /// أُسند إليها وحدها**، وهي الحالة الشائعة في نظامٍ صغير.
+    /// </remarks>
+    private async Task<int> SoleCompanyUsersAsync(int id, CancellationToken ct) =>
+        await db.Users.IgnoreQueryFilters()
+            .Where(u => u.IsActive && u.Role != UserRole.SuperAdmin
+                        && u.AssignedCompanies.Any(a => a.CompanyId == id)
+                        && u.AssignedCompanies.Count == 1)
+            .CountAsync(ct);
+
+    /// <summary>بيانُ ما تحويه الشركة — **يفصل الحيّ عن المحذوف ناعماً**.</summary>
+    /// <remarks>
+    /// 🔴 **هذا الفصل هو أصل العطل الذي بلّغ عنه المالك**: الحارس القديم كان يعدّ
+    /// بـ<c>IgnoreQueryFilters()</c> **بلا <c>!IsDeleted</c>**، فكتابٌ حذفه المالك بنفسه
+    /// يبقى يمنع حذف الجهة والشركة معاً — **ورسالةٌ تقول «1 صادر» وهو لا يرى كتاباً واحداً**.
+    /// </remarks>
+    private async Task<CompanyContents> ContentsAsync(int id, CancellationToken ct) => new(
+        LiveOutgoing:     await db.OutgoingBooks.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && !x.IsDeleted, ct),
+        DeletedOutgoing:  await db.OutgoingBooks.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && x.IsDeleted, ct),
+        LiveIncoming:     await db.IncomingBooks.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && !x.IsDeleted, ct),
+        DeletedIncoming:  await db.IncomingBooks.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && x.IsDeleted, ct),
+        Archive:          await db.ArchiveDocs.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && !x.IsDeleted, ct),
+        Employees:        await db.EmployeeCompanies.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && !x.IsDeleted, ct),
+        Tasks:            await db.DmsTasks.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && !x.IsDeleted, ct),
+        CaseFiles:        await db.CaseFiles.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && !x.IsDeleted, ct),
+        Users:            await db.UserCompanies.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct),
+        SoleCompanyUsers: await SoleCompanyUsersAsync(id, ct),
+        Departments:      await db.Departments.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct),
+        Entities:         await db.Entities.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct),
+        Templates:        await db.Templates.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct));
+
+    /// <summary>**بيانُ ما سيُحذف** — يُقرأ قبل الحذف ويُعرض للمالك (ADR-047).</summary>
+    /// <remarks>
+    /// 🔑 **«لا تحذف ما لا تراه».** حوارُ تحذيرٍ عامّ بلا أرقام يجعل الموافقة بلا معنى —
+    /// وهو بعينه ما جعل زرّ تصفير القاعدة يُضغط بالخطأ.
+    ///
+    /// ⚠️ **ويُمرَّر الاسمُ نفسه تأكيداً** عمداً: الغرض إظهار **الموانع الحقيقية** (لم
+    /// تُعطَّل · فيها سجلّات · …) لا التذكير بأن المستخدم لم يكتب شيئاً بعد.
+    /// </remarks>
+    [HttpGet("{id:int}/delete-preview")]
+    [Authorize(Roles = "SuperAdmin")]
+    [RequireModule(AppModule.Settings)]
+    public async Task<ActionResult<CompanyDeletePreviewResponse>> DeletePreview(int id, CancellationToken ct)
+    {
+        var c = await FindAnyAsync(id, ct);
+        var contents = await ContentsAsync(id, ct);
+        var isLast = await db.Companies.IgnoreQueryFilters().CountAsync(ct) <= 1;
+
+        var block = CompanyLifecycle.CanDelete(
+            c.IsActive, currentUser.ActiveCompanyId == id, isLast, contents, c.Name, c.Name);
+
+        return new CompanyDeletePreviewResponse(
+            c.CompanyId, c.Name, c.Prefix, c.IsActive,
+            contents.LiveOutgoing, contents.DeletedOutgoing,
+            contents.LiveIncoming, contents.DeletedIncoming,
+            contents.Archive, contents.Employees, contents.Tasks, contents.CaseFiles,
+            contents.Users, contents.SoleCompanyUsers,
+            contents.Departments, contents.Entities, contents.Templates,
+            contents.WillBeErased,
+            block == CompanyBlockReason.None,
+            block.ToString(),
+            block == CompanyBlockReason.None
+                ? null
+                : CompanyLifecycle.Explain(block, c.Name, contents));
+    }
+
     /// <summary>
-    /// حذف جذري للشركة — SuperAdmin فقط، ومحروس: يُمنع إن كان للشركة كتاب صادر معتمد أو أرشيف
-    /// (سجلات رسمية). للتوقّف عن استخدام شركة دون فقدان بيانات، استخدم «تعطيل» (IsActive=false).
+    /// حذف جذريّ للشركة — **معطَّلةً · بلا سجلٍّ حيّ · بتأكيدٍ بالاسم · وبنسخةٍ قبله** (ADR-047).
     /// </summary>
+    /// <remarks>
+    /// 🔴 **أربع طبقاتٍ لا زرّ واحد**، وكلُّها وُلدت من حادثةٍ وقعت 2026-09-21:
+    /// <list type="number">
+    /// <item><b>لا تُحذف إلا معطَّلة</b> — خطوتان لا واحدة، فلا تقع بضغطةٍ خاطئة.</item>
+    /// <item><b>لا سجلَّ حيّاً فيها</b> — والمحذوفُ ناعماً **لا يمنع** (قرار المالك).</item>
+    /// <item><b>تأكيدٌ بكتابة الاسم</b> — نمط الاستعادة، لا زرٌّ أحمر.</item>
+    /// <item>🔴 <b>نسخةٌ احتياطية قبل الحذف</b> — والفشل فيها <b>يوقف الحذف</b>.</item>
+    /// </list>
+    ///
+    /// ⚠️ **وفشلُ النسخة يُوقف العملية عمداً**: النسخة **هي** شبكة الأمان، والمضيُّ بلا
+    /// شبكةٍ يجعل الطبقة الرابعة **وعداً لا حارساً**.
+    /// </remarks>
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "SuperAdmin")]
     [RequireModule(AppModule.Settings)]
-    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    public async Task<IActionResult> Delete(int id, [FromQuery] string? confirm, CancellationToken ct)
     {
-        var c = await db.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.CompanyId == id, ct)
-                ?? throw new NotFoundException("الشركة غير موجودة.");
+        var c = await FindAnyAsync(id, ct);
+        var contents = await ContentsAsync(id, ct);
+        var isLast = await db.Companies.IgnoreQueryFilters().CountAsync(ct) <= 1;
 
-        // تحقّق مسبق: لا يجوز محو سجلات رسمية (كتب معتمدة أو أرشيف أو وارد). المسودات تُحذف مع الشركة.
-        var hasApproved = await db.OutgoingBooks.IgnoreQueryFilters()
-            .AnyAsync(b => b.CompanyId == id && b.Status == BookStatus.Final, ct);
-        var hasArchive = await db.ArchiveDocs.IgnoreQueryFilters()
-            .AnyAsync(a => a.CompanyId == id, ct);
-        var hasIncoming = await db.IncomingBooks.IgnoreQueryFilters()
-            .AnyAsync(b => b.CompanyId == id, ct);
-        if (hasApproved || hasArchive || hasIncoming)
-            throw new ConflictException("لا يمكن حذف شركة لها كتب صادرة معتمدة، أرشيف، أو كتب واردة. عطّل الشركة بدل حذفها.");
+        var block = CompanyLifecycle.CanDelete(
+            c.IsActive, currentUser.ActiveCompanyId == id, isLast, contents, c.Name, confirm);
+        if (block != CompanyBlockReason.None)
+            throw new ConflictException(CompanyLifecycle.Explain(block, c.Name, contents));
 
-        // اجمع كل مفاتيح التخزين قبل الحذف لتنظيفها بعد نجاح المعاملة (شعار/صور قوالب/مسودات PDF/مرفقات).
+        // 🔴 شبكة الأمان **قبل** أيّ حذف — وفشلُها يُلغي العملية.
+        try
+        {
+            await backups.RunAsync(BackupType.Manual, BackupScope.Full, RetentionCategory.Manual, ct);
+        }
+        catch (Exception ex)
+        {
+            throw new ConflictException(
+                "تعذّر أخذ نسخةٍ احتياطية قبل الحذف، فأُلغيت العملية. " +
+                $"عالج سبب النسخ ثم أعِد المحاولة. ({ex.Message})");
+        }
+
+        // اجمع مفاتيح التخزين قبل الحذف لتنظيفها بعد نجاح المعاملة.
         var blobKeys = new List<string>();
         if (!string.IsNullOrEmpty(c.LogoImageKey)) blobKeys.Add(c.LogoImageKey);
 
@@ -193,13 +315,15 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
             db.Attachments.RemoveRange(db.Attachments.Where(a => a.OwnerType == OwnerType.Outgoing && bookIds.Contains(a.OwnerId)));
             db.DocumentVersions.RemoveRange(db.DocumentVersions.Where(v => v.DocType == OwnerType.Outgoing && bookIds.Contains(v.DocId)));
             db.OutgoingBooks.RemoveRange(db.OutgoingBooks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-            // مسح الكتب الواردة وحركاتها المتبقية (إذا لم يتم منع الحذف بسببها - أي لن نصل هنا إذا كان هناك وارد، لكن للأمان ننظف الجداول)
             // 🔴 **جدولا ADR-045 يُنظَّفان صراحةً**: `BookReply` يتعاقب مع الكتب، لكن
             //    `CaseFile` مرتبطٌ بها بـ`SetNull` — فحذفُ الكتب يترك **معاملاتٍ يتيمة**.
-            db.BookReplies.RemoveRange(db.BookReplies.Where(x => x.CompanyId == id));
+            db.BookReplies.RemoveRange(db.BookReplies.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.CaseFiles.RemoveRange(db.CaseFiles.IgnoreQueryFilters().Where(x => x.CompanyId == id));
-            db.MovementLogs.RemoveRange(db.MovementLogs.Where(x => x.CompanyId == id));
+            db.MovementLogs.RemoveRange(db.MovementLogs.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.IncomingBooks.RemoveRange(db.IncomingBooks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+            // 🔴 **والإشعارات معها** (ADR-046): لها `CompanyId`، وتركُها يُخلّف صفوفاً تشير
+            //    إلى شركةٍ لا وجود لها — تظهر في «شركاتك الأخرى» باسمٍ «—» بلا معنى.
+            db.Notifications.RemoveRange(db.Notifications.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.UserCompanies.RemoveRange(db.UserCompanies.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.ApprovalDelegations.RemoveRange(db.ApprovalDelegations.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.Templates.RemoveRange(db.Templates.IgnoreQueryFilters().Where(x => x.CompanyId == id));
@@ -212,7 +336,8 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
             foreach (var u in primaryUsers) u.CompanyId = null;
 
             db.Companies.Remove(c);
-            audit.Add("Delete", nameof(Company), id.ToString(), $"حذف الشركة (بلا سجلات رسمية): {c.Name}", null);
+            audit.Add("Delete", nameof(Company), id.ToString(),
+                $"حذف الشركة «{c.Name}» بعد تعطيلها — مُحي {contents.WillBeErased} سجلّاً", null);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         });
