@@ -345,6 +345,65 @@ class ApiClient {
 
   Future<void> deleteIncoming(int id) => _delete('/incoming/$id');
 
+  // ─────────────────────── المعاملات (ADR-045) ───────────────────────
+
+  Future<List<CaseFileListItem>> caseFiles({String? search}) async {
+    final q = <String, dynamic>{};
+    if (search != null && search.isNotEmpty) q['search'] = search;
+    return (await _get('/case-files', query: q) as List)
+        .map((e) => CaseFileListItem.fromJson(e))
+        .toList();
+  }
+
+  Future<CaseFileDetail> caseFileGet(int id) async =>
+      CaseFileDetail.fromJson(await _get('/case-files/$id'));
+
+  Future<CaseFileDetail> caseFileCreate(String title, {String? notes}) async =>
+      CaseFileDetail.fromJson(
+          await _post('/case-files', {'title': title, 'notes': notes}));
+
+  Future<CaseFileDetail> caseFileRename(int id, String title, {String? notes}) async =>
+      CaseFileDetail.fromJson(
+          await _put('/case-files/$id', {'title': title, 'notes': notes}));
+
+  Future<void> caseFileDelete(int id) => _delete('/case-files/$id');
+
+  Future<CaseFileDetail> caseFileAddMember(int id, CaseMemberKind kind, int bookId) async =>
+      CaseFileDetail.fromJson(await _post(
+          '/case-files/$id/members', {'kind': kind.wire, 'bookId': bookId}));
+
+  /// ⚠️ **قد تُطوى المعاملة بخروج آخر كتاب** فيردّ الخادم `204` — و`null` هنا تعني ذلك.
+  Future<CaseFileDetail?> caseFileRemoveMember(
+      int id, CaseMemberKind kind, int bookId) async {
+    final body = await _deleteReturnData('/case-files/$id/members/${kind.wire}/$bookId');
+    return body is Map<String, dynamic> ? CaseFileDetail.fromJson(body) : null;
+  }
+
+  Future<CaseFileDetail> caseFileMerge(int targetId, int sourceId) async =>
+      CaseFileDetail.fromJson(await _post('/case-files/$targetId/merge/$sourceId', null));
+
+  /// 🔑 «يخصّ كتاباً سابقاً» — يُنشئ أو يضمّ أو يدمج بحسب حالة الطرفين.
+  Future<CaseFileDetail> caseFileRelate({
+    required CaseMemberKind kind,
+    required int bookId,
+    required CaseMemberKind otherKind,
+    required int otherBookId,
+    String? title,
+  }) async =>
+      CaseFileDetail.fromJson(await _post('/case-files/relate', {
+        'kind': kind.wire,
+        'bookId': bookId,
+        'otherKind': otherKind.wire,
+        'otherBookId': otherBookId,
+        'title': title,
+      }));
+
+  /// بطاقة «الكتب المرتبطة» — `null` إن لم يكن الكتاب في معاملة (الخادم يردّ `204`).
+  Future<CaseFileDetail?> caseFileRelated(CaseMemberKind kind, int bookId) async {
+    final body = await _get('/case-files/related/${kind.wire}/$bookId');
+    return body is Map<String, dynamic> ? CaseFileDetail.fromJson(body) : null;
+  }
+
   Future<List<MovementLogItem>> incomingMovements(int id) async =>
       (await _get('/incoming/$id/movements') as List).map((e) => MovementLogItem.fromJson(e)).toList();
 

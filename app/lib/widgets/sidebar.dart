@@ -38,6 +38,9 @@ class Sidebar extends ConsumerWidget {
     this.canSeeTasks = false,
   });
 
+  /// 🔐 **أحد القسمين يكفي** — مرآةُ `RequireReadAccess` في `CaseFileService` (ADR-045).
+  bool get _showCaseFiles => modules.contains('Incoming') || modules.contains('Outgoing');
+
   bool get _showSettings => canManageUsers && modules.contains('Settings');
   bool get _showUsers => canManageUsers && modules.contains('Users');
   bool get _showBackup => isSuperAdmin && modules.contains('Backup');
@@ -136,6 +139,12 @@ class Sidebar extends ConsumerWidget {
           //    حارسُ المهام نفسه — قسمٌ ودورٌ فوق القارئ.
           if (canSeeTasks)
             _buildItem(13, Icons.view_kanban_outlined, 'لوحة المهام'),
+
+          // ⚠️ **المؤشّر 14** — المعاملات (ADR-045). البند مُلحقٌ في آخر قائمة الشاشات
+          //    وموضعُه البصري هنا، بعد الوارد والصادر اللذين يغذّيانه.
+          // 🔐 **وحارسُه «أحد القسمين»** لا كلاهما: المعاملة تجمع نوعين، ومَن يملك الصادر
+          //    وحده له فيها معاملاتٌ كلُّ كتبها صادر — وإخفاؤها عنه يحجب ما يحقّ له.
+          if (_showCaseFiles) _buildItem(14, Icons.account_tree_rounded, 'المعاملات'),
 
           const SizedBox(height: 18),
 

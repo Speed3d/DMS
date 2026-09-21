@@ -502,8 +502,12 @@ class OutgoingListItem {
   final String entityName;
   final String status;
   final num? amountInIqd;
+
+  /// معرّف المعاملة — شارةٌ في صفّ القائمة، و`null` لمن لا معاملة له (ADR-045).
+  final int? caseFileId;
+
   OutgoingListItem(this.outgoingId, this.number, this.date, this.subject,
-      this.entityName, this.status, this.amountInIqd);
+      this.entityName, this.status, this.amountInIqd, [this.caseFileId]);
   factory OutgoingListItem.fromJson(Map<String, dynamic> j) => OutgoingListItem(
         j['outgoingId'],
         j['number'],
@@ -512,6 +516,7 @@ class OutgoingListItem {
         j['entityName'] ?? '',
         j['status'] ?? 'Draft',
         j['amountInIqd'],
+        j['caseFileId'],
       );
 }
 
@@ -1134,6 +1139,10 @@ class IncomingListItem {
   final List<String> departmentNames;
   final num? amountInIqd;
 
+  /// معرّف المعاملة — شارةٌ في صفّ القائمة، و`null` لمن لا معاملة له (ADR-045).
+  /// ⚠️ **المعرّف لا العنوان**: العنوان قد يحمل موضوع كتابٍ محجوبٍ عن الناظر.
+  final int? caseFileId;
+
   IncomingListItem({
     required this.incomingId,
     required this.incomingNumber,
@@ -1144,6 +1153,7 @@ class IncomingListItem {
     required this.status,
     required this.departmentNames,
     required this.amountInIqd,
+    this.caseFileId,
   });
 
   factory IncomingListItem.fromJson(Map<String, dynamic> j) => IncomingListItem(
@@ -1157,6 +1167,7 @@ class IncomingListItem {
         departmentNames:
             j['departmentNames'] != null ? List<String>.from(j['departmentNames']) : const [],
         amountInIqd: j['amountInIqd'],
+        caseFileId: j['caseFileId'],
       );
 }
 
@@ -1314,5 +1325,110 @@ class VerifyResult {
         entity: j['entity'],
         amountInIqd: j['amountInIqd'],
         foundInDb: j['foundInDb'] ?? false,
+      );
+}
+
+// ─────────────────────── المعاملات (ADR-045) ───────────────────────
+
+/// نوع الكتاب داخل المعاملة — مرآةُ `CaseMemberKind` في الخادم.
+enum CaseMemberKind { incoming, outgoing }
+
+extension CaseMemberKindX on CaseMemberKind {
+  /// القيمة كما يقرؤها الخادم (‏`JsonStringEnumConverter` بحساسيةٍ للحروف الكبيرة).
+  String get wire => this == CaseMemberKind.incoming ? 'Incoming' : 'Outgoing';
+  String get label => this == CaseMemberKind.incoming ? 'وارد' : 'صادر';
+
+  static CaseMemberKind parse(String? raw) =>
+      (raw ?? '').toLowerCase() == 'outgoing' ? CaseMemberKind.outgoing : CaseMemberKind.incoming;
+}
+
+/// سطرٌ في قائمة المعاملات.
+class CaseFileListItem {
+  final int caseFileId;
+  final String title;
+  final int visibleCount;
+
+  /// 🔐 **عددٌ بلا أيّ تفصيل** (قرار المالك): كتبٌ في المعاملة خارج صلاحية الناظر.
+  /// ⚠️ **ووجودُه ليس تسريباً بل ضدَّه**: من لا يعرف أن الخيط ناقص يبني قراراً على نصف صورة.
+  final int hiddenCount;
+  final DateTime createdAt;
+
+  CaseFileListItem({
+    required this.caseFileId,
+    required this.title,
+    required this.visibleCount,
+    required this.hiddenCount,
+    required this.createdAt,
+  });
+
+  factory CaseFileListItem.fromJson(Map<String, dynamic> j) => CaseFileListItem(
+        caseFileId: j['caseFileId'] ?? 0,
+        title: j['title'] ?? '',
+        visibleCount: j['visibleCount'] ?? 0,
+        hiddenCount: j['hiddenCount'] ?? 0,
+        createdAt: parseInstant(j['createdAt']),
+      );
+}
+
+/// كتابٌ عضوٌ في معاملة.
+class CaseMember {
+  final CaseMemberKind kind;
+  final int bookId;
+  final String? number;
+
+  /// 📅 **يومٌ تقويميّ لا لحظة** — `DateTime.parse` لا `parseInstant` (ADR-032).
+  final DateTime date;
+  final String subject;
+  final String status;
+
+  CaseMember({
+    required this.kind,
+    required this.bookId,
+    required this.number,
+    required this.date,
+    required this.subject,
+    required this.status,
+  });
+
+  factory CaseMember.fromJson(Map<String, dynamic> j) => CaseMember(
+        kind: CaseMemberKindX.parse(j['kind']),
+        bookId: j['bookId'] ?? 0,
+        number: j['number'],
+        date: DateTime.parse(j['date']),
+        subject: j['subject'] ?? '',
+        status: j['status'] ?? '',
+      );
+}
+
+/// معاملةٌ بأعضائها المرئيّين.
+class CaseFileDetail {
+  final int caseFileId;
+  final String title;
+  final String? notes;
+  final DateTime createdAt;
+  final List<CaseMember> members;
+  final int hiddenCount;
+
+  CaseFileDetail({
+    required this.caseFileId,
+    required this.title,
+    required this.notes,
+    required this.createdAt,
+    required this.members,
+    required this.hiddenCount,
+  });
+
+  factory CaseFileDetail.fromJson(Map<String, dynamic> j) => CaseFileDetail(
+        caseFileId: j['caseFileId'] ?? 0,
+        title: j['title'] ?? '',
+        notes: j['notes'],
+        createdAt: parseInstant(j['createdAt']),
+        // ⚠️ **الغياب قائمةٌ فارغة لا استثناء** — معاملةٌ فارغة لتوّها لا تُسقط الشاشة.
+        members: j['members'] is List
+            ? (j['members'] as List)
+                .map((e) => CaseMember.fromJson(Map<String, dynamic>.from(e)))
+                .toList()
+            : const [],
+        hiddenCount: j['hiddenCount'] ?? 0,
       );
 }

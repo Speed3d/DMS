@@ -33,7 +33,7 @@ public sealed class OutgoingController(
         return await q.OrderByDescending(b => b.CreatedAt)
             .Select(b => new OutgoingListItem(
                 b.OutgoingId, b.Number, b.Date, b.Subject, b.Entity!.Name,
-                b.Status, b.AmountInIqd, b.CreatedAt))
+                b.Status, b.AmountInIqd, b.CreatedAt, b.CaseFileId))
             .ToListAsync(ct);
     }
 

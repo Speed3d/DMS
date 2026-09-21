@@ -82,7 +82,8 @@ public sealed class IncomingController(
                 b.IncomingId, b.IncomingNumber, b.ExternalNumber, b.ReceivedDate,
                 b.Subject, b.Entity!.Name, b.Status,
                 // الأقسام صارت متعدّدة (ADR-018) — تُعرض مجموعةً في عمود واحد.
-                b.Assignments.Select(a => a.Department!.Name).ToList(), b.AmountInIqd))
+                b.Assignments.Select(a => a.Department!.Name).ToList(), b.AmountInIqd,
+                b.CaseFileId))
             .ToListAsync(ct);
 
         return Ok(list);

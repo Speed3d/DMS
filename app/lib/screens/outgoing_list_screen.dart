@@ -8,8 +8,10 @@ import '../models.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/search_field.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/task_badges.dart';
 import 'outgoing_form_screen.dart';
 import 'outgoing_detail_screen.dart';
+import 'case_files_screen.dart';
 
 /// Hint: شاشة قائمة الصادر - عرض الكتب بأسلوب جدول عصري وأنيق
 class OutgoingListScreen extends ConsumerStatefulWidget {
@@ -257,9 +259,23 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                                           // الحالة
                                           Expanded(
                                             flex: 1,
-                                            child: Align(
-                                              alignment: Alignment.centerRight,
-                                              child: StatusPill(status: it.status),
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                CaseFileBadge(
+                                                  caseFileId: it.caseFileId,
+                                                  onTap: it.caseFileId == null
+                                                      ? null
+                                                      : () => Navigator.of(context).push(
+                                                          MaterialPageRoute(
+                                                              builder: (_) => CaseFileDetailScreen(
+                                                                  id: it.caseFileId!))),
+                                                ),
+                                                if (it.caseFileId != null)
+                                                  const SizedBox(width: 6),
+                                                Flexible(child: StatusPill(status: it.status)),
+                                              ],
                                             ),
                                           ),
 

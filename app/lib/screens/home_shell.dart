@@ -20,6 +20,7 @@ import 'backup_screen.dart';
 import 'employee_list_screen.dart';
 import 'payroll_years_screen.dart';
 import 'profile_screen.dart';
+import 'case_files_screen.dart';
 import 'task_board_screen.dart';
 import 'task_list_screen.dart';
 
@@ -76,6 +77,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       const ProfileScreen(),        // 11 — الملف الشخصي (ADR-033)
       const TaskListScreen(),       // 12 — المهام (ADR-037)
       const TaskBoardScreen(),      // 13 — لوحة المهام (الدفعة ٧)
+      const CaseFilesScreen(),      // 14 — المعاملات (ADR-045)
     ];
 
     if (_index >= pages.length) _index = 0;
@@ -250,10 +252,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         12 => session.canSeeTasks,
         // اللوحة عرضٌ آخر للمهام — **حارسُها هو حارسُها** لا حارسٌ أضعف.
         13 => session.canSeeTasks,
+        // ⚠️ **أحد القسمين لا كلاهما** (ADR-045): المعاملة تجمع نوعين، ومَن يملك الصادر
+        //    وحده له فيها معاملاتٌ كلُّ كتبها صادر. ومرآتُه في الخادم `RequireReadAccess`.
+        14 => session.hasModule('Incoming') || session.hasModule('Outgoing'),
         _ => false,
       };
 
   String _getPageTitle(int index, bool canManageUsers, bool isSuper) => switch (index) {
+        14 => 'المعاملات',
         0 => 'الرئيسية',
         1 => 'المسودات (أوفلاين)',
         2 => 'الصادر',
@@ -272,6 +278,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       };
 
   String _getPageSubtitle(int index, bool canManageUsers, bool isSuper) => switch (index) {
+        14 => 'خيوطُ المراسلات — الوارد والصادر في قضيةٍ واحدة',
         0 => 'نظرة عامة على نشاط الشركة',
         1 => 'الكتب المحفوظة محلياً بانتظار الاتصال',
         2 => 'إدارة الكتب الصادرة والاعتمادات',

@@ -141,3 +141,43 @@ class TaskDueLabel extends StatelessWidget {
     );
   }
 }
+
+/// شارةُ **المعاملة** على صفّ الكتاب في القائمة (ADR-045).
+///
+/// 🔴 **ودجةٌ جديدة لا حالةٌ في [StatusPill]** — للسبب نفسه الذي وُلدت منه شارات المهام:
+/// تلك تطابق النصّ بـ`contains` فمطابقةٌ فضفاضة كانت ستعطيها لوناً خاطئاً. وهذه ليست
+/// «حالة» أصلاً بل **إشارةُ انتماء**.
+///
+/// ⚠️ **بلا عنوان المعاملة عمداً**: العنوان قد يحمل موضوع كتابٍ محجوبٍ عن الناظر
+/// (قرار المالك: المحجوب بالعدد لا بالتفصيل). والشارة تقول «هذا جزءٌ من خيط» وتفتحه.
+class CaseFileBadge extends StatelessWidget {
+  const CaseFileBadge({super.key, required this.caseFileId, this.onTap});
+
+  final int? caseFileId;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // ⚠️ **الغياب لا شيء** — لا مساحةَ محجوزة ولا نقطةَ باهتة: الصفّ ضيّقٌ أصلاً،
+    //    وشارةٌ فارغة تُضيّقه بلا معنى.
+    if (caseFileId == null) return const SizedBox.shrink();
+
+    final color = AppColors.action(context);
+    return Tooltip(
+      message: 'هذا الكتاب ضمن معاملة — اضغط لفتحها',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: color.withValues(alpha: 0.35)),
+          ),
+          child: Icon(Icons.account_tree_rounded, size: 13, color: color),
+        ),
+      ),
+    );
+  }
+}

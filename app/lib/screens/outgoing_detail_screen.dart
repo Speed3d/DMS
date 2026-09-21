@@ -6,13 +6,18 @@ import 'package:printing/printing.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
 import '../core/local_archive.dart';
+import '../core/case_file_providers.dart';
+import '../core/incoming_providers.dart';
 import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/related_books_card.dart';
 import '../widgets/status_pill.dart';
 import 'incoming_detail_screen.dart';
+import 'case_files_screen.dart';
+import 'relate_book_screen.dart';
 import 'outgoing_edit_approved_screen.dart';
 import 'outgoing_edit_draft_screen.dart';
 import 'task_form_screen.dart';
@@ -57,6 +62,42 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
   /// ووضعُه على بوّابة الاعتماد يجعل **لحظة الاختيار هي لحظة التنفيذ**، بلا حالةٍ معلّقة.
   ///
   /// ⚠️ **واختياريّ بالكامل**: المضيّ بلا اختيارٍ يعتمد الكتاب كما كان يفعل دائماً.
+
+  /// «يخصّ كتاباً سابقاً» — يفتح شاشة الاختيار ثم يربط (ADR-045).
+  ///
+  /// 🔑 **والنظام يقرّر ما يفعل**: يُنشئ معاملةً أو يضمّ إلى قائمة أو **يدمج** — والمستخدم
+  /// لا يرى إلا «هذا الكتاب يخصّ ذاك».
+  Future<void> _relateToPreviousBook(CaseMemberKind selfKind, int selfId,
+      String suggestedTitle, bool hasCase) async {
+    final choice = await Navigator.of(context).push<RelateChoice>(MaterialPageRoute(
+        builder: (_) => RelateBookScreen(
+              selfKind: selfKind,
+              selfBookId: selfId,
+              suggestedTitle: suggestedTitle,
+              hasCaseAlready: hasCase,
+            )));
+    if (choice == null) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).caseFileRelate(
+            kind: selfKind,
+            bookId: selfId,
+            otherKind: choice.kind,
+            otherBookId: choice.bookId,
+            title: choice.title.isEmpty ? null : choice.title,
+          );
+      invalidateCaseFiles(ref);
+      invalidateIncoming(ref);
+      invalidateOutgoing(ref);
+      _snack('تم الربط — الكتابان الآن في معاملةٍ واحدة.');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _approve() async {
     final picked = await Navigator.of(context).push<List<int>>(MaterialPageRoute(
         builder: (_) => const _ReplyTargetsScreen(), fullscreenDialog: true));
@@ -415,6 +456,22 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                 const SizedBox(height: 16),
                                 _buildInfoRow('المعادل بالدينار', '${_fmt(d.amountInIqd ?? 0)} د.ع', Icons.payments_rounded),
                               ],
+                              // ━━━ الكتب المرتبطة (المعاملة) — ADR-045 ━━━
+                              RelatedBooksCard(
+                                kind: CaseMemberKind.outgoing,
+                                bookId: d.outgoingId,
+                                canManage: ref.watch(sessionProvider).canManageIncoming,
+                                onRelate: () => _relateToPreviousBook(
+                                    CaseMemberKind.outgoing, d.outgoingId, d.subject, false),
+                                onOpen: (m) => Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => m.kind == CaseMemberKind.incoming
+                                        ? IncomingDetailScreen(id: m.bookId)
+                                        : OutgoingDetailScreen(id: m.bookId))),
+                                onOpenCase: (id) => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) => CaseFileDetailScreen(id: id))),
+                              ),
+
                               // ━━━ الواردات المردود عليها — **قائمة** منذ ADR-045 ━━━
                               // 🔐 **لا تحمل إلا ما يراه الطالب**: الخادم يبنيها من
                               //    `IncomingService.Query()`، وكان الحقل المفرد يقرأ الجدول

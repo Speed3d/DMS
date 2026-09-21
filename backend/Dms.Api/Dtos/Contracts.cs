@@ -352,7 +352,9 @@ public sealed record EditApprovedRequest(
 
 public sealed record OutgoingListItem(
     int OutgoingId, string? Number, DateTime Date, string Subject,
-    string EntityName, BookStatus Status, decimal? AmountInIqd, DateTime CreatedAt);
+    string EntityName, BookStatus Status, decimal? AmountInIqd, DateTime CreatedAt,
+    /// <summary>شارةُ المعاملة في القائمة — `null` لمن لا معاملة له (ADR-045).</summary>
+    int? CaseFileId = null);
 
 public sealed record OutgoingDetail(
     int OutgoingId, int CompanyId, string? Number, int? Year, int? SerialNo, DateTime Date,
@@ -406,7 +408,13 @@ public sealed record IncomingAssignmentDto(
 public sealed record IncomingListItem(
     int IncomingId, string? IncomingNumber, string? ExternalNumber,
     DateTime ReceivedDate, string Subject, string EntityName,
-    IncomingStatus Status, List<string> DepartmentNames, decimal? AmountInIqd);
+    IncomingStatus Status, List<string> DepartmentNames, decimal? AmountInIqd,
+    /// <summary>شارةُ المعاملة في القائمة — `null` لمن لا معاملة له (ADR-045).</summary>
+    /// <remarks>
+    /// ⚠️ **المعرّف لا العنوان**: العنوان قد يحمل موضوع كتابٍ محجوبٍ عن الناظر، والشارة
+    /// لا تحتاج إلا أن تقول «هذا الكتاب جزءٌ من خيط» وتفتحه عند النقر.
+    /// </remarks>
+    int? CaseFileId = null);
 
 public sealed record IncomingDetail(
     int IncomingId, int CompanyId, string? IncomingNumber, int? Year, int? SerialNo,

@@ -7,8 +7,10 @@ import '../models.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/search_field.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/task_badges.dart';
 import 'incoming_form_screen.dart';
 import 'incoming_detail_screen.dart';
+import 'case_files_screen.dart';
 
 /// Hint: شاشة عرض قائمة الكتب الواردة
 class IncomingListScreen extends ConsumerWidget {
@@ -351,9 +353,25 @@ class IncomingListScreen extends ConsumerWidget {
                                         // الحالة
                                         Expanded(
                                           flex: 1,
-                                          child: Align(
-                                            alignment: Alignment.centerRight,
-                                            child: StatusPill(status: it.status),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.end,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // ⚠️ **الشارة قبل الحالة ومقاسُها صغير**:
+                                              //    الخلية `flex: 1` ضيّقة، و`MainAxisSize.min`
+                                              //    يمنع الفيض حين تغيب الشارة.
+                                              CaseFileBadge(
+                                                caseFileId: it.caseFileId,
+                                                onTap: it.caseFileId == null
+                                                    ? null
+                                                    : () => Navigator.of(context).push(
+                                                        MaterialPageRoute(
+                                                            builder: (_) => CaseFileDetailScreen(
+                                                                id: it.caseFileId!))),
+                                              ),
+                                              if (it.caseFileId != null) const SizedBox(width: 6),
+                                              Flexible(child: StatusPill(status: it.status)),
+                                            ],
                                           ),
                                         ),
 

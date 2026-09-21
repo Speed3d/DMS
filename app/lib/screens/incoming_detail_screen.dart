@@ -4,15 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
+import '../core/case_file_providers.dart';
 import '../core/incoming_providers.dart';
+import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/related_books_card.dart';
 import '../widgets/status_pill.dart';
 import 'incoming_form_screen.dart';
 import 'outgoing_detail_screen.dart';
+import 'case_files_screen.dart';
+import 'relate_book_screen.dart';
 import 'task_form_screen.dart';
 
 /// Hint: شاشة تفاصيل الكتاب الوارد (تعرض المعلومات، المرفقات، سجل الحركة)
@@ -490,6 +495,25 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                               //       وأُزيل مصدر «وارد» من التقرير المالي. البيانات القديمة باقية
                               //       في القاعدة (لا migration حذف) فالقرار قابل للتراجع.
 
+                              // ━━━ الكتب المرتبطة (المعاملة) — ADR-045 ━━━
+                              RelatedBooksCard(
+                                kind: CaseMemberKind.incoming,
+                                bookId: d.incomingId,
+                                canManage: ref.watch(sessionProvider).canManageIncoming,
+                                onRelate: () => _relateToPreviousBook(
+                                    CaseMemberKind.incoming, d.incomingId, d.subject,
+                                    // ⚠️ لا نعرف انتماءه هنا، والبطاقة تعرفه — فنمرّر
+                                    //    `false` ليُعرض حقل العنوان، والخادم يتجاهله إن لزم.
+                                    false),
+                                onOpen: (m) => Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => m.kind == CaseMemberKind.incoming
+                                        ? IncomingDetailScreen(id: m.bookId)
+                                        : OutgoingDetailScreen(id: m.bookId))),
+                                onOpenCase: (id) => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) => CaseFileDetailScreen(id: id))),
+                              ),
+
                               // ━━━ الردود بالصادر — **قائمة** منذ ADR-045 ━━━
                               const Divider(height: 32),
                               Row(children: [
@@ -647,6 +671,42 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
         ),
       ],
     );
+  }
+
+
+  /// «يخصّ كتاباً سابقاً» — يفتح شاشة الاختيار ثم يربط (ADR-045).
+  ///
+  /// 🔑 **والنظام يقرّر ما يفعل**: يُنشئ معاملةً أو يضمّ إلى قائمة أو **يدمج** — والمستخدم
+  /// لا يرى إلا «هذا الكتاب يخصّ ذاك».
+  Future<void> _relateToPreviousBook(CaseMemberKind selfKind, int selfId,
+      String suggestedTitle, bool hasCase) async {
+    final choice = await Navigator.of(context).push<RelateChoice>(MaterialPageRoute(
+        builder: (_) => RelateBookScreen(
+              selfKind: selfKind,
+              selfBookId: selfId,
+              suggestedTitle: suggestedTitle,
+              hasCaseAlready: hasCase,
+            )));
+    if (choice == null) return;
+
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).caseFileRelate(
+            kind: selfKind,
+            bookId: selfId,
+            otherKind: choice.kind,
+            otherBookId: choice.bookId,
+            title: choice.title.isEmpty ? null : choice.title,
+          );
+      invalidateCaseFiles(ref);
+      invalidateIncoming(ref);
+      invalidateOutgoing(ref);
+      _snack('تم الربط — الكتابان الآن في معاملةٍ واحدة.');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   /// Hint: حالة الكتاب تسمح بالإجراءات التشغيلية (**الإحالة**) — مرآة لـ IncomingWorkflow.IsOperable.
