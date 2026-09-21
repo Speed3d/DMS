@@ -57,6 +57,9 @@ public class OutgoingBook
     /// </remarks>
     public ICollection<BookReply> RepliesTo { get; set; } = new List<BookReply>();
 
+    /// <summary>المعاملة التي ينتمي إليها هذا الكتاب — **واحدةٌ أو لا شيء** (ADR-045).</summary>
+    public int? CaseFileId { get; set; }
+
     /// <summary>للتزامن المتفائل عند التعديل بعد الاعتماد.</summary>
     public byte[]? RowVersion { get; set; }
 

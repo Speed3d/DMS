@@ -4,6 +4,7 @@ using Dms.Infrastructure.Auth;
 using Dms.Infrastructure.Backup;
 using Dms.Infrastructure.Documents;
 using Dms.Infrastructure.Hr;
+using Dms.Infrastructure.CaseFiles;
 using Dms.Infrastructure.Incoming;
 using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Outgoing;
@@ -42,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IDelegationService, DelegationService>();
         services.AddScoped<IOutgoingService, OutgoingService>();
         services.AddScoped<IIncomingService, IncomingService>();
+        services.AddScoped<ICaseFileService, CaseFileService>();
         services.AddScoped<IArchiveService, ArchiveService>();
         services.AddScoped<IAttachmentService, AttachmentService>();
         services.AddScoped<IReportService, ReportService>();

@@ -1,6 +1,8 @@
 using Dms.Domain;
 using Dms.Infrastructure.Auth;
 
+using Dms.Infrastructure.CaseFiles;
+
 namespace Dms.Api.Dtos;
 
 // ----------------- Auth -----------------
@@ -293,6 +295,32 @@ public sealed record EndOfServiceResponse(
 
 public sealed record CreateDelegationRequest(int ToUserId, DateTime StartDate, DateTime? EndDate);
 public sealed record DelegationResponse(int DelegationId, int FromUserId, int ToUserId, DateTime StartDate, DateTime? EndDate, bool IsActive);
+
+// ----------------- CaseFiles (المعاملات — ADR-045) -----------------
+
+public sealed record CaseFileRequest(string Title, string? Notes = null);
+
+public sealed record CaseMemberRequest(CaseMemberKind Kind, int BookId);
+
+/// <summary>«يخصّ كتاباً سابقاً» — الكتابان الطرفان، وعنوانٌ يُستعمل إن لزم إنشاء معاملة.</summary>
+/// <remarks>
+/// 🔐 **`Title` يكتبه المُنشئ ولا يُشتقّ صامتاً**: الاشتقاق من عنوان أوّل كتاب كان **يُسرّب
+/// موضوع كتابٍ محجوب** لمن يرى الكتاب الثاني لاحقاً. والواجهة تُهيّئه ثم **يُعرض للتعديل**
+/// قبل الحفظ، فيقع قرار الإفصاح على إنسانٍ يرى الطرفين.
+/// </remarks>
+public sealed record RelateRequest(
+    CaseMemberKind Kind, int BookId, CaseMemberKind OtherKind, int OtherBookId, string? Title = null);
+
+public sealed record CaseFileListItem(
+    int CaseFileId, string Title, int VisibleCount, int HiddenCount, DateTime CreatedAt);
+
+public sealed record CaseMemberDto(
+    CaseMemberKind Kind, int BookId, string? Number, DateTime Date, string Subject, string Status);
+
+/// <summary>معاملةٌ بأعضائها المرئيّين — و**عدد المحجوب بلا أيّ تفصيل** (قرار المالك).</summary>
+public sealed record CaseFileDetail(
+    int CaseFileId, string Title, string? Notes, DateTime CreatedAt,
+    List<CaseMemberDto> Members, int HiddenCount);
 
 // ----------------- Outgoing -----------------
 public sealed record CreateOutgoingRequest(

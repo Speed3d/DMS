@@ -62,6 +62,13 @@ public class IncomingBook
     /// </remarks>
     public ICollection<BookReply> Replies { get; set; } = new List<BookReply>();
 
+    /// <summary>المعاملة التي ينتمي إليها هذا الكتاب — **واحدةٌ أو لا شيء** (ADR-045).</summary>
+    /// <remarks>
+    /// ⚠️ **واحدةٌ لا أكثر** (قرار المالك): وضمُّه لمعاملةٍ ثانية **ينقله**. والتعدّد كان
+    /// يجعل فتحَ الكتاب يعرض خيطَي قضيّتين مختلطين، ويُلبس معنى «دمج المعاملتين».
+    /// </remarks>
+    public int? CaseFileId { get; set; }
+
     // بيانات تتبع الإنشاء والتعديل
     public int CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }

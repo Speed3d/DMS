@@ -94,6 +94,18 @@
 - **الإحالة والرؤية (ADR-018):** الإسناد صار **جدولاً مستقلاً** لا عموداً — انظر `IncomingAssignment` أدناه. الموظف/القارئ يرى: كتبه **+ كتب قسمه + ما أحاله بنفسه**.
 - ⚠️ **أُسقط عمودا `DepartmentId` و`FolderName`** في migration `AddMultiDepartmentAssignments` (2026-07-27) بعد **نقل** إسناداتهما إلى الجدول الجديد. `FolderName` كان نسخة مُسطَّحة من اسم القسم فقد آخر معنى لها بتعدّد الأقسام.
 
+### CaseFile (المعاملة — ADR-045، migration `AddCaseFiles`)
+`CaseFileId, CompanyId, Title(200), Notes?(1000), CreatedByUserId, CreatedAt, UpdatedAt?, RowVersion, + الحذف الناعم`.
+- فلترٌ عام: `(!filter || CompanyId == active) && !IsDeleted` · وفهرس `(CompanyId, Title)`.
+- `IncomingBook` و`OutgoingBook` += **`CaseFileId?`** بـ**`SetNull`**: طيُّ المعاملة يفكّ
+  الانتماء **ولا يحذف كتاباً رسمياً**. (ولهذا يحتاج حذفُ الشركة تنظيفاً صريحاً.)
+- **الكتاب في معاملةٍ واحدة** (قرار المالك) — وضمُّه لثانيةٍ ينقله، والقديمة **تُطوى إن فرغت**.
+- `RowVersion` **لأجل الدمج**: دمجان متزامنان (أ←ب) و(ب←أ) بلا حارسٍ يحذفان الاثنتين.
+- ⚠️ **بلا رقمٍ تسلسليّ وبلا حالة في v1**: الرقم يُشبه أرقام الكتب فيُخلط بها، والحالة
+  تُكرّر حالات الكتب وتنحرف عنها. **العنوان هويّتها.**
+- ⚠️ **والاسم `CaseFile` لا `Subject`**: `IncomingBook.Subject` موجودٌ ويُعرض بعنوان «الموضوع»
+  في كل شاشة وتقرير.
+
 ### BookReply (ربط الردّ: الوارد ↔ الصادر — ADR-045، migration `AddBookReplies`)
 `BookReplyId, IncomingId→IncomingBook (Cascade), OutgoingId→OutgoingBook (Cascade), CompanyId, LinkedByUserId?, LinkedAt`.
 - **فهرس فريد على `(IncomingId, OutgoingId)`** — الزوج نفسه لا يُربط مرّتين. والخدمة تفحص

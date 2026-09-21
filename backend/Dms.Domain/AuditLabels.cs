@@ -25,6 +25,7 @@ public static class AuditLabels
         ["Update"] = "تعديل",
         ["Delete"] = "حذف",
         ["Link"] = "ربط",
+        ["Merge"] = "دمج معاملتين",
         ["Unlink"] = "فكّ ربط",
 
         // ── الصادر ──
@@ -121,6 +122,7 @@ public static class AuditLabels
         ["HrSettings"] = "إعدادات الموظفين والرواتب",
 
         ["DmsTask"] = "مهمة",
+        ["CaseFile"] = "معاملة",
 
         // قيم OwnerType كما يكتبها AttachmentService
         ["Outgoing"] = "كتاب صادر",

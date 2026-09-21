@@ -194,6 +194,10 @@ public sealed class CompaniesController(AppDbContext db, IAuditService audit, IF
             db.DocumentVersions.RemoveRange(db.DocumentVersions.Where(v => v.DocType == OwnerType.Outgoing && bookIds.Contains(v.DocId)));
             db.OutgoingBooks.RemoveRange(db.OutgoingBooks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             // مسح الكتب الواردة وحركاتها المتبقية (إذا لم يتم منع الحذف بسببها - أي لن نصل هنا إذا كان هناك وارد، لكن للأمان ننظف الجداول)
+            // 🔴 **جدولا ADR-045 يُنظَّفان صراحةً**: `BookReply` يتعاقب مع الكتب، لكن
+            //    `CaseFile` مرتبطٌ بها بـ`SetNull` — فحذفُ الكتب يترك **معاملاتٍ يتيمة**.
+            db.BookReplies.RemoveRange(db.BookReplies.Where(x => x.CompanyId == id));
+            db.CaseFiles.RemoveRange(db.CaseFiles.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.MovementLogs.RemoveRange(db.MovementLogs.Where(x => x.CompanyId == id));
             db.IncomingBooks.RemoveRange(db.IncomingBooks.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.UserCompanies.RemoveRange(db.UserCompanies.IgnoreQueryFilters().Where(x => x.CompanyId == id));

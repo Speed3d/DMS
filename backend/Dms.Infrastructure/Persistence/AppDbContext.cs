@@ -42,6 +42,7 @@ public class AppDbContext : DbContext
     public DbSet<IncomingBook> IncomingBooks => Set<IncomingBook>();
     public DbSet<MovementLog> MovementLogs => Set<MovementLog>();
     public DbSet<BookReply> BookReplies => Set<BookReply>();
+    public DbSet<CaseFile> CaseFiles => Set<CaseFile>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
     public DbSet<Counter> Counters => Set<Counter>();
@@ -188,11 +189,32 @@ public class AppDbContext : DbContext
                 .HasForeignKey(x => x.EntityId).OnDelete(DeleteBehavior.Restrict);
 
             e.HasIndex(x => x.EntityId);
+            e.HasIndex(x => x.CaseFileId);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.ReceivedDate);
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
         });
+
+        // ---- CaseFile (المعاملة — ADR-045) ----
+        b.Entity<CaseFile>(e =>
+        {
+            e.HasKey(x => x.CaseFileId);
+            e.Property(x => x.Title).IsRequired().HasMaxLength(CaseFileRules.MaxTitleLength);
+            e.Property(x => x.Notes).HasMaxLength(1000);
+            e.Property(x => x.RowVersion).IsRowVersion();
+            e.HasIndex(x => new { x.CompanyId, x.Title });
+            e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
+        });
+
+        // ⚠️ **العلاقتان `SetNull` لا `Cascade`**: طيُّ المعاملة لا يجوز أن يحذف كتباً رسمية —
+        //    يفكّ انتماءها وحسب. (وهذا أيضاً ما يجعل حذف الشركة يحتاج تنظيفاً صريحاً.)
+        b.Entity<IncomingBook>()
+            .HasOne<CaseFile>().WithMany()
+            .HasForeignKey(x => x.CaseFileId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<OutgoingBook>()
+            .HasOne<CaseFile>().WithMany()
+            .HasForeignKey(x => x.CaseFileId).OnDelete(DeleteBehavior.SetNull);
 
         // ---- BookReply (ربط الردّ: كثيرٌ إلى كثير — ADR-045) ----
         b.Entity<BookReply>(e =>
