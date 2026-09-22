@@ -828,17 +828,39 @@ Invoke-RestMethod -Uri "http://localhost:5080/api/system/status"
 ```powershell
 Import-Module WebAdministration
 
-# 🔴 أوقف الموقع الافتراضي أولاً — وإلا تعارض المنفذ 80 ولم يُقلع موقعك.
+# 🔴 الموقع الافتراضي يُعطَّل عن الإقلاع، لا يُوقَف فحسب — وإلا عاد واحتلّ المنفذ 80
+#    عند أوّل إعادة تشغيل، فبقي موقعُك متوقّفاً. (عطلٌ مُقاس — التفصيل تحت.)
 Stop-Website -Name "Default Web Site" -ErrorAction SilentlyContinue
+Set-ItemProperty "IIS:\Sites\Default Web Site" -Name serverAutoStart -Value $false
 
 New-Website -Name "DmsApp" -Port 80 -PhysicalPath "C:\DMS\app" -Force
+Set-ItemProperty "IIS:\Sites\DmsApp" -Name serverAutoStart -Value $true
 Start-Website -Name "DmsApp"
 
 # قراءةٌ لحساب IIS
 icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
 
-Get-Website | Select-Object Name, State, PhysicalPath
+Get-Website | Select-Object Name, State, @{n='AutoStart';e={$_.serverAutoStart}}, PhysicalPath
 ```
+
+🎯 **المطلوب:** `DmsApp` = `Started` + `True` · و`Default Web Site` = `Stopped` + **`False`**.
+
+> ### 🔴 `Stop-Website` صحيحٌ للحظته وخاطئٌ للأبد — عطلٌ مُقاس (2026-09-22)
+> كانت النسخة السابقة توقف الموقع الافتراضي ولا تمنع إقلاعه. **فعند أوّل إعادة تشغيل**
+> عاد الموقعان يتنازعان `*:80:`، **وسبق الافتراضيُّ موقعَك فاحتلّه**، فبقي `DmsApp`
+> **`Stopped`** — مقيسٌ بالضبط:
+> ```
+> Default Web Site   Started   True   *:80:
+> DmsApp             Stopped   True   *:80:
+> ```
+>
+> ⚠️ **وأثرُه خبيثٌ لأنه لا يبدو عطلاً:** الزائر يرى **صفحة IIS الترحيبية الزرقاء** —
+> صفحةً تعمل وتبدو سليمة — **فلا يخطر له أن نظامه هو المتوقّف**، بل يتّهم الدومين أو
+> النفق ويبحث في المكان الخطأ. (والنفقُ كان سليماً تماماً: الصفحة وصلت عبره.)
+>
+> 🔑 **وهو الوجه الثالث لدرسٍ واحدٍ تكرّر في يومٍ واحد** (مع [§و-3ب](#و-3ب--امنح-حساب-الخدمة-صلاحيته--خطوةٌ-إلزامية-لا-احتياطية)
+> و[§ز-5](#ز-5-الاختبار-ثم-التثبيت-كخدمة)): **ما فعلتَه في جلستك الحالية ليس ما يفعله
+> الجهاز عند الإقلاع.** ⇒ **لا تُعلن نجاح أيّ مرحلةٍ قبل إعادة تشغيلٍ واختبارٍ من جهازٍ آخر.**
 
 **تحقّق على السيرفر نفسه:**
 ```powershell
