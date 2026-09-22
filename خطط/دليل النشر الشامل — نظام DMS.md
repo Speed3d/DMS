@@ -29,6 +29,15 @@
 > **و«.NET Runtime» ليست «ASP.NET Core Runtime»** ([§د-2](#د-2-net-9-runtime)). ·
 > **واسمُ مثيل SQL يُقرأ لا يُفترض** ([§د-1](#د-1-sql-server-express)) — يمسّ **ثلاثة أوامر**. ·
 > **والنقل بفلاشة** لمن لا شبكة بينهما ([§هـ-3](#هـ-3-النقل-إلى-السيرفر)).
+>
+> 🔴 **وما كشفه التنصيب الفعليّ على حاسبة التجربة (2026-09-22) — عطلٌ سابعٌ مانع:**
+> منحُ `NT AUTHORITY\SYSTEM` صلاحية `sysadmin` كان مكتوباً **«لو لم يفعل»** بناءً على أن
+> SQL Server يمنحها افتراضياً — **وهو لا يمنحها**. فالخدمة لا تُقلع، ورسالة `Start-Service`
+> لا تقول شيئاً، وسجلّ الأحداث يتّهم **«CREATE DATABASE permission denied»** لقاعدةٍ
+> **موجودةٍ فعلاً** (SQL يُخفي عن الحساب ما لا يملكه، فيراها EF غيرَ موجودة فيحاول إنشاءها).
+> ⇒ صارت **[§و-3ب](#و-3ب--امنح-حساب-الخدمة-صلاحيته--خطوةٌ-إلزامية-لا-احتياطية) خطوةً
+> إلزاميةً بترقيمها**، بفحصٍ يثبت وقوعها. 🔑 **والدرس: خطوةٌ يمرّ التشغيل اليدويّ بدونها
+> ليست خطوةً اختيارية — هي خطوةٌ يُخفيها أن حسابك أقوى من حساب الخدمة.**
 
 ---
 
@@ -726,16 +735,47 @@ SELECT Username, Role, MustChangePassword FROM Users;        -- يجب admin / S
 > 🔴 **لو ظهر `Username` فارغاً، توقّف** — ملف الأسرار بلا قسم `Seed`. احذف صفّ المستخدم
 > وأعِد توليد الملف بـ`--force` بعد أخذ نسخةٍ منه.
 >
-> **لو فشل الاتصال بالقاعدة**: التطبيق يتصل بمصادقة ويندوز، وسيعمل لاحقاً بحساب
-> `NT AUTHORITY\SYSTEM` (الخدمة). SQL Server يمنحه صلاحيةً كاملة افتراضياً. لو لم يفعل:
-> ```sql
-> IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'NT AUTHORITY\SYSTEM')
->     CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS;
-> ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];
+### و-3ب) 🔴 امنح حساب الخدمة صلاحيته — **خطوةٌ إلزامية لا احتياطية**
+
+> **لماذا هنا؟** لأن ما نجح للتوّ **لا يثبت شيئاً عن الخدمة.** أنت شغّلتَ `Dms.Api.exe`
+> **بحسابك أنت** (مسؤول)، والخدمة في [§و-4](#و-4-تسجيل-الخدمة) تعمل بحساب **`NT AUTHORITY\SYSTEM`**
+> — وهو حسابٌ آخر بصلاحياتٍ أخرى.
+
+```powershell
+sqlcmd -S . -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'NT AUTHORITY\SYSTEM') CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];"
+```
+> **(بدّل `-S .` بمثيلك — مثلاً `-S .\SQLEXPRESS`.)**
+
+**تحقّق أن المنح وقع:**
+```powershell
+sqlcmd -S . -Q "SELECT IS_SRVROLEMEMBER('sysadmin', 'NT AUTHORITY\SYSTEM') AS IsSysadmin;"   -- يجب 1
+```
+
+> ### 🔴 هذه الخطوة كانت مكتوبةً «لو لم يفعل» — وهو **خطأ مُقاس**
+> كانت النسخة السابقة تقول: «SQL Server يمنحه صلاحيةً كاملة افتراضياً. لو لم يفعل: …».
+> **والواقع أنه لا يفعل** على تثبيتٍ حديث: الدخول **موجودٌ** (`is_disabled = 0`) لكن
+> `IS_SRVROLEMEMBER('sysadmin', …)` يساوي **صفراً**. (مُقاسٌ على تثبيتٍ فعليّ — 2026-09-22.)
+>
+> **وأثرُه عَرَضٌ يقود إلى الشخيص الخطأ تماماً:**
 > ```
+> Start-Service : Cannot start service DmsApi on computer '.'
+> ```
+> وفي سجلّ الأحداث:
+> ```
+> SqlException: CREATE DATABASE permission denied in database 'master'.
+>    ... Failed executing DbCommand: CREATE DATABASE [DmsTrial];
+> ```
+>
+> 🔑 **ولاحظ المفارقة: القاعدة موجودةٌ فعلاً — أنشأتها قبل سطرين.** لكنّ SQL Server
+> **يُخفي عن الحساب قواعدَ لا يملك صلاحيةً عليها**، فيراها EF غيرَ موجودة **فيحاول إنشاءها**
+> فيُرفض. فالرسالة تتّهم «الإنشاء» والعلّة «القراءة» — **ومَن يصدّقها يبحث في المكان الخطأ.**
+>
 > ⚠️ **ولماذا `sysadmin` لا `db_owner`؟** لأن **استعادة النسخة الاحتياطية**
 > (`RESTORE DATABASE`) تحتاج صلاحيةً على مستوى الخادم لا على مستوى القاعدة. وحسابٌ بـ
 > `db_owner` وحده يجعل زرّ «استعادة» يفشل **يوم تحتاجه فعلاً** لا قبله.
+
+> **ولو فشل الاتصال بالقاعدة في التشغيل اليدويّ نفسه** (قبل الخدمة)، فالعلّة في حسابك أنت
+> لا في SYSTEM — تأكّد أن `--db-server` يطابق مثيلك ([§د-1](#د-1-sql-server-express)).
 
 ### و-4) تسجيل الخدمة
 
@@ -759,6 +799,15 @@ Get-Service DmsApi
 
 > ⚠️ **`depend=` بعلامتَي اقتباس مفردتين** — لأن `$` في PowerShell يعني «متغيّر»، وبالمزدوجة
 > يتحوّل `MSSQL$SQLEXPRESS` إلى `MSSQL` فتفشل التبعية بصمت.
+>
+> 🔴 **ولو ردّ `Start-Service` بـ«Cannot start service» بلا سبب**، فأوّلُ ما تفحصه
+> [§و-3ب](#و-3ب--امنح-حساب-الخدمة-صلاحيته--خطوةٌ-إلزامية-لا-احتياطية) — وليس الخدمة نفسها.
+> **والسبب الحقيقيّ دائماً في سجلّ الأحداث لا في رسالة `Start-Service`:**
+> ```powershell
+> Get-EventLog -LogName Application -Newest 30 |
+>     Where-Object { $_.Source -match 'Dms|\.NET Runtime|Application Error' } |
+>     Select-Object TimeGenerated, Source, EntryType, Message | Format-List
+> ```
 
 **تحقّق أن الـAPI يستجيب:**
 ```powershell
