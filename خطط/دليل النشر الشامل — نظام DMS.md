@@ -38,6 +38,14 @@
 > ⇒ صارت **[§و-3ب](#و-3ب--امنح-حساب-الخدمة-صلاحيته--خطوةٌ-إلزامية-لا-احتياطية) خطوةً
 > إلزاميةً بترقيمها**، بفحصٍ يثبت وقوعها. 🔑 **والدرس: خطوةٌ يمرّ التشغيل اليدويّ بدونها
 > ليست خطوةً اختيارية — هي خطوةٌ يُخفيها أن حسابك أقوى من حساب الخدمة.**
+>
+> 🔴 **وعطلٌ ثامن من العائلة نفسها — `cloudflared service install` يسجّل خدمةً فارغة:**
+> بلا `tunnel run` وبلا `--config`، **فتُقلع وتخرج صامتةً** والموقع يردّ `1033` أو `530`.
+> ⇒ [§ز-5](#ز-5-الاختبار-ثم-التثبيت-كخدمة) صار يكتب `ImagePath` في السجلّ صراحةً
+> (لا بـ`sc.exe binPath=` فاقتباساتُه تتمزّق **ويبدو كأنه نجح**)، ويُعيد كتابة `config.yml`
+> **بمسار اعتمادٍ داخل مجلّد SYSTEM** لا في مجلّد مستخدم.
+> 🔑 **والقاسمُ بين الثلاثة واحد: ما ينجح بحسابك لا ينجح بحساب الخدمة — و«يعمل الآن» غير
+> «يبقى يعمل».** والحكمُ الوحيد: **أعِد تشغيل الجهاز واختبر من هاتفك بلا لمس شيء.**
 
 ---
 
@@ -923,19 +931,72 @@ cloudflared tunnel run dms-tunnel
 من **هاتفك على بيانات الجوال** (لا واي-فاي المكتب): افتح `https://dms.<دومينك>.com`
 ← يجب أن تظهر شاشة دخول DMS. ثم **Ctrl+C**.
 
-**ثبّته خدمةً تعمل مع الإقلاع:**
-```powershell
-cloudflared service install
+**ثبّته خدمةً تعمل مع الإقلاع** — وأوقف التشغيل اليدويّ أولاً (`Ctrl+C`):
 
-# ⚠️ الخدمة تعمل بحساب SYSTEM وتقرأ إعداداتها من مجلدٍ آخر — انسخها إليه صراحةً.
+```powershell
+# ١) الإعدادات في مجلّد SYSTEM — 🔴 وبمسار اعتمادٍ يخصّه هو لا مجلّدَ مستخدم
 $sys = "C:\Windows\System32\config\systemprofile\.cloudflared"
 New-Item -ItemType Directory -Force -Path $sys | Out-Null
-Copy-Item "$env:USERPROFILE\.cloudflared\*" $sys -Force
+Copy-Item "$env:USERPROFILE\.cloudflared\*" $sys -Force -Recurse
 
-Restart-Service Cloudflared
-Get-Service Cloudflared
+$id = (Get-ChildItem "$sys\*.json" | Where-Object BaseName -match '^[0-9a-f-]{36}$').BaseName
+@"
+tunnel: $id
+credentials-file: $sys\$id.json
+
+ingress:
+  - hostname: dms.<دومينك>.com
+    path: "^/(api|v)(/|`$)"
+    service: http://localhost:5080
+
+  - hostname: dms.<دومينك>.com
+    service: http://localhost:80
+
+  - service: http_status:404
+"@ | Out-File -FilePath "$sys\config.yml" -Encoding ascii -Force
+
+# ٢) سجّل الخدمة
+cloudflared service install
+
+# ٣) 🔴 اكتب مسار التشغيل بنفسك — `service install` يتركه عارياً
+$img = '"C:\Program Files (x86)\cloudflared\cloudflared.exe" --config "C:\Windows\System32\config\systemprofile\.cloudflared\config.yml" --no-autoupdate tunnel run'
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Cloudflared" `
+    -Name ImagePath -Value $img -Type ExpandString
+
+sc.exe qc Cloudflared | Select-String "BINARY_PATH_NAME"   # 🎯 يجب أن ينتهي بـ tunnel run
+
+# ٤) تعافٍ تلقائيّ ثم تشغيل
+sc.exe failure Cloudflared reset= 86400 actions= restart/30000/restart/30000/restart/60000
+Start-Service Cloudflared
+Start-Sleep -Seconds 12
+Get-Service Cloudflared, DmsApi, W3SVC | Select-Object Name, Status, StartType
 ```
-يجب أن تقرأ **`Running`**.
+يجب أن تقرأ الثلاث **`Running`**.
+
+> ### 🔴 لماذا الخطوة ٣ موجودة — عطلٌ مُقاس (2026-09-22)
+> `cloudflared service install` **يسجّل الخدمة بلا وسيطةٍ واحدة**:
+> ```
+> BINARY_PATH_NAME : "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+> ```
+> بلا `tunnel run` وبلا `--config`. فتُقلع الخدمة، **ولا تجد ما تفعله، فتخرج فوراً**:
+> `Start-Service : Failed to start service`، وسجلُّ الأحداث يكرّر `Cloudflared service
+> starting` بلا `started` ولا سطرِ خطأ. والموقع يردّ **`Error 1033`** أو **`530`**.
+>
+> 🔑 **وأخطرُ ما فيه أنه يُقلع ويخرج صامتاً.** فمن يثبّت الخدمة بعد نجاح `tunnel run`
+> اليدويّ يظنّ النظام يعمل — **ويكتشف السقوط يوم إعادة تشغيلٍ للجهاز، بلا سببٍ ظاهر**.
+>
+> ⚠️ **ولا تستعمل `sc.exe config … binPath=`** لتصحيحه: قيمتُه تحمل علامات اقتباسٍ
+> متداخلة تتمزّق قبل بلوغ `sc.exe`، فيطبع صفحة المساعدة **ويبدو كأنه نجح**. `ImagePath`
+> في السجلّ هو ما يقرؤه مدير الخدمات فعلاً — **فاكتب المصدر وتجنّب المُحلِّل كلَّه**.
+>
+> 🔴 **وأمّا `credentials-file` فعائلةُ [§و-3ب](#و-3ب--امنح-حساب-الخدمة-صلاحيته--خطوةٌ-إلزامية-لا-احتياطية) نفسها:**
+> النسخُ الحرفيّ لملفّك يُبقي المسار مشيراً إلى `C:\Users\<أنت>\.cloudflared`،
+> **وخدمةٌ تعمل بـSYSTEM وتعتمد على مجلّد مستخدمٍ آخر قنبلةٌ موقوتة** — يكفي حذفُ الحساب
+> أو تغيير صلاحياته ليتوقّف النظام. لذلك تُعاد كتابة الملفّ بمسار SYSTEM أعلاه.
+
+> ### ✅ والاختبار الحقيقيّ للخدمة: **أعِد تشغيل الجهاز**
+> ثم افتح الموقع من هاتفك **بلا لمس شيء**. الخدمات الثلاث تُقلع وحدها.
+> 🔑 **فـ«النظام يعمل» لا تعني «النظام يبقى يعمل»** — وما يعمل بنافذةٍ مفتوحة يسقط بإغلاقها.
 
 ### ز-6) إعدادات الأمان في Cloudflare
 
