@@ -35,7 +35,12 @@ public sealed class JobInfo
     public int? StartedByUserId { get; init; }
     public DateTime StartedAt { get; init; }
 
-    public JobState State { get; internal set; } = JobState.Running;
+    /// <remarks>
+    /// ⚠️ **حقلٌ `volatile`**: تكتبه العملية في خيطها ويقرؤه طلبُ المتابعة في خيطٍ آخر —
+    /// **وهو آخرُ ما يُكتب** عند الانتهاء (بعد تحرير القفل)، فمن يراه منتهياً يجد القفل حرّاً.
+    /// </remarks>
+    public JobState State { get => _state; internal set => _state = value; }
+    private volatile JobState _state = JobState.Running;
     public string? Stage { get; internal set; }
     public int? Percent { get; internal set; }
 
@@ -163,6 +168,7 @@ public sealed class BackgroundJobs(
     private async Task RunAsync(JobInfo job, CurrentUserSnapshot snapshot,
         Func<IServiceProvider, IJobProgress, CancellationToken, Task<object?>> work)
     {
+        var final = JobState.Failed;
         try
         {
             using var scope = scopes.CreateScope();
@@ -172,11 +178,10 @@ public sealed class BackgroundJobs(
             job.Result = await work(scope.ServiceProvider, new Progress(job), lifetime.ApplicationStopping);
             job.Stage = "اكتملت";
             job.Percent = 100;
-            job.State = JobState.Succeeded;
+            final = JobState.Succeeded;
         }
         catch (Exception ex)
         {
-            job.State = JobState.Failed;
             job.Message = ex switch
             {
                 DomainException d => d.Message,
@@ -191,6 +196,12 @@ public sealed class BackgroundJobs(
             job.FinishedAt = DateTime.UtcNow;
             _current = null;
             _exclusive.Release();
+
+            // 🔴 **الحالة النهائية تُعلَن آخراً — بعد تحرير القفل لا قبله.** كانت تُكتب أوّلاً
+            //    فكانت بين اللحظتين نافذةٌ: من يرى «انتهت» ويبدأ عمليةً فوراً **يُرفض بأن
+            //    المنتهية ما زالت جارية**. كشفها حارسُ الوحدة متذبذباً (مرّةً في ~12 تشغيلاً
+            //    للمجموعة كاملة) لا المراجعة — وهو عيبُ ترتيبٍ لا عيبُ اختبار.
+            job.State = final;
         }
     }
 
