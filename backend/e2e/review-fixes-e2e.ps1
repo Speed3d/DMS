@@ -23,6 +23,19 @@ function Api($m,$u,$b,$t,$c){ $h=@{}; if($t){$h.Authorization="Bearer $t"}; if($
   catch{$resp=$_.Exception.Response; $code=if($resp){[int]$resp.StatusCode}else{0}; $ct=''; if($resp){$sr=[IO.StreamReader]::new($resp.GetResponseStream());$ct=$sr.ReadToEnd()}; $j=$null; if($ct){try{$j=$ct|ConvertFrom-Json}catch{}}; return @{S=$code;B=$j}}
 }
 function Expect($label,$actual,$expected){ if("$actual" -eq "$expected"){ Ok $label } else { Bad "$label (المتوقّع $expected والفعلي $actual)" } }
+# ⚙️ **حذفُ الشركة صار عمليةً خلفية** (يأخذ نسخةً كاملة قبله — حدّ Cloudflare ~100 ثانية):
+#    يردّ 202 برقم العملية، ثم تُسأل `/system/jobs/{id}` حتى تنتهي.
+function WaitJob($start,$tok){
+  if($start.S -ne 202 -or -not $start.B.id){ return $null }
+  for($i=0;$i -lt 600;$i++){
+    $j=Api GET "/system/jobs/$($start.B.id)" $null $tok $null
+    if($j.S -ne 200){ return [pscustomobject]@{state="Lost";message="HTTP $($j.S)"} }
+    if($j.B.state -ne 'Running'){ return $j.B }
+    Start-Sleep -Milliseconds 400
+  }
+  return [pscustomobject]@{state="Timeout";message="لم تنتهِ"}
+}
+
 
 # رفعُ ملفٍّ متعدّد الأجزاء — يعيد رمز الحالة وجسم الردّ.
 function Upload($u,$t,$c,$name){
@@ -225,9 +238,11 @@ $pv=(Api GET "/companies/$cC/delete-preview" $null $admin $null).B
 Expect "البيان يقول إن الحذف جائز (لا سجلّ حيّ)" $pv.canDelete 'True'
 
 $d=Api DELETE "/companies/$cC`?confirm=$([uri]::EscapeDataString($nameC))" $null $admin $null
-Expect "🔴 **حذفُ الشركة ينجح** رغم مهمةٍ محذوفة ناعماً (كان 500)" $d.S 204
+Expect "حذفُ الشركة يبدأ في الخلفية" $d.S 202
+$dJob = WaitJob $d $admin
+Expect "🔴 **حذفُ الشركة ينجح** رغم مهمةٍ محذوفة ناعماً (كان 500)" $dJob.state "Succeeded"
 
-if($d.S -eq 204){
+if($dJob.state -eq 'Succeeded'){
   $tables=@('OutgoingBooks','IncomingBooks','ArchiveDocs','DmsTasks','DmsTaskUpdates','DmsTaskParticipants',
     'Departments','EmployeeCompanies','PayrollPeriods','PayrollEntries','EmployeeLeaves','EmployeeLogs',
     'EmployeeLeaveSettlements','HrSettings','CaseFiles','BookReplies','MovementLogs','Notifications',

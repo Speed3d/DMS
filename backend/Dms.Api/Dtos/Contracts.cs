@@ -2,6 +2,7 @@ using Dms.Domain;
 using Dms.Infrastructure.Auth;
 
 using Dms.Infrastructure.CaseFiles;
+using Dms.Infrastructure.Jobs;
 
 namespace Dms.Api.Dtos;
 
@@ -787,3 +788,14 @@ public sealed record CompanyUnreadResponse(int CompanyId, string CompanyName, in
 public sealed record NotificationListResponse(
     List<NotificationResponse> Items, int Total, int Page, int PageSize,
     List<CompanyUnreadResponse> OtherCompanies);
+
+// ----------------- العمليات الخلفية (حدّ Cloudflare ~100 ثانية) -----------------
+/// <summary>حالة عمليةٍ طويلة — تُعاد عند بدئها (202) وعند كل سؤالٍ عن تقدّمها.</summary>
+/// <param name="Result">حصيلة العملية عند نجاحها (سجلّ النسخة · نتيجة المرآة …).</param>
+public sealed record JobResponse(
+    Guid Id, string Kind, string Title, JobState State, string? Stage, int? Percent,
+    string? Message, object? Result, DateTime StartedAt, DateTime? FinishedAt)
+{
+    public static JobResponse From(JobInfo j) => new(
+        j.Id, j.Kind, j.Title, j.State, j.Stage, j.Percent, j.Message, j.Result, j.StartedAt, j.FinishedAt);
+}

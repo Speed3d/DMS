@@ -5,7 +5,9 @@ using Dms.Infrastructure.Backup;
 using Dms.Infrastructure.Documents;
 using Dms.Infrastructure.Hr;
 using Dms.Infrastructure.CaseFiles;
+using Dms.Infrastructure.Companies;
 using Dms.Infrastructure.Incoming;
+using Dms.Infrastructure.Jobs;
 using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
@@ -61,6 +63,12 @@ public static class DependencyInjection
         // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
         services.AddScoped<IBackupService, BackupService>();
+
+        // ⚙️ العمليات الطويلة خارج الطلب (حدّ Cloudflare ~100 ثانية) — singleton لأن سجلّها
+        //    وقفلها الحصريّ يجب أن يعيشا بين الطلبات. والحاملُ scoped: لكلّ نطاقٍ مستخدمُه.
+        services.AddSingleton<IBackgroundJobs, BackgroundJobs>();
+        services.AddScoped<ICompanyDeletionService, CompanyDeletionService>();
+        services.AddScoped<CurrentUserOverride>();
         services.AddHostedService<BackupScheduler>();
         // singleton: صور القوالب ثابتة، والتخزين المؤقت لا يُفيد إن ضاع مع كل طلب.
         services.AddSingleton<TemplateAssetCache>();

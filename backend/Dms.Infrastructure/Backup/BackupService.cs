@@ -2,6 +2,7 @@ using System.Data;
 using System.IO.Compression;
 using System.Text.Json;
 using Dms.Domain;
+using Dms.Infrastructure.Jobs;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.Data.SqlClient;
@@ -15,12 +16,21 @@ public sealed record UpdateScheduleInput(BackupFrequency Frequency, bool Enabled
 public interface IBackupService
 {
     /// <summary>ينشئ نسخة احتياطية بالنطاق والتصنيف المحدّدين، ثم يقلّم النسخ الزائدة عن السقف.</summary>
-    Task<BackupRecord> RunAsync(BackupType type, BackupScope scope, RetentionCategory category, CancellationToken ct = default);
+    /// <param name="progress">مُبلّغ التقدّم حين تجري عمليةً خلفية — <c>null</c> للنسخة المجدولة.</param>
+    Task<BackupRecord> RunAsync(BackupType type, BackupScope scope, RetentionCategory category,
+        CancellationToken ct = default, IJobProgress? progress = null);
 
     Task<List<BackupRecord>> ListAsync(CancellationToken ct = default);
     Task<BackupSchedule> GetScheduleAsync(CancellationToken ct = default);
     Task<BackupSchedule> UpdateScheduleAsync(UpdateScheduleInput input, CancellationToken ct = default);
-    Task<(byte[] bytes, string fileName)> DownloadAsync(int id, CancellationToken ct = default);
+
+    /// <summary>مسار ملف النسخة على القرص — يُرسَل **تدفّقاً** لا يُحمَّل في الذاكرة.</summary>
+    /// <remarks>
+    /// 🔴 كان <c>DownloadAsync</c> يقرأ الملف كلَّه في مصفوفة قبل أن يبدأ الردّ: **يتأخّر أوّلُ
+    /// بايتٍ حتى يُقرأ الملف كاملاً** (فيقطعه Cloudflare بعد ~100 ثانية)، **ويفشل تماماً فوق
+    /// 2 غيغابايت** (حدّ المصفوفة في .NET).
+    /// </remarks>
+    Task<(string path, string fileName)> GetFileAsync(int id, CancellationToken ct = default);
 
     /// <summary>يحذف نسخة احتياطية (السجلّ + الملف). Hint: يُمنع حذف آخر نسخة ناجحة.</summary>
     Task DeleteAsync(int id, CancellationToken ct = default);
@@ -29,7 +39,23 @@ public interface IBackupService
     /// يستعيد قاعدة البيانات والملفات من نسخة احتياطية. عملية تدميرية — تتطلب تأكيداً صريحاً.
     /// Hint: تأخذ نسخة أمان أولاً، ثم تدخل وضع الصيانة، فتستبدل القاعدة والملفات بالكامل.
     /// </summary>
-    Task RestoreAsync(int backupRecordId, string confirmation, CancellationToken ct = default);
+    Task RestoreAsync(int backupRecordId, string confirmation,
+        CancellationToken ct = default, IJobProgress? progress = null);
+
+    /// <summary>
+    /// فحوصُ الاستعادة **وحدها** (التأكيد · السجلّ · الملف · سلامة الأرشيف) — بلا لمس شيء.
+    /// </summary>
+    /// <remarks>
+    /// تُنادى **قبل** بدء العملية الخلفية فيعود الخطأ فوراً (كلمة تأكيد خاطئة ⇒ 400) بدل أن
+    /// يظهر فشلاً في شاشة المتابعة. و<see cref="RestoreAsync"/> تُعيدها بنفسها.
+    /// </remarks>
+    Task EnsureRestorableAsync(int backupRecordId, string confirmation, CancellationToken ct = default);
+
+    /// <summary>يتحقّق من مسار المرآة (يرمي <see cref="ValidationException"/>) — قبل بدء العملية.</summary>
+    void ValidateMirrorTarget(string targetPath);
+
+    /// <summary>فحوصُ الاستعادة من مرآة وحدها — قبل بدء العملية.</summary>
+    void EnsureMirrorRestorable(string sourcePath, string confirmation);
 
     /// <summary>
     /// **مرآة كاملة** إلى مسار يحدّده المالك: قاعدة البيانات + كل ملفات التخزين.
@@ -38,10 +64,11 @@ public interface IBackupService
     /// تُضيف ولا تُكرّر: الملف الموجود بالحجم نفسه يُتخطّى، فالمرة الأولى تنسخ 80 غيغا
     /// والمرات التالية دقائق. وهي **يدوية بقرار المالك** ووجهتها قرص خارجي.
     /// </remarks>
-    Task<MirrorResult> MirrorAsync(string targetPath, CancellationToken ct = default);
+    Task<MirrorResult> MirrorAsync(string targetPath, CancellationToken ct = default, IJobProgress? progress = null);
 
     /// <summary>استعادة من مرآة — عملية تدميرية تتطلب تأكيداً صريحاً.</summary>
-    Task<MirrorRestoreResult> RestoreFromMirrorAsync(string sourcePath, string confirmation, CancellationToken ct = default);
+    Task<MirrorRestoreResult> RestoreFromMirrorAsync(string sourcePath, string confirmation,
+        CancellationToken ct = default, IJobProgress? progress = null);
 }
 
 /// <summary>حصيلة تشغيل المرآة.</summary>
@@ -67,9 +94,10 @@ public sealed class BackupService(
     public const string RestoreConfirmation = "استعادة";
 
     public async Task<BackupRecord> RunAsync(
-        BackupType type, BackupScope scope, RetentionCategory category, CancellationToken ct = default)
+        BackupType type, BackupScope scope, RetentionCategory category,
+        CancellationToken ct = default, IJobProgress? progress = null)
     {
-        var (zipName, size, status, note) = await CreateArchiveAsync(scope, ct);
+        var (zipName, size, status, note) = await CreateArchiveAsync(scope, ct, progress);
 
         var record = new BackupRecord
         {
@@ -101,8 +129,9 @@ public sealed class BackupService(
     /// Hint: مفصول عن RunAsync ليستخدمه مسار الاستعادة أيضاً (نسخة الأمان قبل الاستبدال) —
     /// حيث لا يصحّ الاعتماد على سجلّ قاعدة سيُستبدَل بعد لحظات.
     /// </summary>
+    /// <param name="stagePrefix">بادئةٌ لوصف المرحلة (مثل «نسخة الأمان: ») حين تكون النسخة جزءاً من عمليةٍ أكبر.</param>
     private async Task<(string zipName, long size, BackupStatus status, string? note)> CreateArchiveAsync(
-        BackupScope scope, CancellationToken ct)
+        BackupScope scope, CancellationToken ct, IJobProgress? progress = null, string stagePrefix = "")
     {
         Directory.CreateDirectory(paths.BackupDir);
         var ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -114,6 +143,7 @@ public sealed class BackupService(
         string? note = null;
 
         // 1) نسخ قاعدة البيانات (على اتصال مستقل لتفادي استراتيجية إعادة المحاولة/المعاملات).
+        progress?.Report(stagePrefix + "نسخ قاعدة البيانات");
         try
         {
             await BackupDatabaseAsync(bakPath, compression: true, ct);
@@ -142,10 +172,16 @@ public sealed class BackupService(
             // Hint: النطاق «قاعدة فقط» يتخطّى الملفات — الوثائق لا تتغيّر بعد إنشائها، فنسخها يومياً هدر.
             if (scope == BackupScope.Full && Directory.Exists(paths.StorageRoot))
             {
-                foreach (var file in Directory.EnumerateFiles(paths.StorageRoot, "*", SearchOption.AllDirectories))
+                // ⚠️ **القائمة تُجمع أوّلاً** لتُعرف النسبة — قراءةُ أسماءٍ لا محتوى، فكلفتها ضئيلة.
+                var files = Directory.EnumerateFiles(paths.StorageRoot, "*", SearchOption.AllDirectories).ToList();
+                for (var i = 0; i < files.Count; i++)
                 {
-                    var rel = "files/" + Path.GetRelativePath(paths.StorageRoot, file).Replace('\\', '/');
-                    zip.CreateEntryFromFile(file, rel, CompressionLevel.Optimal);
+                    // ⚠️ **الإلغاء يُفحص بين الملفات** (عند إيقاف الخدمة) — لا في منتصف ملف.
+                    ct.ThrowIfCancellationRequested();
+                    progress?.Report($"{stagePrefix}ضغط الملفات ({i + 1} من {files.Count})",
+                        (int)((i + 1) * 100L / files.Count));
+                    var rel = "files/" + Path.GetRelativePath(paths.StorageRoot, files[i]).Replace('\\', '/');
+                    zip.CreateEntryFromFile(files[i], rel, CompressionLevel.Optimal);
                 }
             }
 
@@ -228,7 +264,12 @@ public sealed class BackupService(
 
     // ─────────────────────────── الاستعادة ───────────────────────────
 
-    public async Task RestoreAsync(int backupRecordId, string confirmation, CancellationToken ct = default)
+    public async Task EnsureRestorableAsync(int backupRecordId, string confirmation, CancellationToken ct = default)
+        => await ProbeRestoreAsync(backupRecordId, confirmation, ct);
+
+    /// <summary>فحوص الاستعادة — وتعيد ما تحتاجه الاستعادة نفسها (السجلّ ومسار الأرشيف ومحتواه).</summary>
+    private async Task<(BackupRecord rec, string zipPath, bool hasFiles)> ProbeRestoreAsync(
+        int backupRecordId, string confirmation, CancellationToken ct)
     {
         if (!string.Equals(confirmation?.Trim(), RestoreConfirmation, StringComparison.Ordinal))
             throw new ValidationException($"للتأكيد، أرسل كلمة «{RestoreConfirmation}» في حقل التأكيد.");
@@ -241,9 +282,6 @@ public sealed class BackupService(
         var zipPath = Path.Combine(paths.BackupDir, rec.FileName);
         if (!File.Exists(zipPath))
             throw new NotFoundException("ملف النسخة غير موجود على الخادم.");
-
-        // عدد الملفات التي تتوقّعها القاعدة المُستعادة ولا وجود لها على القرص (نسخة بلا ملفات).
-        var missingFiles = 0;
 
         // تحقّق مبكر من سلامة الأرشيف قبل لمس أي شيء.
         bool hasDb, hasFiles;
@@ -260,27 +298,49 @@ public sealed class BackupService(
         if (!hasDb)
             throw new ValidationException("الأرشيف لا يحتوي نسخة قاعدة بيانات (database.bak).");
 
+        return (rec, zipPath, hasFiles);
+    }
+
+    public async Task RestoreAsync(int backupRecordId, string confirmation,
+        CancellationToken ct = default, IJobProgress? progress = null)
+    {
+        progress?.Report("التحقّق من النسخة");
+        var (rec, zipPath, hasFiles) = await ProbeRestoreAsync(backupRecordId, confirmation, ct);
+
+        // عدد الملفات التي تتوقّعها القاعدة المُستعادة ولا وجود لها على القرص (نسخة بلا ملفات).
+        var missingFiles = 0;
+
         var userId = current.UserId;
         var restoreUserId = userId; // نحتفظ به لتسجيله بعد عودة القاعدة (الجلسة تنقطع أثناء الاستعادة).
 
         // Hint: نسخة أمان كاملة قبل أي استبدال — تجعل الاستعادة نفسها قابلة للتراجع. تُنشأ قبل وضع الصيانة
         //       لأنها تحتاج القاعدة متصلة، وسجلّها في القاعدة سيُستبدَل فنعيد تسجيله بعد الاستعادة.
-        var (safetyZip, safetySize, safetyStatus, safetyNote) = await CreateArchiveAsync(BackupScope.Full, ct);
+        // ⚠️ **الإلغاء مسموحٌ هنا وحده** — قبل أن يُلمس شيء.
+        var (safetyZip, safetySize, safetyStatus, safetyNote) =
+            await CreateArchiveAsync(BackupScope.Full, ct, progress, "نسخة الأمان: ");
 
+        // 🔴 **من هنا لا إلغاء إطلاقاً** (`CancellationToken.None`): استعادةٌ تنقطع بعد أن
+        //    تبدأ تترك القاعدة **مستبدَلةً نصفَ استبدال** أو مقفلةً — وهو أسوأ من أيّ انتظار.
+        var none = CancellationToken.None;
         var tempDir = Path.Combine(paths.BackupDir, $"restore-{DateTime.Now:yyyyMMdd-HHmmss}");
         maintenance.Enter("جارٍ استعادة نسخة احتياطية — النظام متوقّف مؤقتاً.");
         try
         {
+            progress?.Report("فكّ أرشيف النسخة");
             Directory.CreateDirectory(tempDir);
             ZipFile.ExtractToDirectory(zipPath, tempDir);
             var bakPath = Path.Combine(tempDir, "database.bak");
 
-            await RestoreDatabaseAsync(bakPath, ct);
+            progress?.Report("استعادة قاعدة البيانات");
+            await RestoreDatabaseAsync(bakPath, none);
 
             // استبدال ملفات التخزين — فقط إن كانت النسخة كاملة (تحوي مجلد files/).
             // Hint: نسخة «قاعدة فقط» لا تلمس الملفات إطلاقاً، فتبقى الملفات الحالية كما هي.
             if (hasFiles)
+            {
+                progress?.Report("استعادة الملفات");
                 RestoreStorageFiles(Path.Combine(tempDir, "files"));
+            }
             else
                 // نسخة بلا ملفات: نقيس الفجوة بين ما تتوقّعه القاعدة المُستعادة وما هو موجود.
                 missingFiles = CountMissingFromManifest(Path.Combine(tempDir, ManifestName));
@@ -298,7 +358,8 @@ public sealed class BackupService(
         // Hint: النسخة قد تكون أقدم من إصدار التطبيق الحالي (مخطّط قديم بلا أعمدة أُضيفت لاحقاً).
         //       نرقّي المخطّط لأحدث migration بعد الاستعادة — عملية عديمة الأثر إن كانت النسخة محدّثة أصلاً،
         //       وتنقذ البيانات من نسخة قديمة إن كانت أقدم. بدونها تفشل أي كتابة تعتمد على عمود جديد.
-        await db.Database.MigrateAsync(ct);
+        progress?.Report("ترقية المخطّط وتسجيل الاستعادة");
+        await db.Database.MigrateAsync(none);
 
         // Hint: بعد استبدال القاعدة بالكامل صار متتبّع التغييرات قديماً — يتعقّب كياناً (سجلّ النسخة المُحمَّل
         //       في البداية) لم يعُد يطابق الحالة الجديدة. نُفرّغه حتى لا يتعارض مع الكتابة التالية.
@@ -325,7 +386,11 @@ public sealed class BackupService(
             : "";
         audit.Add("Restore", nameof(BackupRecord), backupRecordId.ToString(),
             $"تمت الاستعادة من {rec.FileName} (نسخة أمان: {safetyZip}){missingNote}", null);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(none);
+
+        // ⚠️ **والفجوة تُقال للمالك في رسالة النجاح نفسها** لا في سجلّ التدقيق وحده.
+        progress?.Succeed($"تمت الاستعادة من {rec.FileName}، وأُنشئت نسخة أمان تلقائية قبل الاستبدال."
+            + (missingFiles > 0 ? $" ⚠️ {missingFiles} ملفاً مرفقاً مفقود — استعِدها من نسخةٍ كاملة." : ""));
     }
 
     /// <summary>
@@ -427,10 +492,15 @@ public sealed class BackupService(
     /// لا تُحذف قط. فلا حاجة لمزامنة الحذف، وتركها يُلغي أخطر ما في المرايا: مرآةٌ تحذف من
     /// الوجهة قد تمحو نسختك الوحيدة إن اختلّ المصدر.
     /// </remarks>
-    public async Task<MirrorResult> MirrorAsync(string targetPath, CancellationToken ct = default)
+    public void ValidateMirrorTarget(string targetPath)
+        => MirrorPathValidator.Validate(targetPath, paths.StorageRoot, paths.BackupDir);
+
+    public async Task<MirrorResult> MirrorAsync(string targetPath,
+        CancellationToken ct = default, IJobProgress? progress = null)
     {
         var target = MirrorPathValidator.Validate(targetPath, paths.StorageRoot, paths.BackupDir);
         Directory.CreateDirectory(target);
+        progress?.Report("نسخ قاعدة البيانات");
 
         // 1) قاعدة البيانات — تُستبدل كل مرة (صغيرة، وهي الجزء المتغيّر فعلاً).
         //
@@ -478,9 +548,14 @@ public sealed class BackupService(
 
         if (Directory.Exists(paths.StorageRoot))
         {
-            foreach (var src in Directory.EnumerateFiles(paths.StorageRoot, "*", SearchOption.AllDirectories))
+            // ⚠️ القائمة أوّلاً لتُعرف النسبة — أسماءٌ لا محتوى.
+            var sources = Directory.EnumerateFiles(paths.StorageRoot, "*", SearchOption.AllDirectories).ToList();
+            var done = 0;
+            foreach (var src in sources)
             {
                 ct.ThrowIfCancellationRequested();
+                done++;
+                progress?.Report($"نسخ الملفات ({done} من {sources.Count})", (int)(done * 100L / sources.Count));
 
                 var rel = Path.GetRelativePath(paths.StorageRoot, src);
                 var dest = Path.Combine(filesTarget, rel);
@@ -507,35 +582,50 @@ public sealed class BackupService(
     }
 
     /// <inheritdoc/>
-    public async Task<MirrorRestoreResult> RestoreFromMirrorAsync(
-        string sourcePath, string confirmation, CancellationToken ct = default)
+    public void EnsureMirrorRestorable(string sourcePath, string confirmation) => ProbeMirror(sourcePath, confirmation);
+
+    private string ProbeMirror(string sourcePath, string confirmation)
     {
         if (!string.Equals(confirmation?.Trim(), RestoreConfirmation, StringComparison.Ordinal))
             throw new ValidationException($"للتأكيد، أرسل كلمة «{RestoreConfirmation}» في حقل التأكيد.");
 
         var source = MirrorPathValidator.Validate(sourcePath, paths.StorageRoot, paths.BackupDir);
-        var bakPath = Path.Combine(source, "database.bak");
-        if (!File.Exists(bakPath))
+        if (!File.Exists(Path.Combine(source, "database.bak")))
             throw new NotFoundException($"لم يُعثر على database.bak في المسار المحدّد ({source}).");
+        return source;
+    }
 
+    public async Task<MirrorRestoreResult> RestoreFromMirrorAsync(
+        string sourcePath, string confirmation, CancellationToken ct = default, IJobProgress? progress = null)
+    {
+        progress?.Report("التحقّق من المرآة");
+        var source = ProbeMirror(sourcePath, confirmation);
+        var bakPath = Path.Combine(source, "database.bak");
         var filesDir = Path.Combine(source, "files");
 
         // نسخة أمان قبل أي استبدال — نفس ضمانة الاستعادة العادية.
-        var (safetyZip, safetySize, safetyStatus, safetyNote) = await CreateArchiveAsync(BackupScope.Full, ct);
+        // ⚠️ **الإلغاء مسموحٌ هنا وحده** — قبل أن يُلمس شيء.
+        var (safetyZip, safetySize, safetyStatus, safetyNote) =
+            await CreateArchiveAsync(BackupScope.Full, ct, progress, "نسخة الأمان: ");
         var restoreUserId = current.UserId;
 
         // ⚠️ نفس علّة الكتابة بالعكس: `RESTORE DATABASE FROM DISK` يقرأه **محرّك SQL بحسابه**،
         //    وقد لا يملك صلاحية القرص الخارجي. فينقله التطبيق إلى مجلد النسخ أولاً.
         var stagedBak = Path.Combine(paths.BackupDir, $"mirror-restore-{DateTime.Now:yyyyMMddHHmmss}.bak");
+        progress?.Report("نقل نسخة القاعدة من المرآة");
         File.Copy(bakPath, stagedBak, overwrite: true);
 
+        // 🔴 **من هنا لا إلغاء إطلاقاً** — استعادةٌ تنقطع بعد أن تبدأ أسوأ من أيّ انتظار.
+        var none = CancellationToken.None;
         maintenance.Enter("جارٍ الاستعادة من المرآة — النظام متوقّف مؤقتاً.");
         var restored = 0;
         try
         {
-            await RestoreDatabaseAsync(stagedBak, ct);
+            progress?.Report("استعادة قاعدة البيانات");
+            await RestoreDatabaseAsync(stagedBak, none);
             if (Directory.Exists(filesDir))
             {
+                progress?.Report("استعادة الملفات");
                 RestoreStorageFiles(filesDir);
                 restored = Directory.EnumerateFiles(filesDir, "*", SearchOption.AllDirectories).Count();
             }
@@ -550,7 +640,8 @@ public sealed class BackupService(
         //    تفريغ تجمّع الاتصالات (قُتلت بـSINGLE_USER) ← ترقية المخطّط (النسخة قد تكون
         //    أقدم من الكود) ← تفريغ متتبّع التغييرات (صار يتعقّب كياناتٍ من قاعدة مستبدَلة).
         SqlConnection.ClearAllPools();
-        await db.Database.MigrateAsync(ct);
+        progress?.Report("ترقية المخطّط وتسجيل الاستعادة");
+        await db.Database.MigrateAsync(none);
         db.ChangeTracker.Clear();
 
         db.BackupRecords.Add(new BackupRecord
@@ -567,7 +658,7 @@ public sealed class BackupService(
         });
         audit.Add("RestoreMirror", nameof(BackupRecord), null,
             $"استعادة من مرآة {source} — أُعيد {restored} ملفاً (نسخة أمان: {safetyZip})", null);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(none);
 
         return new MirrorRestoreResult(source, restored,
             $"تمت الاستعادة من المرآة. أُعيد {restored} ملفاً، وأُنشئت نسخة أمان قبل الاستبدال.");
@@ -682,13 +773,13 @@ public sealed class BackupService(
         return s;
     }
 
-    public async Task<(byte[] bytes, string fileName)> DownloadAsync(int id, CancellationToken ct = default)
+    public async Task<(string path, string fileName)> GetFileAsync(int id, CancellationToken ct = default)
     {
         var rec = await db.BackupRecords.FirstOrDefaultAsync(r => r.BackupRecordId == id, ct)
                   ?? throw new NotFoundException("سجلّ النسخة غير موجود.");
-        var path = Path.Combine(paths.BackupDir, rec.FileName);
+        var path = Path.GetFullPath(Path.Combine(paths.BackupDir, rec.FileName));
         if (!File.Exists(path)) throw new NotFoundException("ملف النسخة غير موجود على الخادم.");
-        return (await File.ReadAllBytesAsync(path, ct), rec.FileName);
+        return (path, rec.FileName);
     }
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)

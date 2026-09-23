@@ -1,4 +1,6 @@
+using Dms.Api.Dtos;
 using Dms.Domain;
+using Dms.Infrastructure.Jobs;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -20,6 +22,28 @@ public class SystemController(AppDbContext db, IServiceProvider services, IConfi
     [AllowAnonymous]
     public IActionResult Status()
         => Ok(new { maintenance = maintenance.IsActive, reason = maintenance.Reason, since = maintenance.SinceUtc });
+
+    /// <summary>حالة عمليةٍ طويلة بدأت في الخلفية (نسخ · مرآة · استعادة · حذف شركة).</summary>
+    /// <remarks>
+    /// ⚠️ **أثناء الاستعادة تردّ 503 كبقيّة النقاط** (وضع الصيانة يسبق المصادقة) — والواجهة
+    /// تسأل حينها <c>/api/system/status</c> العامّة وحدها حتى تعود. **وهذا مقصود**: لو سُمح
+    /// بها وانتهت صلاحية الرمز لحاول العميل التجديد، والتجديد مرفوضٌ في الصيانة، **فيُخرج
+    /// المستخدم من النظام في منتصف الاستعادة**.
+    /// 🔐 **للسوبر أدمن وحده** — مَن يملك بدء هذه العمليات أصلاً.
+    /// </remarks>
+    [HttpGet("jobs/{id:guid}")]
+    [Authorize(Roles = "SuperAdmin")]
+    public ActionResult<JobResponse> Job(Guid id, [FromServices] IBackgroundJobs jobs)
+        => jobs.Get(id) is { } j
+            ? JobResponse.From(j)
+            : throw new NotFoundException(
+                "العملية غير معروفة — ربما أُعيد تشغيل الخادم أثناءها. تحقّق من النتيجة ثم أعد المحاولة إن لزم.");
+
+    /// <summary>العملية الطويلة الجارية الآن — لتستأنف الشاشة متابعتها بعد إعادة التحميل (204 إن لم توجد).</summary>
+    [HttpGet("jobs/current")]
+    [Authorize(Roles = "SuperAdmin")]
+    public IActionResult CurrentJob([FromServices] IBackgroundJobs jobs)
+        => jobs.Current is { } j ? Ok(JobResponse.From(j)) : NoContent();
 
     [HttpPost("reset-db")]
     [Authorize(Roles = "SuperAdmin")]

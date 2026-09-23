@@ -1,4 +1,5 @@
 using Dms.Domain;
+using Dms.Infrastructure.Jobs;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,8 @@ namespace Dms.Infrastructure.Backup;
 
 /// <summary>خدمة خلفية تُشغّل النسخ الاحتياطي المجدول عند حلول موعده.</summary>
 public sealed class BackupScheduler(
-    IServiceScopeFactory scopeFactory, IMaintenanceState maintenance, ILogger<BackupScheduler> logger) : BackgroundService
+    IServiceScopeFactory scopeFactory, IMaintenanceState maintenance, IBackgroundJobs jobs,
+    ILogger<BackupScheduler> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -36,6 +38,17 @@ public sealed class BackupScheduler(
                     && sched.NextRunAt is not null && sched.NextRunAt <= DateTime.Now)
                 {
                     // نطاق وتصنيف النسخة يُحسبان من التاريخ (يومية خفيفة، وترقية أسبوعية/شهرية تلقائياً).
+                    // 🔐 **القفل الحصريّ نفسه الذي تحترمه العمليات اليدوية**: نسخةٌ مجدولة أثناء
+                    //    نسخةٍ كاملة يدوية أو استعادةٍ تنازعها القاعدة والقرص. إن كان مشغولاً
+                    //    تُؤجَّل دقيقة — `NextRunAt` باقٍ مستحقّاً فتُلتقط في الدورة التالية.
+                    using var lease = jobs.TryBeginExclusive("نسخة احتياطية مجدولة");
+                    if (lease is null)
+                    {
+                        logger.LogInformation("النسخة المجدولة مؤجَّلة — عمليةٌ أخرى جارية.");
+                        await Sleep(stoppingToken);
+                        continue;
+                    }
+
                     var (backupScope, category) = BackupRetention.ClassifyScheduled(sched.Frequency, DateTime.Now);
                     logger.LogInformation("تشغيل نسخة مجدولة ({Category}/{Scope}).", category, backupScope);
                     await svc.RunAsync(BackupType.Scheduled, backupScope, category, stoppingToken);

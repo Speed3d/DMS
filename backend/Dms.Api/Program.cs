@@ -44,7 +44,11 @@ builder.Services.AddControllers().AddJsonOptions(o =>
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
+// ⚠️ **العملية الخلفية تضع لقطةً من مستخدمها قبل حلّ أيّ خدمة** (`CurrentUserOverride`)؛
+//    وفي الطلب العاديّ يبقى المستخدم من الـJWT كما كان تماماً.
+builder.Services.AddScoped<ICurrentUser>(sp =>
+    sp.GetRequiredService<CurrentUserOverride>().User
+    ?? new HttpCurrentUser(sp.GetRequiredService<IHttpContextAccessor>()));
 
 // تخزين الملفات: محلي للتطوير (يُستبدَل بـ Azure Blob في الإنتاج)
 var storageRoot = builder.Configuration["Storage:LocalRoot"];

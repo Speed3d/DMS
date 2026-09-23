@@ -25,6 +25,19 @@ function Api($m,$u,$b,$t,$c){ $h=@{}; if($t){$h.Authorization="Bearer $t"}; if($
   catch{$resp=$_.Exception.Response; $code=if($resp){[int]$resp.StatusCode}else{0}; $ct=''; if($resp){$sr=[IO.StreamReader]::new($resp.GetResponseStream());$ct=$sr.ReadToEnd()}; $j=$null; if($ct){try{$j=$ct|ConvertFrom-Json}catch{}}; return @{S=$code;B=$j}}
 }
 function Expect($label,$actual,$expected){ if("$actual" -eq "$expected"){ Ok $label } else { Bad "$label (المتوقّع $expected والفعلي $actual)" } }
+# ⚙️ **حذفُ الشركة صار عمليةً خلفية** (يأخذ نسخةً كاملة قبله — حدّ Cloudflare ~100 ثانية):
+#    يردّ 202 برقم العملية، ثم تُسأل `/system/jobs/{id}` حتى تنتهي.
+function WaitJob($start,$tok){
+  if($start.S -ne 202 -or -not $start.B.id){ return $null }
+  for($i=0;$i -lt 600;$i++){
+    $j=Api GET "/system/jobs/$($start.B.id)" $null $tok $null
+    if($j.S -ne 200){ return [pscustomobject]@{state="Lost";message="HTTP $($j.S)"} }
+    if($j.B.state -ne 'Running'){ return $j.B }
+    Start-Sleep -Milliseconds 400
+  }
+  return [pscustomobject]@{state="Timeout";message="لم تنتهِ"}
+}
+
 
 # ⚠️ **المطابقة بالمعرّفات لا بالأسماء العربية** — PS 5.1 يشوّه العربية العائدة من الـAPI
 #    فتفشل المطابقة صامتةً (درسٌ مسجَّل في `hr-e2e.ps1`).
@@ -381,9 +394,11 @@ else{
   # ── ٦) الحذف الناجح — ونسخةٌ قبله ──
   $backupsBefore = @((Api GET "/backup" $null $admin $null).B).Count
   $d4 = Api DELETE "/companies/$cidT`?confirm=$([uri]::EscapeDataString($nameT))" $null $admin $null
-  Expect "✅ الحذف ينجح بعد التعطيل والتأكيد" $d4.S 204
+  Expect "✅ الحذف يبدأ في الخلفية بعد التعطيل والتأكيد" $d4.S 202
+  $d4Job = WaitJob $d4 $admin
+  Expect "   والحذف اكتمل" $d4Job.state "Succeeded"
 
-  if($d4.S -eq 204){
+  if($d4Job.state -eq 'Succeeded'){
     $gone = Api GET "/companies/$cidT" $null $admin $null
     Expect "   والشركة اختفت" $gone.S 404
     $backupsAfter = @((Api GET "/backup" $null $admin $null).B).Count
