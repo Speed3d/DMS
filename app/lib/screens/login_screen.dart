@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/system_status.dart';
+import '../models.dart';
 import '../widgets/password_field.dart';
 import '../core/theme.dart';
 
@@ -18,6 +20,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _busy = false;
   String? _error;
   bool _rememberMe = true;
+
+  /// أثناء الإيقاف: أظهر المسؤولُ نموذجَ الدخول برابط «دخول المسؤول» (ADR-050).
+  bool _adminMode = false;
 
   @override
   void dispose() {
@@ -176,6 +181,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildLoginCard() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final lockdown = ref.watch(systemStatusProvider).lockdown;
 
     return Container(
       width: double.infinity,
@@ -206,7 +212,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
           const SizedBox(height: 26),
-          
+
+          // ⏸️ **النظام موقوف (ADR-050)**: رسالة المالك مكان النموذج — فلا يكتب الموظف كلمة
+          //    مروره ليُردّ بعدها. ورابطٌ صغير للمسؤول يُظهر النموذج.
+          if (lockdown.active && !_adminMode) ...[
+            _buildLockdownNotice(theme, lockdown),
+            const SizedBox(height: 18),
+            Center(
+              child: TextButton(
+                onPressed: () => setState(() => _adminMode = true),
+                child: Text('دخول المسؤول',
+                    style: TextStyle(fontSize: 12.5, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.55))),
+              ),
+            ),
+          ] else ...[
+          if (lockdown.active) ...[
+            _buildLockdownNotice(theme, lockdown, compact: true),
+            const SizedBox(height: 18),
+          ],
           _buildLabel('اسم المستخدم'),
           const SizedBox(height: 8),
           TextField(
@@ -277,9 +300,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   : const Text('دخول إلى النظام', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
             ),
           ),
+          ],
           const SizedBox(height: 22),
           Center(
             child: Text('محميّ بتشفير TLS · جلسة JWT آمنة', style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// بطاقة رسالة الإيقاف على شاشة الدخول.
+  Widget _buildLockdownNotice(ThemeData theme, LockdownInfo lockdown, {bool compact = false}) {
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = isDark ? AppColors.warnDark : AppColors.warn;
+    return Container(
+      key: const Key('login-lockdown-notice'),
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 12 : 18),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.construction_rounded, color: accent, size: compact ? 20 : 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(compact ? 'النظام متوقّف عن المستخدمين' : 'النظام متوقّف مؤقتاً',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: compact ? 13 : 16, color: accent)),
+                const SizedBox(height: 6),
+                Text(
+                  compact ? 'الدخول الآن للسوبر أدمن وحده.' : (lockdown.message ?? 'سيعود النظام قريباً.'),
+                  style: TextStyle(fontSize: compact ? 12.5 : 14, height: 1.6, color: theme.textTheme.bodyMedium?.color),
+                ),
+              ],
+            ),
           ),
         ],
       ),

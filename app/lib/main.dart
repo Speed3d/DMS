@@ -5,6 +5,8 @@ import 'core/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/session.dart';
+import 'core/system_status.dart';
+import 'widgets/system_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/change_password_screen.dart';
 import 'screens/company_select_screen.dart';
@@ -42,9 +44,12 @@ class DmsApp extends ConsumerWidget {
         Locale('ar', 'AE'), // Arabic
       ],
       locale: const Locale('ar', 'AE'),
-      // Hint: فرض اتجاه RTL عربي على كامل التطبيق
-      builder: (context, child) =>
-          Directionality(textDirection: TextDirection.rtl, child: child!),
+      navigatorKey: appNavigatorKey,
+      // Hint: فرض اتجاه RTL عربي على كامل التطبيق.
+      // ⏸️ و`SystemShell` فوق الملّاح: الشريطان أعلى كل الشاشات، وطبقةُ الصيانة تغطّي حتى
+      //    الحوارات — **دون أن تهدم الشاشة تحتها** (ADR-050).
+      builder: (context, child) => Directionality(
+          textDirection: TextDirection.rtl, child: SystemShell(child: child!)),
       home: const _Gate(),
     );
   }

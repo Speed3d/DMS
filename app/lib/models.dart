@@ -4,6 +4,7 @@
 // تصديرها فيصل إليها كل من يستورد `models.dart` كالمعتاد بلا استيراد ثانٍ.
 export 'models_hr.dart';
 export 'models_tasks.dart';
+export 'models_system.dart';
 
 /// يقرأ **لحظةً زمنية** من الخادم بوصفها UTC صريحاً.
 ///

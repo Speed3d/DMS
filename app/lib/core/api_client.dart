@@ -8,7 +8,12 @@ class ApiException implements Exception {
   final int? status;
   final String message;
   final bool isNetworkError;
-  ApiException(this.status, this.message, {this.isNetworkError = false});
+
+  /// الخادم متوقّف للصيانة (503 بعلامة `maintenance`) — استعادةٌ أو إيقافٌ يدويّ (ADR-050).
+  /// **انتظارٌ لا خطأ**: تعرض الطبقةُ رسالته وتعود الشاشة وحدها.
+  final bool isMaintenance;
+
+  ApiException(this.status, this.message, {this.isNetworkError = false, this.isMaintenance = false});
   @override
   String toString() => message;
 }
@@ -23,8 +28,12 @@ class ApiClient {
   final Future<void> Function(AuthResult)? _onRefreshed;
   final Future<void> Function()? _onRefreshFailed;
 
+  /// يُنادى حين يعود طلبٌ بصيانة أو انقطاع — فتسأل طبقةُ الحالة الخادمَ **فوراً** بدل
+  /// انتظار استطلاعها التالي (ADR-050).
+  final void Function()? _onSystemSignal;
+
   /// طلب تجديد واحد مشترك يمنع تكرار التجديد عند تزامن عدة طلبات فاشلة (401).
-  Future<String?>? _refreshing;
+  Future<_RefreshOutcome>? _refreshing;
 
   ApiClient({
     required String baseUrl,
@@ -33,11 +42,13 @@ class ApiClient {
     String? Function()? refreshToken,
     Future<void> Function(AuthResult)? onRefreshed,
     Future<void> Function()? onRefreshFailed,
+    void Function()? onSystemSignal,
   })  : _token = token,
         _companyId = companyId,
         _refreshToken = refreshToken,
         _onRefreshed = onRefreshed,
         _onRefreshFailed = onRefreshFailed,
+        _onSystemSignal = onSystemSignal,
         _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 10),
@@ -58,7 +69,8 @@ class ApiClient {
 
         // 401 على طلب مصادَق (غير login/refresh) ⇒ حاول تجديد التوكن مرة واحدة ثم أعد الطلب.
         if (e.response?.statusCode == 401 && !isAuthCall && !alreadyRetried && _refreshToken != null) {
-          final newToken = await _refreshAccessToken();
+          final outcome = await _refreshAccessToken();
+          final newToken = outcome.token;
           if (newToken != null) {
             try {
               final opts = e.requestOptions;
@@ -69,8 +81,14 @@ class ApiClient {
             } on DioException catch (retryErr) {
               return handler.next(retryErr);
             }
+          } else if (outcome.transient != null) {
+            // 🔴 **الخادم لا يجيب أو متوقّف للصيانة — ليست الجلسة منتهية** (ADR-050).
+            //    كان كلُّ فشلٍ في التجديد يُخرج المستخدم: إعادةُ تشغيل السيرفر لحظةَ انتهاء
+            //    الرمز كانت تُغلق كلَّ ما على الشاشة. نمرّر سببَ الفشل الحقيقيّ فتعرضه الطبقة
+            //    انتظاراً، والجلسةُ باقية ليجدّدها أوّلُ طلبٍ بعد العودة.
+            return handler.next(outcome.transient!);
           } else {
-            // فشل التجديد ⇒ الجلسة منتهية فعلاً.
+            // رفضٌ صريح من الخادم ⇒ الجلسة منتهية فعلاً.
             final onFail = _onRefreshFailed;
             if (onFail != null) await onFail();
           }
@@ -81,13 +99,13 @@ class ApiClient {
   }
 
   /// يجدّد التوكن عبر refresh token المخزّن (طلب واحد مشترك عند التزامن). يعيد الـ access الجديد أو null.
-  Future<String?> _refreshAccessToken() {
+  Future<_RefreshOutcome> _refreshAccessToken() {
     return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
   }
 
-  Future<String?> _doRefresh() async {
+  Future<_RefreshOutcome> _doRefresh() async {
     final rt = _refreshToken?.call();
-    if (rt == null || rt.isEmpty) return null;
+    if (rt == null || rt.isEmpty) return const _RefreshOutcome();
     try {
       // Dio منفصل بلا interceptors لتفادي حلقة التجديد.
       final bare = Dio(BaseOptions(baseUrl: _dio.options.baseUrl));
@@ -95,11 +113,23 @@ class ApiClient {
       final auth = AuthResult.fromJson(res.data);
       final onOk = _onRefreshed;
       if (onOk != null) await onOk(auth);
-      return auth.accessToken;
+      return _RefreshOutcome(token: auth.accessToken);
+    } on DioException catch (e) {
+      return refreshFailureIsTransient(e.response?.statusCode)
+          ? _RefreshOutcome(transient: e)
+          : const _RefreshOutcome();
     } catch (_) {
-      return null;
+      return const _RefreshOutcome();
     }
   }
+
+  /// هل فشلُ التجديد **عابرٌ** (الخادم لا يجيب أو متوقّف) لا رفضٌ للجلسة؟
+  ///
+  /// 🔴 **4xx وحدها تعني «الجلسة انتهت»** — رمزٌ ملغى أو حسابٌ معطّل. أما غيابُ الردّ (انقطاع)
+  /// و5xx (خادمٌ يُعاد تشغيله · صيانة · Cloudflare 502/524/530) **فانتظار**: الجلسة سليمة
+  /// والخادم هو الغائب. (ADR-050)
+  static bool refreshFailureIsTransient(int? status) =>
+      status == null || status >= 500;
 
   // ---------- المصادقة ----------
   Future<AuthResult> login(String username, String password) async {
@@ -727,6 +757,40 @@ class ApiClient {
   Future<bool> isUnderMaintenance() async {
     final data = await _get('/system/status');
     return data is Map && data['maintenance'] == true;
+  }
+
+  // ---------- إيقاف النظام وشريط الإعلان (ADR-050) ----------
+
+  /// حالة النظام — عامّةٌ بلا رمز، والشريط فيها للمصادَق وحده.
+  Future<SystemStatusInfo> systemStatus() async =>
+      SystemStatusInfo.fromJson(await _get('/system/status') as Map<String, dynamic>);
+
+  /// لوحة التحكّم — للسوبر أدمن.
+  Future<SystemControlInfo> systemControl() async =>
+      SystemControlInfo.fromJson(await _get('/system/control') as Map<String, dynamic>);
+
+  Future<SystemControlInfo> setLockdown({required bool active, String? message}) async =>
+      SystemControlInfo.fromJson(
+          await _put('/system/lockdown', {'active': active, 'message': message}) as Map<String, dynamic>);
+
+  Future<SystemControlInfo> setAnnouncement(
+          {required bool visible, String? text, required AnnouncementKind kind}) async =>
+      SystemControlInfo.fromJson(await _put('/system/announcement',
+          {'visible': visible, 'text': text, 'kind': announcementKindWire(kind)}) as Map<String, dynamic>);
+
+  /// [lockdown] يختار القائمة: نصوص الإيقاف أو نصوص الشريط (منفصلتان).
+  Future<SystemControlInfo> addSavedText({required bool lockdown, required String text}) async =>
+      SystemControlInfo.fromJson(await _post('/system/saved-texts',
+          {'kind': lockdown ? 'Lockdown' : 'Announcement', 'text': text}) as Map<String, dynamic>);
+
+  Future<SystemControlInfo> removeSavedText({required bool lockdown, required String text}) async {
+    try {
+      final res = await _dio.delete('/system/saved-texts',
+          queryParameters: {'kind': lockdown ? 'Lockdown' : 'Announcement', 'text': text});
+      return SystemControlInfo.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
   }
 
   Future<Uint8List> backupDownload(int id) async {
@@ -1495,6 +1559,7 @@ class ApiClient {
     final data = e.response?.data;
     String message = 'تعذّر الاتصال بالخادم.';
     bool isNet = false;
+    final isMaintenance = status == 503 && data is Map && data['maintenance'] == true;
     if (data is Map && data['error'] != null) {
       message = data['error'].toString();
     } else if (status == 401) {
@@ -1504,7 +1569,31 @@ class ApiClient {
     } else if (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.unknown) {
       message = 'تعذّر الوصول إلى الخادم أو لا يوجد اتصال بالإنترنت.';
       isNet = true;
+    } else if (isGatewayUnreachable(status, data)) {
+      // 🔴 **عبر Cloudflare لا يأتي «انقطاع» أبداً** — حين يتوقّف الخادم يردّ الوسيط بصفحة
+      //    HTML ورمز 502/530. فكان يُعامَل خطأً عادياً: لا تُحفظ مسوّدة ولا تُعرض طبقةُ الانتظار. (ADR-050)
+      message = 'تعذّر الوصول إلى الخادم — قد يكون قيد التحديث.';
+      isNet = true;
     }
-    return ApiException(status, message, isNetworkError: isNet);
+    if ((isNet || isMaintenance) && !e.requestOptions.path.contains('/system/status')) {
+      _onSystemSignal?.call();
+    }
+    return ApiException(status, message, isNetworkError: isNet, isMaintenance: isMaintenance);
   }
+
+  /// ردٌّ **لم يأتِ من خادمنا** بل من الوسيط أمامه: 502/504 أو رموز Cloudflare (520–530)،
+  /// أو 5xx بلا جسم JSON منّا. (خادمُنا يردّ دائماً JSON فيه `error`.)
+  static bool isGatewayUnreachable(int? status, Object? data) {
+    if (status == null) return false;
+    if (status == 502 || status == 504) return true;
+    if (status >= 520 && status <= 530) return true;
+    return status >= 500 && !(data is Map && data['error'] != null);
+  }
+}
+
+/// نتيجة محاولة التجديد: رمزٌ جديد · أو فشلٌ **عابر** يُمرَّر كما هو · أو رفضٌ (كلاهما `null`).
+class _RefreshOutcome {
+  final String? token;
+  final DioException? transient;
+  const _RefreshOutcome({this.token, this.transient});
 }

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models.dart';
 import 'api_client.dart';
+import 'system_status.dart';
 
 /// عنوان الـ API — يُحقن عند البناء، والافتراض هو بيئة التطوير.
 ///
@@ -256,4 +257,7 @@ final apiClientProvider = Provider<ApiClient>((ref) => ApiClient(
       refreshToken: () => ref.read(sessionProvider).auth?.refreshToken,
       onRefreshed: (auth) => ref.read(sessionProvider.notifier).refreshAuth(auth),
       onRefreshFailed: () => ref.read(sessionProvider.notifier).logout(),
+      // صيانةٌ أو انقطاع ⇒ تسأل طبقةُ الحالة الخادمَ فوراً (ADR-050). `read` لا `watch`:
+      // نداءٌ عند الحدث لا سلسلةُ اشتقاق (ADR-042).
+      onSystemSignal: () => ref.read(systemStatusProvider.notifier).ping(),
     ));

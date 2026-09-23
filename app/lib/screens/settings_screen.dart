@@ -9,6 +9,7 @@ import '../core/theme.dart';
 
 import 'company_edit_screen.dart';
 import 'hr_settings_screen.dart';
+import 'system_control_tab.dart';
 import 'template_edit_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -104,7 +105,7 @@ class SettingsScreen extends ConsumerWidget {
     final showHr = session.canSeePayroll;
 
     return DefaultTabController(
-      length: showHr ? 7 : 6,
+      length: 6 + (showHr ? 1 : 0) + (isSuper ? 1 : 0),
       child: Column(
         children: [
           Row(
@@ -118,6 +119,9 @@ class SettingsScreen extends ConsumerWidget {
                   const Tab(text: 'القوالب'),
                   const Tab(text: 'أسعار الصرف'),
                   if (showHr) const Tab(text: 'الموظفون والرواتب'),
+                  // ⏸️ إيقاف النظام وشريط الإعلان (ADR-050) — للسوبر أدمن وحده، **وفي الإنتاج**
+                  //    (لا `kDebugMode`): هو أداةُ تشغيلٍ يوميّ لا أداةُ مطوّر.
+                  if (isSuper) const Tab(text: 'النظام'),
                 ]),
               ),
               // 🔴 **قائمةٌ لا زرّ، وبيئةُ تطويرٍ لا إنتاج** (ADR-047): أيقونةُ حذفٍ
@@ -151,6 +155,7 @@ class SettingsScreen extends ConsumerWidget {
               const _TemplatesTab(),
               const _RatesTab(),
               if (showHr) const HrSettingsScreen(),
+              if (isSuper) const SystemControlTab(),
             ]),
           ),
         ],
