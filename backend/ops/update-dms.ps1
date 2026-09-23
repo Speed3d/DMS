@@ -5,9 +5,10 @@
 #   powershell -File backend\ops\update-dms.ps1 -SourceDir <مجلد النشر الجديد>
 #
 # ما يفعله بالترتيب:
-#   1) يتحقق من المتطلبات   2) نسخة احتياطية قبل أي لمس   3) إيقاف الخدمة
+#   1) يتحقق من المتطلبات   1ب) ⏸️ يوقف النظام عن المستخدمين (ADR-050)
+#   2) نسخة احتياطية قبل أي لمس   3) إيقاف الخدمة
 #   4) أرشفة النسخة الحالية 5) نسخ الملفات الجديدة        6) تطبيق migrations
-#   7) تشغيل الخدمة         8) فحص صحّة
+#   7) تشغيل الخدمة         8) فحص صحّة — **والنظام يبقى موقوفاً** حتى تفحصه وتشغّله أنت
 #
 # Hint: أي فشل قبل الخطوة 5 يترك النظام كما هو. بعدها يمكن الرجوع بأرشيف الخطوة 4.
 #       الملف بترميز UTF-8 with BOM ليقرأ PowerShell 5.1 العربية بشكل صحيح.
@@ -17,7 +18,9 @@ param(
     [string]$AppDir      = "C:\DMS\api",                                  # مجلد التشغيل على السيرفر
     [string]$ServiceName = "DmsApi",                                      # اسم خدمة ويندوز
     [string]$HealthUrl   = "http://localhost:5080/api/system/status",      # نقطة فحص الصحّة
-    [switch]$SkipBackup                                                    # تخطّي النسخة (غير مستحسن)
+    [switch]$SkipBackup,                                                   # تخطّي النسخة (غير مستحسن)
+    [string]$LockdownMessage = "النظام متوقّف لتنزيل تحديث — نعود قريباً.", # ما يراه المستخدمون أثناء التحديث
+    [switch]$NoLockdown                                                    # لا تُوقف النظام (غير مستحسن)
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +43,23 @@ Ok "المصدر والوجهة والخدمة جاهزة"
 $prodSettings = Join-Path $AppDir "appsettings.Production.json"
 $hasProdSettings = Test-Path $prodSettings
 if ($hasProdSettings) { Ok "ملف إعدادات الإنتاج موجود وسيُحافَظ عليه" } else { Warn "لا يوجد appsettings.Production.json في مجلد التطبيق" }
+
+# ── 1ب) إيقاف النظام عن المستخدمين (ADR-050) ─────────────────────────────────
+# 🔴 **قبل النسخة وقبل إيقاف الخدمة**: فلا يكتب أحدٌ بعد النسخة ما يضيع، ويرى الجميع رسالةً
+#    واضحة بدل «تعذّر الاتصال». **والحالة في ملفٍّ خارج مجلد البرنامج** فتبقى بعد التحديث —
+#    فيعود النظام موقوفاً حتى تفحصه أنت وتشغّله من الإعدادات ← النظام.
+Step "1ب" "إيقاف النظام عن المستخدمين"
+$exe = Join-Path $AppDir "Dms.Api.exe"
+if ($NoLockdown) {
+    Warn "لم يُوقَف النظام بناءً على طلبك — المستخدمون سيرون «تعذّر الوصول» أثناء التحديث"
+} elseif (-not (Test-Path $exe)) {
+    Warn "لا يوجد $exe — أوقف النظام من الإعدادات ← النظام قبل المتابعة"
+    Read-Host "    اضغط Enter بعد الإيقاف"
+} else {
+    & $exe maintenance on $LockdownMessage
+    if ($LASTEXITCODE -ne 0) { Die "تعذّر إيقاف النظام — أوقفه من الإعدادات ← النظام ثم أعد التشغيل" }
+    Ok "أُوقف النظام — يصل المستخدمين خلال نصف دقيقة. انتظر دقيقةً قبل النسخة."
+}
 
 # ── 2) نسخة احتياطية قبل أي تغيير ────────────────────────────────────────────
 Step 2 "نسخة احتياطية قبل التحديث"
@@ -109,6 +129,11 @@ foreach ($attempt in 1..12) {   # حتى دقيقة: الإقلاع الأول �
 if ($healthy) {
     Ok "النظام يستجيب — التحديث اكتمل بنجاح"
     Write-Host "`n✔ تم التحديث. نقطة الرجوع محفوظة في: $archive" -ForegroundColor Green
+    if (-not $NoLockdown) {
+        Write-Host "`n⏸ النظام ما زال موقوفاً عن المستخدمين — **وهذا مقصود**." -ForegroundColor Yellow
+        Write-Host "  افحصه بنفسك (أنت تدخل وحدك)، ثم شغّله من: الإعدادات ← النظام ← «تشغيل النظام للجميع»" -ForegroundColor Yellow
+        Write-Host "  أو من هنا: & `"$exe`" maintenance off" -ForegroundColor Yellow
+    }
 } else {
     Write-Host "`n✖ النظام لا يستجيب بعد التحديث." -ForegroundColor Red
     Write-Host "  للرجوع للإصدار السابق:" -ForegroundColor Yellow

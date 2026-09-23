@@ -18,6 +18,7 @@ namespace Dms.Infrastructure.Tasks;
 public sealed class TaskBackgroundService(
     IServiceScopeFactory scopeFactory,
     IMaintenanceState maintenance,
+    ISystemControl system,
     ILogger<TaskBackgroundService> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
@@ -36,7 +37,9 @@ public sealed class TaskBackgroundService(
             {
                 // 🔴 **X4 — نفس حارس `BackupScheduler`**: أثناء الاستعادة تكون القاعدة في
                 //    وضع مستخدمٍ واحد، فكتابةٌ الآن تُخفق أو تنازع الاستعادة على الاتصال.
-                if (maintenance.IsActive)
+                // ⏸️ **وأثناء إيقاف النظام عن المستخدمين (ADR-050)**: لا تصعيدَ ولا تذكيرَ يصل
+                //    مستخدماً محجوباً عن فتحه، ولا توليدَ مهامّ في منتصف تحديث.
+                if (maintenance.IsActive || system.Lockdown.Active)
                 {
                     await Sleep(stoppingToken);
                     continue;

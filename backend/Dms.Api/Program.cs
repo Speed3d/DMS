@@ -24,6 +24,10 @@ using Microsoft.OpenApi.Models;
 if (args.Length > 0 && args[0].Equals("generate-secrets", StringComparison.OrdinalIgnoreCase))
     return SecretsGenerator.Run(args);
 
+// أمر الطوارئ: إيقاف النظام عن المستخدمين أو تشغيله بلا واجهة (ADR-050) — ثم الخروج.
+if (args.Length > 0 && args[0].Equals("maintenance", StringComparison.OrdinalIgnoreCase))
+    return MaintenanceCommand.Run(args);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // تشغيل كخدمة ويندوز على السيرفر (تبدأ مع الإقلاع وتتعافى من التعطّل تلقائياً).
@@ -61,6 +65,12 @@ var backupDir = builder.Configuration["Backup:Dir"];
 if (string.IsNullOrWhiteSpace(backupDir))
     backupDir = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Backups");
 builder.Services.AddSingleton(new AppPaths(storageRoot, backupDir));
+
+// ⏸️ إيقاف النظام وشريط الإعلان (ADR-050) — حالةٌ في ملفّ **بجوار مجلد التخزين** تبقى بعد
+//    إعادة التشغيل ولا تمسحها الاستعادة. والمسار بقاعدةٍ واحدة مع أمر الطوارئ (`SystemControlPath`).
+var systemControlFile = SystemControlPath.Resolve(builder.Configuration[SystemControlPath.ConfigKey], storageRoot);
+builder.Services.AddSingleton<ISystemControl>(sp =>
+    new SystemControl(systemControlFile, sp.GetRequiredService<ILogger<SystemControl>>()));
 
 // ----- المصادقة JWT -----
 var jwt = builder.Configuration.GetSection(JwtSettings.Section).Get<JwtSettings>() ?? new JwtSettings();
@@ -202,6 +212,9 @@ else
 app.UseCors("all");
 app.UseRateLimiter();
 app.UseAuthentication();
+// ⏸️ **بعد المصادقة** ليعرف مَن الطالب — السوبر أدمن وحده يمرّ أثناء الإيقاف (ADR-050).
+//    و**بعد CORS** ليقرأ المتصفّح ردَّ 503 برسالته لا خطأ شبكةٍ غامضاً.
+app.UseMiddleware<LockdownMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

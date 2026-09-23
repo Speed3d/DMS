@@ -11,7 +11,7 @@ namespace Dms.Infrastructure.Backup;
 
 /// <summary>خدمة خلفية تُشغّل النسخ الاحتياطي المجدول عند حلول موعده.</summary>
 public sealed class BackupScheduler(
-    IServiceScopeFactory scopeFactory, IMaintenanceState maintenance, IBackgroundJobs jobs,
+    IServiceScopeFactory scopeFactory, IMaintenanceState maintenance, ISystemControl system, IBackgroundJobs jobs,
     ILogger<BackupScheduler> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -24,7 +24,9 @@ public sealed class BackupScheduler(
             {
                 // Hint: أثناء الاستعادة تكون القاعدة في وضع مستخدم-واحد؛ لو حاول المجدول النسخ الآن
                 //       لأخفق (القاعدة قيد الاستخدام) أو نازع الاستعادة على الاتصال الحصري. نتخطّى ببساطة.
-                if (maintenance.IsActive)
+                // ⏸️ **وأثناء إيقاف النظام (ADR-050)** تتأجّل المجدولة ولا تضيع (`NextRunAt` باقٍ
+                //    مستحقّاً) — والنسخة اليدوية متاحةٌ للسوبر أدمن، وهي الأنسب قبل التحديث.
+                if (maintenance.IsActive || system.Lockdown.Active)
                 {
                     await Sleep(stoppingToken);
                     continue;

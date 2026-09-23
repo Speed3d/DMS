@@ -799,3 +799,29 @@ public sealed record JobResponse(
     public static JobResponse From(JobInfo j) => new(
         j.Id, j.Kind, j.Title, j.State, j.Stage, j.Percent, j.Message, j.Result, j.StartedAt, j.FinishedAt);
 }
+
+
+// ----------------- إيقاف النظام وشريط الإعلان (ADR-050) -----------------
+/// <summary>حالة الإيقاف كما تُعرض — <c>ByName</c> للسوبر أدمن وحده.</summary>
+public sealed record LockdownDto(bool Active, string? Message, DateTime? Since, string? ByName);
+
+/// <summary>شريط الإعلان — لا يُرسَل إلا لطلبٍ مصادَق (قد يحمل نصّاً داخلياً).</summary>
+public sealed record AnnouncementDto(bool Visible, string? Text, AnnouncementKind Kind, DateTime? UpdatedAt);
+
+/// <summary>
+/// ردّ <c>GET /api/system/status</c> — عامٌّ بلا مصادقة (ليعرف العميل متى يعود النظام).
+/// </summary>
+/// <param name="Maintenance">صيانة الاستعادة — تحجب **الجميع**.</param>
+/// <param name="Announcement"><c>null</c> لغير المصادَق أو حين لا يوجد نصّ.</param>
+public sealed record SystemStatusResponse(
+    bool Maintenance, string? Reason, DateTime? Since,
+    LockdownDto Lockdown, AnnouncementDto? Announcement);
+
+/// <summary>لوحة التحكّم للسوبر أدمن: الحالتان والنصوص المحفوظة.</summary>
+public sealed record SystemControlResponse(
+    LockdownDto Lockdown, AnnouncementDto Announcement,
+    IReadOnlyList<string> SavedLockdownTexts, IReadOnlyList<string> SavedAnnouncementTexts);
+
+public sealed record SetLockdownRequest(bool Active, string? Message);
+public sealed record SetAnnouncementRequest(bool Visible, string? Text, AnnouncementKind Kind);
+public sealed record SavedTextRequest(SavedTextKind Kind, string Text);

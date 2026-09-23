@@ -20,6 +20,7 @@ public sealed class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionM
                 NotFoundException => StatusCodes.Status404NotFound,
                 ForbiddenException => StatusCodes.Status403Forbidden,
                 ConflictException => StatusCodes.Status409Conflict,
+                ServiceUnavailableException => StatusCodes.Status503ServiceUnavailable,
                 _ => StatusCodes.Status500InternalServerError,
             };
 
@@ -30,9 +31,16 @@ public sealed class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionM
             ctx.Response.StatusCode = status;
             ctx.Response.ContentType = "application/json; charset=utf-8";
 
-            object payload = (status == StatusCodes.Status500InternalServerError && env.IsDevelopment())
-                ? new { error = message, detail = ex.Message, type = ex.GetType().Name, stack = ex.ToString() }
-                : new { error = message };
+            object payload = status switch
+            {
+                StatusCodes.Status500InternalServerError when env.IsDevelopment()
+                    => new { error = message, detail = ex.Message, type = ex.GetType().Name, stack = ex.ToString() },
+                // ⏸️ الشكل نفسه الذي يردّ به `LockdownMiddleware` — فيعرفه العميل صيانةً لا خطأً (ADR-050).
+                StatusCodes.Status503ServiceUnavailable => LockdownMiddleware.Body(message),
+                _ => new { error = message },
+            };
+            if (status == StatusCodes.Status503ServiceUnavailable)
+                ctx.Response.Headers.RetryAfter = "30";
 
             await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload));
         }

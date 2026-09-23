@@ -67,6 +67,13 @@ public static class AuditLabels
         ["VerifyScan"] = "فحص كتاب برمز التحقق",
         ["PublicPdfDownload"] = "تنزيل كتاب من صفحة التحقق",
 
+        // ── إيقاف النظام وشريط الإعلان (ADR-050) ──
+        ["SystemLockdownOn"] = "إيقاف النظام عن المستخدمين",
+        ["SystemLockdownOff"] = "تشغيل النظام للمستخدمين",
+        ["AnnouncementShown"] = "إظهار شريط إعلان",
+        ["AnnouncementHidden"] = "إخفاء شريط الإعلان",
+        ["AnnouncementChanged"] = "تعديل شريط الإعلان",
+
         // ── النسخ الاحتياطي ──
         ["Backup"] = "نسخة احتياطية",
         ["BackupSchedule"] = "ضبط جدولة النسخ",
@@ -122,6 +129,7 @@ public static class AuditLabels
         ["HrSettings"] = "إعدادات الموظفين والرواتب",
 
         ["DmsTask"] = "مهمة",
+        ["System"] = "النظام",
         ["CaseFile"] = "معاملة",
 
         // قيم OwnerType كما يكتبها AttachmentService

@@ -62,6 +62,9 @@ public static class DependencyInjection
         services.AddHostedService<TaskBackgroundService>();
         // حالة الصيانة singleton — تُشارَك بين خدمة الاستعادة والـ middleware والمجدول.
         services.AddSingleton<IMaintenanceState, MaintenanceState>();
+        // ⏸️ إيقاف النظام وشريط الإعلان (ADR-050) — `ISystemControl` نفسه يُسجَّل في `Program.cs`
+        //    لأن مسار ملفّه يُشتقّ من إعداد التخزين؛ والمراقب هنا يلتقط أمر الطوارئ على السيرفر.
+        services.AddHostedService<SystemControlWatcher>();
         services.AddScoped<IBackupService, BackupService>();
 
         // ⚙️ العمليات الطويلة خارج الطلب (حدّ Cloudflare ~100 ثانية) — singleton لأن سجلّها

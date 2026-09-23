@@ -12,16 +12,117 @@ namespace Dms.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SystemController(AppDbContext db, IServiceProvider services, IConfiguration config, IWebHostEnvironment env, ILogger<SystemController> logger, IMaintenanceState maintenance) : ControllerBase
+public class SystemController(AppDbContext db, IServiceProvider services, IConfiguration config, IWebHostEnvironment env, ILogger<SystemController> logger, IMaintenanceState maintenance, ISystemControl system, IAuditService audit, ICurrentUser current) : ControllerBase
 {
     /// <summary>
-    /// حالة النظام — مسموح بلا مصادقة ليعرف العميل متى يكون النظام قيد الصيانة (أثناء استعادة نسخة).
-    /// Hint: هذا المسار مستثنى من MaintenanceMiddleware، فيبقى مجيباً حتى أثناء الصيانة.
+    /// حالة النظام — مسموح بلا مصادقة ليعرف العميل متى يكون النظام قيد الصيانة (أثناء استعادة نسخة)
+    /// أو موقوفاً للصيانة (ADR-050). تستطلعها الواجهة كل 30 ثانية.
+    /// Hint: هذا المسار مستثنى من MaintenanceMiddleware وLockdownMiddleware، فيبقى مجيباً دائماً.
     /// </summary>
+    /// <remarks>
+    /// 🔐 **الشريط للمصادَق وحده** — نصّه قد يكون داخلياً، والنقطة مفتوحةٌ للعالم عبر الدومين.
+    /// أما رسالة الإيقاف فعامّة **عمداً**: تظهر على شاشة الدخول قبل أن يكتب أحدٌ كلمة مروره.
+    /// </remarks>
     [HttpGet("status")]
     [AllowAnonymous]
-    public IActionResult Status()
-        => Ok(new { maintenance = maintenance.IsActive, reason = maintenance.Reason, since = maintenance.SinceUtc });
+    public SystemStatusResponse Status()
+    {
+        var isSuper = current.IsAuthenticated && current.IsSuperAdmin;
+        var a = system.Announcement;
+        return new SystemStatusResponse(
+            maintenance.IsActive, maintenance.Reason, maintenance.SinceUtc,
+            ToDto(system.Lockdown, withActor: isSuper),
+            current.IsAuthenticated && a.Visible ? ToDto(a) : null);
+    }
+
+    // ───────────── إيقاف النظام وشريط الإعلان (ADR-050) — للسوبر أدمن وحده ─────────────
+
+    /// <summary>لوحة التحكّم: الإيقاف والشريط والنصوص المحفوظة.</summary>
+    [HttpGet("control")]
+    [Authorize(Roles = "SuperAdmin")]
+    public SystemControlResponse Control() => ControlView();
+
+    /// <summary>يوقف النظام عن كل المستخدمين عدا السوبر أدمن، أو يشغّله. الرسالة **مطلوبة** عند الإيقاف.</summary>
+    /// <remarks>
+    /// ⚠️ **لا يعود النظام للعمل وحده أبداً** (قرار المالك) — لا مهلةَ ولا موعد؛ التشغيلُ بهذه النقطة
+    /// أو بأمر الطوارئ على السيرفر فقط.
+    /// </remarks>
+    [HttpPut("lockdown")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<SystemControlResponse> SetLockdown(SetLockdownRequest req, CancellationToken ct)
+    {
+        var before = system.Lockdown;
+        var name = await ActorNameAsync(ct);
+        var after = system.SetLockdown(req.Active, req.Message, current.UserId, name);
+
+        if (before.Active != after.Active || before.Message != after.Message)
+        {
+            audit.Add(after.Active ? "SystemLockdownOn" : "SystemLockdownOff",
+                SystemControlWatcher.SystemAuditEntity, null, after.Active ? after.Message : null);
+            await db.SaveChangesAsync(ct);
+        }
+        return ControlView();
+    }
+
+    /// <summary>يُظهر شريط الإعلان للجميع أو يُخفيه. النصّ **مطلوب** عند الإظهار.</summary>
+    [HttpPut("announcement")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<SystemControlResponse> SetAnnouncement(SetAnnouncementRequest req, CancellationToken ct)
+    {
+        var before = system.Announcement;
+        var after = system.SetAnnouncement(req.Visible, req.Text, req.Kind);
+
+        var action = (before.Visible, after.Visible) switch
+        {
+            (false, true) => "AnnouncementShown",
+            (true, false) => "AnnouncementHidden",
+            (true, true) when before.Text != after.Text || before.Kind != after.Kind => "AnnouncementChanged",
+            _ => null,
+        };
+        if (action is not null)
+        {
+            audit.Add(action, SystemControlWatcher.SystemAuditEntity, null,
+                after.Visible ? $"[{after.Kind}] {after.Text}" : null);
+            await db.SaveChangesAsync(ct);
+        }
+        return ControlView();
+    }
+
+    /// <summary>يحفظ نصّاً لاستعماله لاحقاً (نصوص الإيقاف منفصلةٌ عن نصوص الشريط).</summary>
+    [HttpPost("saved-texts")]
+    [Authorize(Roles = "SuperAdmin")]
+    public SystemControlResponse AddSavedText(SavedTextRequest req)
+    {
+        system.AddSavedText(req.Kind, req.Text);
+        return ControlView();
+    }
+
+    /// <summary>يحذف نصّاً محفوظاً.</summary>
+    [HttpDelete("saved-texts")]
+    [Authorize(Roles = "SuperAdmin")]
+    public SystemControlResponse RemoveSavedText([FromQuery] SavedTextKind kind, [FromQuery] string text)
+    {
+        if (!system.RemoveSavedText(kind, text))
+            throw new NotFoundException("النصّ غير موجود في المحفوظات.");
+        return ControlView();
+    }
+
+    private SystemControlResponse ControlView() => new(
+        ToDto(system.Lockdown, withActor: true), ToDto(system.Announcement),
+        system.SavedTexts(SavedTextKind.Lockdown), system.SavedTexts(SavedTextKind.Announcement));
+
+    private static LockdownDto ToDto(LockdownState l, bool withActor)
+        => new(l.Active, l.Message, l.SinceUtc, withActor ? l.ByName : null);
+
+    private static AnnouncementDto ToDto(AnnouncementState a)
+        => new(a.Visible, a.Text, a.Kind, a.UpdatedAtUtc);
+
+    /// <summary>اسم الفاعل لعرضه في لوحة التحكّم («أوقفه فلان»).</summary>
+    /// <remarks>⚠️ `IgnoreQueryFilters` قراءةٌ لاسم الطالب نفسه — السوبر أدمن غير مُسنَد لشركة فيُحجب بالفلتر.</remarks>
+    private async Task<string?> ActorNameAsync(CancellationToken ct)
+        => current.UserId is { } id
+            ? await db.Users.IgnoreQueryFilters().Where(u => u.UserId == id).Select(u => u.FullName).FirstOrDefaultAsync(ct)
+            : null;
 
     /// <summary>حالة عمليةٍ طويلة بدأت في الخلفية (نسخ · مرآة · استعادة · حذف شركة).</summary>
     /// <remarks>

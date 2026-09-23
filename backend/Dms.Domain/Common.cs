@@ -17,6 +17,13 @@ public sealed class ForbiddenException(string message) : DomainException(message
 /// <summary>تعارض حالة (409) — مثل تعديل نسخة قديمة أو رقم مكرر.</summary>
 public sealed class ConflictException(string message) : DomainException(message);
 
+/// <summary>النظام موقوفٌ عن المستخدمين (503) — إيقافٌ يدويّ للصيانة (ADR-050).</summary>
+/// <remarks>
+/// ⚠️ **503 لا 403**: العميل يعامل 503 انتظاراً فيعرض شاشة الصيانة ويبقي الجلسة،
+/// بينما 403 على التجديد يعني «الجلسة انتهت» فيُخرج المستخدم — وهو بالضبط ما لا نريده.
+/// </remarks>
+public sealed class ServiceUnavailableException(string message) : DomainException(message);
+
 // ---------------------------------------------------------------------------
 // حساب المعادل بالدينار العراقي (يُجمَّد على الكتاب لحظة الإنشاء/الاعتماد).
 // ---------------------------------------------------------------------------

@@ -30,7 +30,8 @@ public sealed class AuthService(
     AppDbContext db,
     IPasswordHasher hasher,
     IJwtTokenService tokens,
-    IAuditService audit) : IAuthService
+    IAuditService audit,
+    ISystemControl system) : IAuthService
 {
     private const int MaxFailed = 5;
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
@@ -57,6 +58,13 @@ public sealed class AuthService(
             throw new ValidationException("اسم المستخدم أو كلمة المرور غير صحيحة.");
         }
 
+        // ⏸️ **النظام موقوف (ADR-050) — والفحص بعد كلمة المرور لا قبلها** (`SystemAccess.RejectsSignIn`):
+        //    الكلمة الخاطئة حُسبت أعلاه كالمعتاد، والصحيحة لغير السوبر أدمن تُردّ برسالة الإيقاف
+        //    **بلا عدٍّ ولا رمزٍ ولا سطر «دخول»** — فالرفض بسبب الصيانة ليس محاولةً فاشلة.
+        var lockdown = system.Lockdown;
+        if (SystemAccess.RejectsSignIn(lockdown.Active, user.Role))
+            throw new ServiceUnavailableException(lockdown.Message ?? SystemAccess.DefaultLockdownMessage);
+
         // نجاح: تصفير العدادات + إصدار الرموز
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
@@ -76,6 +84,13 @@ public sealed class AuthService(
         var user = await db.Users.Include(u => u.AssignedCompanies).FirstOrDefaultAsync(u => u.UserId == stored.UserId, ct);
         if (user is null || !user.IsActive)
             throw new ForbiddenException("الحساب غير متاح.");
+
+        // ⏸️ **النظام موقوف (ADR-050): 503 قبل التدوير لا بعده** — فيبقى رمز التجديد صالحاً،
+        //    ويعود المستخدم بعد الإيقاف **بجلسته نفسها** بلا دخولٍ جديد. (ولو رُدّ بـ403 لفهمه
+        //    العميل «جلسة منتهية» فأخرجه — وهذا ما يُمنع هنا.)
+        var lockdown = system.Lockdown;
+        if (SystemAccess.RejectsSignIn(lockdown.Active, user.Role))
+            throw new ServiceUnavailableException(lockdown.Message ?? SystemAccess.DefaultLockdownMessage);
 
         stored.RevokedAt = DateTime.UtcNow;          // تدوير الرمز
         var result = await IssueAsync(user, ct);
