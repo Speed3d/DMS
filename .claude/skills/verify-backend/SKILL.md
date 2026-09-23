@@ -5,144 +5,82 @@ description: تشغيل اختبار التدفق الشامل (E2E) لباك-إ
 
 # اختبار E2E لباك-إند DMS
 
-يفترض أن الـ API يعمل على `http://localhost:5080` (انظر مهارة `run-backend`).
+**اثنا عشر سكربتاً في `backend/e2e/`** — آخرُ تشغيلٍ كامل **2026-09-23 على قاعدةٍ جديدة، صفر فشل في كلٍّ**.
+النجاح في كلٍّ = `فشل: 0` ورمز خروج 0.
 
-**المجموع: 380 تحقّقاً** عبر **سبعة** سكربتات — وهو **مجموع آخر تشغيلٍ مُسجَّل لكلٍّ**، لا تشغيلٌ
-واحدٌ للكل. النجاح في كلٍّ = `فشل: 0` ورمز خروج 0.
+## 🔴 القواعد الثلاث قبل أيّ تشغيل
 
-> 🟢 **ابدأ بـ`reports-e2e.ps1`**: هو الوحيد الذي **يقرأ ولا يكتب**، فيُشغَّل على قاعدة العمل
-> بلا أثر — وهو أسرع فحصٍ يُطمئن أن الخادم والصلاحيات والمخرجات سليمة.
+1. **لا على `DmsDb` أبداً.** `dotnet run` **يطبّق المهاجرات على أيّ قاعدةٍ يقلع عليها بلا سؤال**،
+   والسكربتات تُنشئ وتحذف (وسكربت النسخ **يستعيد القاعدة كلَّها**). وكلمة مرور `admin` في
+   `DmsDb` غُيّرت. ⇒ **الخادم يُقلع على قاعدةٍ جديدة** تُبذر فيها `admin` / `Admin@12345`:
 
-| السكربت | التحقّقات | آخر تشغيل مُسجَّل |
-|---|---|---|
-| `hr-e2e.ps1` (الموظفون والرواتب) | **151** | 2026-08-06 (على `DmsHrScratch`) |
-| `incoming-e2e.ps1` (الوارد + رؤية الصادر) | **77** ✅ | **2026-08-11** — 77/77 صفر فشل |
-| `reports-e2e.ps1` (التقارير الأربعة) 🟢 **يقرأ ولا يكتب** | **55** ✅ | **2026-08-11** — 55/55 صفر فشل |
-| `backup-restore-e2e.ps1` (نسخ/مرآة) | **28** | 2026-07-28 |
-| `multi-company-e2e.ps1` (تعدد الشركات) | **26** | 2026-07-29 |
-| `departments-e2e.ps1` (الأقسام) | **22** | 2026-07-29 |
-| `isolation-e2e.ps1` (العزل والتزامن — G2) | **21** | 2026-08-10 |
+   ```bash
+   cd backend && ConnectionStrings__Default='Server=.;Database=DmsE2E_New;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=True' ASPNETCORE_URLS='http://localhost:5091' ASPNETCORE_ENVIRONMENT=Development dotnet run --project Dms.Api --no-launch-profile
+   ```
+   ⚠️ **`--no-launch-profile` إلزاميّ** — وإلا تجاهل `launchSettings.json` قيمةَ `ASPNETCORE_URLS` وربط 5080.
+   وانتظر حتى يردّ `GET http://localhost:5091/api/system/status` قبل أوّل سكربت.
 
-> 🔑 **الـAPI لا يعمل من داخل worktree:** ملف الأسرار `appsettings.Development.json` مستبعَد من git
-> فلا يُنسخ معها، فيفشل التشغيل بخطأ TCP. انسخه مؤقتاً من `D:\DMS` (ثم احذفه) أو شغّل من هناك.
-> ولنفس السبب `dotnet ef` يحتاج `--connection "Server=.;Database=DmsDb;Trusted_Connection=True;TrustServerCertificate=True"`.
-⚠️ ملفات PowerShell بالعربية تحتاج ترميز **UTF-8 with BOM** وإلا فشل التحليل النحوي في PS 5.1.
+2. **الترتيب إلزاميّ على القاعدة الجديدة** — السكربتات تفترض أن **أوّل شركتين أبجدياً** شركتاها:
 
-> **الموظف المُمرَّر لسكربت الوارد يجب أن يكون في الشركة التي يختبرها السكربت** (يختار **أول** شركة)
-> و**بلا** صلاحية `CanManageIncoming` (وإلا فشلت تأكيدات الـ403). `emp_leg` الذي ينشئه سكربت الأقسام
-> يطابق الشرطين — كلمة مروره `Emp@12345new` بعد أول تشغيل.
+   `review-fixes` **أوّلاً** (يُنشئ الشركتين) ← `isolation` ← `multi-company` ← `departments` ←
+   `incoming` ← `hr` ← `profile` ← `reports` ← `tasks` ← `case-files` ← `verify` ← `backup-restore` **أخيراً**
 
-## 1) وحدة الوارد — سكربت جاهز
+   🔑 **على قاعدةٍ مستعملة سقطت سبعةُ سكربتات بلا عيبٍ في الكود** (2026-09-23) — التقطت شركاتِ
+   اختبارٍ أخرى فلم تجد مستخدميها، ثم رُفض إنشاؤهم لأن أسماءهم موجودة (409). **الحَكَم قاعدةٌ جديدة.**
 
-```powershell
-powershell -File backend\e2e\incoming-e2e.ps1 -AdminPwd <كلمة المرور> -EmployeeUser sinan -EmployeePwd <كلمة المرور>
-```
+3. **ترميز UTF-8 with BOM** لملفات PowerShell العربية وإلا فشل التحليل في PS 5.1. ولقراءة المخرجات
+   بلا تشويه: `[Console]::OutputEncoding=[Text.Encoding]::UTF8` داخل العملية نفسها.
 
-يغطّي **77 تحقّقاً** (منها **٦ لرؤية الصادر بالقسم — ADR-030**): التسجيل والترقيم `PREFIX-IN-YEAR-#####` · طرق الاستلام (`Manual/Mail/Email` ورفض غيرها) · مصفوفة انتقالات الحالة (المسموح والمرفوض) · الملاحظة الإلزامية عند «تم الرد» يدوياً · الإحالة (**بالعقد المتعدد** `departments:[{departmentId,note}]` — ADR-018) · الأرشفة ومنع التعديل بعدها · الربط/فك الربط مع الصادر والربط العكسي ومنع الربط المزدوج · سجل الحركة بأسماء المنفّذين · البحث بكل المعاملات · المرفقات · صلاحيات الموظف (403/404).
+## الأوامر — بالترتيب (المنفذ 5091 والقاعدة الجديدة)
 
-- **يُعيد تشغيل نفسه بأمان** (يختار صادراً معتمداً غير مرتبط، ويُنشئ واحداً فقط عند الحاجة).
-- كلمات المرور تُمرَّر كمعاملات ولا تُخزَّن. النجاح = `فشل: 0` ورمز خروج 0.
-- يُنشئ بيانات حقيقية — **بيئة تطوير فقط**.
-
-## 2) الأقسام ورؤية الوارد — سكربت جاهز
+⚠️ **المعاملات تختلف بين السكربتات** — انسخها كما هي:
 
 ```powershell
-powershell -File backend\e2e\departments-e2e.ps1 -AdminPwd <كلمة المرور>
+$B='http://localhost:5091/api'; $P='Admin@12345'
+$DB='Server=.;Database=DmsE2E_New;Integrated Security=true;TrustServerCertificate=True'
+.\e2e\review-fixes-e2e.ps1   -AdminPwd $P -Base $B -Db $DB     # -Db إلزاميّ: يعدّ الصفوف اليتيمة من القاعدة نفسها
+.\e2e\isolation-e2e.ps1      -AdminPwd $P -Base $B
+.\e2e\multi-company-e2e.ps1  -AdminPwd $P -Base $B
+.\e2e\departments-e2e.ps1    -AdminPwd $P -Base $B
+.\e2e\incoming-e2e.ps1       -AdminPwd $P -BaseUrl $B          # + -EmployeeUser emp_leg -EmployeePwd Emp@12345new لجزء الموظف
+.\e2e\hr-e2e.ps1             -AdminPwd $P -Base $B
+.\e2e\profile-e2e.ps1        -AdminPwd $P -Base $B
+.\e2e\reports-e2e.ps1        -AdminPwd $P -Base $B             # + -EmployeeUser emp_leg -EmployeePwd Emp@12345new لجزء الموظف
+.\e2e\tasks-e2e.ps1          -AdminPwd $P -Base $B
+.\e2e\case-files-e2e.ps1     -AdminPwd $P -Base $B
+.\e2e\verify-e2e.ps1         -AdminPwd $P -Base $B -Root 'http://localhost:5091'
+.\e2e\backup-restore-e2e.ps1 -AdminPwd $P -BaseUrl $B          # تدميري: يستعيد القاعدة — أخيراً دائماً
 ```
 
-**22 تحقّقاً** (ADR-015 + ADR-018): إنشاء قسمين وموظفين · **موظف يرى الكتاب المُحال لقسمه وإن لم يستلمه** · عزل بين الأقسام (404) · القوائم مفلترة بالقسم · مرفقات كتاب القسم · صلاحية `CanManageIncoming` · موظف بلا صلاحية يُمنع (403)
-· **الإحالة تراكمية** (قسمان معاً بعد إحالتين) · **مَن أحال يبقى يرى** · إعادة الإحالة تُحدّث الملاحظة ولا تُكرّر · إحالة لقسمين في طلب واحد · **قسم واحد غير صالح يُبطل الإحالة كلها** · رفض الإحالة بلا أقسام.
-⚠️ يُنشئ موظفَي اختبار (`emp_fin`, `emp_leg`) وأقساماً — بيئة تطوير فقط.
-⚠️ **كلمة مرور موظفي الاختبار `Emp@12345new`** (لا كلمة الأدمن) — مرّرها لسكربت الوارد:
-`-EmployeeUser emp_fin -EmployeePwd Emp@12345new`.
+## ما يغطّيه كلٌّ — وآخر تشغيل
 
-## 3) العزل بين الشركات — سكربت جاهز (ADR-017)
+| السكربت | التحقّقات | آخر تشغيل | يغطّي |
+|---|---|---|---|
+| `review-fixes` | **42** | 2026-09-23 | **ADR-048**: تعديل المدير/الرئيس لا يُسقط إسناداً ولا يصفّر أقساماً · المستمسكات والإيصالات بعلَم الكتابة · حذف الشركة بلا يتيمٍ في 24 جدولاً (يقرأ القاعدة) — وحذفُها **عمليةٌ خلفية** (ADR-049) |
+| `isolation` | **59** | 2026-09-23 | العزل **بالمعرّف** عبر الوحدات · **12 اعتماداً متزامناً** بأرقامٍ متمايزة · عزل الإشعارات (ADR-046) · **التعطيل ثم الحذف** (ADR-047) خلفياً |
+| `multi-company` | **26** | 2026-09-23 | موظفٌ في شركتين بصلاحياتٍ وأقسامٍ مختلفة (ADR-017) — نفس التوكن يُحجب في شركةٍ ويمرّ في أخرى |
+| `departments` | **22** | 2026-09-23 | الإحالة **متعددة وتراكمية** · مَن أحال يبقى يرى · يُنشئ `emp_fin`/`emp_leg` |
+| `incoming` | **77** (66 بلا موظف) | 2026-09-23 (66) · 2026-08-11 (77) | دورة الوارد كاملة + رؤية الصادر بالقسم (ADR-030) |
+| `hr` | **180** | 2026-09-23 | الرواتب والإجازات والمستمسكات وبوّابة الحسم وتعديل المُسدَّد |
+| `profile` | **58** | 2026-09-23 | البروفايل (ADR-033/035): يرى راتبه وحده · صورته · إجازته الذاتية |
+| `reports` | **55** (45 بلا موظف) | 2026-09-23 (45) · 2026-08-11 (55) | النشاط والتفصيليان بحدٍّ مزدوج — 🟢 **يقرأ ولا يكتب** |
+| `tasks` | **164** | 2026-09-23 | وحدة المهام كاملةً + الخدمة الخلفية (لا تُعيد إشعاراً ولا تكاثر) |
+| `case-files` | **32** | 2026-09-23 | المعاملات والربط كثيرٌ إلى كثير (ADR-045) |
+| `verify` | **22** | 2026-09-23 | صفحة التحقق العامّة `/v/{token}` (ADR-043/044) |
+| `backup-restore` | **41** | 2026-09-23 | نسخ ← حذف ← **استعادة** ← الكتاب يعود · المرآة · **البدء يردّ 202 فوراً** · **التنزيل تدفّقٌ كامل بالبايت** · عمليةٌ مجهولة 404 (ADR-049) |
 
-```powershell
-powershell -File backend\e2e\multi-company-e2e.ps1 -AdminPwd <كلمة المرور>
-```
+## ⚙️ العمليات الخلفية (ADR-049) — ما تغيّر في العقد
 
-26 تحقّقاً: موظف واحد في شركتين بصلاحيات وأقسام **مختلفة** · الحفظ يُبقي الاختلاف ·
-**نفس التوكن: الوارد متاح في شركة و403 في الأخرى، والتقارير معكوسة** · قسم من شركة أخرى يُرفَض (400) ·
-`GET /departments?companyId=` للمانح.
-⚠️ يُنشئ شركة ثانية وموظف `emp_multi` — بيئة تطوير فقط. قابل لإعادة التشغيل.
+`POST /backup/run` · `/backup/mirror` · `/backup/mirror/restore` · `/backup/{id}/restore` ·
+`DELETE /companies/{id}` **تردّ 202** بجسم `JobResponse` (`id` · `state` · `stage` · `percent` · `message` · `result`)،
+ثم تُسأل `GET /api/system/jobs/{id}` حتى `state != Running`. **وأثناء الاستعادة تردّ 503** — فيُسأل
+`/api/system/status` حتى `maintenance=false` ثم تُستأنف. والفحوص الرخيصة (تأكيد · مسار · موانع) تعود 400/404/409 **فوراً**.
+الدالّة الجاهزة `WaitJob` في `backup-restore-e2e.ps1` و`isolation-e2e.ps1` و`review-fixes-e2e.ps1`.
 
-## 4) النسخ الاحتياطي والاستعادة — سكربت جاهز
+## ملاحظات
 
-```powershell
-powershell -File backend\e2e\backup-restore-e2e.ps1 -AdminPwd <كلمة المرور>
-```
-
-يغطّي **28 تحقّقاً**: إنشاء كتاب شاهد → نسخة كاملة → حذف الكتاب → رفض تأكيد خاطئ → استعادة بكلمة «استعادة» → **الكتاب يعود سليماً** → خروج من وضع الصيانة → تسجيل نسخة أمان تلقائية.
-**+ تغطية النسخ** (عمر آخر نسخة كاملة) و**دورة المرآة كاملة** (ADR-020): رفض المسارات الخطرة (مجلد نظام · نسبي · بلا حرف قرص · فارغ) · المرآة الثانية **تنسخ 0 وتتخطّى الموجود** · ثم **مرآة ← حذف ← استعادة ← الكتاب يعود**.
-
-- ⚠️ **تدميري** — يحذف كتاباً ويستعيد قاعدة كاملة. بيئة تطوير فقط.
-- بعد الاستعادة تعود القاعدة لحالة النسخة؛ الترقية للمخطّط الحالي تلقائية.
-
-## 5) الموظفون والرواتب — سكربت جاهز (الأكبر)
-
-```powershell
-powershell -File backend\e2e\hr-e2e.ps1 -AdminPwd <كلمة المرور>
-```
-
-**151 تحقّقاً** (ADR-023…028): التناسب الجزئي · **الأيام بعرف 30/360 ولا تتجمّد** · التحويل
-بسعر الصرف · التوليد **التراكمي يصون المدخلات اليدوية** · التزامن **409** · التسديد والقفل ·
-الإجازات المعلّقة · المستمسكات · **إسناد موظف قائم لشركة ثانية بلا تسرّب راتب** ·
-**استثناء المدفوع من شركة أخرى في المخرجات الثمانية** و**بوّابة الحسم** · تعديل المُسدَّد
-بإصدارٍ محفوظ · 🔐 جَرْد الأقسام من القارئ و403 على نقاط الوحدة.
-
-- ⚠️ **يختار شهراً غير مُسدَّد تلقائياً** فيُعاد تشغيله بلا تنظيف. و`-Month` يُثبّته —
-  فاختر **سنةً بلا بيانات** وإلا اصطدمت بشهرٍ مُسدَّد وفشل السكربت **بلا عيبٍ في المنتج**.
-- ⚠️ **يحتاج شركتين** لحرّاس الإسناد والكشف المتبادل؛ وغيابُ الثانية يُعلَن ويُتخطّى.
-- 🔴 **شغّله على قاعدة منفصلة** (استُعملت `DmsHrScratch`) لا على قاعدة العمل.
-
-## 6) العزل الصفّي والترقيم تحت التزامن — سكربت جاهز (G2)
-
-```powershell
-powershell -File backend\e2e\isolation-e2e.ps1 -AdminPwd <كلمة المرور>
-```
-
-**21 تحقّقاً**: العزل **بالمعرّف لا بغياب السطر** (`GET /{id}` بمعرّفٍ معلوم الوجود ⇒ 404 محجوب
-· 200 تسرّب) عبر الصادر ومرفقاته والوارد والأرشيف والأقسام والجهات والتقرير · و**12 اعتماداً
-تنطلق معاً** ⇒ 12 رقماً متمايزاً بتسلسل متّصل، وعدّاد الشركة الثانية مستقلّ ⇒ `UPDLOCK` يعمل.
-⚠️ يُنشئ شركةً وقالباً وجهةً إن غابت — **بيئة تطوير فقط**.
-
-## 7) التقارير — سكربت جاهز 🟢 **آمنٌ على قاعدة العمل**
-
-```powershell
-powershell -File backend\e2e\reports-e2e.ps1 -AdminPwd <كلمة المرور> -EmployeeUser emp_leg -EmployeePwd Emp@12345new
-```
-
-**55 تحقّقاً** (ADR-031): المالي (انحدار) · **النشاط**: الترجمة العربية تصل · **القصّ لا يمسّ
-الإجمالي ولا التجميع** · الفلترة بالفعل وبالتاريخ وبالمستخدم · **وسطر الدخول يحمل فاعلاً
-ويظهر حين يُفلتَر به** · المفردات ≥41 فعلاً وفيها فعلٌ لم يقع قطّ · **الصادر التفصيلي**:
-الإجمالي **يُحسب من السطور ويُطابَق** (حارس ADR-029 مباشر) · **الأرشيف التفصيلي**: عدده
-**= عدد عدسة الشاشة** · 🔐 **الحدّ المزدوج** بالدور وبالقسم.
-
-- 🟢 **يقرأ ولا يكتب** — لا يُنشئ بيانات ولا يحذف (عدا تسجيل الدخول الذي يُسجَّل بطبيعته).
-- ⚠️ **مرّر موظف اختبار** وإلا تُخطّيت حرّاس الصلاحية كلها — وهي أهمّ ما فيه.
-
-## 8) دورة الصادر — سكربت مضمّن
-
-يغطّي: تسجيل دخول → إنشاء شركة (برمز فريد عشوائي) → جهة → قالب → سعر صرف → مسودّة صادر → اعتماد (رقم+PDF+QR) → تنزيل PDF → تعديل بعد الاعتماد → سجل إصدارات → تحقق QR → كشف تزوير → سجل تدقيق.
-
-```powershell
-$ErrorActionPreference='Stop'
-$base="http://localhost:5080/api"; $prefix="D$(Get-Random -Minimum 100 -Maximum 999)"
-function Call($m,$u,$t,$b,$c){ $h=@{}; if($t){$h["Authorization"]="Bearer $t"}; if($c){$h["X-Company-Id"]="$c"}
-  $a=@{Method=$m;Uri="$base$u";Headers=$h}; if($b -ne $null){$a["Body"]=($b|ConvertTo-Json -Depth 6);$a["ContentType"]="application/json; charset=utf-8"}; Invoke-RestMethod @a }
-$tok=(Call POST "/auth/login" $null @{username="admin";password="Admin@12345"} $null).accessToken
-$cid=(Call POST "/companies" $tok @{name="أرض العرين";prefix=$prefix;isActive=$true} $null).companyId
-$eid=(Call POST "/entities" $tok @{name="وزارة الإعمار";kind="Both"} $cid).entityId
-$tid=(Call POST "/templates" $tok @{name="القالب";watermarkOpacity=8;marginTop=24;marginRight=40;marginBottom=24;marginLeft=40;pageSize="A4";fontFamily="Amiri";isActive=$true} $cid).templateId
-Call POST "/exchange-rates" $tok @{currency="USD";rate=1310;effectiveDate="2026-06-28"} $cid | Out-Null
-$oid=(Call POST "/outgoing" $tok @{entityId=$eid;templateId=$tid;date="2026-06-28";subject="اختبار";bodyHtml="نص";amount=25000;currency="USD";exchangeRate=1310} $cid).outgoingId
-$ap=Call POST "/outgoing/$oid/approve" $tok $null $cid; "APPROVED number=$($ap.number) hasPdf=$($ap.hasPdf)"
-$d=Call GET "/outgoing/$oid" $tok $null $cid
-Call PUT "/outgoing/$oid/edit-approved" $tok @{entityId=$eid;templateId=$tid;date="2026-06-28";subject="معدّل";bodyHtml="نص2";amount=30000;currency="USD";exchangeRate=1310;rowVersion=$d.rowVersion;changeNote="تعديل"} $cid | Out-Null
-$d2=Call GET "/outgoing/$oid" $tok $null $cid
-$v=Call POST "/verify" $null @{qrContent=$d2.qrContent} $null; "VERIFY isValid=$($v.isValid) foundInDb=$($v.foundInDb)"
-"DONE"
-```
-
-النتيجة المتوقّعة: رقم بالصيغة `Dxxx-2026-00001`، `hasPdf=True`، `isValid=True`, `foundInDb=True`.
+- **الـAPI لا يعمل من داخل worktree**: `appsettings.Development.json` مستبعَد من git. شغّل من `D:\DMS`.
+- **إيقاف الخادم بعد الانتهاء**:
+  `Get-NetTCPConnection -LocalPort 5091 -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`
+- قواعد التجريب القديمة (`DmsReviewScratch` · `DmsJobsScratch*` · `DmsTaskScratch` · `DmsCaseScratch` ·
+  `DmsCompScratch` …) بيانات اختبار فقط — تُحذف متى شئت، **ولا يُعاد استعمالها حكَماً**.
