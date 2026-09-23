@@ -306,11 +306,62 @@ public sealed class CompaniesController(
             .Where(a => a.OwnerType == OwnerType.Outgoing && bookIds.Contains(a.OwnerId))
             .Select(a => a.BlobKey).ToListAsync(ct));
 
+        // 🔴 **وما بقي محذوفاً ناعماً من الوحدات الأخرى يُمحى معها** (مراجعة 2026-09-23).
+        //    الحارس لا يعدّ المحذوف ناعماً فيسمح بالحذف — وكان الحذف لا يمسّه:
+        //    · **مهمةٌ محذوفة ناعماً تُفشل الحذف كلَّه بـ500** — لها مفتاحٌ أجنبيّ نحو الشركة
+        //      (`FK_DmsTasks_Companies_CompanyId`)، **بعد** أخذ نسخةٍ كاملة.
+        //    · والأرشيف المحذوف والأقسام وكشوف الرواتب وإعدادات الوحدة **تبقى يتيمةً** تشير
+        //      إلى شركةٍ لا وجود لها — وملفاتُ مرفقاتها على القرص بلا مالك.
+        //    ⚠️ **وما لا يُمسّ عمداً**: سجلّ التدقيق (شاهدٌ لا يُمحى) · والموظف نفسه (كيانٌ عابرٌ
+        //    للشركات، يُحذف إسنادُه لهذه الشركة وحده) · ومستمسكاتُه (تخصّه لا الشركة).
+        var incomingIds = await db.IncomingBooks.IgnoreQueryFilters().Where(b => b.CompanyId == id)
+            .Select(b => b.IncomingId).ToListAsync(ct);
+        var archiveIds = await db.ArchiveDocs.IgnoreQueryFilters().Where(a => a.CompanyId == id)
+            .Select(a => a.ArchiveId).ToListAsync(ct);
+        var taskIds = await db.DmsTasks.IgnoreQueryFilters().Where(t => t.CompanyId == id)
+            .Select(t => t.TaskId).ToListAsync(ct);
+        var entryIds = await db.PayrollEntries.IgnoreQueryFilters().Where(e => e.CompanyId == id)
+            .Select(e => e.EntryId).ToListAsync(ct);
+        var periodIds = await db.PayrollPeriods.IgnoreQueryFilters().Where(p => p.CompanyId == id)
+            .Select(p => p.PeriodId).ToListAsync(ct);
+
+        IQueryable<Attachment> OwnedAttachments() => db.Attachments.Where(a =>
+            (a.OwnerType == OwnerType.Incoming && incomingIds.Contains(a.OwnerId)) ||
+            (a.OwnerType == OwnerType.Archive && archiveIds.Contains(a.OwnerId)) ||
+            (a.OwnerType == OwnerType.Task && taskIds.Contains(a.OwnerId)) ||
+            (a.OwnerType == OwnerType.PayrollEntry && entryIds.Contains(a.OwnerId)));
+        blobKeys.AddRange(await OwnedAttachments().Select(a => a.BlobKey).ToListAsync(ct));
+
         // العملية كوحدة قابلة لإعادة المحاولة (ADR-008 — EnableRetryOnFailure مُفعّل).
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            // ── أوّلاً ما يمنع حذف الشركة أو ما يعتمد على ما سيُحذف بعده ──
+            // ⚠️ `ExecuteDelete` يُنفَّذ فوراً **داخل المعاملة** — فإن فشل ما بعده تراجع كلُّه.
+            await OwnedAttachments().ExecuteDeleteAsync(ct);
+            await db.DocumentVersions
+                .Where(v => v.DocType == OwnerType.PayrollPeriod && periodIds.Contains(v.DocId))
+                .ExecuteDeleteAsync(ct);
+
+            // المهام: يُفكّ رابط «الأمّ المتكرّرة» أولاً (مفتاحٌ ذاتيّ بلا تعاقب)، ثم تُحذف
+            // فتتعاقب سجلّاتُها ومشاركوها في القاعدة.
+            await db.DmsTasks.IgnoreQueryFilters()
+                .Where(t => t.CompanyId == id && t.ParentRecurringTaskId != null)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.ParentRecurringTaskId, (int?)null), ct);
+            await db.DmsTasks.IgnoreQueryFilters().Where(t => t.CompanyId == id).ExecuteDeleteAsync(ct);
+
+            await db.ArchiveDocs.IgnoreQueryFilters().Where(a => a.CompanyId == id).ExecuteDeleteAsync(ct);
+
+            // الرواتب: الكشوف (وسطورها بالتعاقب) قبل الإسنادات لأن السطر يمنع حذف إسناده.
+            await db.EmployeeLeaveSettlements.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            await db.PayrollPeriods.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            await db.PayrollEntries.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            await db.EmployeeLeaves.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            await db.EmployeeLogs.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            await db.EmployeeCompanies.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            await db.HrSettings.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
 
             db.Attachments.RemoveRange(db.Attachments.Where(a => a.OwnerType == OwnerType.Outgoing && bookIds.Contains(a.OwnerId)));
             db.DocumentVersions.RemoveRange(db.DocumentVersions.Where(v => v.DocType == OwnerType.Outgoing && bookIds.Contains(v.DocId)));
@@ -339,6 +390,11 @@ public sealed class CompaniesController(
             audit.Add("Delete", nameof(Company), id.ToString(),
                 $"حذف الشركة «{c.Name}» بعد تعطيلها — مُحي {contents.WillBeErased} سجلّاً", null);
             await db.SaveChangesAsync(ct);
+
+            // الأقسام **بعد** الوارد والإسنادات: الإحالة تمنع حذف قسمها، والوارد (وإحالاتُه
+            // بالتعاقب) حُذف في الحفظ أعلاه.
+            await db.Departments.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+
             await tx.CommitAsync(ct);
         });
 

@@ -36,6 +36,7 @@ public sealed class AttachmentService(
     {
         RequireNotReader();
         await EnsureOwnerAccessibleAsync(ownerType, ownerId, ct);
+        EnsureCanWrite(ownerType);
 
         if (content.Length == 0) throw new ValidationException("الملف فارغ.");
         if (content.Length > MaxBytes) throw new ValidationException("حجم الملف يتجاوز الحد المسموح (50 ميغابايت).");
@@ -84,6 +85,7 @@ public sealed class AttachmentService(
         var att = await db.Attachments.FirstOrDefaultAsync(a => a.AttachmentId == attachmentId, ct)
                   ?? throw new NotFoundException("المرفق غير موجود.");
         await EnsureOwnerAccessibleAsync(att.OwnerType, att.OwnerId, ct);
+        EnsureCanWrite(att.OwnerType);
 
         db.Attachments.Remove(att);
         audit.Add("DeleteAttachment", att.OwnerType.ToString(), att.OwnerId.ToString(), att.FileName, current.ActiveCompanyId);
@@ -208,6 +210,26 @@ public sealed class AttachmentService(
 
         if (current.Role is UserRole.Employee or UserRole.Reader && creator != current.UserId)
             throw new ForbiddenException("لا تملك صلاحية الوصول لمرفقات عنصر غيرك.");
+    }
+
+    /// <summary>
+    /// **الرؤية ليست الكتابة** — للمستمسكات والإيصالات علَمُ كتابةٍ مستقلّ عن القسم (ADR-025).
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **عيبٌ كشفته مراجعة 2026-09-23 وأُثبت بالتشغيل**: كانت الكتابة تمرّ بحارس الرؤية
+    /// وحده، فمَن يملك قسم الموظفين **للاطّلاع** يرفع مستمسكات الهوية ويحذفها، ومَن يملك قسم
+    /// الرواتب للاطّلاع يحذف **إيصالاً موقَّعاً** — وهو شاهدٌ ماليّ. بل كان الإيصال **يُحفظ
+    /// ثم يُرفض** لأن نقطة الرفع لا تفحص الكتابة إلا في خطوتها الثانية.
+    /// ⚠️ **والواجهة تُخفي هذه الأزرار أصلاً** عمّن لا يملك العلَم — فهذا مرآتُها في الخادم،
+    /// ولا يتغيّر شيءٌ لمن يعمل بالشاشات.
+    /// ⚠️ **ولا يمسّ الأنواع الأخرى**: الوارد والمهام قاعدتُهما «مَن يعالج يُرفق» عمداً.
+    /// </remarks>
+    private void EnsureCanWrite(OwnerType type)
+    {
+        if (type == OwnerType.Employee && !current.CanManageEmployees)
+            throw new ForbiddenException("إضافة المستمسكات وحذفها لمن يملك صلاحية إدارة الموظفين.");
+        if (type == OwnerType.PayrollEntry && !current.CanManagePayroll)
+            throw new ForbiddenException("إضافة إيصالات الرواتب وحذفها لمن يملك صلاحية إدارة الرواتب.");
     }
 
     private void RequireNotReader()

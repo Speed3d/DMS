@@ -97,13 +97,38 @@ public sealed class UserService(
         // (null = «لا تغيير» — يمنع مسح الإسنادات بالخطأ عند تعديل حقول أخرى).
         if (input.Companies is not null)
         {
-            var links = await ResolveLinksAsync(input.Companies, input.Role, ct);
-            if (input.Role != UserRole.SuperAdmin && links.Count == 0)
+            // 🔴 **لا يمسّ المعدِّلُ إلا ما يملكه** (مراجعة 2026-09-23). الواجهة ترسل قائمة
+            //    شركات المستخدم **كاملةً** دائماً، فكان الخادم:
+            //    · يُسقط إسناداته في شركاتٍ **لا يملكها المعدِّل** (المدير يملك شركته الفعّالة
+            //      وحدها، والرئيس شركاتِه) — فيخرج المستخدم من شركةٍ ثانية بتعديل اسمه.
+            //    · ويعيد أقسامه إلى الافتراض (127) لأن المدير «لا يحدّد الأقسام» — فيكسب
+            //      الصادرَ والتقارير مَن كان مقصوراً على الوارد، ويخسر المهام والرواتب.
+            //    والعلاج: خارجَ نطاق المعدِّل يبقى كما هو، وداخلَه ما لا يتحكّم فيه يبقى كما هو.
+            var existing = user.AssignedCompanies.ToList();
+            var scope = EditableCompanies();
+            bool InScope(int cid) => scope is null || scope.Contains(cid);
+
+            var links = await ResolveLinksAsync(
+                input.Companies.Where(c => InScope(c.CompanyId)).ToList(), input.Role, ct,
+                existing, fallbackToActive: false);
+
+            // ما خارج النطاق يبقى — لكن **قاعدة الدور تسري عليه**: مَن صار قارئاً يُجرَّد
+            // من الأقسام الحسّاسة في كل شركاته لا في شركة المعدِّل وحدها.
+            var kept = existing.Where(l => !InScope(l.CompanyId)).ToList();
+            foreach (var k in kept) NormalizeForRole(k, input.Role);
+
+            if (input.Role != UserRole.SuperAdmin && links.Count + kept.Count == 0)
                 throw new ValidationException("يجب إسناد المستخدم لشركة واحدة على الأقل.");
 
-            user.CompanyId = links.Count > 0 ? links[0].CompanyId : null;
-            user.AssignedCompanies.Clear();
+            foreach (var old in existing.Where(l => InScope(l.CompanyId)))
+                user.AssignedCompanies.Remove(old);
             foreach (var link in links) user.AssignedCompanies.Add(link);
+
+            // الشركة الرئيسية تبقى ما دامت مُسندة، وإلا فأوّلُ إسنادٍ باقٍ.
+            var finalIds = kept.Select(l => l.CompanyId).Concat(links.Select(l => l.CompanyId)).ToList();
+            if (user.CompanyId is not { } primary || !finalIds.Contains(primary))
+                user.CompanyId = links.Count > 0 ? links[0].CompanyId
+                               : kept.Count > 0 ? kept[0].CompanyId : null;
         }
 
         audit.Add("Update", nameof(User), id.ToString(), null, user.CompanyId);
@@ -144,14 +169,23 @@ public sealed class UserService(
     /// Hint: كان القسم يُتحقَّق منه مقابل الشركة **الرئيسية** وحدها، فكان قسمٌ من شركة ثانية
     /// يُرفَض دائماً. الآن يُتحقَّق من كل قسم مقابل **شركة صفّه**.
     /// </remarks>
+    /// <param name="existing">
+    /// إسنادات المستخدم الحالية عند التعديل — ما لا يتحكّم فيه المعدِّل يُؤخذ منها لا من
+    /// الافتراض (مراجعة 2026-09-23). <c>null</c> عند الإنشاء.
+    /// </param>
+    /// <param name="fallbackToActive">
+    /// إن لم يطلب الرئيس شركةً من شركاته أُسند لشركته الفعّالة — **عند الإنشاء وحده**؛
+    /// عند التعديل يعني ذلك أنه أزال إسنادات شركاته، فلا يُعاد فرضها عليه.
+    /// </param>
     private async Task<List<UserCompany>> ResolveLinksAsync(
-        List<UserCompanyInput>? requested, UserRole role, CancellationToken ct)
+        List<UserCompanyInput>? requested, UserRole role, CancellationToken ct,
+        IReadOnlyCollection<UserCompany>? existing = null, bool fallbackToActive = true)
     {
         var byCompany = (requested ?? new List<UserCompanyInput>())
             .GroupBy(c => c.CompanyId)
             .ToDictionary(g => g.Key, g => g.Last());
 
-        var companyIds = ResolveCompanies(byCompany.Keys.ToList(), role);
+        var companyIds = ResolveCompanies(byCompany.Keys.ToList(), role, fallbackToActive);
         if (companyIds.Count == 0) return new List<UserCompany>();
 
         // المدير فأعلى يعتمد ويدير الوارد بحكم دوره في كل شركاته.
@@ -175,6 +209,15 @@ public sealed class UserService(
         foreach (var cid in companyIds)
         {
             byCompany.TryGetValue(cid, out var wish);
+            var prior = existing?.FirstOrDefault(l => l.CompanyId == cid);
+
+            // ما لم يُطلب لهذه الشركة يبقى كما هو (المدير لا يتحكّم بالإسناد نفسه).
+            if (wish is null && prior is not null) wish = FromLink(prior);
+
+            // 🔐 **الأقسام والأعلام الحسّاسة ملكُ المانح وحده** (سوبر أدمن/رئيس): الواجهة
+            //    تُخفيها عن المدير وترسل قيمها القائمة، فالخادم يأخذها **من القائمة لا من
+            //    الطلب** — وإلا صار طلبٌ مباشرٌ من مديرٍ بابَ منحٍ لما لا يملك منحه.
+            var sensitive = !CanManageCompanies && prior is not null ? FromLink(prior) : wish;
 
             int? deptId = wish?.DepartmentId;
             if (deptId is not null)
@@ -186,7 +229,7 @@ public sealed class UserService(
             links.Add(new UserCompany
             {
                 CompanyId = cid,
-                Modules = ResolveModules(wish?.Modules, role),
+                Modules = ResolveModules(wish?.Modules, role, prior?.Modules),
                 DepartmentId = deptId,
                 CanApprove = byRole || (wish?.CanApprove ?? false),
                 CanManageIncoming = byRole || (wish?.CanManageIncoming ?? false),
@@ -205,21 +248,21 @@ public sealed class UserService(
                 //    ⚠️ **غيرُ مستغَلٍّ اليوم** — حدُّ الدور في `[RequireGrantedModule]` يحجبه —
                 //    لكنه لغمٌ: أيُّ فحصٍ قادمٍ يسأل عن العلَم وحده يمنح القارئَ إدارةً.
                 //    **علَمٌ جُرِّد قسمُه لا يبقى.**
-                CanManageEmployees = grantable && (wish?.CanManageEmployees ?? false),
-                CanManagePayroll = grantable && (wish?.CanManagePayroll ?? false),
+                CanManageEmployees = grantable && (sensitive?.CanManageEmployees ?? false),
+                CanManagePayroll = grantable && (sensitive?.CanManagePayroll ?? false),
                 // ⚠️ **بلا `byRole`**: الإعفاء يقع في `HttpCurrentUser` بالدور، وإدراجه هنا
                 //    كان يُخزّن `true` لكل مدير فيبدو في الشاشة ممنوحاً وهو ليس كذلك.
-                CanAmendPaidPayroll = grantable && (wish?.CanAmendPaidPayroll ?? false),
+                CanAmendPaidPayroll = grantable && (sensitive?.CanAmendPaidPayroll ?? false),
                 // ⚠️ **بلا `byRole` كأخواتها الثلاث أعلاه**: القسم يفتح مهامّه ومهامّ قسمه،
                 //    وهذا العلَم يفتح **الإسناد لغيره**. وكونُه مديراً لا يعني أنه مَن يوزّع
                 //    المهام — قد يكون مديرَ قسمٍ يستلم لا يوزّع (ADR-037).
-                CanManageTasks = grantable && (wish?.CanManageTasks ?? false),
+                CanManageTasks = grantable && (sensitive?.CanManageTasks ?? false),
             });
         }
         return links;
     }
 
-    private List<int> ResolveCompanies(List<int>? requested, UserRole role)
+    private List<int> ResolveCompanies(List<int>? requested, UserRole role, bool fallbackToActive = true)
     {
         var reqList = (requested ?? new List<int>()).Distinct().ToList();
         if (current.IsSuperAdmin)
@@ -232,7 +275,7 @@ public sealed class UserService(
             // رئيس الشركة: يربط ضمن شركاته المسموحة فقط؛ إن لم يحدّد صحيحاً فشركته النشطة افتراضياً.
             var allowed = current.AllowedCompanyIds;
             var scoped = reqList.Where(id => allowed.Contains(id)).ToList();
-            if (scoped.Any()) return scoped;
+            if (scoped.Any() || !fallbackToActive) return scoped;
             var cid = current.ActiveCompanyId ?? throw new ValidationException("تعذّر تحديد الشركة.");
             return new List<int> { cid };
         }
@@ -254,13 +297,15 @@ public sealed class UserService(
     /// للمدير فأعلى، وحارسٌ في الواجهة وحدها يُلتَفّ عليه بطلب HTTP مباشر.</item>
     /// </list>
     /// </remarks>
-    private AppModule ResolveModules(List<string>? requested, UserRole targetRole)
+    private AppModule ResolveModules(List<string>? requested, UserRole targetRole, AppModule? prior = null)
     {
         if (targetRole is UserRole.SuperAdmin or UserRole.President) return AppModule.AllWithHr;
 
+        // 🔴 **المدير لا يحدّد الأقسام — فعند التعديل تبقى كما هي** (مراجعة 2026-09-23).
+        //    كان يعود إلى `All` في كل تعديل، فتُمحى قيود المانح بتعديل اسمٍ أو قسم.
         var modules = CanManageCompanies && requested is not null
             ? AppModuleExtensions.FromNames(requested)
-            : AppModule.All; // توافق خلفي: المدير لا يقيّد الأقسام (وAll لا تشمل HR)
+            : prior ?? AppModule.All; // عند الإنشاء: توافق خلفي — المدير لا يقيّد (وAll لا تشمل HR)
 
         // ⚠️ **يُجرَّد القارئ وحده** (ADR-025 — كان «مَن دون المدير» في ADR-023).
         //    حارسٌ في الواجهة وحدها يُلتَفّ عليه بطلب HTTP مباشر، فالتجريد يقع هنا.
@@ -269,5 +314,46 @@ public sealed class UserService(
         if (!RoleHierarchy.IsEmployeeOrAbove(targetRole))
             modules &= ~(AppModule.Employees | AppModule.Payroll | AppModule.Tasks);
         return modules;
+    }
+
+    /// <summary>
+    /// الشركات التي يملك المعدِّلُ تعديلَ إسنادها — <c>null</c> = كلُّها (السوبر أدمن).
+    /// </summary>
+    /// <remarks>مرآةٌ لـ<see cref="ResolveCompanies"/>: الرئيس شركاتُه · وغيره شركتُه الفعّالة.</remarks>
+    private HashSet<int>? EditableCompanies()
+    {
+        if (current.IsSuperAdmin) return null;
+        if (current.Role == UserRole.President) return current.AllowedCompanyIds.ToHashSet();
+        return current.ActiveCompanyId is { } cid ? [cid] : [];
+    }
+
+    private static UserCompanyInput FromLink(UserCompany l) => new(
+        l.CompanyId, l.Modules.ToNames(), l.DepartmentId, l.CanApprove, l.CanManageIncoming,
+        l.CanViewAllIncoming, l.CanManageEmployees, l.CanManagePayroll,
+        l.CanAmendPaidPayroll, l.CanManageTasks);
+
+    /// <summary>
+    /// يطبّق قواعد الدور على إسنادٍ **لم يُعَد بناؤه** (خارج نطاق المعدِّل) — نفسَ ما يطبّقه
+    /// <see cref="ResolveLinksAsync"/> على ما يبنيه، فلا يختلف الإسنادان باختلاف مَن عدّل.
+    /// </summary>
+    private static void NormalizeForRole(UserCompany l, UserRole role)
+    {
+        if (role is UserRole.SuperAdmin or UserRole.President) l.Modules = AppModule.AllWithHr;
+
+        if (RoleHierarchy.IsManagerOrAbove(role))
+        {
+            l.CanApprove = true;
+            l.CanManageIncoming = true;
+            l.CanViewAllIncoming = true;
+        }
+
+        if (!RoleHierarchy.IsEmployeeOrAbove(role))
+        {
+            l.Modules &= ~(AppModule.Employees | AppModule.Payroll | AppModule.Tasks);
+            l.CanManageEmployees = false;
+            l.CanManagePayroll = false;
+            l.CanAmendPaidPayroll = false;
+            l.CanManageTasks = false;
+        }
     }
 }
