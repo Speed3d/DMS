@@ -6,6 +6,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../core/upload_batches.dart';
 
 /// **استيراد دفعة من الأرشيف الورقي** — ملفات متعدّدة ببيانات وصفية مشتركة.
 ///
@@ -36,6 +37,9 @@ class _State extends ConsumerState<ArchiveBulkImportScreen> {
   bool _busy = false;
   String? _error;
   BulkImportResult? _result;
+
+  /// «الدفعة 2 من 5» أثناء الرفع — الملفات تُرسَل على دفعاتٍ تحت حدّ Cloudflare.
+  String? _progress;
   late Future<_Refs> _refs;
 
   @override
@@ -81,25 +85,44 @@ class _State extends ConsumerState<ArchiveBulkImportScreen> {
     if (_picked.length > _maxPerBatch) return;
 
     setState(() { _busy = true; _error = null; _result = null; });
-    try {
-      final files = _picked
-          .where((f) => f.bytes != null)
-          .map((f) => (name: f.name, bytes: f.bytes!))
-          .toList();
 
-      final r = await ref.read(apiClientProvider).archiveBulkImport(
-            files: files,
-            year: _year, month: _month,
-            departmentId: _departmentId, fromEntityId: _entityId,
-            documentTypeId: _documentTypeId,
-            keywords: _keywords.text.trim(),
-          );
-      if (!mounted) return;
-      setState(() { _result = r; _picked.clear(); });
+    // 🔴 **على دفعاتٍ تحت حدّ Cloudflare** (100 ميغابايت للطلب): كانت الدفعة كلّها (حتى
+    //    600 ميغابايت) تُرسَل في طلبٍ واحد — تعمل على جهاز التطوير **ويرفضها النفق بـ413**.
+    //    والتقرير يُدمج فيبقى واحداً كما يراه المالك.
+    final withBytes = _picked.where((f) => f.bytes != null).toList();
+    final batches = splitIntoBatches(withBytes, (f) => f.bytes!.length);
+    final parts = <BulkImportResult>[];
+    try {
+      for (var i = 0; i < batches.length; i++) {
+        if (batches.length > 1) setState(() => _progress = 'الدفعة ${i + 1} من ${batches.length}');
+        final r = await ref.read(apiClientProvider).archiveBulkImport(
+              files: [for (final f in batches[i]) (name: f.name, bytes: f.bytes!)],
+              year: _year, month: _month,
+              departmentId: _departmentId, fromEntityId: _entityId,
+              documentTypeId: _documentTypeId,
+              keywords: _keywords.text.trim(),
+            );
+        parts.add(r);
+        // ⚠️ **ما أُرسل يخرج من القائمة فوراً** — فإن توقّف الاستيراد في دفعةٍ لاحقة بقي
+        //    الباقي وحده، و«استيراد» ثانيةً يُكمله **بلا تكرار** ما استُورد.
+        if (mounted) setState(() => _picked.removeWhere(batches[i].contains));
+      }
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) {
+        setState(() => _error = parts.isEmpty
+            ? e.message
+            : 'توقّف الاستيراد بعد ${parts.length} من ${batches.length} دفعات: ${e.message}\n'
+              'ما قبلها استُورد (التقرير أدناه)، والملفات الباقية (${_picked.length}) ما زالت في القائمة — '
+              'اضغط «استيراد» لإكمالها.');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          if (parts.isNotEmpty) _result = mergeBulkResults(parts);
+          _busy = false;
+          _progress = null;
+        });
+      }
     }
   }
 
@@ -144,7 +167,9 @@ class _State extends ConsumerState<ArchiveBulkImportScreen> {
                       icon: _busy
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.cloud_upload_rounded),
-                      label: Text(_busy ? 'جارٍ الاستيراد…' : 'استيراد ${_picked.length} ملفاً'),
+                      label: Text(_busy
+                          ? 'جارٍ الاستيراد…${_progress == null ? '' : ' ($_progress)'}'
+                          : 'استيراد ${_picked.length} ملفاً'),
                     ),
                   ),
                   if (_result != null) ...[
