@@ -220,7 +220,12 @@ dueFrom, dueTo, isOverdue, mineOnly, search`.
   (مَن لا يملك قسم «الوارد» لا تظهر له صفوف الوارد المؤرشف في الاثنين معاً).
 
 ## حالة النظام — `/api/system`
-| GET | `/status` | **عام** | `{maintenance, reason, since}` — يبقى مجيباً أثناء الصيانة (استعادة نسخة). العميل يستعلم به ليعرف متى عاد النظام |
+| GET | `/status` | **عام** | `{maintenance, reason, since, lockdown: {active, message, since, byName}, announcement}` — يبقى مجيباً في الصيانة والإيقاف. الواجهة تستطلعه **كل 30 ثانية** (ADR-050). 🔐 **`announcement` للمصادَق وحده** (`null` لغيره) · **و`byName` للسوبر أدمن وحده** — ورسالة الإيقاف عامّةٌ عمداً (تظهر على شاشة الدخول) |
+| GET | `/control` | SuperAdmin | لوحة التحكّم: `{lockdown, announcement, savedLockdownTexts[], savedAnnouncementTexts[]}` |
+| PUT | `/lockdown` | SuperAdmin | `{active, message}` — **يوقف النظام عن كل المستخدمين عدا السوبر أدمن** أو يشغّله. الرسالة **مطلوبة** عند الإيقاف (≤ 500). **لا يعود النظام وحده أبداً.** تدقيق: `SystemLockdownOn/Off` |
+| PUT | `/announcement` | SuperAdmin | `{visible, text, kind: Info\|Warning}` — شريط الإعلان. النصّ **مطلوب** عند الإظهار، **ويبقى محفوظاً عند الإخفاء**. تدقيق: `AnnouncementShown/Hidden/Changed` |
+| POST | `/saved-texts` | SuperAdmin | `{kind: Lockdown\|Announcement, text}` — نصٌّ محفوظ (بلا تكرار، ≤ 30 لكل قائمة) |
+| DELETE | `/saved-texts?kind=&text=` | SuperAdmin | حذف نصٍّ محفوظ — **404** إن لم يوجد |
 | GET | `/jobs/{id}` | SuperAdmin | **حالة عمليةٍ خلفية** (ADR-049): `{id, kind, title, state: Running/Succeeded/Failed, stage, percent, message, result, startedAt, finishedAt}`. **404** = غير معروفة (أُعيد تشغيل الخادم). ⚠️ **تردّ 503 أثناء الصيانة** كغيرها — والواجهة تسأل `/status` حينها |
 | GET | `/jobs/current` | SuperAdmin | العملية الثقيلة الجارية الآن — أو **204** |
 
@@ -228,6 +233,13 @@ dueFrom, dueTo, isOverdue, mineOnly, search`.
 > `POST /backup/run` · `POST /backup/mirror` · `POST /backup/mirror/restore` · `POST /backup/{id}/restore` ·
 > `DELETE /companies/{id}`. **والفحوص قبل البدء** (تأكيد · مسار · موانع الحذف) تعود 400/404/409 **فوراً**.
 > **وعمليةٌ ثقيلة واحدة في كل وقت** — الثانية 409 باسم الجارية.
+
+> ⏸️ **أثناء إيقاف النظام (ADR-050) يردّ كل طلبٍ لغير السوبر أدمن `503`** بجسم
+> `{error: <رسالة المالك>, maintenance: true, lockdown: true}` وترويسة `Retry-After: 30` (`LockdownMiddleware`).
+> **ويمرّ دائماً**: `/system/status` · `/auth/login` · `/auth/refresh` · `/auth/logout` · `/v/*` · `/api/verify`.
+> **والدخول**: كلمةٌ صحيحة لغير السوبر أدمن ⇒ 503 **بلا عدٍّ في محاولات القفل**، والخاطئة تُحسب كالمعتاد.
+> **والتجديد** ⇒ 503 **قبل التدوير** فتبقى الجلسة. **ورمزٌ منتهٍ يأخذ 401 لا 503** ليُجدَّد.
+> **ومن السيرفر**: `Dms.Api.exe maintenance on "…" | off | status [--file <مسار>]`.
 
 ## النسخ الاحتياطي — `/api/backup` (SuperAdmin فقط)
 | الطريقة | المسار | الوصف |
@@ -485,4 +497,4 @@ dueFrom, dueTo, isOverdue, mineOnly, search`.
 - **و`GET /api/outgoing/{id}` يُعيد `verifyUrl`** للمعتمد — يُنسَخ ويُرسَل لمن يريد التحقق.
 
 ## أكواد الأخطاء
-`400` خرق قاعدة عمل · `401` غير مصادَق · `403` صلاحية غير كافية · `404` غير موجود · `409` تعارض (تزامن/تكرار) · `500` غير متوقّع. الجسم: `{ "error": "..." }`.
+`400` خرق قاعدة عمل · `401` غير مصادَق · `403` صلاحية غير كافية · `404` غير موجود · `409` تعارض (تزامن/تكرار) · `500` غير متوقّع · `503` النظام متوقّف (استعادة أو إيقافٌ يدويّ — بعلامة `maintenance: true`، **انتظارٌ لا خطأ**). الجسم: `{ "error": "..." }`.

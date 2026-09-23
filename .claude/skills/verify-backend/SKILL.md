@@ -5,7 +5,7 @@ description: تشغيل اختبار التدفق الشامل (E2E) لباك-إ
 
 # اختبار E2E لباك-إند DMS
 
-**اثنا عشر سكربتاً في `backend/e2e/`** — آخرُ تشغيلٍ كامل **2026-09-23 على قاعدةٍ جديدة، صفر فشل في كلٍّ**.
+**ثلاثة عشر سكربتاً في `backend/e2e/`** — آخرُ تشغيلٍ كامل **2026-09-23 على قاعدةٍ جديدة، صفر فشل في كلٍّ**.
 النجاح في كلٍّ = `فشل: 0` ورمز خروج 0.
 
 ## 🔴 القواعد الثلاث قبل أيّ تشغيل
@@ -15,7 +15,7 @@ description: تشغيل اختبار التدفق الشامل (E2E) لباك-إ
    `DmsDb` غُيّرت. ⇒ **الخادم يُقلع على قاعدةٍ جديدة** تُبذر فيها `admin` / `Admin@12345`:
 
    ```bash
-   cd backend && ConnectionStrings__Default='Server=.;Database=DmsE2E_New;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=True' ASPNETCORE_URLS='http://localhost:5091' ASPNETCORE_ENVIRONMENT=Development dotnet run --project Dms.Api --no-launch-profile
+   cd backend && ConnectionStrings__Default='Server=.;Database=DmsE2E_New;Integrated Security=true;MultipleActiveResultSets=true;TrustServerCertificate=True' ASPNETCORE_URLS='http://localhost:5091' ASPNETCORE_ENVIRONMENT=Development SystemControl__StateFile="$TEMP/dms-e2e-state.json" dotnet run --project Dms.Api --no-launch-profile
    ```
    ⚠️ **`--no-launch-profile` إلزاميّ** — وإلا تجاهل `launchSettings.json` قيمةَ `ASPNETCORE_URLS` وربط 5080.
    وانتظر حتى يردّ `GET http://localhost:5091/api/system/status` قبل أوّل سكربت.
@@ -38,6 +38,7 @@ description: تشغيل اختبار التدفق الشامل (E2E) لباك-إ
 ```powershell
 $B='http://localhost:5091/api'; $P='Admin@12345'
 $DB='Server=.;Database=DmsE2E_New;Integrated Security=true;TrustServerCertificate=True'
+$STATE="$env:TEMP\dms-e2e-state.json"   # نفسُه في SystemControl__StateFile عند تشغيل الخادم
 .\e2e\review-fixes-e2e.ps1   -AdminPwd $P -Base $B -Db $DB     # -Db إلزاميّ: يعدّ الصفوف اليتيمة من القاعدة نفسها
 .\e2e\isolation-e2e.ps1      -AdminPwd $P -Base $B
 .\e2e\multi-company-e2e.ps1  -AdminPwd $P -Base $B
@@ -49,8 +50,14 @@ $DB='Server=.;Database=DmsE2E_New;Integrated Security=true;TrustServerCertificat
 .\e2e\tasks-e2e.ps1          -AdminPwd $P -Base $B
 .\e2e\case-files-e2e.ps1     -AdminPwd $P -Base $B
 .\e2e\verify-e2e.ps1         -AdminPwd $P -Base $B -Root 'http://localhost:5091'
+.\e2e\lockdown-e2e.ps1       -AdminPwd $P -Base $B -Db $DB -StateFile $STATE -ApiDll (Resolve-Path Dms.Api\bin\Debug\net9.0\Dms.Api.dll)
 .\e2e\backup-restore-e2e.ps1 -AdminPwd $P -BaseUrl $B          # تدميري: يستعيد القاعدة — أخيراً دائماً
 ```
+
+🔴 **`lockdown-e2e` يوقف النظام فعلاً** — فالخادم يُشغَّل **بملفّ حالةٍ منفصل**:
+`SystemControl__StateFile=<مسارٌ مؤقت>` (وهو `$STATE` أعلاه). **بدونه يُكتب الملفّ بجوار مجلد التخزين
+المشترك فيُوقَف خادمُ التطوير على `DmsDb` معه.** والسكربت يُطفئ الإيقاف في آخره (`finally`).
+و`-StateFile`/`-ApiDll` اختياريّان: بدونهما يُتخطّى اختبار أمر الطوارئ على السيرفر.
 
 ## ما يغطّيه كلٌّ — وآخر تشغيل
 
@@ -67,6 +74,7 @@ $DB='Server=.;Database=DmsE2E_New;Integrated Security=true;TrustServerCertificat
 | `tasks` | **164** | 2026-09-23 | وحدة المهام كاملةً + الخدمة الخلفية (لا تُعيد إشعاراً ولا تكاثر) |
 | `case-files` | **32** | 2026-09-23 | المعاملات والربط كثيرٌ إلى كثير (ADR-045) |
 | `verify` | **22** | 2026-09-23 | صفحة التحقق العامّة `/v/{token}` (ADR-043/044) |
+| `lockdown` | **59** | 2026-09-23 | **ADR-050**: السوبر أدمن وحده يتصفّح · الدخول 503 **بلا عدّ** والخاطئ يُحسب · التجديد بلا تدوير · `/v/*` يعمل · الشريط للمصادَق · **الاستعادة لا تُنهي الإيقاف** · أمر الطوارئ على السيرفر يسري والخادم يعمل (يقرأ القاعدة) |
 | `backup-restore` | **41** | 2026-09-23 | نسخ ← حذف ← **استعادة** ← الكتاب يعود · المرآة · **البدء يردّ 202 فوراً** · **التنزيل تدفّقٌ كامل بالبايت** · عمليةٌ مجهولة 404 (ADR-049) |
 
 ## ⚙️ العمليات الخلفية (ADR-049) — ما تغيّر في العقد
