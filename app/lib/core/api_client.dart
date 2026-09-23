@@ -2,6 +2,7 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../models.dart';
+import 'job_watcher.dart';
 
 class ApiException implements Exception {
   final int? status;
@@ -135,8 +136,17 @@ class ApiClient {
   /// حذف الشركة — **بتأكيدٍ بكتابة اسمها** (ADR-047).
   ///
   /// ⚠️ **الخادم يفرض التأكيد لا الواجهة** — فحوارٌ يُلتفّ عليه لا يحذف شيئاً.
-  Future<void> deleteCompany(int id, {required String confirm}) =>
-      _delete('/companies/$id', query: {'confirm': confirm});
+  ///
+  /// ⚙️ **يبدأ في الخلفية** — يأخذ نسخةً كاملة قبل الحذف، وهي أطول من مهلة أيّ طلب.
+  /// والموانع (لم تُعطَّل · فيها سجلّات · تأكيدٌ خاطئ) تعود 409 **فوراً** قبل أن يبدأ شيء.
+  Future<JobInfo> deleteCompany(int id, {required String confirm}) async {
+    try {
+      final res = await _dio.delete('/companies/$id', queryParameters: {'confirm': confirm});
+      return JobInfo.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
 
   Future<void> resetDb() async => _post('/system/reset-db', {});
 
@@ -691,26 +701,40 @@ class ApiClient {
   Future<List<BackupRecordModel>> backupList() async =>
       (await _get('/backup') as List).map((e) => BackupRecordModel.fromJson(e)).toList();
 
-  Future<BackupRecordModel> backupRun() async =>
-      BackupRecordModel.fromJson(await _post('/backup/run', null));
+  // ⚙️ **العمليات الطويلة تبدأ ولا تنتظر** (حدّ Cloudflare ~100 ثانية): كلٌّ منها يعود
+  //    **فوراً** بحالة عمليةٍ خلفية، والشاشة تتابعها بـ`watchJob`. ولهذا لم تعد هنا مهلٌ
+  //    بالساعات — كانت تنتظر ردّاً يقطعه Cloudflare قبلها بكثير.
 
-  /// استعادة نسخة احتياطية — عملية تدميرية.
-  /// Hint: الخادم يأخذ نسخة أمان تلقائياً ثم يدخل وضع صيانة، فتُرفض بقية الطلبات بـ 503 لثوانٍ.
-  ///       المهلة موسّعة لأن الاستعادة أبطأ من طلب عادي.
-  Future<void> backupRestore(int id) async {
-    try {
-      await _dio.post('/backup/$id/restore',
-          data: {'confirmation': kRestoreConfirmation},
-          options: Options(receiveTimeout: const Duration(minutes: 10)));
-    } on DioException catch (e) {
-      throw _map(e);
-    }
+  /// يبدأ نسخةً احتياطية **كاملة** في الخلفية.
+  Future<JobInfo> backupRun() async => JobInfo.fromJson(await _post('/backup/run', null));
+
+  /// يبدأ استعادة نسخةٍ في الخلفية — عملية تدميرية.
+  /// Hint: الخادم يأخذ نسخة أمان تلقائياً ثم يدخل وضع صيانة، فتُرفض بقية الطلبات بـ 503.
+  ///       **كلمة التأكيد تُفحص فوراً** — الخطأ فيها يعود 400 قبل أن يبدأ شيء.
+  Future<JobInfo> backupRestore(int id) async =>
+      JobInfo.fromJson(await _post('/backup/$id/restore', {'confirmation': kRestoreConfirmation}));
+
+  /// حالة عمليةٍ خلفية.
+  Future<JobInfo> job(String id) async => JobInfo.fromJson(await _get('/system/jobs/$id'));
+
+  /// العملية الجارية الآن (إن وُجدت) — لتستأنف الشاشة متابعتها بعد إعادة التحميل.
+  Future<JobInfo?> currentJob() async {
+    final data = await _get('/system/jobs/current');
+    return data is Map<String, dynamic> ? JobInfo.fromJson(data) : null;
+  }
+
+  /// هل الخادم في وضع الصيانة؟ — **نقطةٌ عامّة بلا رمز** عمداً (انظر `watchJob`).
+  Future<bool> isUnderMaintenance() async {
+    final data = await _get('/system/status');
+    return data is Map && data['maintenance'] == true;
   }
 
   Future<Uint8List> backupDownload(int id) async {
     try {
+      // ⚠️ **مهلةٌ واسعة للتنزيل**: الخادم يرسل الملف **تدفّقاً** الآن، فالزمن زمنُ حجمه
+      //    على سرعة الاتصال — ومهلة الـ30 ثانية الافتراضية تقطع نسخةً كبيرة في منتصفها.
       final res = await _dio.get<List<int>>('/backup/$id/download',
-          options: Options(responseType: ResponseType.bytes));
+          options: Options(responseType: ResponseType.bytes, receiveTimeout: const Duration(hours: 2)));
       return Uint8List.fromList(res.data ?? <int>[]);
     } on DioException catch (e) {
       throw _map(e);
@@ -721,31 +745,14 @@ class ApiClient {
   Future<BackupCoverage> backupCoverage() async =>
       BackupCoverage.fromJson(await _get('/backup/coverage') as Map<String, dynamic>);
 
-  /// **مرآة كاملة** إلى مسار على السيرفر (قرص خارجي عادةً) — تُضيف ولا تُكرّر.
-  ///
-  /// Hint: المهلة موسّعة — المرة الأولى قد تنسخ عشرات الغيغابايتات.
-  Future<MirrorResult> backupMirror(String targetPath) async {
-    try {
-      final res = await _dio.post('/backup/mirror',
-          data: {'targetPath': targetPath},
-          options: Options(receiveTimeout: const Duration(hours: 3)));
-      return MirrorResult.fromJson(res.data as Map<String, dynamic>);
-    } on DioException catch (e) {
-      throw _map(e);
-    }
-  }
+  /// يبدأ **مرآةً كاملة** إلى مسار على السيرفر (قرص خارجي عادةً) — تُضيف ولا تُكرّر.
+  /// والمسار يُفحص فوراً (مسارٌ مرفوض ⇒ 400 قبل أن يبدأ شيء).
+  Future<JobInfo> backupMirror(String targetPath) async =>
+      JobInfo.fromJson(await _post('/backup/mirror', {'targetPath': targetPath}));
 
-  /// استعادة من مرآة — تدميرية، بنفس كلمة تأكيد الاستعادة العادية.
-  Future<String> backupRestoreFromMirror(String sourcePath) async {
-    try {
-      final res = await _dio.post('/backup/mirror/restore',
-          data: {'sourcePath': sourcePath, 'confirmation': kRestoreConfirmation},
-          options: Options(receiveTimeout: const Duration(hours: 3)));
-      return (res.data as Map<String, dynamic>)['message']?.toString() ?? 'تمت الاستعادة.';
-    } on DioException catch (e) {
-      throw _map(e);
-    }
-  }
+  /// يبدأ الاستعادة من مرآة — تدميرية، بنفس كلمة تأكيد الاستعادة العادية.
+  Future<JobInfo> backupRestoreFromMirror(String sourcePath) async => JobInfo.fromJson(
+      await _post('/backup/mirror/restore', {'sourcePath': sourcePath, 'confirmation': kRestoreConfirmation}));
 
   // ---------- المستخدمون والتفويض ----------
   Future<List<UserModel>> users() async =>

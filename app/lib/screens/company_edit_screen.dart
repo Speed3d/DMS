@@ -5,6 +5,8 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../core/job_watcher.dart';
+import '../widgets/job_progress_card.dart';
 
 class CompanyEditScreen extends ConsumerStatefulWidget {
   final int companyId;
@@ -130,13 +132,24 @@ class _State extends ConsumerState<CompanyEditScreen> {
     setState(() => _busy = true);
     final navigator = Navigator.of(context);
     try {
-      await api.deleteCompany(widget.companyId, confirm: typed);
-      messenger.showSnackBar(SnackBar(
-          content: Text('حُذفت «${preview.name}» — وأُخذت نسخةٌ احتياطية قبل الحذف.')));
-      navigator.pop(); // إغلاق شاشة التعديل
+      // ⚙️ **يبدأ في الخلفية** — النسخة الكاملة قبل الحذف أطول من مهلة أيّ طلب. والموانع
+      //    تعود **فوراً** كما كانت (409) قبل أن يبدأ شيء؛ وبعد البدء يُتابَع في حوارٍ لا يُغلق.
+      final started = await api.deleteCompany(widget.companyId, confirm: typed);
+      if (!mounted) return;
+      final end = await showJobProgressDialog(
+          context, (onUpdate) => watchJob(api, started, onUpdate: onUpdate), started);
+      if (end.succeeded) {
+        messenger.showSnackBar(SnackBar(
+            content: Text(end.message ?? 'حُذفت «${preview.name}» — وأُخذت نسخةٌ احتياطية قبل الحذف.')));
+        navigator.pop(); // إغلاق شاشة التعديل
+      } else {
+        messenger.showSnackBar(SnackBar(
+            content: Text(end.message ?? 'تعذّر حذف الشركة.'), backgroundColor: Colors.red));
+        if (mounted) setState(() => _busy = false);
+      }
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
 import '../core/downloader.dart';
+import '../core/job_watcher.dart';
 import '../core/session.dart';
 import '../core/backup_providers.dart';
 import '../widgets/backup_alert.dart';
+import '../widgets/job_progress_card.dart';
 import '../core/theme.dart';
 import '../models.dart';
 
@@ -24,14 +26,68 @@ class _State extends ConsumerState<BackupScreen> {
   bool _loading = true, _busy = false;
   String? _error, _info;
 
+  /// العملية الطويلة الجارية (نسخ · مرآة · استعادة) — تُعرض بطاقةَ تقدّمٍ أعلى الشاشة.
+  JobInfo? _job;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) => _resumeRunning());
   }
 
-  Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+  // ─────────────────────────── العمليات الطويلة ───────────────────────────
+  //
+  // ⚙️ **تبدأ ولا تنتظر** (حدّ Cloudflare ~100 ثانية): الزرّ يبدأ العملية في الخادم ويعود
+  //    فوراً، وهذه الشاشة **تتابعها** حتى تنتهي. ومغادرةُ الشاشة أو إغلاقُ المتصفّح لا يوقفها.
+
+  /// إن كانت عمليةٌ جارية (بدأها المالك ثم غادر الشاشة) تُستأنف متابعتها.
+  Future<void> _resumeRunning() async {
+    try {
+      final running = await ref.read(apiClientProvider).currentJob();
+      if (running == null || !mounted) return;
+      setState(() { _busy = true; _error = null; _info = null; });
+      await _follow(running);
+    } on ApiException {
+      // لا شيء يُستأنف — الشاشة تعمل كالمعتاد.
+    } finally {
+      if (mounted) setState(() { _busy = false; _job = null; });
+    }
+  }
+
+  /// يبدأ عمليةً ثم يتابعها حتى تنتهي — **والرفض الفوريّ** (تأكيدٌ خاطئ · مسارٌ مرفوض ·
+  /// عمليةٌ أخرى جارية) **يعود رسالةً كما كان** قبل أن يبدأ شيء.
+  Future<void> _runJob(Future<JobInfo> Function() start) async {
+    setState(() { _busy = true; _error = null; _info = null; });
+    try {
+      await _follow(await start());
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() { _busy = false; _job = null; });
+    }
+  }
+
+  Future<void> _follow(JobInfo started) async {
+    if (mounted) setState(() => _job = started);
+    final end = await watchJob(ref.read(apiClientProvider), started,
+        onUpdate: (j) { if (mounted) setState(() => _job = j); });
+    if (!mounted) return;
+    setState(() {
+      if (end.succeeded) {
+        _info = end.message ?? 'اكتملت العملية.';
+      } else {
+        _error = end.message ?? 'فشلت العملية.';
+      }
+    });
+    // Hint: القائمة (وبعد الاستعادة القاعدةُ كلُّها) تغيّرت — تُعاد قراءتها.
+    await _load(keepMessages: true);
+  }
+
+  /// [keepMessages]: بعد انتهاء عمليةٍ طويلة تُعاد القراءة **مع إبقاء رسالتها** — مسحُها
+  /// يُخفي سبب الفشل (أو خبر النجاح) في اللحظة التي يحتاجه فيها المالك.
+  Future<void> _load({bool keepMessages = false}) async {
+    if (!mounted) return;
+    setState(() { _loading = true; if (!keepMessages) _error = null; });
     try {
       final api = ref.read(apiClientProvider);
       _schedule = await api.backupSchedule();
@@ -64,17 +120,8 @@ class _State extends ConsumerState<BackupScreen> {
     );
     if (path == null || path.trim().isEmpty) return;
 
-    setState(() { _busy = true; _error = null; _info = null; });
-    try {
-      final r = await ref.read(apiClientProvider).backupMirror(path.trim());
-      _info = 'المرآة اكتملت في ${r.targetPath} — نُسخ ${r.copied} ملفاً، وتُخطّي ${r.skipped} موجوداً سلفاً.'
-          '${r.databaseOk ? '' : ' ⚠️ لكن قاعدة البيانات لم تُنسخ: ${r.note ?? ''}'}';
-      await _load();
-    } on ApiException catch (e) {
-      _error = e.message;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    // رسالة النجاح (المنسوخ · المتخطّى · حال القاعدة) يكتبها الخادم.
+    await _runJob(() => ref.read(apiClientProvider).backupMirror(path.trim()));
   }
 
   /// استعادة من مرآة — تدميرية، بتأكيد مكتوب كالاستعادة العادية.
@@ -91,15 +138,7 @@ class _State extends ConsumerState<BackupScreen> {
     );
     if (path == null || path.trim().isEmpty) return;
 
-    setState(() { _busy = true; _error = null; _info = null; });
-    try {
-      _info = await ref.read(apiClientProvider).backupRestoreFromMirror(path.trim());
-      await _load();
-    } on ApiException catch (e) {
-      _error = e.message;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _runJob(() => ref.read(apiClientProvider).backupRestoreFromMirror(path.trim()));
   }
 
   /// حوار إدخال مسار — **شاشة كاملة لا `showDialog`** (حقول النصّ داخل الحوارات
@@ -126,20 +165,7 @@ class _State extends ConsumerState<BackupScreen> {
     }
   }
 
-  Future<void> _runNow() async {
-    setState(() { _busy = true; _error = null; _info = null; });
-    try {
-      final rec = await ref.read(apiClientProvider).backupRun();
-      _info = rec.status == 'Success'
-          ? 'تمت النسخة الاحتياطية (${_size(rec.sizeBytes)}).'
-          : 'انتهت بحالة: ${rec.status} — ${rec.note ?? ''}';
-      _list = await ref.read(apiClientProvider).backupList();
-    } on ApiException catch (e) {
-      _error = e.message;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  Future<void> _runNow() => _runJob(() => ref.read(apiClientProvider).backupRun());
 
   /// استعادة نسخة — عملية تدميرية، لذا التأكيد بكتابة الكلمة يدوياً لا بزرّ واحد.
   /// Hint: شاشة كاملة لا حوار (حقل نصّي داخل حوار يسبب خلل disposed EngineFlutterView على الويب).
@@ -148,17 +174,8 @@ class _State extends ConsumerState<BackupScreen> {
         MaterialPageRoute(builder: (_) => _RestoreConfirmPage(record: r, fmtSize: _size, fmtDate: _dt)));
     if (confirmed != true) return;
 
-    setState(() { _busy = true; _error = null; _info = null; });
-    try {
-      await ref.read(apiClientProvider).backupRestore(r.id);
-      _info = 'تمت الاستعادة بنجاح من ${r.fileName}. أُنشئت نسخة أمان تلقائية قبل الاستبدال.';
-      // Hint: القاعدة تغيّرت بالكامل — نعيد تحميل كل شيء بدل الاعتماد على بيانات قديمة في الذاكرة.
-      await _load();
-    } on ApiException catch (e) {
-      _error = e.message;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    // رسالة النجاح (ومعها فجوة المرفقات إن وُجدت) يكتبها الخادم.
+    await _runJob(() => ref.read(apiClientProvider).backupRestore(r.id));
   }
 
   /// حذف نسخة — الخادم يمنع حذف آخر نسخة ناجحة، فنعرض رسالته كما هي.
@@ -307,6 +324,12 @@ class _State extends ConsumerState<BackupScreen> {
             style: TextStyle(color: Colors.grey, fontSize: 12.5, height: 1.6),
           ),
           const SizedBox(height: 16),
+
+          // ⚙️ العملية الجارية أعلى الشاشة — **فوق كل شيء** لأنها ما ينتظره المالك الآن.
+          if (_job != null) ...[
+            JobProgressCard(job: _job!),
+            const SizedBox(height: 16),
+          ],
 
           ...(() {
             final c = ref.watch(backupCoverageProvider).asData?.value;
