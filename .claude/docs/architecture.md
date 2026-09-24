@@ -26,6 +26,11 @@
 4. الـ Controller يستدعي خدمة؛ الخدمة تطبّق قواعد العمل والصلاحيات.
 5. الأخطاء تُرمى كاستثناءات مجال → `ExceptionMiddleware` يحوّلها لأكواد HTTP + JSON.
 
+**ترتيب الأنابيب (الوسطاء):** `UseForwardedHeaders` (أوّلاً — ADR-044) ← `ExceptionMiddleware` ←
+`MaintenanceMiddleware` (الاستعادة — يحجب الجميع) ← CORS ← حدّ الطلبات ← `UseAuthentication` ← **`LockdownMiddleware`** (ADR-050 —
+بعد المصادقة ليعرف الطالب: السوبر أدمن وحده يمرّ) ← **`PasswordChangeMiddleware`** (ADR-052 — رمزٌ بعلامة `mcp`
+لا يمرّ إلا بالتغيير) ← `UseAuthorization` ← الـControllers.
+
 ## المصادقة
 - `AuthService.LoginAsync`: تحقق BCrypt + قفل بعد فشل + إصدار `TokenPair` (Access JWT + Refresh مجزّأ).
 - `RefreshAsync`: تدوير الرمز (إبطال القديم + إصدار جديد).
@@ -114,6 +119,27 @@
 - الواجهة تتابع بـ`watchJob` — **وأثناء الصيانة تسأل `/system/status` العامّة وحدها**.
 - **قاعدةٌ لما يأتي:** أيُّ عمليةٍ قد تتجاوز دقيقةً مع بياناتٍ حقيقية **تُبنى خلفيةً من أوّلها**،
   وأيُّ رفعٍ قد يتجاوز 40 ميغابايت **يُقسَّم** — وكلاهما لا يظهر على جهاز التطوير.
+
+## إيقاف النظام عن المستخدمين (ADR-050)
+- `ISystemControl` (singleton): الحالة في **ملفّ `system-control.json` بجوار مجلد التخزين** (`SystemControlPath`) —
+  تبقى بعد إعادة التشغيل ولا تمسحها الاستعادة؛ كتابةٌ ذرّية · **ملفٌّ تالف يفشل مغلقاً** · و`SystemControlWatcher`
+  يلتقط تغيير أمر `Dms.Api.exe maintenance on|off|status` والخدمة تعمل.
+- `LockdownMiddleware`: 503 بـ`{ maintenance, lockdown }` لغير السوبر أدمن، والمستثنى في `Dms.Domain/SystemAccess.cs`.
+  الدخول يُرفض **بعد** كلمة المرور بلا عدّ، والتجديد **قبل** التدوير. والخدمتان الخلفيتان تتخطّيان دورتهما.
+- **مستقلٌّ عن صيانة الاستعادة** (`IMaintenanceState` في الذاكرة) — فلا تُنهي الاستعادةُ الإيقافَ.
+- الواجهة: `systemStatusProvider` يستطلع كل 30 ثانية · `SystemShell` طبقةٌ **فوق** الشاشة لا بدلها + شريط الإعلان
+  + تذكيرٌ أحمر للسوبر أدمن · **فشلُ التجديد بانقطاعٍ أو 5xx انتظارٌ لا خروج** · وتحديث الصفحة عند تغيّر `APP_BUILD`.
+
+## حماية ما يُكتب ومنع التكرار (ADR-051)
+- الواجهة: `FormDraftStore` (Hive — مسوّدةٌ **بصاحبٍ وشركة**، والملفات في `LazyBox` ≤ 25 ميغابايت) +
+  `DraftAutosaver` (مقارنةٌ كل 3 ثوانٍ) في نماذج الصادر والوارد والمهام · «مسوّداتي» · تنبيهٌ ومراجعة لا إرسال صامت.
+- الخادم: ترويسة `Idempotency-Key` على `POST` الجهة والصادر والوارد والمهمة ⟵ `IdempotencyService` **يحجز أوّلاً**
+  بفهرسٍ فريد `(UserId, Key)` في `ClientRequest`، فالطلب المكرَّر يعيد الكيان نفسه. تنظيفٌ بعد 30 يوماً.
+
+## الكلمة المؤقتة (ADR-052)
+- `MustChangePassword` يصير علامة `mcp` في الرمز ⟵ `PasswordChangeMiddleware` + `Dms.Domain/PasswordChangeGate.cs`:
+  لا يمرّ إلا التغيير والخروج و`/auth/me` والتجديد وحالة النظام. التغيير يعيد `AuthResponse` جديداً **ويُلغي رموز
+  التجديد الأخرى**، وإعادةُ تعيين المدير كذلك.
 
 ## وضع الصيانة (أثناء استعادة نسخة — ADR-014)
 - `IMaintenanceState` + `MaintenanceMiddleware`: أثناء الاستعادة تُرفض كل الطلبات بـ **503**، عدا `GET /api/system/status` الذي يبقى مجيباً ليعرف العميل متى عاد النظام.
