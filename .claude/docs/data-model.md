@@ -200,6 +200,15 @@
 - ⚠️ **الحذف صلبٌ — استثناءٌ موثَّق من قاعدة الحذف الناعم**: الإشعار ليس سجلّاً تدقيقياً
   (السجلّ في `AuditLog`)، والتنظيف الدوريّ يمحو ما مضى عليه 90 يوماً بـ`ExecuteDeleteAsync`.
 
+### ClientRequest (منع الإنشاء مرّتين — ADR-051، migration `AddClientRequests`)
+`ClientRequestId (long), UserId, CompanyId, Key (≤80), EntityType (≤50), EntityId?, CreatedAt`
+
+- **فهرسٌ فريد على `(UserId, Key)`** — الحارس الحقيقيّ ضدّ الطلبين المتزامنين (الحجز أوّلاً لا الفحص).
+- `EntityId = null` ⇒ الإنشاء جارٍ أو انقطع؛ حجزٌ منقطعٌ أقدم من دقيقتين يُعاد.
+- ⚠️ **بلا مفاتيح أجنبية عمداً** — فلا يمنع حذفَ شركة، **ويُمحى معها صراحةً** في `CompanyDeletionService`.
+- **فلترٌ عامّ بالشركة** كغيره، والخدمة تقرأ بـ`IgnoreQueryFilters` **مقيّدةً بالمستخدم** لتُعلن «أُرسل من شركةٍ أخرى».
+- **حذفٌ صلب بعد 30 يوماً** مع التنظيف اليوميّ في `TaskJobRunner` — إيصالٌ تقنيّ لا سجلّ.
+
 ## قواعد عرضية
 - **عزل الشركة:** Global Query Filter على كل كيان له `CompanyId`. لكيان `User` الفلتر يشمل الشركات المُسندة أيضاً: `CompanyId == cid || AssignedCompanies.Any(c => c.CompanyId == cid)` (fail-closed: بلا شركة قابلة للتحديد ⇒ لا يرى شيئاً).
 - **الحذف الناعم:** `OutgoingBook` و `ArchiveDoc` و `IncomingBook` (مع DeletedBy/At) — مُدمج في الفلتر العام.
@@ -211,7 +220,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 28 migration** (آخرها `AddNotifications`، 2026-09-07). ✅ **كلُّها مُطبَّقة على `DmsDb`** — ولا شيء معلّق. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
+**السلسلة الحالية — 31 migration** (آخرها `AddClientRequests`، 2026-09-24 — ⏳ **على الفرع `feature/draft-protection`، لم تُطبَّق على `DmsDb`**؛ وما قبلها كلُّه مُطبَّق). ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
 
 | # | Migration | ما أضافه |
 |---|---|---|
@@ -238,6 +247,8 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 26 | `AddTasksModule` | جدولا `DmsTasks` و`DmsTaskUpdates` + `UserCompany.CanManageTasks` — ADR-037. **إضافة بحتة**. طُبِّقت على `DmsDb` بتاريخ **2026-09-06** بعد الدمج |
 | 27 | `AddTaskParticipants` | جدول `DmsTaskParticipants` + قيد `CHECK` (مستخدمٌ **أو** قسم لا كلاهما) + فهرسٌ فريد مُرشَّح يمنع تكرار المشارك الفعّال — ADR-037. **إضافة بحتة**. طُبِّقت **2026-09-07** |
 | 28 | `AddNotifications` | جدول `Notifications` (مفتاحه `long`) + **فهرسٌ فريد مُرشَّح على `(RecipientUserId, DedupKey)`** يمنع الإغراق على مستوى القاعدة — ADR-038. **إضافة بحتة**. طُبِّقت **2026-09-07** |
+| 29–30 | `AddBookReplies` · `AddCaseFiles` | المعاملات (ADR-045) — مُطبَّقتان |
+| 31 | `AddClientRequests` | جدول `ClientRequests` + فهرسٌ فريد `(UserId, Key)` — ADR-051. **إضافة بحتة** (جدولٌ جديد لا يمسّ القائم). ⏳ **تُطبَّق على `DmsDb` بعد الدمج** |
 
 > **ملاحظات:**
 > - 🔴 **الدفعة ٦ (الخدمة الخلفية — ADR-039) بلا مهاجرة** — أعمدةُ حالة التصعيد الثلاثة
