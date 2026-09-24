@@ -5,7 +5,7 @@ description: تشغيل اختبار التدفق الشامل (E2E) لباك-إ
 
 # اختبار E2E لباك-إند DMS
 
-**أربعة عشر سكربتاً في `backend/e2e/`** — آخرُ تشغيلٍ كامل **2026-09-23 على قاعدةٍ جديدة، صفر فشل في كلٍّ**.
+**خمسة عشر سكربتاً في `backend/e2e/`** (ومعها `bootstrap-e2e` أوّلاً) — آخرُ تشغيلٍ كامل **2026-09-23 على قاعدةٍ جديدة، صفر فشل في كلٍّ**.
 النجاح في كلٍّ = `فشل: 0` ورمز خروج 0.
 
 ## 🔴 القواعد الثلاث قبل أيّ تشغيل
@@ -39,6 +39,7 @@ description: تشغيل اختبار التدفق الشامل (E2E) لباك-إ
 $B='http://localhost:5091/api'; $P='Admin@12345'
 $DB='Server=.;Database=DmsE2E_New;Integrated Security=true;TrustServerCertificate=True'
 $STATE="$env:TEMP\dms-e2e-state.json"   # نفسُه في SystemControl__StateFile عند تشغيل الخادم
+.\e2e\bootstrap-e2e.ps1      -AdminPwd $P -Base $B             # 🔴 أوّلاً دائماً (G19): يفعّل المدير المبذور بكلمته نفسها
 .\e2e\review-fixes-e2e.ps1   -AdminPwd $P -Base $B -Db $DB     # -Db إلزاميّ: يعدّ الصفوف اليتيمة من القاعدة نفسها
 .\e2e\isolation-e2e.ps1      -AdminPwd $P -Base $B
 .\e2e\multi-company-e2e.ps1  -AdminPwd $P -Base $B
@@ -52,8 +53,17 @@ $STATE="$env:TEMP\dms-e2e-state.json"   # نفسُه في SystemControl__StateFi
 .\e2e\verify-e2e.ps1         -AdminPwd $P -Base $B -Root 'http://localhost:5091'
 .\e2e\lockdown-e2e.ps1       -AdminPwd $P -Base $B -Db $DB -StateFile $STATE -ApiDll (Resolve-Path Dms.Api\bin\Debug\net9.0\Dms.Api.dll)
 .\e2e\drafts-e2e.ps1         -AdminPwd $P -Base $B -Db $DB     # يعدّ الصفوف من القاعدة (منع التكرار)
+.\e2e\password-change-e2e.ps1 -AdminPwd $P -Base $B -Db $DB    # G19: الكلمة المؤقتة يفرضها الخادم
 .\e2e\backup-restore-e2e.ps1 -AdminPwd $P -BaseUrl $B          # تدميري: يستعيد القاعدة — أخيراً دائماً
 ```
+
+🔐 **G19 (ADR-052): المدير المبذور وكلُّ مستخدمٍ يُنشأ يحملان «يجب تغيير كلمة المرور»، والخادم يحجب به
+كلَّ شيء.** ⇒ `bootstrap-e2e` أوّلاً، والسكربتات التي تُنشئ مستخدمين تفعّلهم بـ`_activate.ps1`
+(`Enable-TempPassword` — دورتان تُبقيان الكلمة ثابتة). **سكربتٌ جديد يُنشئ مستخدماً يفعل الشيء نفسه.**
+
+⚠️ **ولا تُشغّل الخادم من مجلدٍ لا تكتب فيه خدمة SQL** (كالمجلد المؤقت): النسخة تفشل بـ«Access is
+denied» **فيُلغى حذف الشركة والاستعادة** (سلوكٌ صحيح). عندها اضبط `Backup__Dir` إلى
+`D:\DMS\backend\Dms.Api\App_Data\Backups`.
 
 🔴 **`lockdown-e2e` يوقف النظام فعلاً** — فالخادم يُشغَّل **بملفّ حالةٍ منفصل**:
 `SystemControl__StateFile=<مسارٌ مؤقت>` (وهو `$STATE` أعلاه). **بدونه يُكتب الملفّ بجوار مجلد التخزين
