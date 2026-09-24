@@ -7,6 +7,8 @@ import '../core/hr_providers.dart';
 import '../core/task_providers.dart';
 import '../core/backup_providers.dart';
 import '../core/company_providers.dart';
+import '../core/form_drafts.dart';
+import '../core/session.dart';
 import 'backup_alert.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
@@ -87,7 +89,24 @@ class Sidebar extends ConsumerWidget {
             child: Text('القائمة الرئيسية', style: TextStyle(color: Color(0xFF5E739B), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
           ),
           _buildItem(0, Icons.grid_view_rounded, 'الرئيسية'),
-          _buildItem(1, Icons.cloud_off_rounded, 'أوفلاين'),
+          // «مسوّداتي» (ADR-051) — والشارة عددُ ما لم يُرسَل **في هذه الشركة لهذا المستخدم**.
+          // ⚠️ `ValueListenableBuilder` على المخزن مباشرةً لا مزوّدٌ مشتقّ (ADR-042).
+          Consumer(
+            builder: (context, ref, child) {
+              final s = ref.watch(sessionProvider);
+              final store = ref.watch(formDraftStoreProvider);
+              return ValueListenableBuilder(
+                valueListenable: store.listenable(),
+                builder: (context, _, _) {
+                  final userId = s.auth?.userId;
+                  final n = userId == null
+                      ? 0
+                      : splitByCompany(draftsOf(store.all(), userId), s.effectiveCompanyId).here.length;
+                  return _buildItem(1, Icons.edit_note_rounded, 'مسوّداتي', badge: n > 0 ? '$n' : null);
+                },
+              );
+            },
+          ),
 
           if (modules.contains('Outgoing'))
             Consumer(

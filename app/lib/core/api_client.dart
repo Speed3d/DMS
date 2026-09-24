@@ -186,8 +186,11 @@ class ApiClient {
   /// حذف جهة — يرفضه الخادم بـ 409 إن كانت مستخدَمة في صادر/وارد/أرشيف.
   Future<void> deleteEntity(int id) => _delete('/entities/$id');
 
-  Future<EntityModel> createEntity(String name, String kind) async =>
-      EntityModel.fromJson(await _post('/entities', {'name': name, 'kind': kind}));
+  /// [idempotencyKey] (ADR-051): الجهة الجديدة تُنشأ قبل الكتاب، فمسوّدةٌ أُعيد إرسالها بعد
+  /// انقطاعٍ كانت تُنشئ الجهة مرّتين — والمفتاح يعيد الأولى.
+  Future<EntityModel> createEntity(String name, String kind, {String? idempotencyKey}) async =>
+      EntityModel.fromJson(
+          await _post('/entities', {'name': name, 'kind': kind}, idempotencyKey: idempotencyKey));
 
   // ---------- الأقسام ----------
   /// أقسام الشركة الفعّالة، أو أقسام شركة بعينها عبر [companyId] — يتطلب صلاحية
@@ -290,8 +293,9 @@ class ApiClient {
   Future<OutgoingDetail> outgoingGet(int id) async =>
       OutgoingDetail.fromJson(await _get('/outgoing/$id'));
 
-  Future<OutgoingDetail> createOutgoing(Map<String, dynamic> body) async =>
-      OutgoingDetail.fromJson(await _post('/outgoing', body));
+  /// [idempotencyKey] (ADR-051): الطلب نفسه مرّتين يعيد الكتاب الأوّل لا يُنشئ ثانياً.
+  Future<OutgoingDetail> createOutgoing(Map<String, dynamic> body, {String? idempotencyKey}) async =>
+      OutgoingDetail.fromJson(await _post('/outgoing', body, idempotencyKey: idempotencyKey));
 
   Future<Uint8List> previewOutgoing(Map<String, dynamic> body) async {
     try {
@@ -355,8 +359,9 @@ class ApiClient {
   Future<IncomingDetail> incomingGet(int id) async =>
       IncomingDetail.fromJson(await _get('/incoming/$id'));
 
-  Future<IncomingDetail> createIncoming(Map<String, dynamic> body) async =>
-      IncomingDetail.fromJson(await _post('/incoming', body));
+  /// [idempotencyKey] (ADR-051): الطلب نفسه مرّتين يعيد الوارد الأوّل.
+  Future<IncomingDetail> createIncoming(Map<String, dynamic> body, {String? idempotencyKey}) async =>
+      IncomingDetail.fromJson(await _post('/incoming', body, idempotencyKey: idempotencyKey));
 
   Future<IncomingDetail> updateIncoming(int id, Map<String, dynamic> body) async =>
       IncomingDetail.fromJson(await _put('/incoming/$id', body));
@@ -1361,8 +1366,9 @@ class ApiClient {
     int? relatedIncomingId, int? relatedOutgoingId,
     bool isRecurring = false, String? recurrencePattern,
     int? recurrenceInterval, DateTime? recurrenceEndDate, String? notes,
+    String? idempotencyKey,
   }) async =>
-      TaskModel.fromJson(await _post('/tasks', {
+      TaskModel.fromJson(await _post('/tasks', idempotencyKey: idempotencyKey, {
         'title': title,
         'description': description,
         'taskType': taskType,
@@ -1514,9 +1520,14 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> _post(String path, Object? body) async {
+  Future<dynamic> _post(String path, Object? body, {String? idempotencyKey}) async {
     try {
-      return (await _dio.post(path, data: body)).data;
+      return (await _dio.post(path,
+              data: body,
+              options: idempotencyKey == null
+                  ? null
+                  : Options(headers: {'Idempotency-Key': idempotencyKey})))
+          .data;
     } on DioException catch (e) {
       throw _map(e);
     }

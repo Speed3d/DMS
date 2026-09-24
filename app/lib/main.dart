@@ -4,6 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'core/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'core/form_drafts.dart';
 import 'core/session.dart';
 import 'core/system_status.dart';
 import 'widgets/system_shell.dart';
@@ -15,8 +16,9 @@ import 'screens/home_shell.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('dms_offline_drafts');
   await Hive.openBox('dms_cache');
+  // حماية ما يُكتب (ADR-051) — ويُمحى صندوق «الأوفلاين» القديم بلا صاحب.
+  await FormDraftStore.open();
   runApp(const ProviderScope(child: DmsApp()));
 }
 

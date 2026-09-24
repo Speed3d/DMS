@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/api_client.dart';
+import '../core/form_drafts.dart';
 import '../core/incoming_providers.dart';
 import '../core/session.dart';
 import '../core/task_providers.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/draft_widgets.dart';
 
 /// نموذج إنشاء/تعديل مهمة (ADR-037).
 ///
@@ -20,11 +23,15 @@ class TaskFormScreen extends ConsumerStatefulWidget {
   final int? presetIncomingId;
   final int? presetOutgoingId;
 
+  /// فتحُ مسوّدةٍ محفوظة من «مسوّداتي» (ADR-051) — للإنشاء وحده.
+  final String? draftId;
+
   const TaskFormScreen({
     super.key,
     this.existing,
     this.presetIncomingId,
     this.presetOutgoingId,
+    this.draftId,
   });
 
   @override
@@ -53,6 +60,16 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
 
   bool get _isEdit => widget.existing != null;
 
+  // ── حماية ما يُكتب (ADR-051) — للإنشاء وحده ──
+  DraftAutosaver? _drafts;
+  FormDraft? _offer;
+  int _offerOthers = 0;
+  int _formGen = 0;
+
+  /// ربطٌ بكتابٍ وارد/صادر — من المُنادي أو من المسوّدة.
+  int? _presetIncomingId;
+  int? _presetOutgoingId;
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +77,14 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     _title = TextEditingController(text: e?.title ?? '');
     _description = TextEditingController(text: e?.description ?? '');
     _notes = TextEditingController(text: e?.notes ?? '');
+    _presetIncomingId = widget.presetIncomingId;
+    _presetOutgoingId = widget.presetOutgoingId;
+
+    if (!_isEdit) {
+      _drafts = _createAutosaver();
+      final opened = widget.draftId == null ? null : ref.read(formDraftStoreProvider).get(widget.draftId!);
+      if (opened != null) _applyDraft(opened);
+    }
 
     if (e != null) {
       _taskType = e.taskType;
@@ -74,8 +99,123 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     }
   }
 
+  // ───────────── المسوّدة (ADR-051) ─────────────
+
+  DraftAutosaver? _createAutosaver() {
+    final s = ref.read(sessionProvider);
+    final userId = s.auth?.userId;
+    final companyId = s.effectiveCompanyId;
+    if (userId == null || companyId == null) return null;
+    final store = ref.read(formDraftStoreProvider);
+    if (widget.draftId == null) {
+      final mine = splitByCompany(draftsOf(store.all(), userId), companyId)
+          .here
+          .where((d) => d.kind == DraftKind.task)
+          .toList();
+      if (mine.isNotEmpty) {
+        _offer = mine.first;
+        _offerOthers = mine.length - 1;
+      }
+    }
+    return DraftAutosaver(
+      store: store,
+      kind: DraftKind.task,
+      userId: userId,
+      companyId: companyId,
+      id: widget.draftId,
+      capture: _captureDraft,
+    )..start();
+  }
+
+  bool get _hasContent =>
+      _title.text.trim().isNotEmpty ||
+      _description.text.trim().isNotEmpty ||
+      _notes.text.trim().isNotEmpty;
+
+  static String? _day(DateTime? d) => d?.toIso8601String();
+
+  DraftSnapshot? _captureDraft() {
+    if (!_hasContent) return null;
+    return DraftSnapshot(
+      title: _title.text.trim(),
+      fields: {
+        'title': _title.text,
+        'description': _description.text,
+        'notes': _notes.text,
+        'taskType': _taskType,
+        'priority': _priority,
+        'dueDate': _day(_dueDate),
+        'departmentId': _departmentId,
+        'assignedToUserId': _assignedToUserId,
+        'isRecurring': _isRecurring,
+        'recurrencePattern': _recurrencePattern,
+        'recurrenceInterval': _recurrenceInterval.text,
+        'recurrenceEndDate': _day(_recurrenceEndDate),
+        'presetIncomingId': _presetIncomingId,
+        'presetOutgoingId': _presetOutgoingId,
+      },
+    );
+  }
+
+  void _applyDraft(FormDraft d) {
+    final f = d.fields;
+    _title.text = f['title'] as String? ?? '';
+    _description.text = f['description'] as String? ?? '';
+    _notes.text = f['notes'] as String? ?? '';
+    final type = f['taskType'] as String?;
+    _taskType = kTaskTypeLabels.containsKey(type) ? type! : 'Individual';
+    final pr = f['priority'] as String?;
+    _priority = kTaskPriorityLabels.containsKey(pr) ? pr! : 'Normal';
+    _dueDate = DateTime.tryParse(f['dueDate'] as String? ?? '');
+    // ⚠️ موعدٌ مضى منذ الحفظ ⇒ يُفرَّغ (الإنشاء يرفض الماضي) فيختاره صاحبه من جديد.
+    final today = DateTime.now();
+    if (_dueDate != null && _dueDate!.isBefore(DateTime(today.year, today.month, today.day))) {
+      _dueDate = null;
+    }
+    // القسم والمسؤول يُفحصان عند بناء منسدلتيهما (`safeDropdownValue`).
+    _departmentId = (f['departmentId'] as num?)?.toInt();
+    _assignedToUserId = (f['assignedToUserId'] as num?)?.toInt();
+    _isRecurring = f['isRecurring'] == true;
+    final pat = f['recurrencePattern'] as String?;
+    _recurrencePattern = kRecurrenceLabels.containsKey(pat) ? pat! : 'Weekly';
+    _recurrenceInterval.text = f['recurrenceInterval'] as String? ?? '1';
+    _recurrenceEndDate = DateTime.tryParse(f['recurrenceEndDate'] as String? ?? '');
+    _presetIncomingId = (f['presetIncomingId'] as num?)?.toInt();
+    _presetOutgoingId = (f['presetOutgoingId'] as num?)?.toInt();
+    _drafts?.adopt(d);
+  }
+
+  Future<void> _restoreOffered() async {
+    final d = _offer;
+    if (d == null) return;
+    await _drafts?.discard();
+    if (!mounted) return;
+    setState(() {
+      _applyDraft(d);
+      _offer = null;
+      _formGen++;
+    });
+  }
+
+  Future<void> _onPopBlocked() async {
+    final choice = await showDraftExitDialog(context);
+    if (!mounted) return;
+    switch (choice) {
+      case DraftExitChoice.keep:
+        await _drafts?.flush(force: true);
+      case DraftExitChoice.discard:
+        await _drafts?.discard();
+      case DraftExitChoice.stay:
+        return;
+    }
+    _drafts?.dispose();
+    _drafts = null;
+    if (mounted) Navigator.of(context).pop(false);
+  }
+
   @override
   void dispose() {
+    _drafts?.dispose();
     _title.dispose();
     _description.dispose();
     _notes.dispose();
@@ -128,7 +268,10 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           reason: reason,
         );
       } else {
+        // 🔴 **المسوّدة تُحفظ قبل الطلب** ويُرسَل مفتاحُها — فلا تُنشأ المهمة مرّتين (ADR-051).
+        final draft = await _drafts?.flush(force: true);
         await api.createTask(
+          idempotencyKey: draft?.idempotencyKey('task'),
           title: _title.text.trim(),
           description: _description.text.trim().isEmpty ? null : _description.text.trim(),
           taskType: _taskType,
@@ -136,8 +279,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           dueDate: _dueDate!,
           departmentId: _taskType == 'Department' ? _departmentId : null,
           assignedToUserId: _assignedToUserId,
-          relatedIncomingId: widget.presetIncomingId,
-          relatedOutgoingId: widget.presetOutgoingId,
+          relatedIncomingId: _presetIncomingId,
+          relatedOutgoingId: _presetOutgoingId,
           isRecurring: _isRecurring,
           recurrencePattern: _isRecurring ? _recurrencePattern : null,
           recurrenceInterval:
@@ -145,8 +288,26 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           recurrenceEndDate: _isRecurring ? _recurrenceEndDate : null,
           notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         );
+        await _drafts?.discard();
       }
       if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      final drafts = _drafts;
+      if (!_isEdit && isDeferrableFailure(e) && drafts != null) {
+        await drafts.markFailed(deferralReason(e));
+        if (mounted) {
+          setState(() {
+            _error = '${deferralReason(e)} — حُفظت في «مسوّداتي».';
+            _saving = false;
+          });
+          showDeferredSnack(context, deferralReason(e));
+        }
+      } else if (mounted) {
+        setState(() {
+          _error = e.message;
+          _saving = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -164,13 +325,40 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     final departments = ref.watch(departmentsListProvider);
     final assignable = ref.watch(assignableUsersProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'تعديل مهمة' : 'مهمة جديدة')),
+    // ⚠️ **يعترض كلَّ مغادرة** في الإنشاء (انظر نظيره في نموذج الصادر).
+    return PopScope(
+      canPop: _drafts == null,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!_hasContent) {
+          await _drafts?.discard();
+          _drafts?.dispose();
+          _drafts = null;
+          if (context.mounted) Navigator.of(context).pop(false);
+          return;
+        }
+        await _onPopBlocked();
+      },
+      child: Scaffold(
+      appBar: AppBar(
+          title: Text(_isEdit
+              ? 'تعديل مهمة'
+              : widget.draftId != null
+                  ? 'إكمال مسوّدة — مهمة'
+                  : 'مهمة جديدة')),
       body: Form(
         key: _formKey,
         child: ListView(
+          key: ValueKey(_formGen),
           padding: const EdgeInsets.all(20),
           children: [
+            if (_offer != null)
+              DraftRestoreBanner(
+                draft: _offer!,
+                othersCount: _offerOthers,
+                onRestore: _restoreOffered,
+                onDismiss: () => setState(() => _offer = null),
+              ),
             CustomCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -312,7 +500,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                  // ⚠️ `maybePop` لا `pop`: `pop` يتخطّى `PopScope` فيغادر بلا سؤالٍ عمّا كُتب.
+                  onPressed: _saving ? null : () => Navigator.of(context).maybePop(false),
                   child: const Text('إلغاء'),
                 ),
                 const SizedBox(width: 10),
@@ -329,6 +518,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

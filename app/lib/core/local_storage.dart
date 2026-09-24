@@ -4,35 +4,12 @@ import '../models.dart';
 
 final localStorageProvider = Provider((ref) => LocalStorage());
 
+/// التخزين المؤقت للبيانات المرجعية على الجهاز.
+///
+/// ⚠️ **مسوّدات الأوفلاين القديمة أُزيلت من هنا** (ADR-051) — حلّ محلّها `form_drafts.dart`:
+/// مسوّداتٌ لها صاحبٌ وشركة وتُحفظ أثناء الكتابة.
 class LocalStorage {
-  Box get _draftsBox => Hive.box('dms_offline_drafts');
   Box get _cacheBox => Hive.box('dms_cache');
-
-  // --- مسودات الأوفلاين (Offline Drafts) ---
-  Future<void> saveDraft(Map<String, dynamic> payload) async {
-    final draftId = DateTime.now().millisecondsSinceEpoch.toString();
-    final draftData = {
-      'id': draftId,
-      'createdAt': DateTime.now().toIso8601String(),
-      'subject': payload['subject'] ?? 'بدون عنوان',
-      'date': payload['date'] ?? DateTime.now().toIso8601String(),
-      'payload': payload, // حقل يحوي الـ JSON المطلوب إرساله لاحقاً
-    };
-    await _draftsBox.put(draftId, draftData);
-  }
-
-  List<Map<String, dynamic>> getDrafts() {
-    return _draftsBox.values.map((e) {
-      // تحويل الأنواع المتداخلة لـ Map<String, dynamic> لأن Hive يحفظها كـ Map<dynamic, dynamic>
-      final map = Map<String, dynamic>.from(e as Map);
-      map['payload'] = Map<String, dynamic>.from(map['payload'] as Map);
-      return map;
-    }).toList();
-  }
-
-  Future<void> deleteDraft(String id) async {
-    await _draftsBox.delete(id);
-  }
 
   // --- التخزين المؤقت للبيانات الأساسية (Cache) ---
   Future<void> cacheEntities(List<EntityModel> entities) async {

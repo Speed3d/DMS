@@ -10,15 +10,21 @@ import '../core/quill_toolbar.dart';
 import '../widgets/financial_bar.dart';
 import '../core/session.dart';
 import '../core/outgoing_providers.dart';
+import '../core/company_providers.dart';
+import '../core/form_drafts.dart';
 import '../core/local_storage.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/draft_widgets.dart';
 import '../widgets/pdf_preview_pane.dart';
 
 /// Hint: شاشة إضافة كتاب صادر جديد مع محرر النصوص الاحترافي Quill
 class OutgoingFormScreen extends ConsumerStatefulWidget {
-  const OutgoingFormScreen({super.key});
+  /// فتحُ مسوّدةٍ محفوظة من «مسوّداتي» (ADR-051).
+  final String? draftId;
+
+  const OutgoingFormScreen({super.key, this.draftId});
   @override
   ConsumerState<OutgoingFormScreen> createState() => _OutgoingFormScreenState();
 }
@@ -53,9 +59,21 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
 
   late Future<_Refs> _refs;
 
+  // ── حماية ما يُكتب (ADR-051) ──
+  /// `null` ⇒ لا مستخدمَ أو لا شركةَ فعّالة (سوبر أدمن بلا شركة) — فلا حفظ.
+  DraftAutosaver? _drafts;
+
+  /// مسوّدةٌ سابقة تُعرض للاستعادة أعلى النموذج الجديد.
+  FormDraft? _offer;
+  int _offerOthers = 0;
+
+  /// يُزاد عند الاستعادة فيُعاد بناء ما يقرأ قيمته أوّل مرّة فقط (`Autocomplete` · المنسدلات).
+  int _formGen = 0;
+
   @override
   void initState() {
     super.initState();
+    _drafts = _createAutosaver();
     _refs = _loadRefs();
     // Hint: الربط من مكان واحد بدل `onChanged` موزَّع على كل حقل — أي حقل جديد يُضاف هنا
     // فقط، ولا يُنسى فيبقى المستخدم أمام معاينة قديمة يظنّها محدَّثة.
@@ -73,11 +91,126 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
   void dispose() {
     // Hint: لم تكن الشاشة تُحرّر متحكّماتها أصلاً؛ صار ذلك ألزم بعد إضافة المستمعين
     // (تحرير المتحكّم يُزيل مستمعيه تلقائياً).
+    _drafts?.dispose();
     for (final c in [_subject, _headerPhrase, _signatoryName, _signatoryTitle, _amount, _rate]) {
       c.dispose();
     }
     _quillController.dispose();
     super.dispose();
+  }
+
+  // ───────────── المسوّدة (ADR-051) ─────────────
+
+  DraftAutosaver? _createAutosaver() {
+    final s = ref.read(sessionProvider);
+    final userId = s.auth?.userId;
+    final companyId = s.effectiveCompanyId;
+    if (userId == null || companyId == null) return null;
+    final store = ref.read(formDraftStoreProvider);
+    final saver = DraftAutosaver(
+      store: store,
+      kind: DraftKind.outgoing,
+      userId: userId,
+      companyId: companyId,
+      companyName: ref.read(activeCompanyProvider).value?.name,
+      id: widget.draftId,
+      capture: _captureDraft,
+    );
+    if (widget.draftId == null) {
+      final mine = splitByCompany(draftsOf(store.all(), userId), companyId)
+          .here
+          .where((d) => d.kind == DraftKind.outgoing)
+          .toList();
+      if (mine.isNotEmpty) {
+        _offer = mine.first;
+        _offerOthers = mine.length - 1;
+      }
+    }
+    return saver..start();
+  }
+
+  /// ما يستحقّ الحفظ — **والتوقيع الافتراضيّ ليس «كتابة»** (يُملأ من الشركة تلقائياً).
+  bool get _hasContent =>
+      _subject.text.trim().isNotEmpty ||
+      !_quillController.document.isEmpty() ||
+      _entitySearchText.trim().isNotEmpty ||
+      _amount.text.trim().isNotEmpty;
+
+  DraftSnapshot? _captureDraft() {
+    if (!_hasContent) return null;
+    return DraftSnapshot(
+      title: _subject.text.trim(),
+      fields: {
+        'entityId': _entityId,
+        'entityText': _entitySearchText,
+        'templateId': _templateId,
+        'date': _date.toIso8601String(),
+        'subject': _subject.text,
+        'headerPhrase': _headerPhrase.text,
+        'signatoryName': _signatoryName.text,
+        'signatoryTitle': _signatoryTitle.text,
+        'body': _quillController.document.toDelta().toJson(),
+        'showFinancials': _showFinancials,
+        'amount': _amount.text,
+        'rate': _rate.text,
+        'currency': _currency,
+      },
+    );
+  }
+
+  /// يملأ النموذج من مسوّدة. ⚠️ لا `setState` هنا — المنادي يقرّر (قبل البناء الأوّل أو بعده).
+  void _applyDraft(FormDraft d, {List<EntityModel> entities = const []}) {
+    final f = d.fields;
+    final entityId = (f['entityId'] as num?)?.toInt() ?? d.createdEntityId;
+    // ⚠️ جهةٌ حُذفت منذ الحفظ ⇒ يُبقى نصُّها فتُنشأ من جديد، لا معرّفٌ يرفضه الخادم.
+    _entityId = entities.isEmpty || entities.any((e) => e.entityId == entityId) ? entityId : null;
+    _entitySearchText = f['entityText'] as String? ?? '';
+    _templateId = (f['templateId'] as num?)?.toInt();
+    _date = DateTime.tryParse(f['date'] as String? ?? '') ?? _date;
+    _subject.text = f['subject'] as String? ?? '';
+    _headerPhrase.text = f['headerPhrase'] as String? ?? '';
+    _signatoryName.text = f['signatoryName'] as String? ?? '';
+    _signatoryTitle.text = f['signatoryTitle'] as String? ?? '';
+    final body = f['body'];
+    if (body is List && body.isNotEmpty) {
+      _quillController.document = quill.Document.fromJson(body);
+    }
+    _showFinancials = f['showFinancials'] == true;
+    _amount.text = f['amount'] as String? ?? '';
+    _rate.text = f['rate'] as String? ?? '';
+    _currency = f['currency'] as String?;
+    _drafts?.adopt(d);
+  }
+
+  Future<void> _restoreOffered() async {
+    final d = _offer;
+    if (d == null) return;
+    final refs = await _refs;
+    if (!mounted) return;
+    // المسوّدة الجديدة الفارغة لهذا النموذج لا تبقى — نكمل على المستعادة.
+    await _drafts?.discard();
+    setState(() {
+      _applyDraft(d, entities: refs.entities);
+      _offer = null;
+      _formGen++;
+    });
+  }
+
+  /// مغادرةٌ بما لم يُرسَل ⇒ احفظ · تجاهل · تابع.
+  Future<void> _onPopBlocked() async {
+    final choice = await showDraftExitDialog(context);
+    if (!mounted) return;
+    switch (choice) {
+      case DraftExitChoice.keep:
+        await _drafts?.flush(force: true);
+      case DraftExitChoice.discard:
+        await _drafts?.discard();
+      case DraftExitChoice.stay:
+        return;
+    }
+    _drafts?.dispose();
+    _drafts = null;
+    if (mounted) Navigator.of(context).pop(false);
   }
 
   /// تُستدعى من كل حقل يؤثّر في الناتج.
@@ -112,12 +245,18 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
       
       await storage.cacheEntities(entities);
       await storage.cacheTemplates(templates);
+
+      // فُتحت من «مسوّداتي» ⇒ تُملأ قبل البناء الأوّل (فلا حاجة لإعادة بناء المنسدلات).
+      final opened = widget.draftId == null ? null : ref.read(formDraftStoreProvider).get(widget.draftId!);
+      if (opened != null) _applyDraft(opened, entities: entities);
       return refs;
     } on ApiException catch (e) {
       if (e.isNetworkError) {
         final cachedEntities = storage.getCachedEntities();
         final cachedTemplates = storage.getCachedTemplates();
         if (cachedEntities.isNotEmpty && cachedTemplates.isNotEmpty) {
+          final opened = widget.draftId == null ? null : ref.read(formDraftStoreProvider).get(widget.draftId!);
+          if (opened != null) _applyDraft(opened, entities: cachedEntities);
           return _Refs(cachedEntities, cachedTemplates.where((t) => t.isActive).toList(), null);
         }
       }
@@ -230,28 +369,38 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
     }
 
     setState(() { _busy = true; _error = null; });
-    
-    Map<String, dynamic>? payload;
+
+    // 🔴 **المسوّدة تُحفظ قبل أيّ طلب** (ADR-051) — كان الحفظ يقع بعد بناء الحمولة، وبناؤها
+    //    بعد إنشاء الجهة، فجهةٌ جديدة مع انقطاعٍ كانت تُضيع الكتاب كلَّه.
+    final drafts = _drafts;
+    final draft = await drafts?.flush(force: true);
+
     try {
+      final api = ref.read(apiClientProvider);
       if (_entityId == null) {
-        final newE = await ref.read(apiClientProvider).createEntity(_entitySearchText.trim(), 'Both');
+        // ⚠️ بمفتاح المسوّدة: انقطاعٌ بعد إنشاء الجهة ثم إعادةُ الإرسال يعيد الجهة نفسها.
+        final newE = await api.createEntity(_entitySearchText.trim(), 'Both',
+            idempotencyKey: draft?.idempotencyKey('entity'));
         _entityId = newE.entityId;
+        await drafts?.recordProgress(entityId: newE.entityId);
       }
 
-      payload = _buildPayload();
+      final payload = _buildPayload();
       if (payload == null) {
         setState(() => _busy = false);
         return;
       }
-      await ref.read(apiClientProvider).createOutgoing(payload);
+      await api.createOutgoing(payload, idempotencyKey: draft?.idempotencyKey('outgoing'));
+      await drafts?.discard();
       invalidateOutgoing(ref);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      if (e.isNetworkError && payload != null) {
-        await ref.read(localStorageProvider).saveDraft(payload);
+      if (isDeferrableFailure(e) && drafts != null) {
+        // الخادم غائب ⇒ لا يضيع شيء: المسوّدة محفوظةٌ بسببها، ويُنبَّه صاحبها عند العودة.
+        await drafts.markFailed(deferralReason(e));
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا يوجد اتصال بالإنترنت. تم حفظ الكتاب كمسودة محلية بنجاح.')));
-          Navigator.of(context).pop(true);
+          setState(() => _error = '${deferralReason(e)} — حُفظ في «مسوّداتي».');
+          showDeferredSnack(context, deferralReason(e));
         }
       } else {
         setState(() => _error = e.message);
@@ -266,12 +415,39 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
+    // ⚠️ **يعترض كلَّ مغادرة** ثم يقرّر: فارغٌ ⇒ يغادر بلا سؤال · فيه كتابة ⇒ احفظ/تجاهل/تابع.
+    //    (`canPop` مبنيٌّ على «فيه كتابة» كان سيتقادم بين إعادتَي بناء فيغادر بلا سؤال.)
+    return PopScope(
+      canPop: _drafts == null,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!_hasContent) {
+          await _drafts?.discard();
+          _drafts?.dispose();
+          _drafts = null;
+          if (context.mounted) Navigator.of(context).pop(false);
+          return;
+        }
+        await _onPopBlocked();
+      },
+      child: Scaffold(
       appBar: AppBar(
-        title: const Text('إنشاء كتاب صادر جديد'),
+        title: Text(widget.draftId == null ? 'إنشاء كتاب صادر جديد' : 'إكمال مسوّدة — كتاب صادر'),
         centerTitle: true,
       ),
-      body: FutureBuilder<_Refs>(
+      body: Column(
+        children: [
+          if (_offer != null)
+            DraftRestoreBanner(
+              draft: _offer!,
+              othersCount: _offerOthers,
+              onRestore: _restoreOffered,
+              onDismiss: () => setState(() => _offer = null),
+            ),
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey(_formGen),
+              child: FutureBuilder<_Refs>(
         future: _refs,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -343,6 +519,10 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                                     textEditingController.text = selectedE.name;
                                   }
                                 }
+                                // ومسوّدةٌ بجهةٍ جديدة لم تُنشأ بعد ⇒ يُستعاد نصُّها (ADR-051).
+                                if (_entityId == null && textEditingController.text.isEmpty && _entitySearchText.isNotEmpty) {
+                                  textEditingController.text = _entitySearchText;
+                                }
                                 return TextField(
                                   controller: textEditingController,
                                   focusNode: focusNode,
@@ -380,7 +560,8 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                           // القالب
                           DropdownButtonFormField<int>(
                             isExpanded: true,
-                            initialValue: _templateId,
+                            // ⚠️ `safeDropdownValue`: قالبٌ في مسوّدةٍ قديمة قد يكون عُطّل منذ حفظها.
+                            initialValue: safeDropdownValue(_templateId, refs.templates.map((t) => t.templateId)),
                             decoration: _inputDecoration('القالب المعتمد', Icons.style_rounded),
                             items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name, overflow: TextOverflow.ellipsis))).toList(),
                             // القالب تغيير بنيوي نادر وأثره كبير (ترويسة/تذييل/علامة مائية)
@@ -671,6 +852,11 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
             ),
           );
         },
+      ),
+            ),
+          ),
+        ],
+      ),
       ),
     );
   }

@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/company_providers.dart';
+import '../core/form_drafts.dart';
 import '../core/session.dart';
+import '../core/system_status.dart';
 import '../core/outgoing_providers.dart';
 import '../core/incoming_providers.dart';
 import '../core/notification_providers.dart';
+import '../core/case_file_providers.dart';
+import '../core/task_providers.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/topbar.dart';
 
 import 'change_password_screen.dart';
 import 'archive_list_screen.dart';
 import 'dashboard_screen.dart';
-import 'offline_drafts_screen.dart';
+import 'my_drafts_screen.dart';
 import 'outgoing_list_screen.dart';
 import 'incoming_list_screen.dart';
 import 'reports_screen.dart';
@@ -39,6 +43,33 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   bool _initialized = false;
 
   @override
+  void initState() {
+    super.initState();
+    // عند فتح التطبيق (أو بعد إعادة تحميل الصفحة إثر تحديث) ⇒ تنبيهٌ إن بقي ما لم يُرسَل.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifyUnsentDrafts());
+  }
+
+  /// «لديك N مسوّدة لم تُرسَل — مراجعة» (ADR-051، قرار المالك: تنبيهٌ ومراجعة لا إرسالٌ صامت).
+  void _notifyUnsentDrafts() {
+    if (!mounted) return;
+    final s = ref.read(sessionProvider);
+    final userId = s.auth?.userId;
+    if (userId == null) return;
+    final count = splitByCompany(draftsOf(ref.read(formDraftStoreProvider).all(), userId), s.effectiveCompanyId)
+        .here
+        .length;
+    if (count == 0) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        key: const Key('unsent-drafts-snack'),
+        duration: const Duration(seconds: 10),
+        content: Text(draftsNoticeText(count)),
+        action: SnackBarAction(label: 'مراجعة', onPressed: () => setState(() => _index = 1)),
+      ));
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_initialized) {
@@ -53,6 +84,22 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final auth = session.auth!;
+
+    // عاد النظام بعد توقّفٍ أو انقطاع ⇒ نبّه إلى ما لم يُرسَل (`listen` لا `watch` — لا اشتقاق).
+    ref.listen<SystemView>(systemStatusProvider, (prev, next) {
+      if (prev != null && prev.phase != SystemPhase.ok && next.phase == SystemPhase.ok) {
+        // 🔴 **ما فشل تحميلُه أثناء الغياب يُعاد** — وإلا بقي اسمُ الشركة «جاري التحميل...»
+        //    والقوائم رسائلَ خطأ حتى يضغط المستخدم «تحديث» بنفسه (كُشف حيّاً 2026-09-24).
+        //    ⚠️ إبطالُ مزوّدٍ غير معروض لا يكلّف شيئاً — يُجلب ما على الشاشة وحده.
+        ref.invalidate(activeCompanyProvider);
+        invalidateOutgoing(ref);
+        invalidateIncoming(ref);
+        invalidateTasks(ref);
+        invalidateCaseFiles(ref);
+        invalidateNotifications(ref);
+        _notifyUnsentDrafts();
+      }
+    });
     final canManageUsers = const ['SuperAdmin', 'President', 'Manager'].contains(auth.role);
     final isSuper = auth.isSuperAdmin;
 
@@ -65,7 +112,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     //    الترتيب **البصري** يحدّده الشريط الجانبي وحده، لا ترتيب هذه القائمة.
     final pages = <Widget>[
       DashboardScreen(onNavigate: (i) => setState(() => _index = i)),
-      const OfflineDraftsScreen(),
+      const MyDraftsScreen(),         // 1  — مسوّداتي (ADR-051؛ كانت «أوفلاين»)
       const OutgoingListScreen(),
       const IncomingListScreen(),
       const ArchiveListScreen(),
@@ -268,7 +315,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   String _getPageTitle(int index, bool canManageUsers, bool isSuper) => switch (index) {
         14 => 'المعاملات',
         0 => 'الرئيسية',
-        1 => 'المسودات (أوفلاين)',
+        1 => 'مسوّداتي',
         2 => 'الصادر',
         3 => 'الوارد',
         4 => 'الأرشيف',
@@ -287,7 +334,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   String _getPageSubtitle(int index, bool canManageUsers, bool isSuper) => switch (index) {
         14 => 'خيوطُ المراسلات — الوارد والصادر في قضيةٍ واحدة',
         0 => 'نظرة عامة على نشاط الشركة',
-        1 => 'الكتب المحفوظة محلياً بانتظار الاتصال',
+        1 => 'ما كتبته ولم يُرسَل بعد — يُحفظ تلقائياً على هذا الجهاز',
         2 => 'إدارة الكتب الصادرة والاعتمادات',
         3 => 'إدارة الكتب الواردة الواردة إلى الشركة',
         4 => 'أرشفة الوثائق السابقة والبحث فيها',

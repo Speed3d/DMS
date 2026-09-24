@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
+import '../core/form_drafts.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/draft_widgets.dart';
 
 /// ملف اختاره المستخدم قبل حفظ الكتاب — يُرفَع بعد الإنشاء (المرفق يحتاج `OwnerId`).
 class _PendingFile {
@@ -21,7 +23,11 @@ class _PendingFile {
 /// Hint: شاشة إضافة أو تعديل كتاب وارد
 class IncomingFormScreen extends ConsumerStatefulWidget {
   final int? bookId;
-  const IncomingFormScreen({super.key, this.bookId});
+
+  /// فتحُ مسوّدةٍ محفوظة من «مسوّداتي» (ADR-051) — للتسجيل الجديد وحده.
+  final String? draftId;
+
+  const IncomingFormScreen({super.key, this.bookId, this.draftId});
   @override
   ConsumerState<IncomingFormScreen> createState() => _IncomingFormScreenState();
 }
@@ -64,10 +70,149 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
 
   late Future<_Refs> _refs;
 
+  // ── حماية ما يُكتب (ADR-051) — للتسجيل الجديد وحده، لا للتعديل ──
+  DraftAutosaver? _drafts;
+  FormDraft? _offer;
+  int _offerOthers = 0;
+  int _formGen = 0;
+
+  /// ملفاتٌ كانت في المسوّدة ولم تُحفظ بايتاتُها (فوق 25 ميغابايت) — يُعاد إرفاقُها.
+  List<DraftFileMeta> _missingFiles = const [];
+
+  /// الكتاب سُجّل فعلاً في محاولةٍ سابقة وبقيت مرفقاتٌ لم تُرفع — فلا يُسجَّل ثانيةً.
+  int? _createdIncomingId;
+
   @override
   void initState() {
     super.initState();
+    if (widget.bookId == null) _drafts = _createAutosaver();
     _refs = _loadRefs();
+  }
+
+  @override
+  void dispose() {
+    _drafts?.dispose();
+    for (final c in [_subject, _externalNumber, _keywords, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  // ───────────── المسوّدة (ADR-051) ─────────────
+
+  DraftAutosaver? _createAutosaver() {
+    final s = ref.read(sessionProvider);
+    final userId = s.auth?.userId;
+    final companyId = s.effectiveCompanyId;
+    if (userId == null || companyId == null) return null;
+    final store = ref.read(formDraftStoreProvider);
+    if (widget.draftId == null) {
+      final mine = splitByCompany(draftsOf(store.all(), userId), companyId)
+          .here
+          .where((d) => d.kind == DraftKind.incoming)
+          .toList();
+      if (mine.isNotEmpty) {
+        _offer = mine.first;
+        _offerOthers = mine.length - 1;
+      }
+    }
+    return DraftAutosaver(
+      store: store,
+      kind: DraftKind.incoming,
+      userId: userId,
+      companyId: companyId,
+      id: widget.draftId,
+      capture: _captureDraft,
+    )..start();
+  }
+
+  bool get _hasContent =>
+      _subject.text.trim().isNotEmpty ||
+      _entitySearchText.trim().isNotEmpty ||
+      _externalNumber.text.trim().isNotEmpty ||
+      _notes.text.trim().isNotEmpty ||
+      _pendingAttachments.isNotEmpty;
+
+  DraftSnapshot? _captureDraft() {
+    if (!_hasContent && _createdIncomingId == null) return null;
+    return DraftSnapshot(
+      title: _subject.text.trim(),
+      fields: {
+        'entityId': _entityId,
+        'entityText': _entitySearchText,
+        'subject': _subject.text,
+        'externalNumber': _externalNumber.text,
+        'externalDate': _externalDate?.toIso8601String(),
+        'receivedDate': _receivedDate.toIso8601String(),
+        'receivedTime': _receivedTime == null ? null : '${_receivedTime!.hour}:${_receivedTime!.minute}',
+        'documentTypeId': _documentTypeId,
+        'receiveMethod': _receiveMethod,
+        'keywords': _keywords.text,
+        'notes': _notes.text,
+      },
+      // ⚠️ الملفاتُ بترتيبها — والمخزن يحفظ بايتاتها حتى 25 ميغابايت (قرار المالك).
+      files: [for (final f in _pendingAttachments) DraftFileData(f.name, f.bytes)],
+    );
+  }
+
+  /// يملأ النموذج من مسوّدة — **بلا `setState`** (المنادي يقرّر).
+  Future<void> _applyDraft(FormDraft d, _Refs refs) async {
+    final f = d.fields;
+    final entityId = (f['entityId'] as num?)?.toInt() ?? d.createdEntityId;
+    _entityId = refs.entities.any((e) => e.entityId == entityId) ? entityId : null;
+    _entitySearchText = f['entityText'] as String? ?? '';
+    _subject.text = f['subject'] as String? ?? '';
+    _externalNumber.text = f['externalNumber'] as String? ?? '';
+    _externalDate = DateTime.tryParse(f['externalDate'] as String? ?? '');
+    _receivedDate = DateTime.tryParse(f['receivedDate'] as String? ?? '') ?? _receivedDate;
+    final t = (f['receivedTime'] as String?)?.split(':');
+    _receivedTime = t == null || t.length < 2
+        ? null
+        : TimeOfDay(hour: int.tryParse(t[0]) ?? 0, minute: int.tryParse(t[1]) ?? 0);
+    // ⚠️ نوعٌ حُذف منذ الحفظ ⇒ «غير محدد» لا منسدلةٌ تسقط (درس `safeDropdownValue`).
+    _documentTypeId = safeDropdownValue((f['documentTypeId'] as num?)?.toInt(),
+        refs.docTypes.map((x) => x.documentTypeId));
+    final method = f['receiveMethod'] as String?;
+    _receiveMethod = kReceiveMethods.containsKey(method) ? method! : kDefaultReceiveMethod;
+    _keywords.text = f['keywords'] as String? ?? '';
+    _notes.text = f['notes'] as String? ?? '';
+
+    final files = await ref.read(formDraftStoreProvider).loadFiles(d);
+    _pendingAttachments
+      ..clear()
+      ..addAll([for (final x in files) _PendingFile(x.name, x.bytes)]);
+    _missingFiles = d.missingFiles;
+    _createdIncomingId = d.createdRecordId;
+    _drafts?.adopt(d);
+  }
+
+  Future<void> _restoreOffered() async {
+    final d = _offer;
+    if (d == null) return;
+    final refs = await _refs;
+    await _drafts?.discard();
+    await _applyDraft(d, refs);
+    if (!mounted) return;
+    setState(() {
+      _offer = null;
+      _formGen++;
+    });
+  }
+
+  Future<void> _onPopBlocked() async {
+    final choice = await showDraftExitDialog(context);
+    if (!mounted) return;
+    switch (choice) {
+      case DraftExitChoice.keep:
+        await _drafts?.flush(force: true);
+      case DraftExitChoice.discard:
+        await _drafts?.discard();
+      case DraftExitChoice.stay:
+        return;
+    }
+    _drafts?.dispose();
+    _drafts = null;
+    if (mounted) Navigator.of(context).pop(false);
   }
 
   Future<_Refs> _loadRefs() async {
@@ -106,7 +251,11 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
         _legacyRate = d.exchangeRate;
       }
 
-      return _Refs(entities, docTypes);
+      final refs = _Refs(entities, docTypes);
+      // فُتحت من «مسوّداتي» ⇒ تُملأ قبل البناء الأوّل.
+      final opened = widget.draftId == null ? null : ref.read(formDraftStoreProvider).get(widget.draftId!);
+      if (opened != null) await _applyDraft(opened, refs);
+      return refs;
     } catch (e) {
       rethrow;
     }
@@ -184,12 +333,18 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
     }
 
     setState(() { _busy = true; _error = null; });
-    
+
+    // 🔴 **المسوّدة تُحفظ قبل أيّ طلب** (ADR-051) — بملفاتها.
+    final drafts = _drafts;
+    final draft = await drafts?.flush(force: true);
+
     try {
       final api = ref.read(apiClientProvider);
-      if (_entityId == null) {
-        final newE = await api.createEntity(_entitySearchText.trim(), 'Both');
+      if (_entityId == null && _createdIncomingId == null) {
+        final newE = await api.createEntity(_entitySearchText.trim(), 'Both',
+            idempotencyKey: draft?.idempotencyKey('entity'));
         _entityId = newE.entityId;
+        await drafts?.recordProgress(entityId: newE.entityId);
       }
 
       final payload = _buildPayload();
@@ -199,18 +354,30 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
       }
 
       if (widget.bookId == null) {
-        final created = await api.createIncoming(payload);
+        // ⚠️ **سُجّل في محاولةٍ سابقة؟** فلا يُسجَّل ثانيةً — تُكمَل مرفقاتُه وحدها.
+        final incomingId = _createdIncomingId ??
+            (await api.createIncoming(payload, idempotencyKey: draft?.idempotencyKey('incoming'))).incomingId;
+        if (_createdIncomingId == null) {
+          _createdIncomingId = incomingId;
+          await drafts?.recordProgress(recordId: incomingId);
+        }
         // المرفق يحتاج كتاباً محفوظاً (OwnerId)، فتُجمَّع الملفات في النموذج وتُرفَع بعد
         // الإنشاء. فشلُ رفع مرفق **لا يُبطل تسجيل الكتاب** — الكتاب سجل رسمي منذ لحظته،
         // والمرفق مُلحق به؛ نُبلّغ المستخدم ليعيد الرفع من شاشة التفاصيل.
+        // 🔴 **وكلُّ ملفٍّ يُرفع يخرج من المسوّدة فوراً** — فانقطاعٌ بعد الثاني من خمسة لا يُكرّر
+        //    الأوّلين عند الإكمال (لا مفتاحَ لمنع تكرار المرفقات، فالترتيبُ هو الحارس).
         final failed = <String>[];
-        for (final f in _pendingAttachments) {
+        for (final f in List.of(_pendingAttachments)) {
           try {
-            await api.uploadIncomingAttachment(created.incomingId, f.bytes, f.name);
-          } on ApiException catch (_) {
+            await api.uploadIncomingAttachment(incomingId, f.bytes, f.name);
+            _pendingAttachments.remove(f);
+            await drafts?.flush(force: true);
+          } on ApiException catch (e) {
+            if (isDeferrableFailure(e)) rethrow;   // الخادم غاب ⇒ تبقى البقيّة للإكمال
             failed.add(f.name);
           }
         }
+        await drafts?.discard();
         if (mounted && failed.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: AppColors.danger,
@@ -224,7 +391,18 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
 
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (isDeferrableFailure(e) && drafts != null) {
+        final reason = _createdIncomingId == null
+            ? deferralReason(e)
+            : '${deferralReason(e)} — سُجّل الكتاب وبقيت ${_pendingAttachments.length} مرفقات لم تُرفع';
+        await drafts.markFailed(reason);
+        if (mounted) {
+          setState(() => _error = '$reason — حُفظ في «مسوّداتي».');
+          showDeferredSnack(context, deferralReason(e));
+        }
+      } else {
+        setState(() => _error = e.message);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -232,12 +410,42 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // ⚠️ **يعترض كلَّ مغادرة** في التسجيل الجديد (انظر نظيره في نموذج الصادر).
+    return PopScope(
+      canPop: _drafts == null,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!_hasContent && _createdIncomingId == null) {
+          await _drafts?.discard();
+          _drafts?.dispose();
+          _drafts = null;
+          if (context.mounted) Navigator.of(context).pop(false);
+          return;
+        }
+        await _onPopBlocked();
+      },
+      child: Scaffold(
       appBar: AppBar(
-        title: Text(widget.bookId == null ? 'تسجيل كتاب وارد جديد' : 'تعديل الكتاب الوارد'),
+        title: Text(widget.bookId != null
+            ? 'تعديل الكتاب الوارد'
+            : widget.draftId != null
+                ? 'إكمال مسوّدة — كتاب وارد'
+                : 'تسجيل كتاب وارد جديد'),
         centerTitle: true,
       ),
-      body: FutureBuilder<_Refs>(
+      body: Column(
+        children: [
+          if (_offer != null)
+            DraftRestoreBanner(
+              draft: _offer!,
+              othersCount: _offerOthers,
+              onRestore: _restoreOffered,
+              onDismiss: () => setState(() => _offer = null),
+            ),
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey(_formGen),
+              child: FutureBuilder<_Refs>(
         future: _refs,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -247,13 +455,35 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
             return Center(child: Text('حدث خطأ أثناء تحميل البيانات: ${snap.error}', style: const TextStyle(color: AppColors.danger)));
           }
           final refs = snap.data!;
-          
+
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 800),
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 children: [
+                  // ⚠️ سُجّل في محاولةٍ سابقة ⇒ يُقال صراحةً إن الحقول لن تُرسَل ثانيةً.
+                  if (_createdIncomingId != null)
+                    Container(
+                      key: const Key('incoming-already-created'),
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: AppColors.success),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'سُجّل هذا الكتاب في النظام من قبل — بقي رفع المرفقات أدناه وحدها. '
+                              'تعديلُ الحقول هنا لا يُرسَل؛ عدّله من شاشة تفاصيل الكتاب.',
+                              style: TextStyle(fontWeight: FontWeight.bold, height: 1.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (_error != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 24),
@@ -300,6 +530,10 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
                             if (_entityId != null && textEditingController.text.isEmpty) {
                               final selectedE = refs.entities.cast<EntityModel?>().firstWhere((e) => e?.entityId == _entityId, orElse: () => null);
                               if (selectedE != null) textEditingController.text = selectedE.name;
+                            }
+                            // ومسوّدةٌ بجهةٍ جديدة لم تُنشأ بعد ⇒ يُستعاد نصُّها (ADR-051).
+                            if (_entityId == null && textEditingController.text.isEmpty && _entitySearchText.isNotEmpty) {
+                              textEditingController.text = _entitySearchText;
                             }
                             return TextField(
                               controller: textEditingController,
@@ -457,7 +691,11 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2))
                         : const Icon(Icons.save_rounded),
                       label: Text(
-                        _busy ? 'جارٍ الحفظ...' : 'حفظ الكتاب الوارد',
+                        _busy
+                            ? 'جارٍ الحفظ...'
+                            : _createdIncomingId != null
+                                ? 'رفع المرفقات المتبقية'
+                                : 'حفظ الكتاب الوارد',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -467,6 +705,11 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
             ),
           );
         },
+      ),
+            ),
+          ),
+        ],
+      ),
       ),
     );
   }
@@ -492,6 +735,21 @@ class _IncomingFormScreenState extends ConsumerState<IncomingFormScreen> {
             ],
           ),
           const SizedBox(height: 8),
+          // ⚠️ ملفاتٌ تجاوزت حدّ المسوّدة (25 ميغابايت) — حُفظ اسمُها فقط، فيُطلب إرفاقُها ثانيةً.
+          if (_missingFiles.isNotEmpty)
+            Container(
+              key: const Key('incoming-missing-files'),
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: AppColors.warn.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+              child: Text(
+                'أعِد إرفاق هذه الملفات — كانت أكبر من أن تُحفظ مع المسوّدة: '
+                '${_missingFiles.map((f) => f.name).join('، ')}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
           if (_pendingAttachments.isEmpty)
             const Text(
               'اختر صور الكتاب الممسوحة أو ملفاته الآن — تُرفَع تلقائياً بعد الحفظ.',

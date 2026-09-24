@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models.dart';
+import 'form_drafts.dart';
 import 'page_reload.dart';
 import 'session.dart';
 
@@ -150,6 +151,9 @@ Future<void> reloadIfNewBuild({
   void Function() reload = reloadPage,
 }) async {
   if (!shouldReload(current, await fetch())) return;
+  // 🔴 **يُفرَغ كلُّ نموذجٍ مفتوح قبل إعادة التحميل** (ADR-051) — وإلا ضاع ما كُتب منذ آخر
+  //    حفظٍ تلقائيّ (حتى 3 ثوانٍ). وبعد التحميل يُنبَّه صاحبه إلى مسوّدته.
+  await DraftAutosaver.flushAll();
   reload();
 }
 
