@@ -65,6 +65,8 @@ $empUserId=$r.B.userId
 if(-not $empUserId){ $empUserId=(@((Api GET "/users" $null $admin $null).B) | ? { $_.username -eq $uname } | Select -First 1).userId }
 
 # الموظف يغيّر كلمته المؤقتة ليصير دخوله عادياً، ثم يدخل.
+. "$PSScriptRoot\_activate.ps1"   # G19: بلا هذا يُحجب رمزُه كلُّه قبل الإيقاف أصلاً
+$null=Enable-TempPassword $Base $uname $upwd
 $emp=LoginR $uname $upwd
 $empTok=$emp.B.accessToken; $empRefresh=$emp.B.refreshToken
 Expect "دخول الموظف قبل الإيقاف" $emp.S 200
@@ -115,10 +117,12 @@ $r=LoginR $uname 'Wrong@000'
 Expect "كلمة خاطئة ⇒ 400 كالمعتاد" $r.S 400
 Expect "   وتُحسب (حماية التخمين باقية)" ([int](SqlScalar "SELECT FailedLoginCount FROM Users WHERE UserId=$empUserId")) ($before+1)
 
+# ⚠️ **يُعدّ قبل وبعد لا من الصفر**: تفعيلُ الكلمة المؤقتة (G19) يُلغي جلساتٍ سابقة عمداً.
+$revBefore=[int](SqlScalar "SELECT COUNT(*) FROM RefreshTokens WHERE UserId=$empUserId AND RevokedAt IS NOT NULL")
 $r=Api POST "/auth/refresh" @{refreshToken=$empRefresh} $null $null
 Expect "تجديد رمز الموظف ⇒ 503" $r.S 503
 $revoked=[int](SqlScalar "SELECT COUNT(*) FROM RefreshTokens WHERE UserId=$empUserId AND RevokedAt IS NOT NULL")
-Expect "   ولم يُدوَّر رمز التجديد (الجلسة باقية)" $revoked 0
+Expect "   ولم يُدوَّر رمز التجديد (الجلسة باقية)" $revoked $revBefore
 
 $r=LoginR 'admin' $AdminPwd
 Expect "السوبر أدمن يدخل أثناء الإيقاف" $r.S 200

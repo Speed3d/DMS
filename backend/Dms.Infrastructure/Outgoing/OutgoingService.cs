@@ -176,7 +176,7 @@ public sealed class OutgoingService(
 
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-                var year = DateTime.UtcNow.Year;
+                var year = LocalClock.CurrentYear;   // بغداد لا UTC — وإلا أخذ كتابُ فجر 1 يناير سنةً سابقة (G21)
                 var serial = await numbering.NextSerialAsync(book.CompanyId, year, CounterType, ct);
 
                 book.Year = year;

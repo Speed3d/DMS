@@ -43,6 +43,17 @@ public static class LocalClock
     /// </remarks>
     public static DateTime Today => Now.Date;
 
+    /// <summary>سنة الترقيم الآن — <b>بتوقيت بغداد</b> لا UTC (G21).</summary>
+    /// <remarks>
+    /// 🔴 **كان الصادر والأرشيف يأخذان <c>DateTime.UtcNow.Year</c>**: كتابٌ يُعتمد بين 00:00 و03:00
+    /// فجرَ أوّل يناير بتوقيت بغداد **يأخذ رقم السنة السابقة** — ويُخبَز في الـPDF والـQR فلا
+    /// يُصلَح بعد وقوعه. والوارد والمهام سليمان: سنتُهما من تاريخٍ تقويميّ (الاستلام · الموعد).
+    /// </remarks>
+    public static int CurrentYear => YearAt(DateTime.UtcNow);
+
+    /// <summary>سنة بغداد عند لحظةٍ بتوقيت UTC — نقيّةٌ تُختبر عند الحدّ.</summary>
+    public static int YearAt(DateTime utc) => (utc + Offset).Year;
+
     /// <summary>
     /// يُطبّع أي تاريخٍ **تقويميّ** قبل تخزينه: يومٌ عند 00:00 و<c>Kind = Unspecified</c>.
     /// </summary>

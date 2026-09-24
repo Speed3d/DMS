@@ -246,6 +246,8 @@ if($dual){
     $idA=[int]$tA.B.taskId; $idB=[int]$tB.B.taskId
     Ok "مهمّتان مُسنَدتان إليه: أ=$idA · ب=$idB"
 
+    . "$PSScriptRoot\_activate.ps1"   # G19: الكلمة المؤقتة تُفعَّل قبل الاستعمال
+    $null=Enable-TempPassword $Base 'iso_dual' 'Iso@12345'
     $tk=(Api POST "/auth/login" @{username='iso_dual';password='Iso@12345'} $null $null).B.accessToken
     if(-not $tk){ Bad "تعذّر دخول iso_dual" }
     else{

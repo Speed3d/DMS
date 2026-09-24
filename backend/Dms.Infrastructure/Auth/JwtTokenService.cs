@@ -37,6 +37,9 @@ public static class DmsClaims
     public const string CanManageTasks = "tsk_mng";
 
     public const string DepartmentId = "dept";
+
+    /// <summary>«يجب تغيير كلمة المرور المؤقتة» — <c>"1"</c> أو غائب (G19).</summary>
+    public const string MustChangePassword = "mcp";
 }
 
 public sealed record TokenPair(string AccessToken, DateTime AccessExpires, string RefreshToken, DateTime RefreshExpires);
@@ -104,6 +107,11 @@ public sealed class JwtTokenService(IOptions<JwtSettings> options) : IJwtTokenSe
             if (depts.Count > 0)
                 claims.Add(new Claim(DmsClaims.DepartmentId, PerCompanyClaim.Encode(depts)));
         }
+
+        // 🔐 «يجب تغيير الكلمة المؤقتة» — يفرضه `PasswordChangeMiddleware` (G19).
+        //    يُكتب فقط حين يلزم، فرموزُ الجميع كما كانت.
+        if (user.MustChangePassword)
+            claims.Add(new Claim(DmsClaims.MustChangePassword, "1"));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_s.SigningKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

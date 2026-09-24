@@ -152,6 +152,12 @@ public sealed class UserService(
         user.LockedUntil = null;
         audit.Add("ResetPassword", nameof(User), id.ToString(), null, user.CompanyId);
         await db.SaveChangesAsync(ct);
+
+        // 🔐 **إعادةُ التعيين تُنهي جلساته القائمة** (G19) — وإلا بقي داخلاً بالكلمة القديمة
+        //    (أو مَن سرقها — وهو غالباً سببُ إعادة التعيين أصلاً) ولا يمرّ بـ«التغيير الإجباري».
+        var now = DateTime.UtcNow;
+        await db.RefreshTokens.Where(t => t.UserId == id && t.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), ct);
     }
 
     private void EnsureCanManage(UserRole targetRole)

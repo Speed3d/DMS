@@ -215,6 +215,8 @@ app.UseAuthentication();
 // ⏸️ **بعد المصادقة** ليعرف مَن الطالب — السوبر أدمن وحده يمرّ أثناء الإيقاف (ADR-050).
 //    و**بعد CORS** ليقرأ المتصفّح ردَّ 503 برسالته لا خطأ شبكةٍ غامضاً.
 app.UseMiddleware<LockdownMiddleware>();
+// 🔐 كلمةٌ مؤقتة لم تُغيَّر ⇒ لا شيء غير تغييرها — يفرضه الخادم لا الواجهة وحدها (G19).
+app.UseMiddleware<PasswordChangeMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

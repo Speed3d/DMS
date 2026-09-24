@@ -46,10 +46,12 @@ public sealed class AuthController(IAuthService auth, ICurrentUser current) : Co
 
     [Authorize]
     [HttpPost("change-password")]
-    public async Task<IActionResult> ChangePassword(ChangePasswordRequest req, CancellationToken ct)
+    public async Task<ActionResult<AuthResponse>> ChangePassword(ChangePasswordRequest req, CancellationToken ct)
     {
-        await auth.ChangePasswordAsync(current.UserId!.Value, req.CurrentPassword, req.NewPassword, ct);
-        return NoContent();
+        // ⚠️ **يعيد رمزاً جديداً** (كان 204): الرمز القديم يحمل «يجب التغيير» فيُحجب به كلُّ شيء
+        //    بعد G19 — والعميل يستبدله بهذا فيكمل بلا دخولٍ جديد.
+        var result = await auth.ChangePasswordAsync(current.UserId!.Value, req.CurrentPassword, req.NewPassword, ct);
+        return Map(result);
     }
 
     private static AuthResponse Map(AuthResult r) => new(

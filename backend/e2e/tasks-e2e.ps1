@@ -38,7 +38,8 @@ function UpsertUser($username,$displayName,$role,$modules,$canTasks,$departmentI
   else { $body.username=$username; $body.password='Tsk@12345'; $null=Api POST "/users" $body $admin $cid }
   return (Api GET "/users" $null $admin $cid).B | Where-Object { $_.username -eq $username } | Select-Object -First 1
 }
-function UserLogin($u){ (Api POST "/auth/login" @{username=$u;password='Tsk@12345'} $null $null).B.accessToken }
+. "$PSScriptRoot\_activate.ps1"   # G19: الكلمة المؤقتة تُفعَّل قبل الاستعمال
+function UserLogin($u){ $null=Enable-TempPassword $Base $u 'Tsk@12345'; (Api POST "/auth/login" @{username=$u;password='Tsk@12345'} $null $null).B.accessToken }
 
 $mng=UpsertUser 'tsk_mgr' 'مدير المهام' 'Employee' @('Outgoing','Tasks') $true $depId
 $wrk=UpsertUser 'tsk_wrk' 'موظف المهام' 'Employee' @('Outgoing','Tasks') $false $depId

@@ -23,7 +23,8 @@ public interface IAuthService
     Task<AuthResult> LoginAsync(string username, string password, CancellationToken ct = default);
     Task<AuthResult> RefreshAsync(string refreshToken, CancellationToken ct = default);
     Task LogoutAsync(string refreshToken, CancellationToken ct = default);
-    Task ChangePasswordAsync(int userId, string currentPassword, string newPassword, CancellationToken ct = default);
+    /// <summary>يغيّر الكلمة ويعيد <b>رمزاً جديداً</b> — بلا علامة «يجب التغيير» (G19).</summary>
+    Task<AuthResult> ChangePasswordAsync(int userId, string currentPassword, string newPassword, CancellationToken ct = default);
 }
 
 public sealed class AuthService(
@@ -109,20 +110,33 @@ public sealed class AuthService(
         }
     }
 
-    public async Task ChangePasswordAsync(int userId, string currentPassword, string newPassword, CancellationToken ct = default)
+    public async Task<AuthResult> ChangePasswordAsync(int userId, string currentPassword, string newPassword, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
-            throw new ValidationException("كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.");
+        PasswordChangeGate.ValidateNew(currentPassword, newPassword);
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId, ct)
+        var user = await db.Users.Include(u => u.AssignedCompanies)
+                       .FirstOrDefaultAsync(u => u.UserId == userId, ct)
                    ?? throw new NotFoundException("المستخدم غير موجود.");
         if (!hasher.Verify(currentPassword, user.PasswordHash))
             throw new ValidationException("كلمة المرور الحالية غير صحيحة.");
 
         user.PasswordHash = hasher.Hash(newPassword);
         user.MustChangePassword = false;
+
         audit.Add("ChangePassword", nameof(User), userId.ToString(), null, user.CompanyId);
+        // ⚠️ **رمزٌ جديد بلا علامة «يجب التغيير»** — الرمز القديم يحملها فيُحجب به كلُّ شيء.
+        var result = await IssueAsync(user, ct);
         await db.SaveChangesAsync(ct);
+
+        // 🔐 **تغييرُ الكلمة يُنهي جلساتِ الأجهزة الأخرى** (G19): مَن عرف الكلمة القديمة
+        //    ودخل بها — المدير الذي أعطاها مؤقتةً أو مَن اطّلع عليها — لا يبقى داخلاً بعد تغييرها.
+        // ⚠️ **بعد الحفظ لا قبله**، وبلا الرمز الجديد: فشلُ هذا لا يُضيع تغييرَ الكلمة نفسه.
+        var keep = tokens.HashRefreshToken(result.RefreshToken);
+        var now = DateTime.UtcNow;
+        await db.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null && t.TokenHash != keep)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), ct);
+        return result;
     }
 
     private async Task<AuthResult> IssueAsync(User user, CancellationToken ct)

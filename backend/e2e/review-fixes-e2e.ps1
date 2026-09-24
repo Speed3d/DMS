@@ -55,7 +55,8 @@ function SqlCount($sql){
   try{ $cmd=$cn.CreateCommand(); $cmd.CommandText=$sql; return [int]$cmd.ExecuteScalar() } finally { $cn.Close() }
 }
 
-function Login($u,$p){ return (Api POST "/auth/login" @{username=$u;password=$p} $null $null).B.accessToken }
+. "$PSScriptRoot\_activate.ps1"   # G19: الكلمة المؤقتة تُفعَّل قبل الاستعمال
+function Login($u,$p){ $null=Enable-TempPassword $Base $u $p; return (Api POST "/auth/login" @{username=$u;password=$p} $null $null).B.accessToken }
 
 function Link($cid,$mods,$extra){
   $l=@{companyId=$cid;modules=$mods;departmentId=$null;canApprove=$false;canManageIncoming=$false

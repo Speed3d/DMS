@@ -91,4 +91,13 @@ public class LocalClockTests
         var yesterdayLate = LocalClock.Today.AddDays(-1).AddHours(23).AddMinutes(59);
         Assert.Equal(1, LocalClock.DaysOverdue(yesterdayLate));
     }
-}
+
+    // ── G21: سنة الترقيم بتوقيت بغداد ──
+    // 🔴 كتابٌ يُعتمد فجر 1 يناير 2027 بتوقيت بغداد (= 31 ديسمبر بتوقيت غرينتش) كان يأخذ رقم 2026.
+    [Theory]
+    [InlineData("2026-12-31T21:00:00Z", 2027)]   // منتصف ليل بغداد بالضبط
+    [InlineData("2026-12-31T23:59:59Z", 2027)]   // 02:59 فجراً في بغداد — النافذة التي كانت تخطئ
+    [InlineData("2026-12-31T20:59:59Z", 2026)]   // 23:59:59 في بغداد — ما زالت 2026
+    [InlineData("2027-01-01T00:00:00Z", 2027)]
+    public void YearAt_UsesBaghdadNotUtc(string utc, int expected)
+        => Assert.Equal(expected, LocalClock.YearAt(DateTime.Parse(utc, null, System.Globalization.DateTimeStyles.AdjustToUniversal)));}

@@ -96,6 +96,8 @@ $uname="dr_emp$mk"; $upwd='Dr@123456'
 $link=@{companyId=$cid;modules=@('Outgoing','Incoming');departmentId=$null;canApprove=$false;canManageIncoming=$false
         canViewAllIncoming=$false;canManageEmployees=$false;canManagePayroll=$false;canAmendPaidPayroll=$false;canManageTasks=$false}
 $null=Api POST "/users" @{username=$uname;password=$upwd;fullName="موظف التكرار";role='Employee';isActive=$true;companies=@($link)} $admin $null
+. "$PSScriptRoot\_activate.ps1"   # G19: الكلمة المؤقتة تُفعَّل قبل الاستعمال
+$null=Enable-TempPassword $Base $uname $upwd
 $emp=(LoginR $uname $upwd).B.accessToken
 if(-not $emp){ Bad "فشل دخول الموظف"; exit 1 }
 $e3=Api POST "/entities" @{name="$ename-موظف";kind='Both'} $emp $cid $kE

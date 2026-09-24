@@ -73,11 +73,10 @@ Expect "أقسام B تشمل التقارير"         ($accB.modules -contains
 Expect "أقسام A لا تشمل التقارير"      ($accA.modules -contains 'Reports') $false
 
 Write-Host "`n=== 4) الفرض الحيّ: التوكن يحترم الشركة الفعّالة ===" -ForegroundColor Cyan
+# ⚠️ كان «التغيير» هنا إلى الكلمة نفسها — والخادم صار يرفضه (G19: الجديدة تختلف عن الحالية).
+. "$PSScriptRoot\_activate.ps1"
+$null=Enable-TempPassword $Base 'emp_multi' 'Multi@12345'
 $login=Api POST "/auth/login" @{username='emp_multi';password='Multi@12345'} $null $null
-if($login.B.mustChangePassword){
-  $null=Api POST "/auth/change-password" @{currentPassword='Multi@12345';newPassword='Multi@12345'} $login.B.accessToken $null
-  $login=Api POST "/auth/login" @{username='emp_multi';password='Multi@12345'} $null $null
-}
 $tok=$login.B.accessToken
 if(-not $tok){ Bad "فشل دخول emp_multi (HTTP $($login.S))"; Write-Host "`nنجح: $pass`nفشل: $($fail+1)"; exit 1 }
 Ok "دخول emp_multi"
