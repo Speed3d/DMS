@@ -220,7 +220,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 31 migration** (آخرها `AddClientRequests`، 2026-09-24 — ⏳ **على الفرع `feature/draft-protection`، لم تُطبَّق على `DmsDb`**؛ وما قبلها كلُّه مُطبَّق). ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
+**السلسلة الحالية — 31 migration** (آخرها `AddClientRequests`، 2026-09-24). ✅ **كلُّها مُطبَّقة على `DmsDb`**. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`) — و`AddClientRequests` نفسها طُبّقت قبل الدمج بتشغيلٍ للتجربة (`dotnet run` يطبّق عند الإقلاع)، وسلمت لأنها جدولٌ جديد. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
 
 | # | Migration | ما أضافه |
 |---|---|---|
@@ -248,7 +248,7 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 27 | `AddTaskParticipants` | جدول `DmsTaskParticipants` + قيد `CHECK` (مستخدمٌ **أو** قسم لا كلاهما) + فهرسٌ فريد مُرشَّح يمنع تكرار المشارك الفعّال — ADR-037. **إضافة بحتة**. طُبِّقت **2026-09-07** |
 | 28 | `AddNotifications` | جدول `Notifications` (مفتاحه `long`) + **فهرسٌ فريد مُرشَّح على `(RecipientUserId, DedupKey)`** يمنع الإغراق على مستوى القاعدة — ADR-038. **إضافة بحتة**. طُبِّقت **2026-09-07** |
 | 29–30 | `AddBookReplies` · `AddCaseFiles` | المعاملات (ADR-045) — مُطبَّقتان |
-| 31 | `AddClientRequests` | جدول `ClientRequests` + فهرسٌ فريد `(UserId, Key)` — ADR-051. **إضافة بحتة** (جدولٌ جديد لا يمسّ القائم). ⏳ **تُطبَّق على `DmsDb` بعد الدمج** |
+| 31 | `AddClientRequests` | جدول `ClientRequests` + فهرسٌ فريد `(UserId, Key)` — ADR-051. **إضافة بحتة** (جدولٌ جديد لا يمسّ القائم). طُبِّقت على `DmsDb` **2026-09-24** |
 
 > **ملاحظات:**
 > - 🔴 **الدفعة ٦ (الخدمة الخلفية — ADR-039) بلا مهاجرة** — أعمدةُ حالة التصعيد الثلاثة
