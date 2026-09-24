@@ -21,10 +21,14 @@ class _State extends ConsumerState<ChangePasswordScreen> {
   Future<void> _submit() async {
     if (_next.text.length < 8) { setState(() => _error = 'كلمة المرور يجب ألا تقل عن 8 أحرف.'); return; }
     if (_next.text != _confirm.text) { setState(() => _error = 'تأكيد كلمة المرور غير مطابق.'); return; }
+    // مرآةُ حارس الخادم (G19): الجديدة تختلف عن الحالية — وإلا بقي مَن أعطاها يعرفها.
+    if (_next.text == _current.text) { setState(() => _error = 'كلمة المرور الجديدة يجب أن تختلف عن الحالية.'); return; }
     setState(() { _busy = true; _error = null; });
     try {
-      await ref.read(apiClientProvider).changePassword(_current.text, _next.text);
-      await ref.read(sessionProvider.notifier).clearMustChange();
+      // 🔴 **الخادم يعيد رمزاً جديداً** (G19): القديم يحمل «يجب التغيير» فيُحجب به كلُّ طلب —
+      //    فيُستبدل هنا، وتبقى الشركة الفعّالة كما هي (`refreshAuth` لا `setAuth`).
+      final fresh = await ref.read(apiClientProvider).changePassword(_current.text, _next.text);
+      await ref.read(sessionProvider.notifier).refreshAuth(fresh);
       if (mounted && !widget.forced) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور.')));

@@ -137,8 +137,9 @@ class ApiClient {
     return AuthResult.fromJson(data);
   }
 
-  Future<void> changePassword(String current, String next) =>
-      _post('/auth/change-password', {'currentPassword': current, 'newPassword': next});
+  /// يغيّر الكلمة ويعيد **رمزاً جديداً** بلا علامة «يجب التغيير» (G19).
+  Future<AuthResult> changePassword(String current, String next) async => AuthResult.fromJson(
+      await _post('/auth/change-password', {'currentPassword': current, 'newPassword': next}));
 
   // ---------- القوائم المرجعية ----------
   /// الشركات — **النشِطة وحدها افتراضاً** (ADR-047).

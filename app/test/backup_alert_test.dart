@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/quiet_status.dart';
 import 'package:dms_app/core/api_client.dart';
 import 'package:dms_app/core/company_providers.dart';
 import 'package:dms_app/core/notification_providers.dart';
@@ -94,6 +95,7 @@ void main() {
   }) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        quietSystemStatus,
         sessionProvider.overrideWith(() => _FixedSession(session(role: role))),
         apiClientProvider.overrideWithValue(_CountingApi(cov)),
         // ⚠️ صدرُ القائمة صار يقرأ الشركة الفعّالة — ويُعزَل هنا لأن موضوع الاختبار

@@ -70,6 +70,44 @@ bool blocksUser(SystemView v, {required bool loggedIn, required bool isSuperAdmi
       SystemPhase.restoring || SystemPhase.unreachable => true,
     };
 
+/// نبرةُ بطاقة الاتصال في الشريط الجانبيّ.
+enum ConnectionTone { ok, attention, down }
+
+/// ما تقوله بطاقة الاتصال — **من حالةٍ حقيقية لا نصٍّ ثابت**.
+///
+/// 🔴 **كانت بطاقة «وضع المزامنة» تقول دائماً «جميع البيانات محدّثة. آخر مزامنة قبل دقيقتين»**
+/// بشريط تقدّمٍ ممتلئ — والخادم متوقّف، ومسوّداتٌ لم تُرسَل. **وطمأنةٌ كاذبة أسوأ من غيابها**:
+/// تُقنع الموظف أن كتابه وصل وهو في جهازه. دالّةٌ نقيّة تُختبر (ADR-042).
+({String title, String body, ConnectionTone tone}) connectionSummary(SystemPhase phase, int unsentDrafts) {
+  final drafts = unsentDrafts == 0
+      ? null
+      : unsentDrafts == 1
+          ? 'مسوّدةٌ لم تُرسَل — افتح «مسوّداتي».'
+          : unsentDrafts == 2
+              ? 'مسوّدتان لم تُرسَلا — افتح «مسوّداتي».'
+              : '$unsentDrafts مسوّدات لم تُرسَل — افتح «مسوّداتي».';
+  return switch (phase) {
+    SystemPhase.unreachable => (
+        title: 'لا اتصال بالخادم',
+        body: 'ما تكتبه يُحفظ على هذا الجهاز ويُرسَل بعد عودة الاتصال.',
+        tone: ConnectionTone.down,
+      ),
+    SystemPhase.restoring => (
+        title: 'جارٍ استعادة نسخة',
+        body: 'النظام متوقّف مؤقتاً حتى تنتهي.',
+        tone: ConnectionTone.down,
+      ),
+    SystemPhase.lockdown => (
+        title: 'النظام موقوف للصيانة',
+        body: drafts ?? 'المستخدمون محجوبون — أنت وحدك تتصفّح.',
+        tone: ConnectionTone.attention,
+      ),
+    SystemPhase.ok => drafts == null
+        ? (title: 'متصل', body: 'كلُّ ما كتبته وصل إلى النظام.', tone: ConnectionTone.ok)
+        : (title: 'متصل', body: drafts, tone: ConnectionTone.attention),
+  };
+}
+
 /// مفتاح الملّاح الجذريّ — لحوارات تُفتح من فوق الملّاح (الشريط في `MaterialApp.builder`
 /// لا يملك ملّاحاً فوقه).
 final appNavigatorKey = GlobalKey<NavigatorState>();

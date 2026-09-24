@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/quiet_status.dart';
 import 'package:dms_app/core/company_providers.dart';
 import 'package:dms_app/core/outgoing_providers.dart';
 import 'package:dms_app/core/session.dart';
@@ -52,6 +53,7 @@ void main() {
       //    فلا يُقرأ التجاوز الجديد — **فيمرّ حارسُ التبديل وهو لا يقيس تبديلاً**.
       key: ValueKey(active?.companyId),
       overrides: [
+        quietSystemStatus,
         sessionProvider.overrideWith(() => _FixedSession(session())),
         activeCompanyProvider.overrideWith((ref) async => active),
         // ⚠️ **تُعزَل شارة الصادر**: مصدرُها يستقصي الخادم، وبلا عزلٍ يبقى مؤقّتُ الشبكة

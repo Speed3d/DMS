@@ -9,6 +9,7 @@ import '../core/backup_providers.dart';
 import '../core/company_providers.dart';
 import '../core/form_drafts.dart';
 import '../core/session.dart';
+import '../core/system_status.dart';
 import 'backup_alert.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
@@ -192,36 +193,64 @@ class Sidebar extends ConsumerWidget {
 
           const Spacer(),
 
-          // Sync Status
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0x2DBE9A47), Color(0x0DBE9A47)],
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-              ),
-              border: Border.all(color: AppColors.gold.withValues(alpha: 0.25)),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.sync_rounded, color: AppColors.goldBright, size: 16),
-                    SizedBox(width: 8),
-                    Text('وضع المزامنة', style: TextStyle(color: AppColors.goldBright, fontWeight: FontWeight.bold, fontSize: 13.5)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text('جميع البيانات محدّثة. آخر مزامنة قبل دقيقتين.', style: TextStyle(color: Color(0xFF9DB0D2), fontSize: 12, height: 1.6)),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: const LinearProgressIndicator(value: 1.0, backgroundColor: Colors.white10, color: AppColors.goldBright, minHeight: 6),
-                ),
-              ],
-            ),
+          // 🔴 **بطاقة الاتصال — من حالةٍ حقيقية** (كانت «وضع المزامنة» بنصٍّ ثابتٍ يَعِد بما لا يعرفه).
+          // والنقر يفتح «مسوّداتي» حين فيها ما ينتظر.
+          Consumer(
+            builder: (context, ref, child) {
+              final s = ref.watch(sessionProvider);
+              final phase = ref.watch(systemStatusProvider).phase;
+              final store = ref.watch(formDraftStoreProvider);
+              return ValueListenableBuilder(
+                valueListenable: store.listenable(),
+                builder: (context, _, _) {
+                  final userId = s.auth?.userId;
+                  final unsent = userId == null
+                      ? 0
+                      : splitByCompany(draftsOf(store.all(), userId), s.effectiveCompanyId).here.length;
+                  final c = connectionSummary(phase, unsent);
+                  final color = switch (c.tone) {
+                    ConnectionTone.ok => AppColors.successDark,
+                    ConnectionTone.attention => AppColors.goldBright,
+                    ConnectionTone.down => AppColors.dangerDark,
+                  };
+                  final icon = switch (c.tone) {
+                    ConnectionTone.ok => Icons.cloud_done_rounded,
+                    ConnectionTone.attention => Icons.edit_note_rounded,
+                    ConnectionTone.down => Icons.cloud_off_rounded,
+                  };
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const Key('connection-card'),
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: unsent > 0 ? () => onSelected(1) : null,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.10),
+                          border: Border.all(color: color.withValues(alpha: 0.35)),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(icon, color: color, size: 16),
+                                const SizedBox(width: 8),
+                                Text(c.title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13.5)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(c.body, style: const TextStyle(color: Color(0xFF9DB0D2), fontSize: 12, height: 1.6)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
                 ],
               ),
