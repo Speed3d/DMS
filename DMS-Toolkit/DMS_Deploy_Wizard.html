@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المساعد التنفيذي لنشر نظام DMS — الدليل التفاعلي</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-main: 'Cairo', 'Tajawal', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      
+      --bg-base: #0B0F19;
+      --bg-surface: #111827;
+      --bg-surface-2: #1F2937;
+      --bg-surface-3: #374151;
+      --border-subtle: #1F2937;
+      --border-strong: #374151;
+      
+      --text-main: #F9FAFB;
+      --text-muted: #9CA3AF;
+      --text-soft: #6B7280;
+      
+      --cyan-primary: #06B6D4;
+      --cyan-hover: #0891B2;
+      --cyan-light: rgba(6, 182, 212, 0.12);
+      
+      --accent-danger: #EF4444;
+      --accent-danger-bg: rgba(239, 68, 68, 0.15);
+      --accent-warning: #F59E0B;
+      --accent-warning-bg: rgba(245, 158, 11, 0.15);
+      --accent-success: #10B981;
+      --accent-success-bg: rgba(16, 185, 129, 0.15);
+      
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+
+    html.light {
+      --bg-base: #F8FAFC;
+      --bg-surface: #FFFFFF;
+      --bg-surface-2: #F1F5F9;
+      --bg-surface-3: #E2E8F0;
+      --border-subtle: #E2E8F0;
+      --border-strong: #CBD5E1;
+      
+      --text-main: #0F172A;
+      --text-muted: #475569;
+      --text-soft: #64748B;
+      
+      --cyan-primary: #0891B2;
+      --cyan-hover: #0E7490;
+      --cyan-light: rgba(8, 145, 178, 0.12);
+      
+      --accent-danger: #DC2626;
+      --accent-danger-bg: #FEF2F2;
+      --accent-warning: #D97706;
+      --accent-warning-bg: #FFFBEB;
+      --accent-success: #059669;
+      --accent-success-bg: #ECFDF5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; transition: background 0.15s, border-color 0.15s; }
+    body {
+      font-family: var(--font-main);
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      line-height: 1.6;
+      font-size: 14.5px;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 80px 20px; }
+
+    /* Header */
+    .header {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--cyan-primary), #3B82F6);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 20px;
+      color: #fff;
+    }
+    .brand-title { font-size: 20px; font-weight: 800; color: var(--text-main); }
+    .brand-desc { font-size: 13px; color: var(--text-muted); }
+
+    /* Configuration Bar */
+    .config-card {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .config-field { display: flex; flex-direction: column; gap: 6px; }
+    .config-label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+    .config-input {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      direction: ltr;
+      text-align: left;
+      outline: none;
+    }
+    .config-input:focus { border-color: var(--cyan-primary); }
+
+    /* Machine Switcher Tabs */
+    .tabs-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .machine-filters {
+      display: flex;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      gap: 4px;
+    }
+    .filter-btn {
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-main);
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .filter-btn.active {
+      background: var(--cyan-primary);
+      color: #fff;
+    }
+
+    /* Progress & Actions */
+    .progress-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .progress-bar-outer {
+      width: 150px;
+      height: 8px;
+      background: var(--bg-surface-3);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-bar-inner {
+      height: 100%;
+      width: 0%;
+      background: var(--cyan-primary);
+      transition: width 0.3s;
+    }
+
+    /* Phase Cards */
+    .phase-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    .phase-card.machine-dev { border-right: 5px solid #3B82F6; }
+    .phase-card.machine-trial { border-right: 5px solid var(--cyan-primary); }
+    .phase-card.machine-reset { border-right: 5px solid var(--accent-warning); }
+
+    .phase-header {
+      padding: 18px 24px;
+      background: var(--bg-surface);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+    }
+    .phase-header-info { display: flex; align-items: center; gap: 14px; }
+    .phase-num {
+      width: 38px;
+      height: 38px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--cyan-primary);
+    }
+    .phase-title-text { font-size: 16px; font-weight: 800; color: var(--text-main); }
+    .phase-sub { font-size: 12.5px; color: var(--text-muted); }
+
+    .phase-badges { display: flex; align-items: center; gap: 8px; }
+    .badge {
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .badge-dev { background: rgba(59, 130, 246, 0.15); color: #60A5FA; }
+    .badge-trial { background: var(--cyan-light); color: var(--cyan-primary); }
+    .badge-reset { background: var(--accent-warning-bg); color: var(--accent-warning); }
+
+    .phase-body {
+      padding: 24px;
+      border-top: 1px solid var(--border-subtle);
+      display: block;
+    }
+    .phase-card.collapsed .phase-body { display: none; }
+
+    /* Script Runner Card */
+    .runner-box {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    .runner-details { display: flex; flex-direction: column; gap: 4px; }
+    .runner-title { font-weight: 800; font-size: 13.5px; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+    .runner-cmd { font-family: var(--font-mono); font-size: 12.5px; color: var(--cyan-primary); direction: ltr; }
+
+    /* Command snippet */
+    .cmd-card {
+      background: var(--bg-base);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      margin: 14px 0;
+      overflow: hidden;
+    }
+    .cmd-header {
+      background: var(--bg-surface-2);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    pre {
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.5;
+      overflow-x: auto;
+      color: var(--text-main);
+      direction: ltr;
+      text-align: left;
+    }
+
+    /* Guards & Errors boxes */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .guard-box {
+      background: var(--bg-surface-2);
+      border-right: 4px solid var(--accent-success);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      font-size: 13px;
+    }
+    .guard-title { font-weight: 800; color: var(--accent-success); margin-bottom: 6px; }
+
+    .error-box {
+      background: var(--bg-surface-2);
+      border-right: 4px solid var(--accent-danger);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      font-size: 13px;
+    }
+    .error-title { font-weight: 800; color: var(--accent-danger); margin-bottom: 6px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-main);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-surface-3);
+      color: var(--text-main);
+      text-decoration: none;
+    }
+    .btn:hover { background: var(--border-strong); }
+    .btn-primary {
+      background: var(--cyan-primary);
+      border-color: var(--cyan-primary);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--cyan-hover); }
+
+    .btn-copy {
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      cursor: pointer;
+    }
+    .btn-copy:hover { border-color: var(--cyan-primary); color: var(--cyan-primary); }
+
+    .chk-done {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .chk-done input { width: 18px; height: 18px; cursor: pointer; }
+    .chk-done.checked { color: var(--accent-success); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <div class="brand">
+        <div class="brand-icon">DMS</div>
+        <div>
+          <div class="brand-title">المساعد التنفيذي لنشر وتثبيت نظام DMS</div>
+          <div class="brand-desc">الكتالوج التفاعلي المزدوج — مستند إلى سجل التجربة الحقيقية الناجحة (2026-09-22)</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button id="themeBtn" class="btn" style="padding: 6px 12px;">☀️ / 🌙</button>
+        <button onclick="window.print()" class="btn">🖨️ طباعة الدليل</button>
+      </div>
+    </div>
+
+    <!-- Live Configuration Bar -->
+    <div class="config-card">
+      <div class="config-field">
+        <label class="config-label">اسم الدومين (Domain):</label>
+        <input type="text" id="cfgDomain" class="config-input" value="dms.nociraq.com">
+      </div>
+      <div class="config-field">
+        <label class="config-label">خادم/مثيل SQL Server:</label>
+        <input type="text" id="cfgDbServer" class="config-input" value=".">
+      </div>
+      <div class="config-field">
+        <label class="config-label">اسم قاعدة البيانات:</label>
+        <input type="text" id="cfgDbName" class="config-input" value="DmsTrial">
+      </div>
+      <div class="config-field">
+        <label class="config-label">حرف محرك الفلاشة (USB):</label>
+        <input type="text" id="cfgDrive" class="config-input" value="E:\">
+      </div>
+      <div class="config-field">
+        <label class="config-label">مجلد إخراج النشر:</label>
+        <input type="text" id="cfgOutputDir" class="config-input" value="D:\DMS-نشر">
+      </div>
+    </div>
+  </div>
+
+  <!-- Machine Filter Tabs & Progress -->
+  <div class="tabs-bar">
+    <div class="machine-filters">
+      <button class="filter-btn active" data-filter="all">عرض الكل (الكتالوج الكامل)</button>
+      <button class="filter-btn" data-filter="dev">💻 جهاز التطوير (مرحلة 1)</button>
+      <button class="filter-btn" data-filter="trial">🧪 حاسبة التجربة (مراحل 2 - 8)</button>
+      <button class="filter-btn" data-filter="reset">🔄 تصفير حاسبة التجربة (مرحلة 0)</button>
+    </div>
+
+    <div class="progress-box">
+      <span>نسبة الإنجاز:</span>
+      <div class="progress-bar-outer">
+        <div id="progBar" class="progress-bar-inner"></div>
+      </div>
+      <span id="progText">0 / 9</span>
+    </div>
+  </div>
+
+  <!-- PHASE 0: RESET TRIAL MACHINE -->
+  <div class="phase-card machine-reset" data-machine="reset">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">00</div>
+        <div>
+          <div class="phase-title-text">تصفير الحاسبة التجريبية بالكامل (Reset to Clean State)</div>
+          <div class="phase-sub">إزالة خدمات DmsApi و Cloudflared وموقع IIS وقاعدة DmsTrial لإعادة التجربة من الصفر</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-reset">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ أمر التشغيل المؤتمت بضغطة زر:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\00-reset-trial.ps1</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\00-reset-trial.ps1')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>أوامر التصفير اليدوية المباشرة</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ الأوامر</button>
+        </div>
+        <pre><code># إيقاف وحذف الخدمات
+Stop-Service DmsApi -ErrorAction SilentlyContinue; sc.exe delete DmsApi
+Stop-Service Cloudflared -ErrorAction SilentlyContinue; sc.exe delete Cloudflared
+
+# استعادة موقع IIS الافتراضي
+Import-Module WebAdministration
+Remove-Website -Name "DmsApp" -ErrorAction SilentlyContinue
+Set-ItemProperty "IIS:\Sites\Default Web Site" -Name serverAutoStart -Value $true
+Start-Website -Name "Default Web Site"
+
+# حذف قاعدة البيانات التجريبية
+sqlcmd -S <span class="dyn-dbserver">.</span> -Q "IF EXISTS (SELECT name FROM sys.databases WHERE name = '<span class="dyn-dbname">DmsTrial</span>') BEGIN ALTER DATABASE <span class="dyn-dbname">DmsTrial</span> SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE <span class="dyn-dbname">DmsTrial</span>; END"
+
+# حذف مجلد النظام وإعدادات النفق
+Remove-Item -Path "C:\DMS" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\Windows\System32\config\systemprofile\.cloudflared" -Recurse -Force -ErrorAction SilentlyContinue</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 النتيجة المتوقعة بعد التصفير:</div>
+          الحاسبة تصبح نظيفة تماماً ولا يوجد فيها أي أثر لموقع DmsApp أو الخدمات، ومحرك SQL Server و IIS جاهزان للتنصيب الجديد.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ أمان البيانات:</div>
+          هذا السكربت مخصص لحاسبة التجربة فقط ولا يُشغل على جهاز التطوير أو الخادم الفعلي.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 1: BUILD & PACK DEV -->
+  <div class="phase-card machine-dev" data-machine="dev">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">01</div>
+        <div>
+          <div class="phase-title-text">بناء الواجهة والباك-إند وحزم الملفات (Build & Pack)</div>
+          <div class="phase-sub">بناء الباك إند وربط الدومين المخبوز في فلاتر والتحقق الصارم من الحراس الثلاثة</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-dev">💻 جهاز التطوير</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل السكربت المؤتمت بالكامل (يفحص الحراس ويضغط تلقائياً):</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\01-dev-build-and-pack.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>" -OutputDir "<span class="dyn-output">D:\DMS-نشر</span>"</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\01-dev-build-and-pack.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot; -OutputDir &quot;' + getVal('cfgOutputDir') + '&quot;')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>الأوامر اليدوية المفصلة</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ الأوامر</button>
+        </div>
+        <pre><code># 1. بناء الباك إند
+cd D:\DMS\backend
+dotnet publish Dms.Api -c Release -r win-x64 --self-contained false -o "C:\temp\dms-publish"
+
+# 2. بناء الواجهة بالدومين المخبوز
+cd D:\DMS\app
+flutter build web --release --dart-define=API_BASE_URL=https://<span class="dyn-domain">dms.nociraq.com</span>/api
+
+# 3. فحص الحراس
+Select-String -Path "D:\DMS\app\build\web\main.dart.js" -Pattern "<span class="dyn-domain">dms.nociraq.com</span>" -Quiet  # يجب True
+Test-Path "C:\temp\dms-publish\ops\update-dms.ps1"                                              # يجب True
+Test-Path "C:\temp\dms-publish\appsettings.Development.json"                                    # يجب False
+
+# 4. ضغط الحزم
+New-Item -ItemType Directory -Force -Path "<span class="dyn-output">D:\DMS-نشر</span>" | Out-Null
+Compress-Archive -Path "C:\temp\dms-publish\*"  -DestinationPath "<span class="dyn-output">D:\DMS-نشر</span>\dms-api.zip" -Force
+Compress-Archive -Path "D:\DMS\app\build\web\*" -DestinationPath "<span class="dyn-output">D:\DMS-نشر</span>\dms-app.zip" -Force</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الحارس الإلزامي:</div>
+          • فحص الدومين داخل <code>main.dart.js</code> يجب أن يعيد <strong>True</strong>.<br>
+          • فحص <code>appsettings.Development.json</code> يجب أن يعيد <strong>False</strong> لمنع تسريب المفاتيح.<br>
+          • أحجام الحزم الناتجة يجب أن تتجاوز 5 ميغابايت لكل ملف.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ درس من واقع التجربة (العطل 2):</div>
+          هذه الخطوة على <strong>جهاز التطوير حصراً</strong>. ضغط الحزم على حاسبة التجربة سيفشل لعدم وجود مجلدات الكود.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 2: UNPACK TRIAL -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">02</div>
+        <div>
+          <div class="phase-title-text">فك الحزم على حاسبة التجربة (Unpack)</div>
+          <div class="phase-sub">نقل الحزم عبر الفلاشة وفكها إلى C:\DMS\api و C:\DMS\app</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل السكربت المؤتمت:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\02-trial-unpack.ps1 -SourceDrive "<span class="dyn-drive">E:\</span>"</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\02-trial-unpack.ps1 -SourceDrive &quot;' + getVal('cfgDrive') + '&quot;')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>الأوامر اليدوية المباشرة</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ الأوامر</button>
+        </div>
+        <pre><code>New-Item -ItemType Directory -Force -Path C:\DMS\api, C:\DMS\app | Out-Null
+Expand-Archive -Path "<span class="dyn-drive">E:\</span>dms-api.zip" -DestinationPath "C:\DMS\api" -Force
+Expand-Archive -Path "<span class="dyn-drive">E:\</span>dms-app.zip" -DestinationPath "C:\DMS\app" -Force</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الحارس:</div>
+          تأكد من وجود الملفات <code>C:\DMS\api\Dms.Api.exe</code> و <code>C:\DMS\app\web.config</code>.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ تنبيه هندسي:</div>
+          <code>Expand-Archive</code> لا يحذف القديم، لذلك السكربت يقوم بتفريغ <code>C:\DMS\app</code> تلقائياً لمنع تداخل النسخ.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 3: PREFLIGHT -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">03</div>
+        <div>
+          <div class="phase-title-text">الفحص المسبق للحاسبة (Pre-flight Check)</div>
+          <div class="phase-sub">فحص بيئة ASP.NET Core Runtime ومثيل SQL والمنافذ الشاغرة</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل سكربت الفحص المسبق الشامل:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\03-trial-preflight.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>" -DbName "<span class="dyn-dbname">DmsTrial</span>"</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\03-trial-preflight.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot; -DbName &quot;' + getVal('cfgDbName') + '&quot;')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>المسبار الحاسم لفحص ASP.NET Core Runtime (علاج العطل 3)</span>
+          <button class="btn-copy" onclick="copyText('C:\\DMS\\api\\Dms.Api.exe generate-secrets')">نسخ الأمر</button>
+        </div>
+        <pre><code>C:\DMS\api\Dms.Api.exe generate-secrets</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الناتج المتوقع للمسبار:</div>
+          يجب أن يطبع <code>الاستخدام: Dms.Api.exe generate-secrets --out ...</code> (هذا يثبت سلامة بيئة الدوت نت x64 الحقيقية).
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ درس العطل 3:</div>
+          لا تسأل <code>dotnet</code> في الـ PATH لأنه قد يكون 32-بت فيعطيك فشلاً كاذباً بينما البرنامج x64 سليم تماماً!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 4: SECRETS & DB -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">04</div>
+        <div>
+          <div class="phase-title-text">توليد الأسرار وتهيئة قاعدة البيانات (Secrets & DB)</div>
+          <div class="phase-sub">توليد أسرار الإنتاج، منح sysadmin لحساب SYSTEM، أول إقلاع، وفحص الدخول المحلي</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل السكربت المؤتمت (يولد الأسرار ويضبط الصلاحيات ويفحص المهاجرات):</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\04-trial-secrets-and-db.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>" -DbServer "<span class="dyn-dbserver">.</span>" -DbName "<span class="dyn-dbname">DmsTrial</span>"</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\04-trial-secrets-and-db.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot; -DbServer &quot;' + getVal('cfgDbServer') + '&quot; -DbName &quot;' + getVal('cfgDbName') + '&quot;')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>أمر منح صلاحية sysadmin لحساب SYSTEM الحاسم (علاج العطل 4)</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ الأمر</button>
+        </div>
+        <pre><code>sqlcmd -S <span class="dyn-dbserver">.</span> -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'NT AUTHORITY\SYSTEM') CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];"
+sqlcmd -S <span class="dyn-dbserver">.</span> -Q "SELECT IS_SRVROLEMEMBER('sysadmin', 'NT AUTHORITY\SYSTEM') AS IsSysadmin;"   # يجب 1</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الحراس:</div>
+          • <code>IsSysadmin</code> يجب أن يساوي <strong>1</strong>.<br>
+          • فحص الدخول المحلي <code>/api/auth/login</code> يعيد رمز توكن بطول <strong>507</strong> تقريباً.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ درس العطل 4 و 5:</div>
+          • بدون sysadmin لحساب SYSTEM ستفشل الخدمة صامتاً بدعوى أن القاعدة غير موجودة.<br>
+          • كلمة المرور تُقرأ من الملف برمجياً ولا تكتب باليد تجنباً للخطأ الإملائي وقفل الحساب.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 5: WINDOWS SERVICE -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">05</div>
+        <div>
+          <div class="phase-title-text">تثبيت وضبط خدمة DmsApi (Windows Service)</div>
+          <div class="phase-sub">تسجيل الخدمة وضبط تبعيتها لمثيل SQL والتعافي التلقائي وحقن متغير البيئة</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل سكربت تثبيت الخدمة:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\05-trial-service-setup.ps1</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\05-trial-service-setup.ps1')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>أوامر التثبيت اليدوية</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ الأوامر</button>
+        </div>
+        <pre><code>sc.exe create DmsApi binPath= "C:\DMS\api\Dms.Api.exe" start= auto DisplayName= "DMS API Service"
+sc.exe config DmsApi depend= 'MSSQLSERVER'
+sc.exe failure DmsApi reset= 86400 actions= restart/30000/restart/30000/restart/60000
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\DmsApi" `
+    -Name "Environment" -Value @("ASPNETCORE_ENVIRONMENT=Production") -Type MultiString
+
+Start-Service DmsApi
+Invoke-RestMethod -Uri "http://localhost:5080/api/system/status"   # maintenance : False</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الحارس:</div>
+          طلب <code>http://localhost:5080/api/system/status</code> يرد بـ JSON فيه <code>maintenance: false</code>.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ تنبيه التبعية (depend):</div>
+          استخدم اسم مثيلك الفعلي (<code>MSSQLSERVER</code> أو <code>MSSQL$SQLEXPRESS</code>).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 6: IIS SETUP -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">06</div>
+        <div>
+          <div class="phase-title-text">ضبط خادم IIS وموقع DmsApp (علاج العطل 9)</div>
+          <div class="phase-sub">إيقاف Default Web Site ومنع إقلاعه، إنشاء موقع DmsApp، وفحص canvaskit.wasm</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل سكربت إعداد IIS وفحص CanvasKit:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\06-trial-iis-setup.ps1</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\06-trial-iis-setup.ps1')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>الأوامر اليدوية المباشرة</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ الأوامر</button>
+        </div>
+        <pre><code>Import-Module WebAdministration
+
+# 🔴 يُعطَّل عن الإقلاع التلقائي لمنع احتلال المنفذ 80 (العطل 9)
+Stop-Website -Name "Default Web Site" -ErrorAction SilentlyContinue
+Set-ItemProperty "IIS:\Sites\Default Web Site" -Name serverAutoStart -Value $false
+
+New-Website -Name "DmsApp" -Port 80 -PhysicalPath "C:\DMS\app" -Force
+Set-ItemProperty "IIS:\Sites\DmsApp" -Name serverAutoStart -Value $true
+Start-Website -Name "DmsApp"
+
+icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
+
+# الفحص الحاسم لملفات الرسم
+(Invoke-WebRequest "http://localhost/canvaskit/canvaskit.wasm" -UseBasicParsing).StatusCode   # يجب 200</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الحارس الحاسم:</div>
+          • <code>Default Web Site</code> = <strong>Stopped / False</strong>.<br>
+          • <code>DmsApp</code> = <strong>Started / True</strong>.<br>
+          • تحميل <code>canvaskit.wasm</code> يعيد كود <strong>200</strong> لمنع ظهور صفحة بيضاء.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ أخبث الأعطال (العطل 9):</div>
+          لو لم تضع <code>serverAutoStart = $false</code>، سيسبق الموقع الافتراضي بعد إعادة التشغيل ويحتل المنفذ 80 فتظهر صفحة IIS الزرقاء للمستخدمين!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 7: CLOUDFLARE TUNNEL -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">07</div>
+        <div>
+          <div class="phase-title-text">نفق Cloudflare وتثبيته كخدمة (علاج العطل 7)</div>
+          <div class="phase-sub">إنشاء النفق وضبط التوجيه بالريجكس ونقل الإعدادات لـ SYSTEM وتصحيح ImagePath</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل سكربت النفق المتكامل وحل ثغرة الخدمة الفارغة:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\07-trial-tunnel-setup.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>"</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\07-trial-tunnel-setup.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot;')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-header">
+          <span>قواعد التوجيه الدقيقة في config.yml</span>
+          <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ القواعد</button>
+        </div>
+        <pre><code>ingress:
+  - hostname: <span class="dyn-domain">dms.nociraq.com</span>
+    path: "^/(api|v)(/|$)"
+    service: http://localhost:5080
+
+  - hostname: <span class="dyn-domain">dms.nociraq.com</span>
+    service: http://localhost:80
+
+  - service: http_status:404</code></pre>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 الحارس:</div>
+          • <code>cloudflared tunnel ingress validate</code> يعيد نجاح الفحص.<br>
+          • <code>sc.exe qc Cloudflared</code> يجب أن ينتهي بـ <strong>tunnel run</strong>.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ درس العطل 7 (الخدمة الفارغة):</div>
+          أمر <code>cloudflared service install</code> يسجل خدمة فارغة بدون معاملات فتسقط فوراً! السكربت يكتب مسار <code>ImagePath</code> الصحيح في الريجستري مباشرة.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 8: FINAL VERIFICATION -->
+  <div class="phase-card machine-trial" data-machine="trial">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num">08</div>
+        <div>
+          <div class="phase-title-text">الفحص الحاسم النهائي واختبار الإقلاع (Final Test)</div>
+          <div class="phase-sub">فحص الخدمات والموقع من الإنترنت واختبار اعتماد كتاب ومسح ختم الـ QR</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box">
+        <div class="runner-details">
+          <div class="runner-title">⚡ تشغيل الفحص النهائي الشامل:</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\08-trial-verify-final.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>"</div>
+        </div>
+        <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\08-trial-verify-final.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot;')">نسخ أمر السكربت</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 قائمة التحقق الذهبية:</div>
+          • الخدمات الثلاث (<code>Cloudflared, DmsApi, W3SVC</code>) بحالة <strong>Running + Automatic</strong>.<br>
+          • فتح <code>https://<span class="dyn-domain">dms.nociraq.com</span></code> من هاتف على بيانات 4G يعرض شاشة الدخول.<br>
+          • الدخول بـ <code>admin</code> وكلمة المرور وتغييرها بنجاح.
+        </div>
+        <div class="guard-box" style="border-right-color: var(--cyan-primary);">
+          <div class="guard-title" style="color: var(--cyan-primary);">📱 جائزة التجربة (ختم الـ QR):</div>
+          أنشئ كتاباً تجريبياً واعتمده، ثم امسح ختم الـ QR بكاميرا الهاتف العادية للتأكد من فتح صفحة التحقق <code>/v/...</code> والتأكد من تثبيت الدومين بنجاح.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function getVal(id) {
+    return document.getElementById(id).value.trim();
+  }
+
+  function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      alert("✔ تم نسخ الأمر إلى الحافظة:\n" + text);
+    });
+  }
+
+  function updateVariables() {
+    const domain = getVal('cfgDomain') || 'dms.nociraq.com';
+    const dbServer = getVal('cfgDbServer') || '.';
+    const dbName = getVal('cfgDbName') || 'DmsTrial';
+    const drive = getVal('cfgDrive') || 'E:\\';
+    const output = getVal('cfgOutputDir') || 'D:\\DMS-نشر';
+
+    document.querySelectorAll('.dyn-domain').forEach(el => el.textContent = domain);
+    document.querySelectorAll('.dyn-dbserver').forEach(el => el.textContent = dbServer);
+    document.querySelectorAll('.dyn-dbname').forEach(el => el.textContent = dbName);
+    document.querySelectorAll('.dyn-drive').forEach(el => el.textContent = drive);
+    document.querySelectorAll('.dyn-output').forEach(el => el.textContent = output);
+  }
+
+  ['cfgDomain', 'cfgDbServer', 'cfgDbName', 'cfgDrive', 'cfgOutputDir'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateVariables);
+  });
+
+  const filterBtns = document.querySelectorAll('.filter-btn');
+  const cards = document.querySelectorAll('.phase-card');
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.dataset.filter;
+
+      cards.forEach(card => {
+        if (filter === 'all') {
+          card.style.display = 'block';
+        } else {
+          card.style.display = card.dataset.machine === filter ? 'block' : 'none';
+        }
+      });
+    });
+  });
+
+  const chks = document.querySelectorAll('.step-chk');
+  const progBar = document.getElementById('progBar');
+  const progText = document.getElementById('progText');
+
+  function updateProgress() {
+    let completed = 0;
+    chks.forEach(chk => {
+      if (chk.checked) completed++;
+      const parentLabel = chk.closest('.chk-done');
+      if (chk.checked) {
+        parentLabel.classList.add('checked');
+      } else {
+        parentLabel.classList.remove('checked');
+      }
+    });
+    const percent = Math.round((completed / chks.length) * 100);
+    progBar.style.width = percent + '%';
+    progText.textContent = `${completed} / ${chks.length}`;
+  }
+
+  chks.forEach(chk => chk.addEventListener('change', updateProgress));
+
+  document.querySelectorAll('.phase-header').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.closest('.chk-done')) return;
+      hdr.closest('.phase-card').classList.toggle('collapsed');
+    });
+  });
+
+  const themeBtn = document.getElementById('themeBtn');
+  themeBtn.addEventListener('click', () => {
+    document.documentElement.classList.toggle('light');
+  });
+
+  updateVariables();
+</script>
+
+</body>
+</html>

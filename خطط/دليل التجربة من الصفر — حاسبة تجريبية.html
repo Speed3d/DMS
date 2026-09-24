@@ -1,0 +1,3349 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🧪 دليل التجربة من الصفر — حاسبة تجريبية | DMS</title>
+  <meta name="description" content="سجلُّ تنصيبٍ حقيقيّ وقع، بخطواته وأعطاله وعلاجها لنظام إدارة الوثائق الإلكتروني DMS">
+  
+  <!-- Fonts: Cairo & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* CSS Variables & Theme Palettes */
+    :root {
+      --font-sans: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+      
+      /* Dark Theme (Default) */
+      --bg-body: #0a0e17;
+      --bg-surface: #111827;
+      --bg-surface-elevated: #162032;
+      --bg-card: rgba(22, 32, 50, 0.7);
+      --bg-card-hover: rgba(28, 41, 64, 0.85);
+      --border-subtle: #1f2d42;
+      --border-strong: #2d3f5a;
+      
+      --text-main: #f3f4f6;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --accent-cyan: #06b6d4;
+      --accent-sky: #0ea5e9;
+      --accent-blue: #3b82f6;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #8b5cf6;
+      
+      --code-bg: #0d131f;
+      --code-header-bg: #151e2e;
+      --code-border: #1f2d42;
+      --code-text: #e2e8f0;
+      
+      --table-header-bg: #151e2e;
+      --table-stripe: rgba(255, 255, 255, 0.02);
+      --table-hover: rgba(56, 189, 248, 0.05);
+      
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+      --shadow-glow: 0 0 25px rgba(6, 182, 212, 0.15);
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+    }
+    
+    [data-theme="light"] {
+      --bg-body: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-surface-elevated: #f1f5f9;
+      --bg-card: rgba(255, 255, 255, 0.95);
+      --bg-card-hover: #ffffff;
+      --border-subtle: #e2e8f0;
+      --border-strong: #cbd5e1;
+      
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #94a3b8;
+      
+      --code-bg: #0f172a;
+      --code-header-bg: #1e293b;
+      --code-border: #334155;
+      --code-text: #f8fafc;
+      
+      --table-header-bg: #f1f5f9;
+      --table-stripe: #f8fafc;
+      --table-hover: rgba(14, 165, 233, 0.06);
+      
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07);
+      --shadow-lg: 0 10px 20px -3px rgba(0, 0, 0, 0.08);
+      --shadow-glow: 0 0 25px rgba(14, 165, 233, 0.1);
+    }
+
+    /* Base Reset & Typography */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 80px;
+      font-size: 16px;
+    }
+    
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      line-height: 1.8;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      overflow-x: hidden;
+    }
+    
+    /* Top Progress Bar */
+    #reading-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3.5px;
+      background: linear-gradient(90deg, var(--accent-emerald), var(--accent-cyan), var(--accent-blue));
+      width: 0%;
+      z-index: 1000;
+      transition: width 0.1s ease;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+    }
+    
+    /* Main App Layout */
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    
+    /* Top Sticky Navigation Bar */
+    .top-navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+    [data-theme="light"] .top-navbar {
+      background: rgba(255, 255, 255, 0.9);
+    }
+    
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+    .brand-icon {
+      font-size: 1.5rem;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .brand-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .brand-title {
+      font-weight: 800;
+      font-size: 1.05rem;
+      line-height: 1.2;
+      background: linear-gradient(135deg, var(--text-main) 30%, var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.85rem;
+      font-family: var(--font-sans);
+      font-size: 0.825rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface-elevated);
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .nav-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    
+    /* Live Search Box */
+    .search-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-input {
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      padding: 0.45rem 2rem 0.45rem 0.85rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface-elevated);
+      color: var(--text-main);
+      width: 190px;
+      transition: all 0.25s ease;
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+      width: 260px;
+    }
+    .search-icon {
+      position: absolute;
+      right: 0.65rem;
+      color: var(--text-dim);
+      pointer-events: none;
+      font-size: 0.85rem;
+    }
+    .search-count {
+      position: absolute;
+      left: 0.5rem;
+      font-size: 0.7rem;
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* Main Content Layout with Sticky Sidebar */
+    .content-layout {
+      display: flex;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 1.5rem;
+      gap: 2rem;
+    }
+    
+    /* Sticky Sidebar Navigation (Right side in RTL) */
+    .sidebar-toc {
+      width: 320px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 85px;
+      height: calc(100vh - 105px);
+      overflow-y: auto;
+      padding-left: 0.5rem;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+    }
+    .sidebar-toc::-webkit-scrollbar {
+      width: 5px;
+    }
+    .sidebar-toc::-webkit-scrollbar-thumb {
+      background: var(--border-strong);
+      border-radius: 4px;
+    }
+    
+    .toc-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .toc-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .toc-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .toc-indicator {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 12px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      font-weight: 700;
+    }
+    
+    .toc-links-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .toc-link {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.45rem 0.65rem;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.825rem;
+      font-weight: 600;
+      line-height: 1.4;
+      transition: all 0.2s ease;
+      border-right: 3px solid transparent;
+    }
+    .toc-link:hover {
+      color: var(--text-main);
+      background: var(--bg-surface-elevated);
+      border-right-color: var(--accent-cyan);
+      transform: translateX(-2px);
+    }
+    .toc-link.active {
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.1);
+      border-right-color: var(--accent-cyan);
+      font-weight: 800;
+    }
+    .toc-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 20px;
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      border-radius: 4px;
+      background: var(--bg-surface-elevated);
+      color: var(--text-dim);
+    }
+    .toc-link.active .toc-badge {
+      background: var(--accent-cyan);
+      color: #000000;
+    }
+    .toc-icon {
+      font-size: 0.9rem;
+    }
+    .toc-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    
+    /* Main Content Area */
+    .main-article {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem;
+      box-shadow: var(--shadow-md);
+      position: relative;
+    }
+    
+    /* Header / Hero Section */
+    .doc-header {
+      margin-bottom: 2rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border-subtle);
+      position: relative;
+    }
+    .badge-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15));
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent-emerald);
+      border-radius: 30px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+      display: inline-block;
+    }
+    .doc-title {
+      font-size: 2.2rem;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, var(--text-main) 60%, var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    /* Headings Styling */
+    .h2-anchor-wrap {
+      margin-top: 3.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-h2 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid var(--border-subtle);
+      position: relative;
+    }
+    .sec-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: #ffffff;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 0.95rem;
+      box-shadow: 0 4px 10px rgba(6, 182, 212, 0.3);
+    }
+    .sec-pill-icon {
+      font-size: 1.3rem;
+    }
+    .heading-text {
+      flex: 1;
+    }
+    .anchor-link {
+      opacity: 0;
+      font-family: var(--font-mono);
+      font-weight: 400;
+      color: var(--text-dim);
+      text-decoration: none;
+      padding: 0 0.5rem;
+      transition: opacity 0.2s ease, color 0.2s ease;
+    }
+    .section-h2:hover .anchor-link,
+    .section-h3:hover .anchor-link {
+      opacity: 1;
+    }
+    .anchor-link:hover {
+      color: var(--accent-cyan);
+    }
+    
+    .section-h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .h3-indicator {
+      width: 4px;
+      height: 18px;
+      border-radius: 2px;
+      background: var(--accent-cyan);
+      display: inline-block;
+    }
+    
+    /* Paragraphs and Inline Code */
+    p {
+      margin-bottom: 1.15rem;
+      color: var(--text-main);
+      font-size: 1rem;
+      line-height: 1.85;
+    }
+    
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: var(--bg-surface-elevated);
+      color: var(--accent-cyan);
+      border: 1px solid var(--border-subtle);
+      direction: ltr;
+      display: inline-block;
+    }
+    
+    /* Callout & Alert Boxes */
+    .callout {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.25rem;
+      padding: 1.25rem 1.5rem;
+      border-radius: var(--radius-md);
+      margin: 1.5rem 0;
+      border: 1px solid transparent;
+      border-right-width: 5px;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.2s ease;
+    }
+    .callout:hover {
+      transform: translateY(-1px);
+    }
+    .callout-icon-col {
+      font-size: 1.5rem;
+      line-height: 1;
+      padding-top: 0.1rem;
+      flex-shrink: 0;
+    }
+    .callout-content-col {
+      flex: 1;
+      min-width: 0;
+    }
+    .callout-content-col p:last-child {
+      margin-bottom: 0;
+    }
+    
+    .callout-danger {
+      background: rgba(244, 63, 94, 0.08);
+      border-color: rgba(244, 63, 94, 0.25);
+      border-right-color: var(--accent-rose);
+    }
+    .callout-warning {
+      background: rgba(245, 158, 11, 0.08);
+      border-color: rgba(245, 158, 11, 0.25);
+      border-right-color: var(--accent-amber);
+    }
+    .callout-key {
+      background: rgba(16, 185, 129, 0.08);
+      border-color: rgba(16, 185, 129, 0.3);
+      border-right-color: var(--accent-emerald);
+    }
+    .callout-tip {
+      background: rgba(6, 182, 212, 0.08);
+      border-color: rgba(6, 182, 212, 0.25);
+      border-right-color: var(--accent-cyan);
+    }
+    .callout-success {
+      background: rgba(16, 185, 129, 0.08);
+      border-color: rgba(16, 185, 129, 0.25);
+      border-right-color: var(--accent-emerald);
+    }
+    .callout-info {
+      background: rgba(59, 130, 246, 0.08);
+      border-color: rgba(59, 130, 246, 0.25);
+      border-right-color: var(--accent-blue);
+    }
+    .callout-project-meta {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+      border: 1px solid var(--border-strong);
+      border-right: 5px solid var(--accent-cyan);
+      box-shadow: var(--shadow-glow);
+    }
+    
+    /* Code Cards */
+    .code-card {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: var(--radius-md);
+      margin: 1.5rem 0;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      direction: ltr;
+      text-align: left;
+    }
+    .code-card-header {
+      background: var(--code-header-bg);
+      padding: 0.5rem 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--code-border);
+    }
+    .window-dots {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.red { background: #ff5f56; }
+    .dot.yellow { background: #ffbd2e; }
+    .dot.green { background: #27c93f; }
+    
+    .code-lang-label {
+      margin-left: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .copy-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .copy-button:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      border-color: var(--text-dim);
+    }
+    .copy-button.copied {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--accent-emerald);
+      border-color: var(--accent-emerald);
+    }
+    
+    .code-card pre {
+      padding: 1.15rem 1.25rem;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+      margin: 0;
+    }
+    .code-card pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: var(--code-text);
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      display: block;
+      direction: ltr;
+      text-align: left;
+    }
+    
+    /* Tables Styling */
+    .table-responsive-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin: 1.5rem 0;
+      overflow-x: auto;
+      box-shadow: var(--shadow-sm);
+    }
+    .table-scroll-hint {
+      display: none;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      padding: 0.3rem 0.75rem;
+      text-align: center;
+      background: var(--bg-surface-elevated);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: right;
+      font-size: 0.925rem;
+    }
+    th {
+      background: var(--table-header-bg);
+      color: var(--text-main);
+      font-weight: 700;
+      padding: 0.85rem 1.15rem;
+      border-bottom: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.85rem 1.15rem;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      line-height: 1.6;
+    }
+    tr:nth-child(even) td {
+      background: var(--table-stripe);
+    }
+    tr:hover td {
+      background: var(--table-hover);
+    }
+    
+    /* Checklists in Section 13 */
+    .checklist-progress-card {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      margin: 1.5rem 0 1rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .chk-prog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 0.85rem;
+      flex-wrap: wrap;
+    }
+    .chk-prog-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.95rem;
+      color: var(--text-main);
+    }
+    .chk-prog-title strong {
+      color: var(--accent-emerald);
+      font-weight: 800;
+    }
+    .chk-prog-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .chk-btn {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .chk-btn:hover {
+      color: var(--text-main);
+      border-color: var(--text-dim);
+    }
+    .chk-btn-reset:hover {
+      color: var(--accent-rose);
+      border-color: var(--accent-rose);
+    }
+    .chk-bar-track {
+      height: 8px;
+      border-radius: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      overflow: hidden;
+    }
+    .chk-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    
+    ul {
+      list-style-position: inside;
+      margin: 1rem 0;
+      padding-right: 0.5rem;
+    }
+    li {
+      margin-bottom: 0.65rem;
+      color: var(--text-main);
+    }
+    
+    /* Checklist Items Custom Styling */
+    li.checklist-item {
+      list-style: none;
+      margin-bottom: 0.75rem;
+    }
+    .check-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-md);
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .check-label:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-strong);
+    }
+    .checklist-checkbox {
+      display: none;
+    }
+    .custom-checkbox {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      border: 2px solid var(--border-strong);
+      background: var(--bg-surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: all 0.2s ease;
+      color: transparent;
+    }
+    .checklist-checkbox:checked + .custom-checkbox {
+      background: var(--accent-emerald);
+      border-color: var(--accent-emerald);
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+    }
+    .checklist-checkbox:checked ~ .task-text {
+      color: var(--text-muted);
+      text-decoration: line-through;
+      text-decoration-color: var(--accent-emerald);
+    }
+    .task-text {
+      flex: 1;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      transition: color 0.2s ease;
+    }
+    
+    /* Links */
+    a {
+      color: var(--accent-cyan);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover {
+      text-decoration: underline;
+      color: var(--accent-sky);
+    }
+    
+    /* Horizontal Rule */
+    hr {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+      margin: 3rem 0;
+    }
+    
+    /* Search Highlight Marker */
+    mark.search-highlight {
+      background-color: rgba(245, 158, 11, 0.4);
+      color: #ffffff;
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+    
+    /* Back to Top Floating Button */
+    .back-to-top {
+      position: fixed;
+      bottom: 2rem;
+      left: 2rem;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-lg);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s ease;
+      z-index: 90;
+    }
+    .back-to-top.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .back-to-top:hover {
+      background: var(--accent-cyan);
+      color: #000000;
+      transform: translateY(-3px);
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+    }
+    
+    /* Footer */
+    .doc-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    
+    /* Mobile Drawer */
+    .mobile-menu-btn {
+      display: none;
+    }
+    
+    /* Responsive Media Queries */
+    @media (max-width: 1024px) {
+      .sidebar-toc {
+        display: none;
+      }
+      .mobile-menu-btn {
+        display: inline-flex;
+      }
+      .content-layout {
+        padding: 1rem;
+      }
+      .main-article {
+        padding: 1.5rem;
+      }
+      .table-scroll-hint {
+        display: block;
+      }
+    }
+    
+    @media (max-width: 640px) {
+      .top-navbar {
+        padding: 0.6rem 1rem;
+      }
+      .brand-sub {
+        display: none;
+      }
+      .search-input {
+        width: 130px;
+      }
+      .search-input:focus {
+        width: 180px;
+      }
+      .doc-title {
+        font-size: 1.6rem;
+      }
+      .main-article {
+        padding: 1.15rem;
+        border-radius: var(--radius-md);
+      }
+      .callout {
+        padding: 1rem;
+        gap: 0.75rem;
+      }
+      .back-to-top {
+        bottom: 1.25rem;
+        left: 1.25rem;
+      }
+    }
+    
+    /* Mobile TOC Drawer Modal */
+    .toc-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+    }
+    .toc-modal-overlay.open {
+      display: block;
+    }
+    .toc-modal-content {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 85%;
+      max-width: 340px;
+      height: 100vh;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border-strong);
+      padding: 1.5rem;
+      overflow-y: auto;
+      z-index: 210;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      box-shadow: var(--shadow-lg);
+    }
+    .toc-modal-close {
+      align-self: flex-start;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-weight: 700;
+    }
+    
+    /* Print Optimization */
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-size: 11pt;
+      }
+      #reading-progress,
+      .top-navbar,
+      .sidebar-toc,
+      .back-to-top,
+      .copy-button,
+      .chk-prog-actions,
+      .table-scroll-hint,
+      .anchor-link {
+        display: none !important;
+      }
+      .content-layout {
+        display: block;
+        padding: 0;
+        max-width: 100%;
+      }
+      .main-article {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        background: transparent !important;
+      }
+      .code-card {
+        border: 1px solid #ccc !important;
+        background: #f8fafc !important;
+      }
+      .code-card pre code {
+        color: #000000 !important;
+      }
+      .callout {
+        border: 1px solid #999 !important;
+        break-inside: avoid;
+      }
+      table {
+        border: 1px solid #ddd;
+        font-size: 9.5pt;
+      }
+      th, td {
+        border: 1px solid #ddd;
+      }
+      .h2-anchor-wrap {
+        break-before: page;
+        margin-top: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Reading Progress Indicator -->
+  <div id="reading-progress"></div>
+
+  <div class="app-container">
+    
+    <!-- Top Sticky Navigation Bar -->
+    <header class="top-navbar">
+      <div class="nav-brand">
+        <span class="brand-icon">🧪</span>
+        <div class="brand-info">
+          <span class="brand-title">نظام إدارة الوثائق الإلكتروني (DMS)</span>
+          <span class="brand-sub">سجل التجربة من الصفر · أرض العرين للتجارة والمقاولات</span>
+        </div>
+      </div>
+      
+      <div class="nav-actions">
+        <!-- Live Search -->
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="live-search" class="search-input" placeholder="بحث في الدليل..." onkeyup="onSearch(this)">
+          <span id="search-counter" class="search-count"></span>
+        </div>
+        
+        <!-- Mobile TOC Drawer Button -->
+        <button type="button" class="nav-btn mobile-menu-btn" onclick="toggleTocModal()" title="المحتويات">
+          <span>📋 المحتويات</span>
+        </button>
+        
+        <!-- Dark/Light Theme Toggle -->
+        <button type="button" id="theme-toggle-btn" class="nav-btn" onclick="toggleTheme()" title="تبديل المظهر">
+          <span id="theme-icon">☀️</span>
+          <span id="theme-text">فاتح</span>
+        </button>
+        
+        <!-- Print Button -->
+        <button type="button" class="nav-btn" onclick="window.print()" title="طباعة أو تصدير PDF">
+          <span>🖨️ طباعة</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <div class="content-layout">
+      
+      <!-- Sticky Sidebar Navigation (Desktop) -->
+      <aside class="sidebar-toc">
+        <div class="toc-card">
+          <div class="toc-header">
+            <div class="toc-title">
+              <span>📋</span>
+              <span>فهرس الأقسام</span>
+            </div>
+            <span class="toc-indicator">14 قسماً</span>
+          </div>
+          <nav class="toc-links-list" id="toc-nav">
+            <a href="#0-الحصيلة-أولاً" class="toc-link" data-target="0-الحصيلة-أولاً"><span class="toc-badge">00</span><span class="toc-icon">⚡</span><span class="toc-text">0) الحصيلة أولاً</span></a><a href="#1-قسمة-العمل-بين-الجهازين" class="toc-link" data-target="1-قسمة-العمل-بين-الجهازين"><span class="toc-badge">01</span><span class="toc-icon">💻</span><span class="toc-text">1) قسمة العمل بين الجهازين</span></a><a href="#2-المرحلة-١--جهاز-التطوير-البناء" class="toc-link" data-target="2-المرحلة-١--جهاز-التطوير-البناء"><span class="toc-badge">02</span><span class="toc-icon">🛠️</span><span class="toc-text">2) المرحلة ١ — جهاز التطوير: البناء</span></a><a href="#3-المرحلة-٢--النقل" class="toc-link" data-target="3-المرحلة-٢--النقل"><span class="toc-badge">03</span><span class="toc-icon">📦</span><span class="toc-text">3) المرحلة ٢ — النقل</span></a><a href="#4-المرحلة-٣--الفحص-المسبق" class="toc-link" data-target="4-المرحلة-٣--الفحص-المسبق"><span class="toc-badge">04</span><span class="toc-icon">🔍</span><span class="toc-text">4) المرحلة ٣ — الفحص المسبق</span></a><a href="#5-المرحلة-٤--الأسرار-والقاعدة" class="toc-link" data-target="5-المرحلة-٤--الأسرار-والقاعدة"><span class="toc-badge">05</span><span class="toc-icon">🔐</span><span class="toc-text">5) المرحلة ٤ — الأسرار والقاعدة</span></a><a href="#6-المرحلة-٥--الخدمة" class="toc-link" data-target="6-المرحلة-٥--الخدمة"><span class="toc-badge">06</span><span class="toc-icon">⚙️</span><span class="toc-text">6) المرحلة ٥ — الخدمة</span></a><a href="#7-المرحلة-٦--iis" class="toc-link" data-target="7-المرحلة-٦--iis"><span class="toc-badge">07</span><span class="toc-icon">🌐</span><span class="toc-text">7) المرحلة ٦ — IIS</span></a><a href="#8-المرحلة-٧--النفق" class="toc-link" data-target="8-المرحلة-٧--النفق"><span class="toc-badge">08</span><span class="toc-icon">🚇</span><span class="toc-text">8) المرحلة ٧ — النفق</span></a><a href="#9-المرحلة-٨--الاختبار-الحاسم" class="toc-link" data-target="9-المرحلة-٨--الاختبار-الحاسم"><span class="toc-badge">09</span><span class="toc-icon">🧪</span><span class="toc-text">9) المرحلة ٨ — الاختبار الحاسم</span></a><a href="#10-سجلّ-الأعطال-التسعة" class="toc-link" data-target="10-سجلّ-الأعطال-التسعة"><span class="toc-badge">10</span><span class="toc-icon">🚨</span><span class="toc-text">10) سجلّ الأعطال التسعة</span></a><a href="#11-الدروس-المعمَّمة" class="toc-link" data-target="11-الدروس-المعمَّمة"><span class="toc-badge">11</span><span class="toc-icon">💡</span><span class="toc-text">11) الدروس المعمَّمة</span></a><a href="#12-ما-لا-تُثبته-التجربة" class="toc-link" data-target="12-ما-لا-تُثبته-التجربة"><span class="toc-badge">12</span><span class="toc-icon">⚠️</span><span class="toc-text">12) ما لا تُثبته التجربة</span></a><a href="#13-قائمة-التحقّق-النهائية" class="toc-link" data-target="13-قائمة-التحقّق-النهائية"><span class="toc-badge">13</span><span class="toc-icon">✅</span><span class="toc-text">13) قائمة التحقّق النهائية</span></a><a href="#المرجع" class="toc-link" data-target="المرجع"><span class="toc-badge">ref</span><span class="toc-icon">📚</span><span class="toc-text">المرجع</span></a>
+          </nav>
+        </div>
+      </aside>
+
+      <!-- Main Article Body -->
+      <main class="main-article" id="main-content">
+        
+        <!-- Content converted directly from markdown -->
+        <header class="doc-header"><div class="badge-tag"><span class="badge-dot"></span>سجلّ تنصيب حقيقي وقع بخطواته وأعطاله وعلاجها — لا خطة مقترحة</div><h1 class="doc-title">🧪 دليل التجربة من الصفر — حاسبة تجريبية</h1></header>
+<p><strong>سجلُّ تنصيبٍ حقيقيّ وقع، بخطواته وأعطاله وعلاجها — لا خطةٌ مقترحة</strong></p>
+<div class="callout callout-key">
+  <div class="callout-icon-col">🔑</div>
+  <div class="callout-content-col"><p><strong>المشروع:</strong> نظام إدارة الوثائق الإلكتروني (DMS) — «أرض العرين للتجارة والمقاولات»
+<strong>تاريخ التنفيذ:</strong> 2026-09-22 · <strong>الحصيلة: ✅ نجحت التجربة</strong>
+<strong>الدومين المستعمَل:</strong> <code>dms.nociraq.com</code> (دومين تجربةٍ — الإنتاج يُشترى لاحقاً)</p>
+<p>🔑 <strong>ما يميّز هذا الملفّ عن <a href="دليل%20النشر%20الشامل%20—%20نظام%20DMS.md">دليل النشر الشامل</a>:</strong>
+ذاك <strong>مرجعٌ كامل</strong> يصف ما ينبغي فعله في كل الحالات. وهذا <strong>محضرُ جلسةٍ واحدة</strong>: ما نُفِّذ
+فعلاً، بالأوامر التي شُغِّلت، والأعطال التسعة <strong>كما ظهرت بالترتيب</strong>، وكيف شُخِّص كلٌّ منها.
+اقرأه إن أردتَ أن <strong>تُعيد الطريق نفسه</strong>، أو أن تفهم <strong>لماذا</strong> صار الدليل الشامل على ما هو.</p></div>
+</div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="المحتويات" class="section-h2">
+    <span class="sec-pill-icon">📌</span>
+    <span class="heading-text">📋 المحتويات</span>
+    <a href="#المحتويات" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<ul>
+<li><a href="#0-الحصيلة-أولاً">0) الحصيلة أولاً</a></li>
+<li><a href="#1-قسمة-العمل-بين-الجهازين">1) قسمة العمل بين الجهازين</a></li>
+<li><a href="#2-المرحلة-١--جهاز-التطوير-البناء">2) المرحلة ١ — جهاز التطوير: البناء</a></li>
+<li><a href="#3-المرحلة-٢--النقل">3) المرحلة ٢ — النقل</a></li>
+<li><a href="#4-المرحلة-٣--الفحص-المسبق">4) المرحلة ٣ — الفحص المسبق</a></li>
+<li><a href="#5-المرحلة-٤--الأسرار-والقاعدة">5) المرحلة ٤ — الأسرار والقاعدة</a></li>
+<li><a href="#6-المرحلة-٥--الخدمة">6) المرحلة ٥ — الخدمة</a></li>
+<li><a href="#7-المرحلة-٦--iis">7) المرحلة ٦ — IIS</a></li>
+<li><a href="#8-المرحلة-٧--النفق">8) المرحلة ٧ — النفق</a></li>
+<li><a href="#9-المرحلة-٨--الاختبار-الحاسم">9) المرحلة ٨ — الاختبار الحاسم</a></li>
+<li><a href="#10-سجلّ-الأعطال-التسعة">10) سجلّ الأعطال التسعة</a></li>
+<li><a href="#11-الدروس-المعمَّمة">11) الدروس المعمَّمة</a></li>
+<li><a href="#12-ما-لا-تُثبته-التجربة">12) ما لا تُثبته التجربة</a></li>
+<li><a href="#13-قائمة-التحقّق-النهائية">13) قائمة التحقّق النهائية</a></li>
+</ul>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="0-الحصيلة-أولاً" class="section-h2">
+    <span class="sec-pill">00</span>
+    <span class="heading-text">0) الحصيلة أولاً</span>
+    <a href="#0-الحصيلة-أولاً" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>الحالة</strong></td>
+<td>✅ <strong>النظام يعمل من الإنترنت على <code>https://dms.nociraq.com</code></strong></td>
+</tr>
+<tr>
+<td><strong>الدليل القاطع</strong></td>
+<td>أُعيد تشغيل الجهاز، <strong>ولم تُلمس الحاسبة بعده</strong>، ثم فُتح النظام من <strong>حاسبةٍ ثانية</strong> ومن <strong>هاتفٍ على بيانات الجوال</strong></td>
+</tr>
+<tr>
+<td><strong>ما تحقّق</strong></td>
+<td>الدخول · تغيير كلمة المرور الأولى · الواجهة كاملةً</td>
+</tr>
+<tr>
+<td><strong>الخدمات الثلاث</strong></td>
+<td><code>Cloudflared</code> · <code>DmsApi</code> · <code>W3SVC</code> — كلُّها <code>Running</code> + <code>Automatic</code></td>
+</tr>
+<tr>
+<td><strong>الأعطال</strong></td>
+<td><strong>تسعة</strong> — ظهرت كلُّها وعولجت كلُّها، وصار كلٌّ منها بنداً في الدليل الشامل</td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-key">
+  <div class="callout-icon-col">🔑</div>
+  <div class="callout-content-col"><p>🔑 <strong>ولماذا «إعادة التشغيل» هي الحصيلة لا «فتح الموقع»؟</strong>
+لأن <strong>ثلاثة</strong> من الأعطال التسعة كانت تعمل تماماً في الجلسة الجارية وتسقط عند الإقلاع.
+<strong>فـ«النظام يعمل» لا تعني «النظام يبقى يعمل»</strong>، والحكمُ الوحيد إقلاعةٌ نظيفة.</p></div>
+</div>
+<h3 id="ما-هي-بيئة-التجربة-فعلاً" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">ما هي بيئة التجربة فعلاً</span>
+  <a href="#ما-هي-بيئة-التجربة-فعلاً" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>جهاز التطوير</td>
+<td>فيه المستودع <code>D:\DMS</code> + .NET SDK + Flutter</td>
+</tr>
+<tr>
+<td>حاسبة التجربة</td>
+<td>ويندوز · <strong>SQL Server بمثيلٍ افتراضيّ (<code>MSSQLSERVER</code>)</strong> · IIS · بلا SDK ولا كود مصدر</td>
+</tr>
+<tr>
+<td>الدومين</td>
+<td><code>nociraq.com</code> — <strong>مُسجَّلٌ عند غير Cloudflare لكن منقولٌ إليها بالفعل</strong> (NS = <code>pam</code>/<code>will.ns.cloudflare.com</code>)</td>
+</tr>
+<tr>
+<td>القاعدة</td>
+<td><code>DmsTrial</code> — <strong>لا <code>DmsDb</code></strong></td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="1-قسمة-العمل-بين-الجهازين" class="section-h2">
+    <span class="sec-pill">01</span>
+    <span class="heading-text">1) قسمة العمل بين الجهازين</span>
+    <a href="#1-قسمة-العمل-بين-الجهازين" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<p>🔴 <strong>أكثرُ ما أضاع وقتاً في هذه الجلسة لم يكن عطلاً تقنياً، بل تشغيلَ أمرٍ على الجهاز الخطأ.</strong>
+وقع مرّتين: <code>Compress-Archive</code> على حاسبة التجربة (والمجلّدان غير موجودين فيها)، وأوامرُ IIS
+على جهازٍ لا IIS فيه.</p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th>💻 <strong>جهاز التطوير</strong></th>
+<th>🧪 <strong>حاسبة التجربة</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dotnet publish</code> · <code>flutter build</code></td>
+<td>✅</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><code>Compress-Archive</code></td>
+<td>✅</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><code>Expand-Archive</code></td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>generate-secrets</code> · <code>sqlcmd</code></td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>sc.exe</code> · <code>Start-Service</code></td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>Import-Module WebAdministration</code> · <code>Get-Website</code></td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>cloudflared</code></td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>فتحُ المتصفّح على الدومين</td>
+<td>✅ (وأيّ جهاز)</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>🔑 القاعدة الحاسمة:</strong></p>
+<div class="callout callout-info">
+  <div class="callout-icon-col">📌</div>
+  <div class="callout-content-col"><p>كلُّ أمرٍ فيه <strong><code>build</code> أو <code>publish</code> أو <code>Compress</code></strong> ⟵ <strong>جهاز التطوير</strong>.
+وكلُّ أمرٍ فيه <strong><code>Expand</code> أو <code>Service</code> أو <code>IIS</code> أو <code>sqlcmd</code> أو <code>cloudflared</code></strong> ⟵ <strong>حاسبة التجربة</strong>.
+وما عدا ذلك — فتحُ المتصفّح — <strong>من أيّ جهاز</strong>.</p></div>
+</div>
+<p><strong>واعرف أين أنت بسطرٍ واحد عند أيّ شكّ:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">if (Test-Path &quot;C:\temp\dms-publish&quot;) { &quot;💻 جهاز التطوير — هنا تبني وتضغط&quot; }
+elseif (Test-Path &quot;C:\DMS\api&quot;)      { &quot;🧪 حاسبة التجربة — هنا تفكّ وتثبّت&quot; }
+else                                  { &quot;🧪 حاسبة التجربة (قبل فكّ الحزم)&quot; }</code></pre>
+</div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="2-المرحلة-١--جهاز-التطوير-البناء" class="section-h2">
+    <span class="sec-pill">02</span>
+    <span class="heading-text">2) المرحلة ١ — جهاز التطوير: البناء</span>
+    <a href="#2-المرحلة-١--جهاز-التطوير-البناء" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<h3 id="١-أ-بناء-الباك-إند" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">١-أ) بناء الباك-إند</span>
+  <a href="#١-أ-بناء-الباك-إند" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cd D:\DMS\backend
+dotnet publish Dms.Api -c Release -r win-x64 --self-contained false -o &quot;C:\temp\dms-publish&quot;</code></pre>
+</div>
+<p><strong>ما ظهر فعلاً:</strong> <code>Build succeeded in 12.9s</code>.</p>
+<h3 id="١-ب-بناء-الواجهة-بعنوان-دومينك" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">١-ب) بناء الواجهة — 🔴 <strong>بعنوان دومينك</strong></span>
+  <a href="#١-ب-بناء-الواجهة-بعنوان-دومينك" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cd D:\DMS\app
+flutter build web --release --dart-define=API_BASE_URL=https://dms.nociraq.com/api</code></pre>
+</div>
+<div class="callout callout-warning">
+  <div class="callout-icon-col">⚠️</div>
+  <div class="callout-content-col"><p>⚠️ <strong>تحذيرات <code>Wasm dry run findings</code> تُتجاهَل.</strong> ظهرت في تنفيذنا، وهي <strong>استطلاعٌ استباقيّ</strong>
+يقول: «لو أردتَ يوماً بناءً بـWebAssembly، هذه الحزمة تمنعك». والبناء الفعليّ <strong>JavaScript</strong>،
+ودليلُه السطران: <code>Compiling lib\main.dart for the Web... 88.1s</code> ثم <code>√ Built build\web</code>.
+و<code>tree-shaken</code> <strong>مكسبٌ لا عطل</strong> (قلّص الخطوط 99٪).</p></div>
+</div>
+<p><strong>🔴 والحارس الذي لا يُتخطّى:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Select-String -Path &quot;D:\DMS\app\build\web\main.dart.js&quot; -Pattern &quot;dms\.nociraq\.com&quot; -Quiet</code></pre>
+</div>
+<p><strong>يجب <code>True</code>.</strong> ولو <code>False</code> <strong>أعِد البناء ولا تنشر</strong>: العنوان <strong>مخبوزٌ داخل <code>main.dart.js</code></strong>،
+وتصحيحُه في ملفٍّ على السيرفر <strong>لا يُصلح شيئاً</strong>.</p>
+<h3 id="١-ج-حارسا-الحزمة" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">١-ج) حارسا الحزمة</span>
+  <a href="#١-ج-حارسا-الحزمة" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Test-Path &quot;C:\temp\dms-publish\ops\update-dms.ps1&quot;           # يجب True
+Test-Path &quot;C:\temp\dms-publish\appsettings.Development.json&quot; # يجب False</code></pre>
+</div>
+<p>🔴 <strong>والثاني أهمّ من الأول.</strong> لو كان <code>True</code> فقد تسرّب <strong>مفتاح توقيع QR ومفتاح JWT</strong> للتطوير،
+<strong>وإقلاعٌ ببيئة تطويرٍ خطأً يفتح <code>AllowAnyOrigin</code> وSwagger ونقطةَ تصفير القاعدة</strong>.
+(كلاهما جاء صحيحاً في تنفيذنا — <code>Dms.Api.csproj</code> يضمنهما.)</p>
+<h3 id="١-د-الحزم" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">١-د) الحزم</span>
+  <a href="#١-د-الحزم" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">New-Item -ItemType Directory -Force -Path &quot;D:\DMS-نشر&quot; | Out-Null
+
+Compress-Archive -Path &quot;C:\temp\dms-publish\*&quot;  -DestinationPath &quot;D:\DMS-نشر\dms-api.zip&quot; -Force
+Compress-Archive -Path &quot;D:\DMS\app\build\web\*&quot; -DestinationPath &quot;D:\DMS-نشر\dms-app.zip&quot; -Force
+
+Get-ChildItem &quot;D:\DMS-نشر&quot; | Select-Object Name, @{n=&#x27;ميغابايت&#x27;;e={[math]::Round($_.Length/1MB,1)}}</code></pre>
+</div>
+<p><strong>الأحجام الفعلية في تنفيذنا:</strong> <code>dms-api.zip</code> = <strong>47.7 م.ب</strong> · <code>dms-app.zip</code> = <strong>14.9 م.ب</strong>.
+🔴 <strong>ولو ظهر أحدهما أقلّ من ٥ م.ب فالمجلّد المصدر فارغ أو المسار خطأ — قِف.</strong></p>
+<div class="callout callout-tip">
+  <div class="callout-icon-col">💡</div>
+  <div class="callout-content-col"><p>💡 <strong>ولماذا الضغط على <code>D:</code> ثم النسخ للفلاشة؟</strong> الضغطُ مباشرةً على فلاشة بطيءٌ وقد ينقطع.</p></div>
+</div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="3-المرحلة-٢--النقل" class="section-h2">
+    <span class="sec-pill">03</span>
+    <span class="heading-text">3) المرحلة ٢ — النقل</span>
+    <a href="#3-المرحلة-٢--النقل" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<p><strong>الأصل في <a href="دليل%20النشر%20الشامل%20—%20نظام%20DMS.md">دليل النشر</a> <code>robocopy</code> عبر الشبكة</strong>، لكنّ
+مشاركة المسؤول (<code>\\IP\c$</code>) <strong>مُعطَّلة افتراضياً على ويندوز المنزليّ</strong>. فالمسلك المضمون:</p>
+<p><strong>ثلاثة ملفات على الفلاشة:</strong></p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>الملف</th>
+<th>المصدر</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dms-api.zip</code></td>
+<td>ناتج <code>dotnet publish</code></td>
+</tr>
+<tr>
+<td><code>dms-app.zip</code></td>
+<td>ناتج <code>flutter build web</code></td>
+</tr>
+<tr>
+<td><code>dms-trial-preflight.ps1</code></td>
+<td><a href="_scripts/dms-trial-preflight.ps1"><code>_scripts/dms-trial-preflight.ps1</code></a></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>على حاسبة التجربة:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">New-Item -ItemType Directory -Force -Path C:\DMS\api, C:\DMS\app | Out-Null
+Expand-Archive -Path &quot;E:\dms-api.zip&quot; -DestinationPath &quot;C:\DMS\api&quot; -Force
+Expand-Archive -Path &quot;E:\dms-app.zip&quot; -DestinationPath &quot;C:\DMS\app&quot; -Force</code></pre>
+</div>
+<div class="callout callout-danger">
+  <div class="callout-icon-col">🔴</div>
+  <div class="callout-content-col"><p>⚠️ <strong>و<code>Expand-Archive</code> لا يحذف القديم</strong> — فعند تحديثٍ لاحقٍ للواجهة <strong>أفرغ <code>C:\DMS\app</code> أولاً</strong>.
+🔴 <strong>ولا تُفرغ <code>C:\DMS\api</code> بعد توليد الأسرار</strong> — فيه <code>appsettings.Production.json</code>.</p></div>
+</div>
+<p>⚠️ <strong>ولا تنقل مجلّد <code>D:\DMS</code> نفسه</strong> — حاسبة التجربة لا تحتاج كوداً مصدرياً ولا SDK.</p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="4-المرحلة-٣--الفحص-المسبق" class="section-h2">
+    <span class="sec-pill">04</span>
+    <span class="heading-text">4) المرحلة ٣ — الفحص المسبق</span>
+    <a href="#4-المرحلة-٣--الفحص-المسبق" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">powershell -ExecutionPolicy Bypass -File E:\dms-trial-preflight.ps1</code></pre>
+</div>
+<p>السكربت <strong>قراءةٌ خالصة</strong>، ويفحص ستّة، ثم <strong>يطبع الأوامر التالية وقد كُتب فيها اسمُ مثيل SQL
+عندك ودومينك</strong> — فلا تخمّن قيمةً ولا تبدّلها بيدك.</p>
+<p><strong>ما أمسكه في تنفيذنا فعلاً:</strong></p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>#</th>
+<th>النتيجة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>🔴 <strong>ASP.NET Core Runtime 9 مفقود</strong> — (وتبيّن لاحقاً أنه فحصٌ كاذب · <a href="#10-سجلّ-الأعطال-التسعة">العطل ٣</a>)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>✅ <strong>المثيل <code>MSSQLSERVER</code></strong> (افتراضيّ لا <code>SQLEXPRESS</code>) ⇒ <code>--db-server "."</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>✅ IIS مثبَّت</td>
+</tr>
+<tr>
+<td>4</td>
+<td>⚠️ <code>cloudflared</code> غير مثبَّت — لاحقاً</td>
+</tr>
+<tr>
+<td>5</td>
+<td>✅ <code>Dms.Api.exe</code> و<code>web.config</code> وصلا · <strong>ولا ملفَّ تطويرٍ مُسرَّب</strong></td>
+</tr>
+<tr>
+<td>6</td>
+<td>⚠️ المنفذ 80 مشغول بـ<code>System (PID 4)</code> — <strong>طبيعيّ</strong> (محرّك <code>http.sys</code>) · المنفذ 5080 حرّ</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="المتطلّب-الذي-يُخطئ-فيه-الجميع-ASP-NET-Core-Runtime" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔴 المتطلّب الذي يُخطئ فيه الجميع: ASP.NET Core Runtime</span>
+  <a href="#المتطلّب-الذي-يُخطئ-فيه-الجميع-ASP-NET-Core-Runtime" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p><strong>«.NET Runtime» و«ASP.NET Core Runtime» حزمتان مختلفتان في الصفحة نفسها:</strong></p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>الحزمة</th>
+<th>تكفي؟</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>.NET Runtime</strong></td>
+<td>❌ برامج وحدة التحكّم فقط</td>
+</tr>
+<tr>
+<td><strong>ASP.NET Core Runtime</strong></td>
+<td>✅ وهي التي تحمل <code>Microsoft.AspNetCore.App</code></td>
+</tr>
+<tr>
+<td><strong>Hosting Bundle</strong></td>
+<td>✅ (وتضيف وحدة IIS — لا تضرّ)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>🔑 والفحص الحاسم يجرّب البرنامج نفسه، لا يسأل <code>dotnet</code>:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">C:\DMS\api\Dms.Api.exe generate-secrets</code></pre>
+</div>
+<p><strong>لا يكتب شيئاً ولا ينشئ ملفاً</strong> — بلا <code>--out</code> يطبع سطر الاستخدام ويخرج.</p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>ما يظهر</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>الاستخدام: Dms.Api.exe generate-secrets --out ...</code></td>
+<td>✅ الإطار سليم</td>
+</tr>
+<tr>
+<td><code>... 'Microsoft.AspNetCore.App' was not found</code></td>
+<td>❌ الحزمة الخطأ</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="5-المرحلة-٤--الأسرار-والقاعدة" class="section-h2">
+    <span class="sec-pill">05</span>
+    <span class="heading-text">5) المرحلة ٤ — الأسرار والقاعدة</span>
+    <a href="#5-المرحلة-٤--الأسرار-والقاعدة" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<h3 id="٤-أ-المجلدات-وإذن-محرّك-SQL" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-أ) المجلدات وإذن محرّك SQL</span>
+  <a href="#٤-أ-المجلدات-وإذن-محرّك-SQL" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">&#x27;C:\DMS\api&#x27;,&#x27;C:\DMS\app&#x27;,&#x27;C:\DMS\data\storage&#x27;,&#x27;C:\DMS\data\backups&#x27; |
+    ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
+
+# 🔴 محرّك SQL يكتب النسخة بحسابه هو — وبلا هذا تفشل كل نسخة احتياطية بـ«Access is denied»
+icacls &quot;C:\DMS\data\backups&quot; /grant &#x27;&quot;NT SERVICE\MSSQLSERVER&quot;:(OI)(CI)(M)&#x27;</code></pre>
+</div>
+<div class="callout callout-warning">
+  <div class="callout-icon-col">⚠️</div>
+  <div class="callout-content-col"><p>⚠️ <strong>بدّل <code>MSSQLSERVER</code> باسم مثيلك</strong> — لو كان <code>SQLEXPRESS</code> فهو <code>MSSQL$SQLEXPRESS</code>،
+<strong>وحينها استعمل علامتَي اقتباسٍ مفردتين</strong> لأن <code>$</code> في PowerShell يعني «متغيّر».</p></div>
+</div>
+<h3 id="٤-ب-توليد-الأسرار" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-ب) توليد الأسرار</span>
+  <a href="#٤-ب-توليد-الأسرار" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cd C:\DMS\api
+.\Dms.Api.exe generate-secrets `
+    --out       C:\DMS\api\appsettings.Production.json `
+    --origins   https://dms.nociraq.com `
+    --db-server &quot;.&quot; `
+    --db-name   DmsTrial `
+    --storage   C:\DMS\data\storage `
+    --backup    C:\DMS\data\backups</code></pre>
+</div>
+<p>🔴 <strong>يطبع كلمة مرور المدير الأول في صندوقٍ بعد سطر «كُتب الملف» — اسحب النافذة للأعلى واقرأه.</strong></p>
+<div class="callout callout-warning">
+  <div class="callout-icon-col">⚠️</div>
+  <div class="callout-content-col"><p>⚠️ <strong>وعلامات <code>?</code> في المخرَج هي <code>✔</code> لم يرسمها الطرفيّ</strong> — تجميليٌّ بحت، والدليل أن العربية ظهرت صحيحة.</p></div>
+</div>
+<p><strong>وإن فاتتك، اقرأها من الملف — ولا تكتبها بيدك أبداً:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">(Get-Content C:\DMS\api\appsettings.Production.json -Raw | ConvertFrom-Json).Seed</code></pre>
+</div>
+<div class="callout callout-danger">
+  <div class="callout-icon-col">🔴</div>
+  <div class="callout-content-col"><p>🔴 <strong>لماذا «لا تكتبها بيدك»؟</strong> لأننا فعلناها وفشلت. الكلمة <strong>٢٠ حرفاً</strong> والمُدخَل كان <strong>١٩</strong>.
+والمولّد يستبعد المتشابهات (<code>l·I·O·0</code>) <strong>لكنه يُبقي <code>@ # % + = ?</code></strong> — والطرفيّةُ التي
+ترسم الرموز كـ<code>?</code> تجعل <code>?</code> الحقيقيّة لا تُميَّز عن رمزٍ مشوَّه.
+⚠️ <strong>وكلُّ محاولةٍ فاشلة تزيد العدّاد، وعند الخامسة يُقفل الحساب ١٥ دقيقة.</strong></p></div>
+</div>
+<h3 id="٤-ج-التحقّق-من-الملفّ-بلا-كشف-أسرار" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-ج) التحقّق من الملفّ (بلا كشف أسرار)</span>
+  <a href="#٤-ج-التحقّق-من-الملفّ-بلا-كشف-أسرار" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">$c = Get-Content C:\DMS\api\appsettings.Production.json -Raw | ConvertFrom-Json
+[PSCustomObject]@{
+  Urls       = $c.Urls
+  Connection = $c.ConnectionStrings.Default
+  PublicBase = $c.QrSigning.PublicBaseUrl
+  Origins    = $c.AllowedOrigins
+  AdminUser  = $c.Seed.AdminUsername
+  JwtLen     = $c.Jwt.SigningKey.Length
+  QrPubLen   = $c.QrSigning.PublicKeyBase64.Length
+} | Format-List</code></pre>
+</div>
+<p><strong>القيم الفعلية في تنفيذنا:</strong></p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>الحقل</th>
+<th>القيمة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Urls</code></td>
+<td><code>http://localhost:5080</code></td>
+</tr>
+<tr>
+<td><code>Connection</code></td>
+<td><code>Server=.;Database=DmsTrial;...</code></td>
+</tr>
+<tr>
+<td><code>PublicBase</code></td>
+<td><code>https://dms.nociraq.com</code></td>
+</tr>
+<tr>
+<td><code>Origins</code></td>
+<td><code>https://dms.nociraq.com</code></td>
+</tr>
+<tr>
+<td><code>AdminUser</code></td>
+<td><code>admin</code> — 🔴 <strong>وليس فارغاً</strong></td>
+</tr>
+<tr>
+<td><code>JwtLen</code> · <code>QrPubLen</code></td>
+<td><strong>88</strong> · <strong>124</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>🔑 <strong>و<code>PublicBase</code> أهمّها</strong>: منه تُبنى صفحة التحقق التي <strong>تُخبَز في الـQR لحظة الاعتماد</strong>،
+ولا تُصلَح بأثرٍ رجعيّ.</p>
+<h3 id="٤-د-تأمين-الملف" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-د) تأمين الملف</span>
+  <a href="#٤-د-تأمين-الملف" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">icacls &quot;C:\DMS\api\appsettings.Production.json&quot; /inheritance:r /grant:r &quot;SYSTEM:(R)&quot; /grant:r &quot;Administrators:(F)&quot;</code></pre>
+</div>
+<h3 id="٤-هـ-صلاحية-حساب-الخدمة-قبل-الخدمة-لا-بعدها" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-هـ) 🔴 صلاحية حساب الخدمة — <strong>قبل الخدمة لا بعدها</strong></span>
+  <a href="#٤-هـ-صلاحية-حساب-الخدمة-قبل-الخدمة-لا-بعدها" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">sqlcmd -S . -Q &quot;IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = &#x27;NT AUTHORITY\SYSTEM&#x27;) CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];&quot;
+sqlcmd -S . -Q &quot;SELECT IS_SRVROLEMEMBER(&#x27;sysadmin&#x27;, &#x27;NT AUTHORITY\SYSTEM&#x27;) AS IsSysadmin;&quot;   -- يجب 1</code></pre>
+</div>
+<p><strong>هذه الخطوة هي <a href="#10-سجلّ-الأعطال-التسعة">العطل ٤</a> — اقرأه، فهو أكثرُ ما أضاع وقتاً.</strong></p>
+<h3 id="٤-و-أول-إقلاع-إنشاء-القاعدة" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-و) أول إقلاع — إنشاء القاعدة</span>
+  <a href="#٤-و-أول-إقلاع-إنشاء-القاعدة" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cd C:\DMS\api
+$env:ASPNETCORE_ENVIRONMENT = &quot;Production&quot;
+.\Dms.Api.exe</code></pre>
+</div>
+<p>انتظر <code>Now listening on: http://localhost:5080</code> ثم <strong><code>Ctrl+C</code></strong>.</p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">sqlcmd -S . -d DmsTrial -Q &quot;SELECT COUNT(*) AS Migrations FROM __EFMigrationsHistory; SELECT Username, Role, MustChangePassword FROM Users;&quot;</code></pre>
+</div>
+<p><strong>الناتج الفعليّ:</strong> <code>Migrations = 30</code> · <code>admin / 1 / 1</code>.</p>
+<div class="callout callout-danger">
+  <div class="callout-icon-col">🔴</div>
+  <div class="callout-content-col"><p>🔑 <strong>و<code>Role = 1</code> هو <code>SuperAdmin</code></strong> (<code>Enums.cs</code> يبدأ التعداد من ١) — <code>sqlcmd</code> يقرأ العمود خاماً.
+🔴 <strong>وعدد المهاجرات يُقابَل بعدد الملفات لا يُحفَظ رقماً</strong> — كان الدليل يقول <strong>٢٨</strong> وهو رقمُ
+2026-09-10، فكان سيُسقطك في «توقّف» كاذبة. (<a href="#10-سجلّ-الأعطال-التسعة">العطل ١</a>)</p></div>
+</div>
+<h3 id="٤-ز-فحصُ-الدخول-محلياً-يعزل-المتغيّرات-قبل-النفق" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤-ز) فحصُ الدخول محلياً — <strong>يعزل المتغيّرات قبل النفق</strong></span>
+  <a href="#٤-ز-فحصُ-الدخول-محلياً-يعزل-المتغيّرات-قبل-النفق" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">$cfg = Get-Content C:\DMS\api\appsettings.Production.json -Raw | ConvertFrom-Json
+$r = Invoke-RestMethod -Uri &quot;http://localhost:5080/api/auth/login&quot; -Method Post `
+     -ContentType &quot;application/json&quot; `
+     -Body (@{ Username = $cfg.Seed.AdminUsername; Password = $cfg.Seed.AdminPassword } | ConvertTo-Json)
+&quot;طول الرمز: $($r.accessToken.Length)&quot;</code></pre>
+</div>
+<p><strong>الناتج الفعليّ: <code>507</code>.</strong></p>
+<p>🔑 <strong>وقيمةُ هذا الفحص أنه يعزل:</strong> إن نجح، فكلُّ ما بين المتصفّح والقاعدة <strong>مُثبَتٌ سليم</strong>،
+<strong>فأيُّ عطلٍ بعده يخصّ النفق وحده</strong> — فلا تبحث في القاعدة ولا في الخدمة.</p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="6-المرحلة-٥--الخدمة" class="section-h2">
+    <span class="sec-pill">06</span>
+    <span class="heading-text">6) المرحلة ٥ — الخدمة</span>
+    <a href="#6-المرحلة-٥--الخدمة" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">sc.exe create DmsApi binPath= &quot;C:\DMS\api\Dms.Api.exe&quot; start= auto DisplayName= &quot;DMS API Service&quot;
+sc.exe config DmsApi depend= &#x27;MSSQLSERVER&#x27;
+sc.exe failure DmsApi reset= 86400 actions= restart/30000/restart/30000/restart/60000
+Set-ItemProperty -Path &quot;HKLM:\SYSTEM\CurrentControlSet\Services\DmsApi&quot; `
+    -Name &quot;Environment&quot; -Value @(&quot;ASPNETCORE_ENVIRONMENT=Production&quot;) -Type MultiString
+
+Start-Service DmsApi
+Invoke-RestMethod -Uri &quot;http://localhost:5080/api/system/status&quot;   # maintenance : False</code></pre>
+</div>
+<div class="callout callout-danger">
+  <div class="callout-icon-col">🔴</div>
+  <div class="callout-content-col"><p>⚠️ <strong><code>depend=</code> بعلامتَي اقتباسٍ مفردتين</strong> — بدّل <code>MSSQLSERVER</code> باسم مثيلك.</p>
+<p>🔴 <strong>ولو ردّ <code>Start-Service</code> بـ«Cannot start service» بلا سبب، فالرسالة لا تقول شيئاً —
+اقرأ سجلّ الأحداث:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Get-EventLog -LogName Application -Newest 30 |
+    Where-Object { $_.Source -match &#x27;Dms|\.NET Runtime|Application Error&#x27; } |
+    Select-Object TimeGenerated, Source, EntryType, Message | Format-List</code></pre>
+</div></div>
+</div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="7-المرحلة-٦--iis" class="section-h2">
+    <span class="sec-pill">07</span>
+    <span class="heading-text">7) المرحلة ٦ — IIS</span>
+    <a href="#7-المرحلة-٦--iis" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Import-Module WebAdministration
+
+# 🔴 يُعطَّل عن الإقلاع لا يُوقَف فحسب
+Stop-Website -Name &quot;Default Web Site&quot; -ErrorAction SilentlyContinue
+Set-ItemProperty &quot;IIS:\Sites\Default Web Site&quot; -Name serverAutoStart -Value $false
+
+New-Website -Name &quot;DmsApp&quot; -Port 80 -PhysicalPath &quot;C:\DMS\app&quot; -Force
+Set-ItemProperty &quot;IIS:\Sites\DmsApp&quot; -Name serverAutoStart -Value $true
+Start-Website -Name &quot;DmsApp&quot;
+
+icacls &quot;C:\DMS\app&quot; /grant &quot;IIS_IUSRS:(OI)(CI)(RX)&quot;
+
+Get-Website | Select-Object Name, State, @{n=&#x27;AutoStart&#x27;;e={$_.serverAutoStart}}</code></pre>
+</div>
+<p>🎯 <strong>المطلوب:</strong> <code>DmsApp</code> = <code>Started</code>/<code>True</code> · <code>Default Web Site</code> = <code>Stopped</code>/<strong><code>False</code></strong>.</p>
+<p><strong>والتحقّق:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">(Invoke-WebRequest &quot;http://localhost/&quot; -UseBasicParsing).StatusCode                          # 200
+(Invoke-WebRequest &quot;http://localhost/canvaskit/canvaskit.wasm&quot; -UseBasicParsing).StatusCode   # 200
+
+$h = (Invoke-WebRequest &quot;http://localhost/&quot; -UseBasicParsing).Content
+if ($h -match &#x27;flutter|main\.dart\.js&#x27;) { &quot;✔ الرادّ هو DMS&quot; } else { &quot;✖ ما زال IIS الافتراضيّ&quot; }</code></pre>
+</div>
+<p>🔴 <strong>والطلب الثاني هو الحاسم.</strong> IIS لا يعرف <code>.wasm</code> افتراضياً فيردّ 404، ومحرّكُ الرسم لا
+يُقلع، <strong>فتظهر صفحةٌ بيضاء بلا رسالة خطأ</strong> — وهي أصعب أعطال النشر تشخيصاً. يعالجها
+<code>web.config</code> المرافق (يُبنى مع الواجهة تلقائياً من <code>app/web/</code>).</p>
+<p>⚠️ <strong>ولا تحكم على النظام من المتصفّح هنا</strong> — ستفتح الصفحة ولن يعمل الدخول، لأن الواجهة
+<strong>مخبوزٌ فيها <code>https://dms.nociraq.com/api</code></strong> لا <code>localhost</code>. <strong>وهذا سليم</strong> — ينتظر النفق.</p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="8-المرحلة-٧--النفق" class="section-h2">
+    <span class="sec-pill">08</span>
+    <span class="heading-text">8) المرحلة ٧ — النفق</span>
+    <a href="#8-المرحلة-٧--النفق" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<h3 id="٧-أ-تحقّق-أن-الدومين-على-Cloudflare" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-أ) تحقّق أن الدومين على Cloudflare</span>
+  <a href="#٧-أ-تحقّق-أن-الدومين-على-Cloudflare" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Resolve-DnsName nociraq.com -Type NS | Select-Object NameHost</code></pre>
+</div>
+<p><strong>الناتج الفعليّ:</strong> <code>pam.ns.cloudflare.com</code> · <code>will.ns.cloudflare.com</code> ⇒ ✅ جاهز.</p>
+<p>🔴 <strong>ودومينٌ خارج Cloudflare يجعل <code>tunnel route dns</code> يفشل بـ<code>zone not found</code></strong> — وهي الرسالة
+نفسها التي تظهر لو اخترتَ دوميناً خاطئاً عند <code>login</code>، <strong>فتُضلّلك عن السبب</strong>.
+والعلاج: لوحة Cloudflare ← <strong>Add a site</strong> ← خطة <strong>Free</strong> ← بدّل الـnameservers عند مسجّلك
+← انتظر حتى <code>Active</code> (<strong>حتى ٢٤ ساعة — فابدأ بها وأنت تبني وتنقل</strong>).</p>
+<h3 id="٧-ب-التثبيت" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-ب) التثبيت</span>
+  <a href="#٧-ب-التثبيت" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+$msi = &quot;$env:TEMP\cloudflared.msi&quot;
+Invoke-WebRequest -UseBasicParsing -OutFile $msi `
+  -Uri &quot;https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi&quot;
+Start-Process msiexec.exe -ArgumentList &quot;/i `&quot;$msi`&quot; /qn&quot; -Wait
+
+# 🔴 حدّث الـPATH في نافذتك — وإلا بقي الأمر «غير معروف» وهو مثبَّتٌ فعلاً
+$env:Path = [Environment]::GetEnvironmentVariable(&quot;Path&quot;,&quot;Machine&quot;) + &quot;;&quot; +
+            [Environment]::GetEnvironmentVariable(&quot;Path&quot;,&quot;User&quot;)
+
+cloudflared --version</code></pre>
+</div>
+<div class="callout callout-tip">
+  <div class="callout-icon-col">💡</div>
+  <div class="callout-content-col"><p>💡 <strong>سطر <code>Tls12</code> ليس زينة</strong> — PowerShell 5.1 يتفاوض بـTLS 1.0 وGitHub يرفضه.</p></div>
+</div>
+<h3 id="٧-ج-الدخول-وإنشاء-النفق" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-ج) الدخول وإنشاء النفق</span>
+  <a href="#٧-ج-الدخول-وإنشاء-النفق" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cloudflared tunnel login</code></pre>
+</div>
+<p>🔴 <strong>يطبع رابطاً في PowerShell — وهو وحده ما يفتح صفحة التفويض.</strong> والتنقّل اليدويّ في لوحة
+Cloudflare <strong>لا يصل إليها أبداً</strong> (لأن الرابط يحمل <code>callback</code> يعيد الشهادة إلى <code>cloudflared</code>
+المنتظِر). انسخه كاملاً ← الصقه ← اختر <code>nociraq.com</code> ← <strong>Authorize</strong>.</p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Test-Path &quot;$env:USERPROFILE\.cloudflared\cert.pem&quot;   # True
+cloudflared tunnel create dms-tunnel</code></pre>
+</div>
+<h3 id="٧-د-config-yml-أهمّ-ملفّ" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-د) <code>config.yml</code> — أهمّ ملفّ</span>
+  <a href="#٧-د-config-yml-أهمّ-ملفّ" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">$cfDir = &quot;$env:USERPROFILE\.cloudflared&quot;
+$id    = (Get-ChildItem &quot;$cfDir\*.json&quot; | Where-Object BaseName -match &#x27;^[0-9a-f-]{36}$&#x27;).BaseName
+
+@&quot;
+tunnel: $id
+credentials-file: $cfDir\$id.json
+
+ingress:
+  - hostname: dms.nociraq.com
+    path: &quot;^/(api|v)(/|`$)&quot;
+    service: http://localhost:5080
+
+  - hostname: dms.nociraq.com
+    service: http://localhost:80
+
+  - service: http_status:404
+&quot;@ | Out-File -FilePath &quot;$cfDir\config.yml&quot; -Encoding ascii -Force</code></pre>
+</div>
+<p>🔴 <strong>ترتيب القاعدتين هو كلُّ شيء</strong> — أوّلُ مطابقةٍ تفوز. ولو سبقت قاعدةُ IIS، ذهب <code>/api</code>
+و<code>/v</code> إلى خادم ملفاتٍ لا يعرفهما ⇒ <strong>شاشة دخولٍ تظهر وزرٌّ لا يفعل شيئاً</strong>.</p>
+<p><strong>🔑 واختبر التوجيه منطقياً قبل أن تشغّل شيئاً:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cloudflared tunnel ingress validate
+cloudflared tunnel ingress rule https://dms.nociraq.com/api/system/status   # ⇒ #0 : 5080
+cloudflared tunnel ingress rule https://dms.nociraq.com/v/abc               # ⇒ #0 : 5080
+cloudflared tunnel ingress rule https://dms.nociraq.com/                    # ⇒ #1 : 80</code></pre>
+</div>
+<p><strong>كلُّها وافقت المتوقَّع في تنفيذنا</strong> — وهذا يكشف خطأ الترتيب <strong>على الورق</strong> لا بعد أن يفتح
+المستخدم الصفحة.</p>
+<h3 id="٧-هـ-الربط-والاختبار-اليدويّ" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-هـ) الربط والاختبار اليدويّ</span>
+  <a href="#٧-هـ-الربط-والاختبار-اليدويّ" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">cloudflared tunnel route dns dms-tunnel dms.nociraq.com
+cloudflared tunnel run dms-tunnel</code></pre>
+</div>
+<p>انتظر <code>Registered tunnel connection</code> (٢–٤ وصلات)، <strong>واترك النافذة</strong>، ثم افتح من متصفّح:</p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">TERMINAL</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-">https://dms.nociraq.com/api/system/status     ← JSON: maintenance = false
+https://dms.nociraq.com                        ← شاشة دخول DMS</code></pre>
+</div>
+<div class="callout callout-tip">
+  <div class="callout-icon-col">💡</div>
+  <div class="callout-content-col"><p>💡 <strong>لفتح رابطٍ من PowerShell:</strong> <code>Start-Process "https://dms.nociraq.com"</code> — فلصقُ الرابط
+كأمرٍ يجعله يبحث عن برنامجٍ بهذا الاسم.</p></div>
+</div>
+<h3 id="٧-و-التثبيت-خدمةً-الخطوات-الأربع" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-و) 🔴 التثبيت خدمةً — الخطوات الأربع</span>
+  <a href="#٧-و-التثبيت-خدمةً-الخطوات-الأربع" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p><strong>أوقف التشغيل اليدويّ (<code>Ctrl+C</code>) أولاً</strong>، ثم:</p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell"># ١) إعدادات SYSTEM — بمسار اعتمادٍ يخصّه هو
+$sys = &quot;C:\Windows\System32\config\systemprofile\.cloudflared&quot;
+New-Item -ItemType Directory -Force -Path $sys | Out-Null
+Copy-Item &quot;$env:USERPROFILE\.cloudflared\*&quot; $sys -Force -Recurse
+
+$id = (Get-ChildItem &quot;$sys\*.json&quot; | Where-Object BaseName -match &#x27;^[0-9a-f-]{36}$&#x27;).BaseName
+@&quot;
+tunnel: $id
+credentials-file: $sys\$id.json
+
+ingress:
+  - hostname: dms.nociraq.com
+    path: &quot;^/(api|v)(/|`$)&quot;
+    service: http://localhost:5080
+
+  - hostname: dms.nociraq.com
+    service: http://localhost:80
+
+  - service: http_status:404
+&quot;@ | Out-File -FilePath &quot;$sys\config.yml&quot; -Encoding ascii -Force
+
+# ٢) سجّل الخدمة
+cloudflared service install
+
+# ٣) 🔴 اكتب مسار التشغيل بنفسك — `service install` يتركه عارياً
+$img = &#x27;&quot;C:\Program Files (x86)\cloudflared\cloudflared.exe&quot; --config &quot;C:\Windows\System32\config\systemprofile\.cloudflared\config.yml&quot; --no-autoupdate tunnel run&#x27;
+Set-ItemProperty -Path &quot;HKLM:\SYSTEM\CurrentControlSet\Services\Cloudflared&quot; `
+    -Name ImagePath -Value $img -Type ExpandString
+sc.exe qc Cloudflared | Select-String &quot;BINARY_PATH_NAME&quot;   # 🎯 ينتهي بـ tunnel run
+
+# ٤) تعافٍ تلقائيّ ثم تشغيل
+sc.exe failure Cloudflared reset= 86400 actions= restart/30000/restart/30000/restart/60000
+Start-Service Cloudflared
+Start-Sleep -Seconds 12
+Get-Service Cloudflared, DmsApi, W3SVC | Select-Object Name, Status, StartType</code></pre>
+</div>
+<p><strong>الخطوتان ١ و٣ هما <a href="#10-سجلّ-الأعطال-التسعة">العطل ٧</a> — ولولاهما لسقط النظام عند أوّل إقلاع.</strong></p>
+<h3 id="٧-ز-إعدادات-الأمان-في-Cloudflare" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧-ز) إعدادات الأمان في Cloudflare</span>
+  <a href="#٧-ز-إعدادات-الأمان-في-Cloudflare" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>الإعداد</th>
+<th>الموضع</th>
+<th>القيمة</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Encryption Mode</td>
+<td>SSL/TLS ← Overview</td>
+<td><strong>Full</strong></td>
+</tr>
+<tr>
+<td>Always Use HTTPS</td>
+<td>SSL/TLS ← Edge Certificates</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Automatic HTTPS Rewrites</td>
+<td>SSL/TLS ← Edge Certificates</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Bot Fight Mode</td>
+<td>Security ← Bots</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-danger">
+  <div class="callout-icon-col">🔴</div>
+  <div class="callout-content-col"><p>🔴 <strong>ولا تُفعّل Cloudflare Access</strong> قبل اختبار الـQR — سيحجب صفحة التحقق العامّة.
+وإن فعّلتَه لاحقاً فاستثنِ <code>/v/*</code> و<code>/api/verify</code>، <strong>وإلا حُجبت الجهات الخارجية كلُّها</strong>.</p></div>
+</div>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="9-المرحلة-٨--الاختبار-الحاسم" class="section-h2">
+    <span class="sec-pill">09</span>
+    <span class="heading-text">9) المرحلة ٨ — الاختبار الحاسم</span>
+    <a href="#9-المرحلة-٨--الاختبار-الحاسم" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Restart-Computer</code></pre>
+</div>
+<p><strong>وبعد الإقلاع — لا تلمس الحاسبة إطلاقاً.</strong> افتح <code>https://dms.nociraq.com</code> من <strong>جهازٍ آخر</strong>
+ومن <strong>هاتفٍ على بيانات الجوال</strong>.</p>
+<p><strong>✅ وهذا ما وقع فعلاً في 2026-09-22 ونجح.</strong></p>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>ما يظهر</th>
+<th>المعنى</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🎯 شاشة دخول DMS</td>
+<td>✅ تمّ</td>
+</tr>
+<tr>
+<td><strong>صفحة IIS الزرقاء</strong></td>
+<td><code>DmsApp</code> لم يُقلع ← <a href="#10-سجلّ-الأعطال-التسعة">العطل ٩</a></td>
+</tr>
+<tr>
+<td><code>Error 1033</code> / <code>530</code></td>
+<td>النفق لم يُقلع ← <a href="#10-سجلّ-الأعطال-التسعة">العطل ٧</a></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>وفحصُ الحالة عند أيّ عطل:</strong></p>
+<div class="code-card">
+  <div class="code-card-header">
+    <div class="window-dots">
+      <span class="dot red"></span>
+      <span class="dot yellow"></span>
+      <span class="dot green"></span>
+      <span class="code-lang-label">PowerShell</span>
+    </div>
+    <button class="copy-button" onclick="copyCode(this)" title="نسخ الكود" type="button">
+      <svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="btn-text">نسخ الكود</span>
+    </button>
+  </div>
+  <pre><code class="language-powershell">Get-Service Cloudflared, DmsApi, W3SVC | Select-Object Name, Status
+Import-Module WebAdministration
+Get-Website | Select-Object Name, State, @{n=&#x27;AutoStart&#x27;;e={$_.serverAutoStart}}</code></pre>
+</div>
+<h3 id="ثم-جائزة-التجربة-ختم-الـQR" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">ثم — جائزة التجربة: ختم الـQR</span>
+  <a href="#ثم-جائزة-التجربة-ختم-الـQR" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p>⚠️ <strong>وأقلَّ ما يكفي من البيانات فقط</strong> — بياناتُ التجربة <strong>تُمحى</strong>، والـMini PC يبدأ من الصفر
+والترقيم من ١.</p>
+<ol>
+<li><strong>شركة</strong> + <strong>قالب</strong></li>
+<li><strong>كتاب صادر</strong> واحد ← <strong>اعتمده</strong></li>
+<li>نزّل الـPDF و<strong>امسح الـQR بكاميرا هاتفك العادية</strong> (بلا تطبيق)</li>
+</ol>
+<p>🎯 <strong>تفتح صفحةٌ عربية على <code>https://dms.nociraq.com/v/...</code>: «تم إصدار هذا الكتاب فعلاً من
+الشركة»</strong> — بالرقم والتاريخ والجهة، <strong>وبلا مبلغ</strong>.</p>
+<p>🔑 <strong>وهي وحدها ما لا يُختبَر إلا على دومينٍ حقيقيّ</strong> — فالعنوان يُخبَز في الـPDF <strong>لحظة
+الاعتماد</strong> ولا يُصلَح بأثرٍ رجعيّ.</p>
+<p>🔴 <strong>ولا تعتمد في التجربة كتاباً سترسله فعلاً:</strong> ختمُه سيحمل <code>dms.nociraq.com</code> إلى الأبد،
+فإن سُلّم لجهةٍ خارجية ثم انتقلتَ إلى دومين الإنتاج <strong>صار رابطاً ميتاً</strong>.</p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="10-سجلّ-الأعطال-التسعة" class="section-h2">
+    <span class="sec-pill">10</span>
+    <span class="heading-text">10) سجلّ الأعطال التسعة</span>
+    <a href="#10-سجلّ-الأعطال-التسعة" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="callout callout-info">
+  <div class="callout-icon-col">📌</div>
+  <div class="callout-content-col"><p><strong>كلُّها وقعت فعلاً في هذه الجلسة، وكلُّها عولجت، وكلٌّ منها صار بنداً في الدليل الشامل.</strong></p></div>
+</div>
+<span id="العطل-١" class="fault-target"></span><h3 id="١-٢٨-مهاجرة-والواقع-٣٠" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">١) «٢٨ مهاجرة» والواقع ٣٠</span>
+  <a href="#١-٢٨-مهاجرة-والواقع-٣٠" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td>كُشف <strong>بمقابلة الدليل بالكود قبل التنصيب</strong> — لا أثناءه</td>
+</tr>
+<tr>
+<td><strong>الأثر لو مرّ</strong></td>
+<td>الدليل يأمر بالتوقّف إن اختلف الرقم. كنتَ سترى <code>30</code> <strong>فتظنّ أن شيئاً فسد</strong></td>
+</tr>
+<tr>
+<td><strong>السبب</strong></td>
+<td>الرقم من 2026-09-10، وبعده <code>AddBookReplies</code> و<code>AddCaseFiles</code></td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td>الرقم <strong>يُقابَل بعدد ملفات المهاجرة لا يُحفَظ</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>🔑 <strong>ودرسُه من <code>status-report.md</code> نفسه: رقمٌ بلا تاريخِ قياسٍ يتقادم صامتاً.</strong></p>
+<span id="العطل-٢" class="fault-target"></span><h3 id="٢-الأمر-شُغِّل-على-الجهاز-الخطأ-مرّتين" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٢) الأمر شُغِّل على الجهاز الخطأ — <strong>مرّتين</strong></span>
+  <a href="#٢-الأمر-شُغِّل-على-الجهاز-الخطأ-مرّتين" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td><code>Compress-Archive</code> على حاسبة التجربة: <code>path ... does not exist</code> · ثم أوامر IIS على جهازٍ بلا IIS</td>
+</tr>
+<tr>
+<td><strong>الأثر</strong></td>
+<td><strong>لا ضرر</strong> — كلُّ أمرٍ فشل قبل أن يفعل شيئاً</td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td><a href="#1-قسمة-العمل-بين-الجهازين">جدول قسمة العمل</a> + سطرُ «أين أنا؟»</td>
+</tr>
+</tbody>
+</table></div>
+<span id="العطل-٣" class="fault-target"></span><h3 id="٣-NET-Runtime-ليست-ASP-NET-Core-Runtime-وفحصي-كذب" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٣) <code>.NET Runtime</code> ليست <code>ASP.NET Core Runtime</code> — <strong>وفحصي كذب</strong></span>
+  <a href="#٣-NET-Runtime-ليست-ASP-NET-Core-Runtime-وفحصي-كذب" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td>السكربت قال «مفقود»، والمستخدم قد ثبّت <code>aspnetcore-runtime-9.0.x-win-x64</code> فعلاً</td>
+</tr>
+<tr>
+<td><strong>السبب الحقيقيّ</strong></td>
+<td><code>dotnet</code> في الـPATH كان <strong>32-بت</strong> (<code>C:\Program Files (x86)\dotnet</code>) فلا يرى تثبيت x64</td>
+</tr>
+<tr>
+<td><strong>الأثر</strong></td>
+<td><strong>فحصٌ كاذب</strong> أوقف التقدّم بلا سبب</td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td>الفحص صار <strong>يُشغّل <code>Dms.Api.exe generate-secrets</code></strong> — مسبارٌ آمن لا يكتب ملفاً</td>
+</tr>
+</tbody>
+</table></div>
+<p>🔑 <strong>والدرس نظيرُ <code>DevSigningKeysTests</code> في المشروع: اختبارٌ لا يجرّب المنتج الحقيقيّ يحرس
+هيكلاً لا منتجاً.</strong> وكان العيبُ عيبي أنا، لا عيبَ الجهاز.</p>
+<span id="العطل-٤" class="fault-target"></span><h3 id="٤-NT-AUTHORITY-SYSTEM-بلا-sysadmin-أخطرُ-التسعة-تضليلاً" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٤) 🔴 <code>NT AUTHORITY\SYSTEM</code> بلا <code>sysadmin</code> — <strong>أخطرُ التسعة تضليلاً</strong></span>
+  <a href="#٤-NT-AUTHORITY-SYSTEM-بلا-sysadmin-أخطرُ-التسعة-تضليلاً" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td><code>Start-Service : Cannot start service DmsApi</code> — <strong>بلا سبب</strong></td>
+</tr>
+<tr>
+<td><strong>السجلّ</strong></td>
+<td><code>SqlException: CREATE DATABASE permission denied in database 'master'</code> · <code>Failed executing DbCommand: CREATE DATABASE [DmsTrial];</code></td>
+</tr>
+<tr>
+<td><strong>المفارقة</strong></td>
+<td>🔴 <strong>القاعدة موجودةٌ فعلاً — أُنشئت قبل دقيقة!</strong></td>
+</tr>
+<tr>
+<td><strong>التفسير</strong></td>
+<td>SQL <strong>يُخفي عن الحساب قواعدَ لا يملك صلاحيةً عليها</strong>، فرآها EF غيرَ موجودة <strong>فحاول إنشاءها</strong> فرُفض</td>
+</tr>
+<tr>
+<td><strong>القياس</strong></td>
+<td>الدخول موجود (<code>is_disabled = 0</code>) و<code>IS_SRVROLEMEMBER('sysadmin', …)</code> = <strong>0</strong></td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td>منحُ <code>sysadmin</code> صار <strong>خطوةً إلزامية بترقيمها</strong> (§و-3ب) بفحصٍ يثبت وقوعها</td>
+</tr>
+</tbody>
+</table></div>
+<p>🔑 <strong>فالرسالة تتّهم «الإنشاء» والعلّة «القراءة» — ومَن يصدّقها يبحث في المكان الخطأ.</strong>
+⚠️ <strong>وكان الدليل يكتبها «لو لم يفعل»</strong> بناءً على أن SQL يمنحها افتراضياً — <strong>وهو لا يمنحها</strong>.
+🔑 <strong>ولماذا <code>sysadmin</code> لا <code>db_owner</code>؟</strong> لأن <code>RESTORE DATABASE</code> يحتاج صلاحيةً على <strong>مستوى
+الخادم</strong> — و<code>db_owner</code> يجعل زرّ «استعادة» يفشل <strong>يوم تحتاجه فعلاً</strong>.</p>
+<span id="العطل-٥" class="fault-target"></span><h3 id="٥-كلمة-المرور-كُتبت-بيد-حرفٌ-ناقص" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٥) كلمة المرور كُتبت بيد — حرفٌ ناقص</span>
+  <a href="#٥-كلمة-المرور-كُتبت-بيد-حرفٌ-ناقص" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td><code>400 Bad Request</code> على <code>/api/auth/login</code></td>
+</tr>
+<tr>
+<td><strong>السبب</strong></td>
+<td>الكلمة <strong>٢٠ حرفاً</strong> والمُدخَل <strong>١٩</strong> — والمولّد يُبقي <code>@ # % + = ?</code> والطرفيّة ترسم الرموز كـ<code>?</code></td>
+</tr>
+<tr>
+<td><strong>الخطر المصاحب</strong></td>
+<td>⚠️ خمسُ محاولاتٍ فاشلة <strong>تقفل الحساب ١٥ دقيقة</strong></td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td><strong>تُقرأ من الملف ولا تُكتب بيد</strong> — فينتفي خطأ النقل تماماً</td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-info">
+  <div class="callout-icon-col">📌</div>
+  <div class="callout-content-col"><p><strong>و<code>400</code> هنا تعني حرفياً <code>ValidationException("اسم المستخدم أو كلمة المرور غير صحيحة")</code></strong> —
+لا عطلَ في النظام.</p></div>
+</div>
+<span id="العطل-٦" class="fault-target"></span><h3 id="٦-cloudflared-tunnel-login-التنقّل-اليدويّ-لا-يصل" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٦) <code>cloudflared tunnel login</code> — التنقّل اليدويّ لا يصل</span>
+  <a href="#٦-cloudflared-tunnel-login-التنقّل-اليدويّ-لا-يصل" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td>المستخدم في لوحة <code>nociraq.com</code> ولا يجد زرّ <code>Authorize</code></td>
+</tr>
+<tr>
+<td><strong>السبب</strong></td>
+<td>صفحة التفويض تُفتح <strong>بالرابط المطبوع في PowerShell وحده</strong> (يحمل <code>callback</code>)</td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td>انسخ الرابط من الطرفيّة — ولا تتنقّل في اللوحة</td>
+</tr>
+</tbody>
+</table></div>
+<span id="العطل-٧" class="fault-target"></span><h3 id="٧-cloudflared-service-install-يسجّل-خدمةً-فارغة" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٧) 🔴 <code>cloudflared service install</code> يسجّل خدمةً <strong>فارغة</strong></span>
+  <a href="#٧-cloudflared-service-install-يسجّل-خدمةً-فارغة" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td><code>Start-Service : Failed to start service</code> · والموقع <code>Error 1033</code> ثم <code>530</code></td>
+</tr>
+<tr>
+<td><strong>السجلّ</strong></td>
+<td><code>Cloudflared service arguments: [C:\Program Files (x86)\cloudflared\cloudflared.exe]</code> — <strong>بلا وسيطةٍ واحدة</strong></td>
+</tr>
+<tr>
+<td><strong>التفسير</strong></td>
+<td>بلا <code>tunnel run</code> وبلا <code>--config</code> ⇒ تُقلع، ولا تجد ما تفعله، <strong>فتخرج فوراً</strong></td>
+</tr>
+<tr>
+<td><strong>علامةٌ فارقة</strong></td>
+<td>السجلّ يكرّر <code>service starting</code> <strong>بلا <code>started</code> ولا سطرِ خطأ</strong></td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td>كتابة <code>ImagePath</code> في السجلّ + <code>config.yml</code> بمسار اعتماد SYSTEM</td>
+</tr>
+</tbody>
+</table></div>
+<p>⚠️ <strong>ومحاولةُ إصلاحه بـ<code>sc.exe config … binPath=</code> فشلت</strong> — اقتباساتُه المتداخلة تتمزّق فطبع
+<strong>صفحة المساعدة</strong>، و<code>BINARY_PATH_NAME</code> بقي كما هو: 🔑 <strong>أمرٌ يبدو كأنه نجح وهو لم يفعل شيئاً.</strong>
+⇒ <strong><code>ImagePath</code> في السجلّ هو ما يقرؤه مدير الخدمات فعلاً — فاكتب المصدر وتجنّب المُحلِّل.</strong></p>
+<p>🔴 <strong>ومعه عيبٌ ثانٍ:</strong> النسخُ الحرفيّ لملفّك يُبقي <code>credentials-file</code> مشيراً إلى
+<code>C:\Users\&lt;أنت&gt;\.cloudflared</code> — <strong>وخدمةٌ بـSYSTEM تعتمد على مجلّد مستخدمٍ آخر قنبلةٌ موقوتة</strong>.
+<strong>عائلةُ العطل ٤ نفسها.</strong></p>
+<span id="العطل-٨" class="fault-target"></span><h3 id="٨-خدمةٌ-عالقة-في-StopPending" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٨) خدمةٌ عالقة في <code>StopPending</code></span>
+  <a href="#٨-خدمةٌ-عالقة-في-StopPending" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td><code>Restart-Service : cannot be stopped</code> والحالة <code>StopPending</code></td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td><code>Get-Process cloudflared \| Stop-Process -Force</code> ثم الانتظار</td>
+</tr>
+</tbody>
+</table></div>
+<span id="العطل-٩" class="fault-target"></span><h3 id="٩-Stop-Website-صحيحٌ-للحظته-وخاطئٌ-للأبد" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">٩) 🔴 <code>Stop-Website</code> صحيحٌ للحظته وخاطئٌ للأبد</span>
+  <a href="#٩-Stop-Website-صحيحٌ-للحظته-وخاطئٌ-للأبد" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>كيف ظهر</strong></td>
+<td>بعد إعادة التشغيل: <code>dms.nociraq.com</code> يعرض <strong>صفحة IIS الترحيبية الزرقاء</strong></td>
+</tr>
+<tr>
+<td><strong>القياس</strong></td>
+<td><code>Default Web Site: Started/True/*:80:</code> · <code>DmsApp: Stopped/True/*:80:</code></td>
+</tr>
+<tr>
+<td><strong>التفسير</strong></td>
+<td>الموقعان تنازعا المنفذ 80 عند الإقلاع، <strong>وسبق الافتراضيُّ موقعَنا فاحتلّه</strong></td>
+</tr>
+<tr>
+<td><strong>العلاج</strong></td>
+<td><code>serverAutoStart = $false</code> على الافتراضيّ و<code>$true</code> على موقعنا</td>
+</tr>
+</tbody>
+</table></div>
+<p>⚠️ <strong>وأثرُه أخبثُ التسعة لأنه لا يبدو عطلاً:</strong> الزائر يرى <strong>صفحةً تعمل وتبدو سليمة</strong>، <strong>فلا
+يخطر له أن نظامه هو المتوقّف</strong> — بل يتّهم الدومين أو النفق ويبحث في المكان الخطأ.
+<strong>والنفقُ كان سليماً تماماً: الصفحة وصلت عبره.</strong></p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="11-الدروس-المعمَّمة" class="section-h2">
+    <span class="sec-pill">11</span>
+    <span class="heading-text">11) الدروس المعمَّمة</span>
+    <a href="#11-الدروس-المعمَّمة" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<h3 id="١-ما-ينجح-بحسابك-لا-ينجح-بحساب-الخدمة" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ١) ما ينجح بحسابك لا ينجح بحساب الخدمة</span>
+  <a href="#١-ما-ينجح-بحسابك-لا-ينجح-بحساب-الخدمة" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p><strong>ثلاثةٌ من التسعة</strong> (٤ · ٧ · ٩) من هذه العائلة وحدها. التشغيل اليدويّ يجري <strong>بحسابك
+المسؤول</strong> وفي <strong>جلستك الحالية</strong>؛ والخدمة تجري بـ<code>SYSTEM</code> وبعد <strong>إقلاعٍ نظيف</strong>.</p>
+<div class="callout callout-info">
+  <div class="callout-icon-col">📌</div>
+  <div class="callout-content-col"><p><strong>⇒ لا تُعلن نجاح أيّ مرحلةٍ قبل إعادة تشغيلٍ واختبارٍ من جهازٍ آخر.</strong></p></div>
+</div>
+<h3 id="٢-يعمل-الآن-غير-يبقى-يعمل" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ٢) «يعمل الآن» غير «يبقى يعمل»</span>
+  <a href="#٢-يعمل-الآن-غير-يبقى-يعمل" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p>النظام عمل تماماً من الهاتف <strong>وهو معلَّقٌ بنافذة PowerShell مفتوحة</strong>. وإغلاقُها أسقط كلَّ
+شيء — وهو عين ما يحدث عند إعادة التشغيل.</p>
+<h3 id="٣-الفشل-الصامت-أخطر-من-الفشل-الصاخب" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ٣) الفشل الصامت أخطر من الفشل الصاخب</span>
+  <a href="#٣-الفشل-الصامت-أخطر-من-الفشل-الصاخب" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th>العطل</th>
+<th>لماذا صامت</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>٧</td>
+<td>الخدمة تُقلع <strong>وتخرج</strong> — السجلّ بلا سطر خطأ</td>
+</tr>
+<tr>
+<td>٩</td>
+<td><strong>صفحةٌ تعمل وتبدو سليمة</strong> تحجب أن نظامك متوقّف</td>
+</tr>
+<tr>
+<td><code>sc.exe binPath=</code></td>
+<td>يطبع المساعدة <strong>ويبدو كأنه نجح</strong></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="٤-اختبرْ-ما-يقوله-الخطأ-لا-ما-يقوله-لك" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ٤) اختبرْ ما يقوله الخطأ لا ما يقوله لك</span>
+  <a href="#٤-اختبرْ-ما-يقوله-الخطأ-لا-ما-يقوله-لك" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p>العطل ٤ اتّهم <code>CREATE DATABASE</code> والعلّة <code>SELECT</code>. <strong>والرسالة كانت صادقةً في الحرف كاذبةً في
+الدلالة</strong> — لأن SQL يُخفي ما لا تملكه فيبدو غيرَ موجود.</p>
+<h3 id="٥-افحص-المنتج-لا-الهيكل" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ٥) افحص المنتج لا الهيكل</span>
+  <a href="#٥-افحص-المنتج-لا-الهيكل" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p>العطل ٣: سألتُ <code>dotnet</code> في الـPATH بدل أن أُشغّل <code>Dms.Api.exe</code>. <strong>والفحص الذي لا يجرّب
+المنتج الحقيقيّ يحرس هيكلاً لا منتجاً</strong> — وهو درسُ <code>DevSigningKeysTests</code> حرفياً.</p>
+<h3 id="٦-اعزل-المتغيّرات-قبل-أن-تضيف-واحداً" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ٦) اعزل المتغيّرات قبل أن تضيف واحداً</span>
+  <a href="#٦-اعزل-المتغيّرات-قبل-أن-تضيف-واحداً" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p>فحصُ الدخول محلياً (<code>507</code>) قبل النفق جعل كلَّ عطلٍ بعده <strong>يخصّ النفق وحده</strong> — فلم نبحث في
+القاعدة ولا في الخدمة مرّةً واحدة.</p>
+<h3 id="٧-والفحصُ-على-الورق-أرخص-من-الفحص-بالتشغيل" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">🔑 ٧) والفحصُ على الورق أرخص من الفحص بالتشغيل</span>
+  <a href="#٧-والفحصُ-على-الورق-أرخص-من-الفحص-بالتشغيل" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<p><code>cloudflared tunnel ingress rule</code> أثبت التوجيه <strong>قبل</strong> أن يعمل النفق. <strong>وكلُّ فحصٍ يسبق
+التشغيل يوفّر دورةَ تشخيصٍ كاملة.</strong></p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="12-ما-لا-تُثبته-التجربة" class="section-h2">
+    <span class="sec-pill">12</span>
+    <span class="heading-text">12) ما لا تُثبته التجربة</span>
+    <a href="#12-ما-لا-تُثبته-التجربة" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<p>التجربة أثبتت <strong>البرنامج والدومين والنفق والخدمات وبقاءها بعد الإقلاع</strong>. <strong>ولا تُثبت</strong>:</p>
+<ul>
+<li><strong>مثيل SQL Server Express المُسمّى</strong> (<code>.\SQLEXPRESS</code>) — حاسبتنا حملت المثيل <strong>الافتراضيّ</strong>.</li>
+<li><strong>BitLocker</strong> · <strong>الـIP الثابت</strong> · <strong>الـUPS</strong> · <strong>منع إعادة التشغيل أثناء الدوام</strong>.</li>
+<li><strong>النسخ الاحتياطي ٣-٢-١</strong> والمرآة على القرص الخارجي.</li>
+<li>🔴 <strong>اختبار الاستعادة على جهازٍ نظيف</strong> — غيرُ قابلٍ للتفاوض، ويُنفَّذ على الـMini PC.</li>
+<li><strong>سلوك الجهاز تحت انقطاع كهرباء</strong> حقيقيّ.</li>
+</ul>
+<div class="callout callout-key">
+  <div class="callout-icon-col">🔑</div>
+  <div class="callout-content-col"><p>🔑 <strong>فالتجربة تختصر المخاطرة، ولا تختصر المرحلة ط.</strong></p></div>
+</div>
+<h3 id="وما-يتغيّر-عند-الانتقال-إلى-الـMini-PC" class="section-h3">
+  <span class="h3-indicator"></span>
+  <span class="heading-text">وما يتغيّر عند الانتقال إلى الـMini PC</span>
+  <a href="#وما-يتغيّر-عند-الانتقال-إلى-الـMini-PC" class="anchor-link" title="رابط مباشر">#</a>
+</h3>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>الواجهة تُبنى ثانيةً</strong></td>
+<td>العنوان مخبوزٌ في <code>main.dart.js</code> — ودومين الإنتاج غير <code>nociraq.com</code></td>
+</tr>
+<tr>
+<td><strong>أسرارٌ جديدة تماماً</strong></td>
+<td>🔴 <strong>لا تُنقل أسرار التجربة</strong> — عاشت على حاسبةٍ بلا BitLocker</td>
+</tr>
+<tr>
+<td><strong>نفقٌ جديد</strong></td>
+<td>مربوطٌ بمنطقة DNS بعينها</td>
+</tr>
+<tr>
+<td><strong>قاعدةٌ من الصفر</strong></td>
+<td><code>DmsDb</code> · <strong>والترقيم من ١</strong> — وهو الدليل القاطع أن العدّادات نظيفة</td>
+</tr>
+<tr>
+<td><strong>ولا بياناتٍ تُنقل</strong></td>
+<td>الشركات والقوالب والمستخدمون تُعاد يدوياً</td>
+</tr>
+</tbody>
+</table></div>
+<p>⚠️ <strong>وأوقف نفق التجربة أوّلاً</strong> — فمثيلان بالنفق نفسه يجعلان Cloudflare توزّع الزيارات
+بينهما، <strong>فتظهر العلّة «متقطّعة» ويصعب تشخيصها</strong>.</p>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="13-قائمة-التحقّق-النهائية" class="section-h2">
+    <span class="sec-pill">13</span>
+    <span class="heading-text">13) قائمة التحقّق النهائية</span>
+    <a href="#13-قائمة-التحقّق-النهائية" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<p><strong>على حاسبة التجربة — بعد إعادة تشغيلٍ نظيفة، وبلا لمس الجهاز:</strong></p>
+<div class="checklist-progress-card">
+  <div class="chk-prog-header">
+    <div class="chk-prog-title">
+      <span class="chk-icon">📋</span>
+      <span>مستوى الإنجاز والتحقق الفعلي:</span>
+      <strong id="checklist-stat">0 من 9 بنود محققة</strong>
+    </div>
+    <div class="chk-prog-actions">
+      <button type="button" class="chk-btn" onclick="toggleAllTasks(true)">تحديد الكل</button>
+      <button type="button" class="chk-btn chk-btn-reset" onclick="toggleAllTasks(false)">إعادة ضبط</button>
+    </div>
+  </div>
+  <div class="chk-bar-track">
+    <div class="chk-bar-fill" id="checklist-progress-bar" style="width: 0%"></div>
+  </div>
+</div><ul>
+<li class="checklist-item" id="task-item-1">
+  <label class="check-label" for="task-chk-1">
+    <input type="checkbox" id="task-chk-1" class="checklist-checkbox" onchange="onTaskToggle(this, 1)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text"><code>Get-Service Cloudflared, DmsApi, W3SVC</code> ⇒ الثلاث <strong><code>Running</code></strong> + <strong><code>Automatic</code></strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-2">
+  <label class="check-label" for="task-chk-2">
+    <input type="checkbox" id="task-chk-2" class="checklist-checkbox" onchange="onTaskToggle(this, 2)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text"><code>Get-Website</code> ⇒ <code>DmsApp</code> <strong><code>Started</code>/<code>True</code></strong> · <code>Default Web Site</code> <strong><code>Stopped</code>/<code>False</code></strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-3">
+  <label class="check-label" for="task-chk-3">
+    <input type="checkbox" id="task-chk-3" class="checklist-checkbox" onchange="onTaskToggle(this, 3)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text"><code>sc.exe qc Cloudflared</code> ⇒ <code>BINARY_PATH_NAME</code> ينتهي بـ<strong><code>tunnel run</code></strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-4">
+  <label class="check-label" for="task-chk-4">
+    <input type="checkbox" id="task-chk-4" class="checklist-checkbox" onchange="onTaskToggle(this, 4)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text"><code>sqlcmd -S . -Q "SELECT IS_SRVROLEMEMBER('sysadmin','NT AUTHORITY\SYSTEM')"</code> ⇒ <strong>1</strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-5">
+  <label class="check-label" for="task-chk-5">
+    <input type="checkbox" id="task-chk-5" class="checklist-checkbox" onchange="onTaskToggle(this, 5)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text"><code>https://dms.nociraq.com/api/system/status</code> من جهازٍ آخر ⇒ <strong>JSON</strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-6">
+  <label class="check-label" for="task-chk-6">
+    <input type="checkbox" id="task-chk-6" class="checklist-checkbox" onchange="onTaskToggle(this, 6)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text"><code>https://dms.nociraq.com</code> من <strong>هاتفٍ على بيانات الجوال</strong> ⇒ <strong>شاشة دخول</strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-7">
+  <label class="check-label" for="task-chk-7">
+    <input type="checkbox" id="task-chk-7" class="checklist-checkbox" onchange="onTaskToggle(this, 7)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text">الدخول بـ<code>admin</code> ⇒ يطلب <strong>تغيير كلمة المرور</strong> ثم يفتح</span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-8">
+  <label class="check-label" for="task-chk-8">
+    <input type="checkbox" id="task-chk-8" class="checklist-checkbox" onchange="onTaskToggle(this, 8)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text">اعتماد كتابٍ تجريبيّ ⇒ <strong>مسحُ الـQR بكاميرا الهاتف يفتح صفحة التحقق</strong></span>
+  </label>
+</li>
+<li class="checklist-item" id="task-item-9">
+  <label class="check-label" for="task-chk-9">
+    <input type="checkbox" id="task-chk-9" class="checklist-checkbox" onchange="onTaskToggle(this, 9)">
+    <span class="custom-checkbox"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+    <span class="task-text">🔴 <strong>ولم يُعتمد كتابٌ سيُرسَل فعلاً</strong> — ختمُه يحمل دومين التجربة إلى الأبد</span>
+  </label>
+</li>
+</ul>
+<hr />
+<div class="h2-anchor-wrap">
+  <h2 id="المرجع" class="section-h2">
+    <span class="sec-pill-icon">📌</span>
+    <span class="heading-text">المرجع</span>
+    <a href="#المرجع" class="anchor-link" title="رابط مباشر لهذا القسم">#</a>
+  </h2>
+</div>
+<div class="table-responsive-card"><div class="table-scroll-hint">⟵ اسحب لرؤية بقية الجدول ⟶</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>الدليل الشامل</strong> (كلُّ الحالات)</td>
+<td><a href="دليل%20النشر%20الشامل%20—%20نظام%20DMS.md"><code>دليل النشر الشامل — نظام DMS.md</code></a></td>
+</tr>
+<tr>
+<td><strong>سكربت الفحص المسبق</strong></td>
+<td><a href="_scripts/dms-trial-preflight.ps1"><code>_scripts/dms-trial-preflight.ps1</code></a></td>
+</tr>
+<tr>
+<td><strong>قرار الاستضافة (ADR-016)</strong></td>
+<td><a href="../.claude/docs/decisions.md"><code>.claude/docs/decisions.md</code></a></td>
+</tr>
+<tr>
+<td><strong>صفحة التحقق العامّة (ADR-043)</strong></td>
+<td>المصدر نفسه</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<p><em>محضرُ تنصيبٍ وقع في 2026-09-22 — يُحدَّث إن أُعيدت التجربة أو ظهر عطلٌ جديد.</em></p>
+        
+      </main>
+      
+    </div>
+  </div>
+
+  <!-- Mobile Table of Contents Modal Drawer -->
+  <div class="toc-modal-overlay" id="toc-modal" onclick="onModalOverlayClick(event)">
+    <div class="toc-modal-content">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1.1rem; font-weight: 800;">📋 فهرس المحتويات</h3>
+        <button type="button" class="toc-modal-close" onclick="toggleTocModal()">إغلاق ✕</button>
+      </div>
+      <nav class="toc-links-list">
+        <a href="#0-الحصيلة-أولاً" class="toc-link" data-target="0-الحصيلة-أولاً"><span class="toc-badge">00</span><span class="toc-icon">⚡</span><span class="toc-text">0) الحصيلة أولاً</span></a><a href="#1-قسمة-العمل-بين-الجهازين" class="toc-link" data-target="1-قسمة-العمل-بين-الجهازين"><span class="toc-badge">01</span><span class="toc-icon">💻</span><span class="toc-text">1) قسمة العمل بين الجهازين</span></a><a href="#2-المرحلة-١--جهاز-التطوير-البناء" class="toc-link" data-target="2-المرحلة-١--جهاز-التطوير-البناء"><span class="toc-badge">02</span><span class="toc-icon">🛠️</span><span class="toc-text">2) المرحلة ١ — جهاز التطوير: البناء</span></a><a href="#3-المرحلة-٢--النقل" class="toc-link" data-target="3-المرحلة-٢--النقل"><span class="toc-badge">03</span><span class="toc-icon">📦</span><span class="toc-text">3) المرحلة ٢ — النقل</span></a><a href="#4-المرحلة-٣--الفحص-المسبق" class="toc-link" data-target="4-المرحلة-٣--الفحص-المسبق"><span class="toc-badge">04</span><span class="toc-icon">🔍</span><span class="toc-text">4) المرحلة ٣ — الفحص المسبق</span></a><a href="#5-المرحلة-٤--الأسرار-والقاعدة" class="toc-link" data-target="5-المرحلة-٤--الأسرار-والقاعدة"><span class="toc-badge">05</span><span class="toc-icon">🔐</span><span class="toc-text">5) المرحلة ٤ — الأسرار والقاعدة</span></a><a href="#6-المرحلة-٥--الخدمة" class="toc-link" data-target="6-المرحلة-٥--الخدمة"><span class="toc-badge">06</span><span class="toc-icon">⚙️</span><span class="toc-text">6) المرحلة ٥ — الخدمة</span></a><a href="#7-المرحلة-٦--iis" class="toc-link" data-target="7-المرحلة-٦--iis"><span class="toc-badge">07</span><span class="toc-icon">🌐</span><span class="toc-text">7) المرحلة ٦ — IIS</span></a><a href="#8-المرحلة-٧--النفق" class="toc-link" data-target="8-المرحلة-٧--النفق"><span class="toc-badge">08</span><span class="toc-icon">🚇</span><span class="toc-text">8) المرحلة ٧ — النفق</span></a><a href="#9-المرحلة-٨--الاختبار-الحاسم" class="toc-link" data-target="9-المرحلة-٨--الاختبار-الحاسم"><span class="toc-badge">09</span><span class="toc-icon">🧪</span><span class="toc-text">9) المرحلة ٨ — الاختبار الحاسم</span></a><a href="#10-سجلّ-الأعطال-التسعة" class="toc-link" data-target="10-سجلّ-الأعطال-التسعة"><span class="toc-badge">10</span><span class="toc-icon">🚨</span><span class="toc-text">10) سجلّ الأعطال التسعة</span></a><a href="#11-الدروس-المعمَّمة" class="toc-link" data-target="11-الدروس-المعمَّمة"><span class="toc-badge">11</span><span class="toc-icon">💡</span><span class="toc-text">11) الدروس المعمَّمة</span></a><a href="#12-ما-لا-تُثبته-التجربة" class="toc-link" data-target="12-ما-لا-تُثبته-التجربة"><span class="toc-badge">12</span><span class="toc-icon">⚠️</span><span class="toc-text">12) ما لا تُثبته التجربة</span></a><a href="#13-قائمة-التحقّق-النهائية" class="toc-link" data-target="13-قائمة-التحقّق-النهائية"><span class="toc-badge">13</span><span class="toc-icon">✅</span><span class="toc-text">13) قائمة التحقّق النهائية</span></a><a href="#المرجع" class="toc-link" data-target="المرجع"><span class="toc-badge">ref</span><span class="toc-icon">📚</span><span class="toc-text">المرجع</span></a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Back to Top Button -->
+  <button type="button" class="back-to-top" id="back-to-top-btn" onclick="scrollToTop()" title="العودة لأعلى الصفحة" aria-label="العودة للأعلى">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="18 15 12 9 6 15"></polyline>
+    </svg>
+  </button>
+
+  <script>
+    // 1. Reading Progress & Back to Top Controller
+    window.addEventListener('scroll', function() {
+      const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+      
+      const progressBar = document.getElementById("reading-progress");
+      if (progressBar) {
+        progressBar.style.width = scrolled + "%";
+      }
+      
+      const backBtn = document.getElementById("back-to-top-btn");
+      if (backBtn) {
+        if (winScroll > 350) {
+          backBtn.classList.add("visible");
+        } else {
+          backBtn.classList.remove("visible");
+        }
+      }
+      
+      updateActiveTocSection();
+    });
+
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 2. Active Section Spy for Sidebar TOC
+    function updateActiveTocSection() {
+      const sections = document.querySelectorAll(".section-h2");
+      const scrollPos = window.scrollY + 120;
+      
+      let currentSectionId = "";
+      sections.forEach(sec => {
+        if (sec.offsetTop <= scrollPos) {
+          currentSectionId = sec.getAttribute("id");
+        }
+      });
+      
+      const tocLinks = document.querySelectorAll(".toc-link");
+      tocLinks.forEach(link => {
+        if (link.getAttribute("data-target") === currentSectionId) {
+          link.classList.add("active");
+        } else {
+          link.classList.remove("active");
+        }
+      });
+    }
+
+    // 3. Theme Toggle Controller (Dark / Light)
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('dms_report_theme', theme);
+      
+      const themeIcon = document.getElementById('theme-icon');
+      const themeText = document.getElementById('theme-text');
+      
+      if (theme === 'light') {
+        if (themeIcon) themeIcon.textContent = '🌙';
+        if (themeText) themeText.textContent = 'داكن';
+      } else {
+        if (themeIcon) themeIcon.textContent = '☀️';
+        if (themeText) themeText.textContent = 'فاتح';
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const nextTheme = current === 'dark' ? 'light' : 'dark';
+      applyTheme(nextTheme);
+    }
+
+    // Initialize Theme from localStorage or Default to Dark
+    (function initTheme() {
+      const saved = localStorage.getItem('dms_report_theme') || 'dark';
+      applyTheme(saved);
+    })();
+
+    // 4. Code Snippet Copy Function
+    function copyCode(btn) {
+      const codeCard = btn.closest('.code-card');
+      if (!codeCard) return;
+      const codeEl = codeCard.querySelector('pre code');
+      if (!codeEl) return;
+      
+      const textToCopy = codeEl.innerText;
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        const btnText = btn.querySelector('.btn-text');
+        const origText = btnText ? btnText.textContent : 'نسخ الكود';
+        btn.classList.add('copied');
+        if (btnText) btnText.textContent = 'تم النسخ! ✓';
+        
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          if (btnText) btnText.textContent = origText;
+        }, 2000);
+      }).catch(err => {
+        console.error('فشل النسخ:', err);
+      });
+    }
+
+    // 5. Interactive Checklist in Section 13
+    const TOTAL_TASKS = 9;
+
+    function updateChecklistProgress() {
+      const checkboxes = document.querySelectorAll('.checklist-checkbox');
+      let checkedCount = 0;
+      const stateObj = {};
+      
+      checkboxes.forEach((cb, idx) => {
+        if (cb.checked) {
+          checkedCount++;
+          stateObj[cb.id] = true;
+        } else {
+          stateObj[cb.id] = false;
+        }
+      });
+      
+      localStorage.setItem('dms_checklist_states', JSON.stringify(stateObj));
+      
+      const statEl = document.getElementById('checklist-stat');
+      if (statEl) {
+        statEl.textContent = `${checkedCount} من ${TOTAL_TASKS} بنود محققة`;
+      }
+      
+      const barFill = document.getElementById('checklist-progress-bar');
+      if (barFill && TOTAL_TASKS > 0) {
+        const pct = Math.round((checkedCount / TOTAL_TASKS) * 100);
+        barFill.style.width = pct + '%';
+      }
+    }
+
+    function onTaskToggle(checkbox, idx) {
+      updateChecklistProgress();
+    }
+
+    function toggleAllTasks(checkAll) {
+      const checkboxes = document.querySelectorAll('.checklist-checkbox');
+      checkboxes.forEach(cb => {
+        cb.checked = checkAll;
+      });
+      updateChecklistProgress();
+    }
+
+    // Load saved checklist states
+    (function initChecklist() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('dms_checklist_states') || '{}');
+        for (const [id, isChecked] of Object.entries(saved)) {
+          const cb = document.getElementById(id);
+          if (cb) cb.checked = isChecked;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      updateChecklistProgress();
+    })();
+
+    // 6. Mobile TOC Modal Drawer
+    function toggleTocModal() {
+      const modal = document.getElementById('toc-modal');
+      if (modal) {
+        modal.classList.toggle('open');
+      }
+    }
+    function onModalOverlayClick(e) {
+      if (e.target.id === 'toc-modal') {
+        toggleTocModal();
+      }
+    }
+    
+    // Close modal on clicking a link inside it
+    document.querySelectorAll('.toc-modal-content .toc-link').forEach(link => {
+      link.addEventListener('click', () => {
+        toggleTocModal();
+      });
+    });
+
+    // 7. Live Text Search & Highlight
+    let searchDebounceTimer = null;
+    function onSearch(input) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        const q = input.value.trim().toLowerCase();
+        const counter = document.getElementById('search-counter');
+        
+        // Remove existing marks
+        document.querySelectorAll('mark.search-highlight').forEach(m => {
+          const parent = m.parentNode;
+          parent.replaceChild(document.createTextNode(m.textContent), m);
+          parent.normalize();
+        });
+        
+        if (!q || q.length < 2) {
+          if (counter) counter.textContent = '';
+          return;
+        }
+        
+        const mainContent = document.getElementById('main-content');
+        let matches = 0;
+        
+        function walkTextNodes(node) {
+          if (node.nodeType === 3) {
+            const text = node.nodeValue;
+            const lower = text.toLowerCase();
+            const idx = lower.indexOf(q);
+            if (idx >= 0) {
+              matches++;
+              const span = document.createElement('span');
+              const before = text.substring(0, idx);
+              const matched = text.substring(idx, idx + q.length);
+              const after = text.substring(idx + q.length);
+              
+              const mark = document.createElement('mark');
+              mark.className = 'search-highlight';
+              mark.textContent = matched;
+              
+              span.appendChild(document.createTextNode(before));
+              span.appendChild(mark);
+              span.appendChild(document.createTextNode(after));
+              
+              node.parentNode.replaceChild(span, node);
+            }
+          } else if (node.nodeType === 1 && !['SCRIPT', 'STYLE', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(node.tagName)) {
+            Array.from(node.childNodes).forEach(walkTextNodes);
+          }
+        }
+        
+        walkTextNodes(mainContent);
+        
+        if (counter) {
+          counter.textContent = matches > 0 ? `${matches} نتيجة` : 'لا نتائج';
+        }
+        
+        // Scroll to first match if any
+        const firstMatch = document.querySelector('mark.search-highlight');
+        if (firstMatch) {
+          firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    }
+  </script>
+</body>
+</html>
