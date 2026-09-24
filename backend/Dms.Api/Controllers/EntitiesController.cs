@@ -20,15 +20,28 @@ public sealed class EntitiesController(AppDbContext db, ICurrentUser current, IA
 
     [HttpPost]
     [Authorize(Roles = "SuperAdmin,President,Manager,Employee")]
-    public async Task<ActionResult<EntityResponse>> Create(EntityRequest req, CancellationToken ct)
+    public async Task<ActionResult<EntityResponse>> Create(
+        EntityRequest req,
+        [FromHeader(Name = IdempotencyKey.HeaderName)] string? idempotencyKey,
+        [FromServices] IIdempotencyService idempotency,
+        CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Name)) throw new ValidationException("اسم الجهة مطلوب.");
         var companyId = current.ActiveCompanyId ?? req.CompanyId ?? throw new ValidationException("حدّد الشركة.");
-        var e = new Entity { CompanyId = companyId, Name = req.Name.Trim(), Kind = req.Kind, Notes = req.Notes };
-        db.Entities.Add(e);
-        audit.Add("Create", nameof(Entity), null, e.Name, companyId);
-        await db.SaveChangesAsync(ct);
-        return new EntityResponse(e.EntityId, e.CompanyId, e.Name, e.Kind, e.Notes);
+
+        // ⚠️ **الجهة الجديدة تُنشأ قبل الكتاب** — فانقطاعٌ بينهما ثم إعادةُ إرسال المسوّدة كانت
+        //    تُنشئ الجهة مرّتين (لا فحصَ للتكرار هنا). والمفتاح يعيد الأولى (ADR-051).
+        var id = await idempotency.ExecuteAsync(idempotencyKey, nameof(Entity), async () =>
+        {
+            var e = new Entity { CompanyId = companyId, Name = req.Name.Trim(), Kind = req.Kind, Notes = req.Notes };
+            db.Entities.Add(e);
+            audit.Add("Create", nameof(Entity), null, e.Name, companyId);
+            await db.SaveChangesAsync(ct);
+            return e.EntityId;
+        }, ct);
+
+        var saved = await db.Entities.AsNoTracking().FirstAsync(x => x.EntityId == id, ct);
+        return new EntityResponse(saved.EntityId, saved.CompanyId, saved.Name, saved.Kind, saved.Notes);
     }
 
     [HttpPut("{id:int}")]

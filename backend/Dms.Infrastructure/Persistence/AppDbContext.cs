@@ -62,6 +62,7 @@ public class AppDbContext : DbContext
     public DbSet<DmsTaskUpdate> DmsTaskUpdates => Set<DmsTaskUpdate>();
     public DbSet<DmsTaskParticipant> DmsTaskParticipants => Set<DmsTaskParticipant>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ClientRequest> ClientRequests => Set<ClientRequest>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -647,6 +648,22 @@ public class AppDbContext : DbContext
 
             // ⚠️ **بلا فلتر حذفٍ ناعم** — الحذف هنا **فعليّ** استثناءً موثَّقاً: الإشعار
             //    إخطارٌ بحدث لا سجلُّ الحدث، والسجلّ في `DmsTaskUpdate` و`AuditLog` باقٍ.
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
+        // ---- ClientRequest (منع إنشاء الكتاب نفسه مرّتين — ADR-051) ----
+        b.Entity<ClientRequest>(e =>
+        {
+            e.HasKey(x => x.ClientRequestId);
+            e.Property(x => x.Key).IsRequired().HasMaxLength(IdempotencyKey.MaxLength);
+            e.Property(x => x.EntityType).IsRequired().HasMaxLength(50);
+
+            // 🔴 **الحارس في القاعدة لا في النيّة**: طلبان متزامنان بالمفتاح نفسه — واحدٌ يحجز
+            //    والثاني يرتطم بالفهرس. فحصٌ ثم إدراجٌ في الكود وحده يمرّر الاثنين.
+            e.HasIndex(x => new { x.UserId, x.Key }).IsUnique();
+            e.HasIndex(x => x.CreatedAt);   // التنظيف بعد 30 يوماً
+
+            // ⚠️ **بلا مفاتيح أجنبية عمداً** — انظر `ClientRequest`.
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 

@@ -2,6 +2,7 @@ using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Documents.Storage;
 using Dms.Domain;
+using Dms.Infrastructure.Services;
 using Dms.Infrastructure.Attachments;
 using Dms.Infrastructure.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -110,7 +111,11 @@ public sealed class TasksController(
     // ─────────────────────────── كتابة ───────────────────────────
 
     [HttpPost]
-    public async Task<ActionResult<TaskResponse>> Create(CreateTaskRequest r, CancellationToken ct)
+    public async Task<ActionResult<TaskResponse>> Create(
+        CreateTaskRequest r,
+        [FromHeader(Name = IdempotencyKey.HeaderName)] string? idempotencyKey,
+        [FromServices] IIdempotencyService idempotency,
+        CancellationToken ct)
     {
         var input = new CreateTaskInput(
             r.Title, r.Description, r.TaskType, r.Priority, r.DueDate, r.StartDate,
@@ -118,10 +123,12 @@ public sealed class TasksController(
             r.IsRecurring, r.RecurrencePattern, r.RecurrenceInterval, r.RecurrenceEndDate,
             r.Notes, r.CompanyId);
 
-        var created = await tasks.CreateAsync(input, ct);
+        // ⚠️ **مرّةً واحدة لكل مفتاح** (ADR-051) — وإلا وصل المسؤولَ تكليفان بالمهمة نفسها.
+        var id = await idempotency.ExecuteAsync(idempotencyKey, nameof(DmsTask),
+            async () => (await tasks.CreateAsync(input, ct)).TaskId, ct);
 
         // يُعاد جلبها بالـ`Include` ليصل العميلَ **كلُّ حقلٍ مشتقّ** لا معرّفاتٌ عارية.
-        return Map(await tasks.GetByIdAsync(created.TaskId, ct));
+        return Map(await tasks.GetByIdAsync(id, ct));
     }
 
     [HttpPut("{id:int}")]

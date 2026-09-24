@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Domain;
+using Dms.Infrastructure.Services;
 using Dms.Infrastructure.Attachments;
 using Dms.Infrastructure.Incoming;
 using Microsoft.AspNetCore.Authorization;
@@ -113,15 +114,21 @@ public sealed class IncomingController(
     }
 
     [HttpPost]
-    public async Task<ActionResult<IncomingDetail>> Create(CreateIncomingRequest req, CancellationToken ct)
+    public async Task<ActionResult<IncomingDetail>> Create(
+        CreateIncomingRequest req,
+        [FromHeader(Name = IdempotencyKey.HeaderName)] string? idempotencyKey,
+        [FromServices] IIdempotencyService idempotency,
+        CancellationToken ct)
     {
-        var b = await incomingService.CreateAsync(new CreateIncomingInput(
-            req.CompanyId, req.ExternalNumber, req.ExternalDate, req.ReceivedDate,
-            req.ReceivedTime, req.EntityId, req.Subject, req.DocumentTypeId,
-            req.ReceiveMethod, req.Keywords, req.Notes,
-            req.Amount, req.Currency, req.ExchangeRate), ct);
+        // ⚠️ **مرّةً واحدة لكل مفتاح** (ADR-051) — وإلا سُجّل الواردُ نفسه مرّتين بعد انقطاع.
+        var id = await idempotency.ExecuteAsync(idempotencyKey, nameof(IncomingBook), async () =>
+            (await incomingService.CreateAsync(new CreateIncomingInput(
+                req.CompanyId, req.ExternalNumber, req.ExternalDate, req.ReceivedDate,
+                req.ReceivedTime, req.EntityId, req.Subject, req.DocumentTypeId,
+                req.ReceiveMethod, req.Keywords, req.Notes,
+                req.Amount, req.Currency, req.ExchangeRate), ct)).IncomingId, ct);
 
-        return await Get(b.IncomingId, ct);
+        return await Get(id, ct);
     }
 
     [HttpPut("{id:int}")]

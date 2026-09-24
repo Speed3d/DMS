@@ -204,6 +204,9 @@ public sealed class CompanyDeletionService(
 
             await db.ArchiveDocs.IgnoreQueryFilters().Where(a => a.CompanyId == id).ExecuteDeleteAsync(ct);
 
+            // مفاتيح منع التكرار (ADR-051) — بلا مفتاحٍ أجنبيّ فلا تمنع الحذف، لكن لا يُترك يتيم.
+            await db.ClientRequests.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+
             // الرواتب: الكشوف (وسطورها بالتعاقب) قبل الإسنادات لأن السطر يمنع حذف إسناده.
             await db.EmployeeLeaveSettlements.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
             await db.PayrollPeriods.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);

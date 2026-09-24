@@ -65,6 +65,8 @@ public static class DependencyInjection
         // ⏸️ إيقاف النظام وشريط الإعلان (ADR-050) — `ISystemControl` نفسه يُسجَّل في `Program.cs`
         //    لأن مسار ملفّه يُشتقّ من إعداد التخزين؛ والمراقب هنا يلتقط أمر الطوارئ على السيرفر.
         services.AddHostedService<SystemControlWatcher>();
+        // 🛡️ منع إنشاء الكتاب نفسه مرّتين بعد انقطاع (ADR-051).
+        services.AddScoped<IIdempotencyService, IdempotencyService>();
         services.AddScoped<IBackupService, BackupService>();
 
         // ⚙️ العمليات الطويلة خارج الطلب (حدّ Cloudflare ~100 ثانية) — singleton لأن سجلّها

@@ -58,6 +58,14 @@ public sealed class TaskJobRunner(
         var created = await GenerateRecurringAsync(ct);
         var purged = includePurge ? await notifications.PurgeOlderThanAsync(90, ct) : 0;
 
+        // مفاتيح منع التكرار (ADR-051) إيصالٌ تقنيّ لا سجلّ — تُمحى بعد 30 يوماً مع التنظيف اليوميّ.
+        // ⚠️ `IgnoreQueryFilters` لا يمسّ العزل هنا: الخدمة الخلفية بلا فلترٍ أصلاً، والحذف بالعمر وحده.
+        if (includePurge)
+        {
+            var cutoff = DateTime.UtcNow - IdempotencyKey.Retention;
+            await db.ClientRequests.IgnoreQueryFilters().Where(x => x.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
+        }
+
         return new TaskJobResult(escalated, reminded, created, purged);
     }
 

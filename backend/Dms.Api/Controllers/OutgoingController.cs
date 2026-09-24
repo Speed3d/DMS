@@ -3,6 +3,7 @@ using Dms.Api.Dtos;
 using Dms.Documents.Security;
 using Dms.Infrastructure.Documents;
 using Dms.Domain;
+using Dms.Infrastructure.Services;
 using Dms.Infrastructure.Incoming;
 using Dms.Infrastructure.Outgoing;
 using Dms.Infrastructure.Persistence;
@@ -58,12 +59,19 @@ public sealed class OutgoingController(
     }
 
     [HttpPost]
-    public async Task<ActionResult<OutgoingDetail>> Create(CreateOutgoingRequest req, CancellationToken ct)
+    public async Task<ActionResult<OutgoingDetail>> Create(
+        CreateOutgoingRequest req,
+        [FromHeader(Name = IdempotencyKey.HeaderName)] string? idempotencyKey,
+        [FromServices] IIdempotencyService idempotency,
+        CancellationToken ct)
     {
-        var book = await svc.CreateDraftAsync(new CreateOutgoingInput(
-            req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct);
-        return await Get(book.OutgoingId, ct);
+        // ⚠️ **مرّةً واحدة لكل مفتاح** (ADR-051): مسوّدةٌ أُرسلت فضاع ردُّها ثم أُرسلت ثانيةً
+        //    تعيد الكتاب الأوّل لا تُنشئ ثانياً برقمٍ ثانٍ.
+        var id = await idempotency.ExecuteAsync(idempotencyKey, nameof(OutgoingBook), async () =>
+            (await svc.CreateDraftAsync(new CreateOutgoingInput(
+                req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
+                req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct)).OutgoingId, ct);
+        return await Get(id, ct);
     }
 
     [HttpPut("{id:int}")]
