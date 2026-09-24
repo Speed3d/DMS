@@ -15,7 +15,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _user = TextEditingController(text: 'admin');
+  final _user = TextEditingController(text: '');
   final _pass = TextEditingController();
   bool _busy = false;
   String? _error;
@@ -114,8 +114,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('DEN LAND', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 0.5)),
-                    Text('أرض العرين للتجارة والمقاولات', style: TextStyle(color: Color(0xFF9DB0D2), fontSize: 12.5)),
+                    Text('DMS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 0.5)),
+                    Text('Document Management System', style: TextStyle(color: Color(0xFF9DB0D2), fontSize: 12.5)),
                   ],
                 ),
               ],
@@ -145,7 +145,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 _buildFeature('QR موقّع', 'غير قابل للتزوير'),
                 _buildFeature('متعدد الشركات', 'عزل بيانات كامل'),
-                _buildFeature('سحابي', 'يعمل دون اتصال'),
+                _buildFeature('سحابي', 'الوصول من أي مكان'),
               ],
             ),
           ],
@@ -303,7 +303,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ],
           const SizedBox(height: 22),
           Center(
-            child: Text('محميّ بتشفير TLS · جلسة JWT آمنة', style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4))),
+            child: Text('جميع كلمات المرور محمية ومشفرة بالكامل', style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4))),
           ),
         ],
       ),
