@@ -238,6 +238,16 @@ $null=Api PUT "/companies/$cC" @{name=$nameC;prefix=$pC;isActive=$false} $admin 
 $pv=(Api GET "/companies/$cC/delete-preview" $null $admin $null).B
 Expect "البيان يقول إن الحذف جائز (لا سجلّ حيّ)" $pv.canDelete 'True'
 
+# 🔴 **G23 (ADR-053): البيان لا يُعلن أقلّ ممّا يُمحى.** كان يعدّ محذوفَ الصادر والوارد وحدهما،
+#    وهذه الشركة فيها مهمةٌ وأضبارةٌ محذوفتان وإسنادُ موظفٍ مفكوك — تُمحى كلُّها.
+Expect "G23: البيان يعدّ المهمة المحذوفة" $pv.deletedTasks 1
+Expect "G23: والأضبارة المحذوفة" $pv.deletedArchive 1
+Expect "G23: وإسنادَ الموظف المفكوك" $pv.deletedEmployees 1
+# 🔑 **الحارس الحقيقيّ: رقمُ البيان = عددُ الصفوف في القاعدة** للأنواع الستة التي يعدّها.
+#    فنوعٌ يُمحى ولا يُعدّ في المستقبل يُسقط هذا السطر — لا ينتظر بلاغاً.
+$inDb=SqlCount "SELECT (SELECT COUNT(*) FROM OutgoingBooks WHERE CompanyId=$cC)+(SELECT COUNT(*) FROM IncomingBooks WHERE CompanyId=$cC)+(SELECT COUNT(*) FROM ArchiveDocs WHERE CompanyId=$cC)+(SELECT COUNT(*) FROM DmsTasks WHERE CompanyId=$cC)+(SELECT COUNT(*) FROM CaseFiles WHERE CompanyId=$cC)+(SELECT COUNT(*) FROM EmployeeCompanies WHERE CompanyId=$cC)"
+Expect "🔑 G23: «سيُمحى» في البيان = الصفوف في القاعدة ($inDb)" $pv.willBeErased $inDb
+
 $d=Api DELETE "/companies/$cC`?confirm=$([uri]::EscapeDataString($nameC))" $null $admin $null
 Expect "حذفُ الشركة يبدأ في الخلفية" $d.S 202
 $dJob = WaitJob $d $admin

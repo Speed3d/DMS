@@ -428,6 +428,28 @@ w32tm /resync
 
 **Settings ← Windows Update ← Advanced options ← Active hours** — حدّد **7ص – 7م**.
 
+### ج-4ب) 🔴 السيرفر لا ينام أبداً — **خطوةٌ إلزامية** (أُضيفت 2026-09-25)
+
+ويندوز يُنيم الجهاز افتراضياً بعد دقائق من الخمول — **وخادمٌ نائم نظامٌ متوقّف**: لا يفتحه الموظفون،
+والنفق ينقطع، **والنسخة المجدولة الليلية لا تعمل** (تُجدول في الثانية فجراً والجهاز نائم).
+🐛 **ووقع فعلاً على جهاز التطوير (2026-09-24):** نام الجهاز **أثناء استعادة نسخة**، فبقيت القاعدة
+**عالقةً في حالة `RESTORING` لا تُفتح** حتى أُسقطت يدوياً. على السيرفر هذا يعني نظاماً معطّلاً بلا تنبيه.
+
+افتح **PowerShell كمسؤول** على السيرفر:
+```powershell
+powercfg /change standby-timeout-ac 0     # لا سكون على الكهرباء
+powercfg /change standby-timeout-dc 0     # ولا على بطارية الـUPS إن رآها ويندوز بطارية
+powercfg /change hibernate-timeout-ac 0
+powercfg /change hibernate-timeout-dc 0
+powercfg /hibernate off                   # يُلغي السبات وملفّه
+powercfg /change monitor-timeout-ac 10    # الشاشة وحدها تنطفئ — لا يضرّ
+```
+**التحقّق** — يجب أن يظهر `0` في السطرين:
+```powershell
+powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE | Select-String "Current AC|Current DC"
+```
+⚠️ **وأعِد الفحص بعد كل تحديثٍ كبير لويندوز** — بعض التحديثات تعيد خطّة الطاقة إلى الافتراض.
+
 ### ج-5) تشفير القرص (BitLocker)
 
 > **لماذا؟** لو سُرق الجهاز، لا يستطيع أحدٌ قراءة قاعدة البيانات ولا **مفاتيح التوقيع**.

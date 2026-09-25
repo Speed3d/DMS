@@ -28,7 +28,8 @@
 | PUT `/{id}` | SuperAdmin/President | تعديل (التعطيل عبر `isActive=false`) |
 | POST `/{id}/logo` | SuperAdmin/President/Manager | رفع الشعار (PNG/JPG ≤ 2MB) |
 | GET `/{id}/logo` | عام | جلب الشعار |
-| DELETE `/{id}` | **SuperAdmin** | حذف جذري **محروس**: يُمنع (409) مع وجود كتب معتمدة أو أرشيف — عطّل الشركة بدل حذفها |
+| GET `/{id}/delete-preview` | **SuperAdmin** | **بيانُ ما سيُمحى** قبل التأكيد (ADR-047): الحيّ والمحذوف ناعماً لكل نوع · `willBeErased` · `canDelete` وسببُ المنع. 🔴 **ومنذ ADR-053 (G23)** يعدّ المحذوف ناعماً في **الأرشيف والمهام والمعاملات وإسنادات الموظفين** (`deletedArchive` · `deletedTasks` · `deletedCaseFiles` · `deletedEmployees`) و`deletedRecords` مجموعُها — **فرقمُ البيان = ما يُمحى فعلاً** |
+| DELETE `/{id}?confirm=<الاسم>` | **SuperAdmin** | حذف جذري **بأربع طبقات** (ADR-047): معطَّلةً · بلا سجلٍّ **حيّ** (المحذوف ناعماً لا يمنع) · بتأكيدٍ بالاسم · **وبنسخةٍ قبله**. يردّ **202** ويُتابَع (ADR-049) |
 
 ## القوالب — `/api/templates`
 | GET `/` · GET `/{id}` | مصادَق |
@@ -48,6 +49,7 @@
   - المدخلات تحمل `companyIds` و`modules` (قائمة أسماء الأقسام). **ربط الشركات وتحديد الأقسام حصراً للسوبر أدمن ورئيس الشركة**؛ المدير/الموظف لا يغيّرانها (تُتجاهل ← افتراضي). أدوار السوبر أدمن/الرئيس تُخزَّن بكل الأقسام. غير السوبر أدمن يلزمه شركة واحدة على الأقل. الاستجابة تُعيد `companyIds` و`modules`.
   - **⚠️ الصلاحيات صارت لكل شركة (ADR-017):** المدخلات تحمل `companies: [{companyId, modules, departmentId, canApprove, canManageIncoming, canViewAllIncoming}]` بدل الحقول المفردة، والاستجابة تُرجِع نفس الشكل. `null` = «لا تغيير» (يمنع مسح الإسنادات عند تعديل حقل آخر). **المدير فأعلى يملك `canApprove` و`canManageIncoming` بحكم دوره** في كل شركاته. كل `departmentId` يُتحقَّق منه مقابل **شركة صفّه** (خطأ 400 إن كان من شركة أخرى).
 - `/api/delegations` (Manager+): GET، POST، DELETE `/{id}`.
+  - 🔐 **القارئ لا يعتمد (G22 — ADR-053)**: `POST` إلى قارئ ⇒ **400**، وتفويضٌ قائمٌ له لا يمنحه الاعتماد. و`canApprove`/`canManageIncoming` **تُجرَّد للقارئ** في `POST/PUT /users` (تُحفظ `false` مهما طُلبت)، و`/auth/me` يعيدهما `false` له ولو حملهما إسنادٌ قديم.
 
 ## الصادر — `/api/outgoing`
 | الطريقة | المسار | الوصف |
@@ -82,7 +84,7 @@
 | DELETE | `/{id}/attachments/{attachmentId}` | حذف مرفق (غير القارئ) |
 | GET | `/{id}/attachments/{attachmentId}/download` | تنزيل مرفق (يتطلب مصادقة) |
 
-> **الربط العكسي:** `GET /api/outgoing/{id}` يُرجِع `replyToIncomingId` و`replyToIncomingNumber` للكتاب الوارد الذي يردّ عليه.
+> **الربط العكسي:** `GET /api/outgoing/{id}` يُرجِع `repliesTo` (قائمة — ADR-045) و`hiddenRepliesCount` (ADR-053) — انظر «ربط الردّ» أدناه.
 
 ### 🔗 ربط الردّ — **كثيرٌ إلى كثير** (ADR-045)
 
@@ -96,6 +98,9 @@
   `ReplyLinkDto(bookId, number, date, subject, linkedAt)`. حلّتا محلّ `replyOutgoingId/Number`
   و`replyToIncomingId/Number`.
 - 🔐 **`repliesTo` تمرّ بـ`IncomingService.Query()`** فلا تكشف رقم واردٍ محجوبٍ بحدّ القسم.
+- 🔐 **`hiddenRepliesCount` في الاثنين (G20 — ADR-053)**: ما يُحجب عن الطالب **يُعدّ بلا رقمٍ ولا موضوع**.
+  في `IncomingDetail`: كلُّ الردود لمن لا يملك قسم **الصادر**. وفي `OutgoingDetail`: كلُّ الواردات لمن
+  لا يملك قسم **الوارد**، **والمحجوبُ بحدّ القسم** لمن يملكه (كان يُسقَط صامتاً).
 - **الربط مسموح** على `New | InReview | Replied` (`BookReplyRules.CanLink`) — **لا `IsOperable`**،
   وإلا انفتحت **الإحالة** على كتابٍ مُجابٍ عنه. و**تكرار الزوج نفسه يردّ 409**.
 - **وفكُّ ردٍّ لا يُنزّل الحالة** إلا إذا كان **الأخير** و**رفعها الربطُ نفسه** — والكتابُ
