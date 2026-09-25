@@ -771,6 +771,10 @@ class ApiClient {
   Future<SystemStatusInfo> systemStatus() async =>
       SystemStatusInfo.fromJson(await _get('/system/status') as Map<String, dynamic>);
 
+  /// «حول النظام» — إصدار الخادم والـcommit وآخر مهاجرة (ADR-054). للمصادَق.
+  Future<SystemAboutInfo> systemAbout() async =>
+      SystemAboutInfo.fromJson(await _get('/system/about') as Map<String, dynamic>);
+
   /// لوحة التحكّم — للسوبر أدمن.
   Future<SystemControlInfo> systemControl() async =>
       SystemControlInfo.fromJson(await _get('/system/control') as Map<String, dynamic>);

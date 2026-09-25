@@ -42,7 +42,16 @@ Write-Host "✔ تم بناء الباك-إند بنجاح إلى: $TempPublish"
 Write-Host "`n[2/5] بناء واجهة الويب (Flutter Web) مع الدومين المخبوز..." -ForegroundColor Green
 Set-Location "D:\DMS\app"
 $apiBase = "https://$Domain/api"
-flutter build web --release "--dart-define=API_BASE_URL=$apiBase"
+# 🏷️ **الإصدار من ملف VERSION وحده** (ADR-054) — الخادم يقرأ الملف نفسه عند البناء، فيتطابقان.
+#    و**`APP_BUILD` جديدٌ في كل بناء** (ADR-050) — به تعيد صفحاتُ الموظفين المفتوحة تحميلَ نفسها
+#    بعد التحديث. (كان هذا السكربت يبني بلاه فلا تُحدَّث الصفحات المفتوحة.)
+$version = (Get-Content "D:\DMS\VERSION" -Raw).Trim()
+$commit  = (git -C "D:\DMS" rev-parse --short HEAD).Trim()
+$build   = Get-Date -Format 'yyyyMMddHHmm'
+Write-Host "  الإصدار $version · commit $commit · بناء $build" -ForegroundColor Yellow
+flutter build web --release "--dart-define=API_BASE_URL=$apiBase" `
+    "--dart-define=APP_VERSION=$version" "--dart-define=APP_COMMIT=$commit" `
+    "--dart-define=APP_BUILD=$build" "--build-name=$version" "--build-number=$build"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "🔴 فشل بناء واجهة فلاتر! توقف العمل." -ForegroundColor Red
     exit 1

@@ -41,13 +41,18 @@ class SystemView {
     this.lockdown = LockdownInfo.off,
     this.announcement = AnnouncementInfo.hidden,
     this.restoreReason,
+    this.serverVersion,
   });
+
+  /// إصدار الخادم من آخر استطلاع — `null` قبل الدخول (ADR-054).
+  final String? serverVersion;
 
   SystemView copyWith({SystemPhase? phase}) => SystemView(
       phase: phase ?? this.phase,
       lockdown: lockdown,
       announcement: announcement,
-      restoreReason: restoreReason);
+      restoreReason: restoreReason,
+      serverVersion: serverVersion);
 }
 
 /// الطور من ردّ الخادم — **دالّةٌ نقيّة** تُختبر وحدها.
@@ -149,6 +154,7 @@ class SystemStatusNotifier extends Notifier<SystemView> {
         lockdown: s.lockdown,
         announcement: s.announcement,
         restoreReason: s.reason,
+        serverVersion: s.serverVersion,
       );
     } catch (_) {
       if (++_failures >= failuresBeforeUnreachable) {

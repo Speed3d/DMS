@@ -67,11 +67,15 @@ class SystemStatusInfo {
   /// `null` لغير المصادَق.
   final AnnouncementInfo announcement;
 
+  /// إصدار الخادم (`0.9.0`) — **للمصادَق وحده** (ADR-054)، و`null` لغيره.
+  final String? serverVersion;
+
   const SystemStatusInfo({
     required this.maintenance,
     this.reason,
     this.lockdown = LockdownInfo.off,
     this.announcement = AnnouncementInfo.hidden,
+    this.serverVersion,
   });
 
   factory SystemStatusInfo.fromJson(Map<String, dynamic> j) => SystemStatusInfo(
@@ -79,6 +83,40 @@ class SystemStatusInfo {
         reason: j['reason']?.toString(),
         lockdown: LockdownInfo.fromJson(j['lockdown'] as Map<String, dynamic>?),
         announcement: AnnouncementInfo.fromJson(j['announcement'] as Map<String, dynamic>?),
+        serverVersion: (j['version'] as String?)?.trim(),
+      );
+}
+
+/// «حول النظام» (`GET /system/about`) — ما يعمل على الخادم الآن (ADR-054).
+class SystemAboutInfo {
+  final String version;
+  final String? commit;
+  final DateTime? builtAt;
+
+  /// آخر مهاجرةٍ في الكود — و[appliedMigration] آخرُ ما طُبّق على القاعدة.
+  final String? latestMigration;
+  final String? appliedMigration;
+  final int migrationCount;
+
+  const SystemAboutInfo({
+    required this.version,
+    this.commit,
+    this.builtAt,
+    this.latestMigration,
+    this.appliedMigration,
+    this.migrationCount = 0,
+  });
+
+  /// المهاجرات كلُّها مطبَّقة؟ — اختلافُهما يعني تحديثاً لم يكتمل.
+  bool get migrationsUpToDate => latestMigration == appliedMigration;
+
+  factory SystemAboutInfo.fromJson(Map<String, dynamic> j) => SystemAboutInfo(
+        version: (j['version'] ?? '').toString(),
+        commit: j['commit'] as String?,
+        builtAt: j['builtAtUtc'] == null ? null : DateTime.tryParse(j['builtAtUtc'].toString())?.toLocal(),
+        latestMigration: j['latestMigration'] as String?,
+        appliedMigration: j['appliedMigration'] as String?,
+        migrationCount: (j['migrationCount'] as num?)?.toInt() ?? 0,
       );
 }
 

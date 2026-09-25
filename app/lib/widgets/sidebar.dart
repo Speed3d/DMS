@@ -11,6 +11,7 @@ import '../core/form_drafts.dart';
 import '../core/session.dart';
 import '../core/system_status.dart';
 import 'backup_alert.dart';
+import 'version_tag.dart';
 
 /// Hint: القائمة الجانبية (Sidebar) المحدثة بتصميم فاخر
 class Sidebar extends ConsumerWidget {
@@ -252,6 +253,10 @@ class Sidebar extends ConsumerWidget {
               );
             },
           ),
+
+          // 🏷️ **الإصدار** — والنقر يفتح «حول النظام» (ADR-054).
+          const SizedBox(height: 8),
+          const VersionTag(),
                 ],
               ),
             ),

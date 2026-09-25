@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
+import '../core/app_version.dart';
 import '../core/session.dart';
 import '../core/system_status.dart';
 import '../models.dart';
@@ -347,6 +348,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           const SizedBox(height: 22),
           Center(
             child: Text('جميع كلمات المرور محمية ومشفرة بالكامل', style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4))),
+          ),
+          const SizedBox(height: 6),
+          // 🏷️ إصدار الواجهة (ADR-054) — **الواجهة وحدها**: الخادم لا يكشف إصداره لغير المسجَّل.
+          Center(
+            child: Text(appVersionLabel(),
+                key: const Key('login-version'),
+                style: TextStyle(fontSize: 11, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.35))),
           ),
         ],
       ),
