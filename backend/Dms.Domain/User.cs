@@ -26,6 +26,16 @@ public class User
     public int? CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>
+    /// صورة الحساب — **للسوبر أدمن وحده** (ADR-056، قرار المالك 2026-09-25).
+    /// </summary>
+    /// <remarks>
+    /// 🔑 **«صورةٌ واحدة للشخص» باقية** (ADR-035): مَن له بطاقةُ موظف صورتُه على البطاقة
+    /// (`Employee.PhotoBlobKey`) ولا تُكتب هنا. والسوبر أدمن **ليس موظفاً** فلا بطاقة له — كان زرّ
+    /// الكاميرا يغيب عنه، فصار لحسابه صورةٌ تُحفظ هنا.
+    /// </remarks>
+    public string? PhotoBlobKey { get; set; }
+
     /// <summary>الشركات المُسندة — وكلٌّ منها يحمل صلاحيات المستخدم وقسمه **في تلك الشركة**.</summary>
     public ICollection<UserCompany> AssignedCompanies { get; set; } = new List<UserCompany>();
 

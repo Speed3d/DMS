@@ -535,6 +535,19 @@ public sealed class IncomingService(
             PerformedByUserId = current.UserId!.Value,
             PerformedAt = DateTime.UtcNow
         });
+        // 📜 **وفي سجلّ الصادر أيضاً** (ADR-056) — الحركة تخصّ الكتابين. والوصف محايد، ورقمُ الوارد
+        //    يُعرض لمن يراه وحده (من `RelatedIncomingId`).
+        if (outgoing is not null)
+            db.OutgoingMovements.Add(new OutgoingMovement
+            {
+                CompanyId = outgoing.CompanyId,
+                OutgoingId = outgoing.OutgoingId,
+                Action = OutgoingActions.UnlinkedIncoming,
+                Description = "فُكّ ربطُه بكتابٍ وارد",
+                RelatedIncomingId = incoming.IncomingId,
+                PerformedByUserId = current.UserId!.Value,
+                PerformedAt = DateTime.UtcNow
+            });
 
         audit.Add("Unlink", nameof(IncomingBook), incomingId.ToString(),
             outgoing?.Number is { } num ? $"Unlinked from {num}" : null, incoming.CompanyId);
@@ -597,6 +610,17 @@ public sealed class IncomingService(
             IncomingId = incoming.IncomingId,
             Action = "LinkedToOutgoing",
             Description = "تم ربط الكتاب بردٍّ صادر",
+            PerformedByUserId = current.UserId!.Value,
+            PerformedAt = DateTime.UtcNow
+        });
+        // 📜 **وفي سجلّ الصادر أيضاً** (ADR-056) — «رُبط ردّاً على كتابٍ وارد»، والرقم لمن يرى الوارد وحده.
+        db.OutgoingMovements.Add(new OutgoingMovement
+        {
+            CompanyId = outgoing.CompanyId,
+            OutgoingId = outgoing.OutgoingId,
+            Action = OutgoingActions.LinkedIncoming,
+            Description = "رُبط ردّاً على كتابٍ وارد",
+            RelatedIncomingId = incoming.IncomingId,
             PerformedByUserId = current.UserId!.Value,
             PerformedAt = DateTime.UtcNow
         });

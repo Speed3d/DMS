@@ -466,6 +466,12 @@ public sealed record IncomingDetail(
 /// </remarks>
 public sealed record ReplyLinkDto(int BookId, string? Number, DateTime Date, string Subject, DateTime LinkedAt);
 
+/// <summary>حركةٌ في سجلّ الصادر (ADR-056). <c>RelatedIncoming*</c> لمن يرى ذلك الوارد وحده — وإلا <c>null</c>.</summary>
+public sealed record OutgoingMovementItem(
+    int MovementId, string Action, string Description,
+    int? RelatedIncomingId, string? RelatedIncomingNumber,
+    string PerformedByUserName, DateTime PerformedAt);
+
 public sealed record MovementLogItem(
     int MovementId, string Action, string Description,
     string? FromDepartment, string? ToDepartment,
@@ -637,7 +643,9 @@ public sealed record MyProfileResponse(
     string? CompanyName, string? DepartmentName,
     int? EmployeeId, string? EmployeeFullName, string? EmployeeFullNameEn,
     string? Position, DateTime? HireDate, string? NationalId, string? Phone,
-    string? Address, bool HasPhoto)
+    string? Address, bool HasPhoto,
+    /// <summary>يغيّر صورته من بروفايله؟ — صاحبُ بطاقةٍ أو السوبر أدمن (ADR-056). والواجهة مرآةٌ له.</summary>
+    bool CanChangePhoto = false)
 {
     /// <summary>هل لحسابي بطاقةُ موظف في هذه الشركة؟ الواجهة تُخفي تبويبَي الإجازات والرواتب إن لا.</summary>
     public bool IsLinkedToEmployee => EmployeeId is not null;

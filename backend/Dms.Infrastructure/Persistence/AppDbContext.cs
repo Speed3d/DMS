@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<ArchiveDoc> ArchiveDocs => Set<ArchiveDoc>();
     public DbSet<IncomingBook> IncomingBooks => Set<IncomingBook>();
     public DbSet<MovementLog> MovementLogs => Set<MovementLog>();
+    public DbSet<OutgoingMovement> OutgoingMovements => Set<OutgoingMovement>();
     public DbSet<BookReply> BookReplies => Set<BookReply>();
     public DbSet<CaseFile> CaseFiles => Set<CaseFile>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
@@ -92,6 +93,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.FullName).IsRequired().HasMaxLength(200);
             e.Property(x => x.Username).IsRequired().HasMaxLength(100);
             e.Property(x => x.PasswordHash).IsRequired().HasMaxLength(200);
+            e.Property(x => x.PhotoBlobKey).HasMaxLength(500);   // صورة السوبر أدمن (ADR-056)
             e.HasIndex(x => x.Username).IsUnique();
             // العزل الصفّي: المستخدم يُرى ضمن شركته الرئيسية أو أي شركة مُسندة له.
             // (يُتجاوَز عمداً في تسجيل الدخول/فحص التفرّد عبر IgnoreQueryFilters.)
@@ -284,6 +286,20 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.IncomingId);
             e.HasIndex(x => x.PerformedAt);
 
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
+        // ---- OutgoingMovement — سجلّ حركة الصادر (ADR-056) ----
+        b.Entity<OutgoingMovement>(e =>
+        {
+            e.HasKey(x => x.MovementId);
+            e.Property(x => x.Action).IsRequired().HasMaxLength(50);
+            e.Property(x => x.Description).IsRequired().HasMaxLength(500);
+            // ⚠️ **العلاقة صريحة** — ضمنيّةً يولّد EF عموداً شبحاً فتضيع الحركة (درس MovementLog أعلاه).
+            e.HasOne(x => x.OutgoingBook).WithMany()
+                .HasForeignKey(x => x.OutgoingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.OutgoingId);
+            e.HasIndex(x => x.PerformedAt);
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 

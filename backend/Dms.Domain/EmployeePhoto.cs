@@ -22,6 +22,15 @@ public static class EmployeePhotoRules
     /// <summary>مفتاح تخزين صورة الموظف — **ثابتٌ للشخص** فتبقى صورةً واحدة له.</summary>
     public static string BlobKey(int employeeId, string extension) => $"emp-{employeeId}{extension}";
 
+    /// <summary>مفتاح صورة **حساب السوبر أدمن** — لا بطاقةَ له (ADR-056). بادئةٌ مختلفة فلا يلتبس بصورة موظف.</summary>
+    public static string UserBlobKey(int userId, string extension) => $"user-{userId}{extension}";
+
+    /// <summary>
+    /// مَن يغيّر صورته من بروفايله؟ — **صاحبُ بطاقةِ موظف** (على البطاقة — ADR-035)، **أو السوبر أدمن**
+    /// (على حسابه — ADR-056، قرار المالك: له وحده). وغيرُهما بلا بطاقة لا صورة له.
+    /// </summary>
+    public static bool CanChangeOwn(bool hasEmployeeCard, bool isSuperAdmin) => hasEmployeeCard || isSuperAdmin;
+
     /// <summary>
     /// يتحقّق من الحجم والصيغة، ويُعيد **الامتداد المُطبَّع** لبناء مفتاح التخزين.
     /// </summary>

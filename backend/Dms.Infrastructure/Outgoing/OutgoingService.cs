@@ -26,8 +26,14 @@ public sealed record EditApprovedInput(
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
     byte[] RowVersion, string? ChangeNote, string? BodyJson = null);
 
+/// <summary>حركةٌ في سجلّ الصادر مع اسم منفّذها (ADR-056).</summary>
+public sealed record OutgoingMovementData(OutgoingMovement Log, string PerformedByUserName);
+
 public interface IOutgoingService
 {
+    /// <summary>سجلّ حركة الكتاب — لكل مَن يراه عدا القارئ (ADR-056).</summary>
+    Task<List<OutgoingMovementData>> GetMovementsAsync(int outgoingId, CancellationToken ct = default);
+
     IQueryable<OutgoingBook> Query();
     /// <summary>هل يملك المستخدم الحالي صلاحية اعتماد فعّالة (دور/علَم/تفويض نشط)؟</summary>
     bool CanCurrentUserApprove();
@@ -114,6 +120,7 @@ public sealed class OutgoingService(
         };
         db.OutgoingBooks.Add(book);
         audit.Add("Create", nameof(OutgoingBook), null, $"مسودّة: {book.Subject}", companyId);
+        Log(book, OutgoingActions.Created, "إنشاء مسودّة");
         await db.SaveChangesAsync(ct);
         return book;
     }
@@ -126,6 +133,7 @@ public sealed class OutgoingService(
         EnsureCanModifyDraft(book);
         await ValidateRefsAsync(book.CompanyId, input.EntityId, input.TemplateId, ct);
         ValidateRequired(input.Subject, input.BodyHtml);
+        var before = OutgoingFields.Of(book);
 
         book.EntityId = input.EntityId;
         book.TemplateId = input.TemplateId;
@@ -143,6 +151,8 @@ public sealed class OutgoingService(
         book.UpdatedAt = DateTime.UtcNow;
 
         audit.Add("Update", nameof(OutgoingBook), id.ToString(), "تعديل مسودّة", book.CompanyId);
+        Log(book, OutgoingActions.Edited,
+            OutgoingChanges.Summary("تعديل المسودّة", OutgoingChanges.Describe(before, OutgoingFields.Of(book))));
         await db.SaveChangesAsync(ct);
         return book;
     }
@@ -194,6 +204,7 @@ public sealed class OutgoingService(
                 book.GeneratedPdfBlobKey = pendingPdfKey;
 
                 audit.Add("Approve", nameof(OutgoingBook), id.ToString(), $"اعتماد ورقم {book.Number}", book.CompanyId);
+                Log(book, OutgoingActions.Approved, $"اعتماد برقم {book.Number}");
 
                 // 🔔 **إشعارُ الاعتماد** (الدفعة ٤): يصل **مُنشئ المسودّة** — فهو مَن ينتظر
                 //    صدور الرقم الرسميّ ليتصرّف بالكتاب.
@@ -254,6 +265,7 @@ public sealed class OutgoingService(
         });
 
         // تطبيق التعديلات (الرقم يبقى ثابتاً)
+        var beforeEdit = OutgoingFields.Of(book);
         book.EntityId = input.EntityId;
         book.TemplateId = input.TemplateId;
         book.Date = input.Date;
@@ -281,6 +293,10 @@ public sealed class OutgoingService(
 
         audit.Add("EditApproved", nameof(OutgoingBook), id.ToString(),
             $"تعديل بعد الاعتماد (إصدار {lastVersion + 1})", book.CompanyId);
+        Log(book, OutgoingActions.EditedApproved,
+            OutgoingChanges.Summary($"تعديل بعد الاعتماد (الإصدار {lastVersion + 1})",
+                OutgoingChanges.Describe(beforeEdit, OutgoingFields.Of(book)))
+            + (string.IsNullOrWhiteSpace(input.ChangeNote) ? "" : $" — {input.ChangeNote.Trim()}"));
 
         try
         {
@@ -320,6 +336,7 @@ public sealed class OutgoingService(
         book.DeletedByUserId = current.UserId;
         book.DeletedAt = DateTime.UtcNow;
         audit.Add("Delete", nameof(OutgoingBook), id.ToString(), "حذف ناعم", book.CompanyId);
+        Log(book, OutgoingActions.Deleted, "حذف الكتاب");
         await db.SaveChangesAsync(ct);
     }
 
@@ -426,6 +443,47 @@ public sealed class OutgoingService(
     }
 
     public bool CanCurrentUserApprove() => EffectiveCanApprove();
+
+    // ─────────────────────────── سجلّ حركة الصادر (ADR-056) ───────────────────────────
+
+    /// <summary>يضيف حركةً للكتاب — تُحفظ مع العملية نفسها (لا سطرَ بلا عمليته ولا عمليةَ بلا سطرها).</summary>
+    /// <remarks>⚠️ **بخاصية التنقّل لا بالمعرّف** — عند الإنشاء لا معرّف بعد، وEF يملؤه عند الحفظ.</remarks>
+    private void Log(OutgoingBook book, string action, string description, int? relatedIncomingId = null) =>
+        db.OutgoingMovements.Add(new OutgoingMovement
+        {
+            OutgoingBook = book,
+            CompanyId = book.CompanyId,
+            Action = action,
+            Description = description.Length > 500 ? description[..500] : description,
+            RelatedIncomingId = relatedIncomingId,
+            PerformedByUserId = current.UserId!.Value,
+            PerformedAt = DateTime.UtcNow,
+        });
+
+    public async Task<List<OutgoingMovementData>> GetMovementsAsync(int outgoingId, CancellationToken ct = default)
+    {
+        // 🔐 **كالوارد: كلُّ مَن يرى الكتاب عدا القارئ** (قرار المالك 2026-09-25) — دوره اطّلاعٌ لا معالجة.
+        if (current.Role is UserRole.Reader)
+            throw new ForbiddenException("لا تملك صلاحية رؤية سجل الحركة.");
+        _ = await GetAsync(outgoingId, ct); // تحقّقٌ أمنيّ: الكتاب في شركته ورؤيته
+
+        var logs = await db.OutgoingMovements
+            .Where(m => m.OutgoingId == outgoingId)
+            .OrderBy(m => m.PerformedAt).ThenBy(m => m.MovementId)
+            .ToListAsync(ct);
+
+        // الأسماء دفعةً واحدة — وبتجاوز الفلتر عمداً: السوبر أدمن بلا شركة (درس ADR-034 — لا يُمحى السطر).
+        var userIds = logs.Select(l => l.PerformedByUserId).Distinct().ToList();
+        var names = await db.Users.IgnoreQueryFilters()
+            .Where(u => userIds.Contains(u.UserId))
+            .ToDictionaryAsync(u => u.UserId, u => u.FullName, ct);
+
+        // ⚠️ **رقم الوارد المرتبط لا يُحلّ هنا** — قاعدة رؤية الوارد في `IncomingService.Query()` وحدها،
+        //    فيحلّه المُستدعي (وحدة التحكّم) بها. (نسخُ قاعدة الرؤية أوّلُ الطريق إلى تباعدها.)
+        return logs.Select(l => new OutgoingMovementData(
+                l, names.TryGetValue(l.PerformedByUserId, out var n) ? n : "—"))
+            .ToList();
+    }
 
     private bool EffectiveCanApprove()
     {

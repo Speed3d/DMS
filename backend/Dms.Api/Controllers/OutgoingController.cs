@@ -70,6 +70,33 @@ public sealed class OutgoingController(
             hiddenReplies: allReplies - repliesTo.Count);
     }
 
+    /// <summary>سجلّ حركة الكتاب — الإنشاء والتعديل والاعتماد والربط والحذف (ADR-056).</summary>
+    /// <remarks>
+    /// 🔐 **رقم الوارد المرتبط لمن يراه وحده** (G20 — ADR-053): بقسم الوارد **وضمن رؤيته** (`Query()` — القاعدة
+    /// لا تُنسخ). ولغيره الحركة نفسها بوصفها المحايد، بلا رقمٍ ولا معرّف.
+    /// </remarks>
+    [HttpGet("{id:int}/movements")]
+    public async Task<ActionResult<List<OutgoingMovementItem>>> Movements(int id, CancellationToken ct)
+    {
+        var logs = await svc.GetMovementsAsync(id, ct);
+        var related = logs.Where(m => m.Log.RelatedIncomingId is not null)
+            .Select(m => m.Log.RelatedIncomingId!.Value).Distinct().ToList();
+        var visible = related.Count == 0 || !current.HasModule(AppModule.Incoming)
+            ? new Dictionary<int, string?>()
+            : await incoming.Query().Where(i => related.Contains(i.IncomingId))
+                .ToDictionaryAsync(i => i.IncomingId, i => i.IncomingNumber, ct);
+
+        return logs.Select(m =>
+        {
+            var rid = m.Log.RelatedIncomingId;
+            var seen = rid is { } r && visible.ContainsKey(r);
+            return new OutgoingMovementItem(
+                m.Log.MovementId, m.Log.Action, m.Log.Description,
+                seen ? rid : null, seen ? visible[rid!.Value] : null,
+                m.PerformedByUserName, m.Log.PerformedAt);
+        }).ToList();
+    }
+
     [HttpPost]
     public async Task<ActionResult<OutgoingDetail>> Create(
         CreateOutgoingRequest req,

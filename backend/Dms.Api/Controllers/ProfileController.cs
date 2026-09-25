@@ -36,7 +36,7 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
         return new MyProfileResponse(
             m.UserId, m.FullName, m.Username, m.Role, m.CompanyName, m.DepartmentName,
             m.EmployeeId, m.EmployeeFullName, m.EmployeeFullNameEn, m.Position, m.HireDate,
-            m.NationalId, m.Phone, m.Address, m.HasPhoto);
+            m.NationalId, m.Phone, m.Address, m.HasPhoto, m.CanChangePhoto);
     }
 
     /// <summary>صورتي — نفسُ صورة بطاقتي.</summary>

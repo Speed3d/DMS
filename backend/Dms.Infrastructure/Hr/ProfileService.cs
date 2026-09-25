@@ -17,7 +17,9 @@ public sealed record MyIdentity(
     string? CompanyName, string? DepartmentName,
     int? EmployeeId, string? EmployeeFullName, string? EmployeeFullNameEn,
     string? Position, DateTime? HireDate, string? NationalId, string? Phone,
-    string? Address, bool HasPhoto);
+    string? Address, bool HasPhoto,
+    // يغيّر صورته من بروفايله؟ — صاحبُ بطاقةٍ أو السوبر أدمن (ADR-056). والواجهة مرآةٌ له.
+    bool CanChangePhoto = false);
 
 /// <summary>شهرٌ من رواتبي — **مُسدَّدٌ حصراً** (ADR-033).</summary>
 public sealed record MyPayslip(
@@ -102,11 +104,21 @@ public sealed class ProfileService(
             companyName, departmentName,
             emp?.EmployeeId, emp?.FullName, emp?.FullNameEn,
             link?.Position, link?.HireDate, emp?.NationalId, emp?.Phone, emp?.Address,
-            !string.IsNullOrEmpty(emp?.PhotoBlobKey));
+            // 🔑 **صورةٌ واحدة للشخص**: البطاقة إن وُجدت، وإلا صورة الحساب (السوبر أدمن وحده يملكها).
+            emp is not null ? !string.IsNullOrEmpty(emp.PhotoBlobKey) : !string.IsNullOrEmpty(user.PhotoBlobKey),
+            EmployeePhotoRules.CanChangeOwn(emp is not null, user.Role == UserRole.SuperAdmin));
     }
 
     public async Task<(byte[] content, string fileName)> PhotoAsync(CancellationToken ct = default)
     {
+        // 👤 **السوبر أدمن بلا بطاقة ⇒ صورة حسابه** (ADR-056). وغيرُه كما كان: البطاقة أو 404.
+        if (await FindLinkAsync(ct) is null && current.IsSuperAdmin)
+        {
+            var own = await SuperAdminAsync(ct);
+            if (string.IsNullOrEmpty(own.PhotoBlobKey)) throw new NotFoundException("لا توجد صورة في ملفّك.");
+            return (await storage.ReadAsync(own.PhotoBlobKey, ct), Path.GetFileName(own.PhotoBlobKey));
+        }
+
         var link = await RequireLinkAsync(ct);
         var key = link.Employee?.PhotoBlobKey;
         if (string.IsNullOrEmpty(key)) throw new NotFoundException("لا توجد صورة في ملفّك.");
@@ -128,6 +140,21 @@ public sealed class ProfileService(
     /// </remarks>
     public async Task SetPhotoAsync(string fileName, byte[] content, CancellationToken ct = default)
     {
+        // 👤 **السوبر أدمن بلا بطاقة ⇒ على حسابه** (ADR-056، قرار المالك: له وحده). ومَن له بطاقة —
+        //    ولو كان سوبر أدمن — صورتُه على البطاقة («صورةٌ واحدة للشخص» — ADR-035).
+        if (await FindLinkAsync(ct) is null && current.IsSuperAdmin)
+        {
+            var user = await SuperAdminAsync(ct);
+            var extension = EmployeePhotoRules.Validate(fileName, content.Length);
+            var previous = user.PhotoBlobKey;
+            user.PhotoBlobKey = await storage.SaveAsync(EmployeePhotoRules.UserBlobKey(user.UserId, extension), content, ct);
+            audit.Add("SetOwnPhoto", nameof(User), user.UserId.ToString(), null, null);
+            await db.SaveChangesAsync(ct);
+            if (!string.IsNullOrEmpty(previous) && previous != user.PhotoBlobKey)
+                try { await storage.DeleteAsync(previous, ct); } catch { /* تجاهل فشل حذف */ }
+            return;
+        }
+
         var link = await RequireLinkAsync(ct);
         var emp = link.Employee ?? throw new NotFoundException("بطاقتك غير موجودة.");
 
@@ -358,6 +385,15 @@ public sealed class ProfileService(
 
         return await db.EmployeeCompanies.Include(x => x.Employee)
             .FirstOrDefaultAsync(x => x.EmployeeId == employeeId && x.CompanyId == companyId, ct);
+    }
+
+    /// <summary>حسابُ السوبر أدمن نفسه — **بالجلسة لا بمعرّفٍ من العميل** (حارس الوحدة نفسه).</summary>
+    /// <remarks>⚠️ تجاوزُ الفلتر آمن: الشرط `UserId == me` هو العزل (والسوبر أدمن بلا شركة غالباً).</remarks>
+    private async Task<User> SuperAdminAsync(CancellationToken ct)
+    {
+        var userId = RequireUserId();
+        return await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.UserId == userId, ct)
+               ?? throw new NotFoundException("الحساب غير موجود.");
     }
 
     private async Task<EmployeeCompany> RequireLinkAsync(CancellationToken ct)

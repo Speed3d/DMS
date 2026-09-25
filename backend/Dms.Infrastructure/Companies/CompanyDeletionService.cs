@@ -219,6 +219,8 @@ public sealed class CompanyDeletionService(
             await db.EmployeeLogs.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
             await db.EmployeeCompanies.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
             await db.HrSettings.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
+            // 📜 سجلّ حركة الصادر (ADR-056) — صراحةً لا بالتتالي وحده، فلا يبقى سطرٌ يتيم إن تغيّر الحذف.
+            await db.OutgoingMovements.IgnoreQueryFilters().Where(x => x.CompanyId == id).ExecuteDeleteAsync(ct);
 
             db.Attachments.RemoveRange(db.Attachments.Where(a => a.OwnerType == OwnerType.Outgoing && bookIds.Contains(a.OwnerId)));
             db.DocumentVersions.RemoveRange(db.DocumentVersions.Where(v => v.DocType == OwnerType.Outgoing && bookIds.Contains(v.DocId)));
