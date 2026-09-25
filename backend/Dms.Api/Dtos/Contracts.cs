@@ -828,7 +828,18 @@ public sealed record AnnouncementDto(bool Visible, string? Text, AnnouncementKin
 /// <param name="Announcement"><c>null</c> لغير المصادَق أو حين لا يوجد نصّ.</param>
 public sealed record SystemStatusResponse(
     bool Maintenance, string? Reason, DateTime? Since,
-    LockdownDto Lockdown, AnnouncementDto? Announcement);
+    LockdownDto Lockdown, AnnouncementDto? Announcement,
+    // 🔐 **إصدار الخادم للمصادَق وحده (ADR-054)** — النقطة مفتوحةٌ للعالم عبر الدومين، وكشفُ
+    //    الإصدار للمجهول يدلّ المهاجم على ما يبحث عنه. وبه تنبّه الواجهةُ السوبرَ أدمن إلى تحديثٍ ناقص.
+    string? Version = null);
+
+/// <summary>«حول النظام» — ما يعمل على الخادم الآن (ADR-054). للمصادَق وحده.</summary>
+/// <param name="Version">الإصدار <c>0.9.0</c> — من `VERSION` عبر ملف التجميع.</param>
+/// <param name="Commit">رمز الـcommit المختصر — أيُّ كودٍ بالضبط.</param>
+/// <param name="LatestMigration">آخر مهاجرةٍ في الكود — و<paramref name="AppliedMigration"/> آخرُ ما طُبّق على القاعدة.</param>
+public sealed record SystemAboutResponse(
+    string Version, string? Commit, DateTime? BuiltAtUtc,
+    string? LatestMigration, string? AppliedMigration, int MigrationCount);
 
 /// <summary>لوحة التحكّم للسوبر أدمن: الحالتان والنصوص المحفوظة.</summary>
 public sealed record SystemControlResponse(

@@ -6,6 +6,7 @@ using Dms.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Dms.Api.Ops;
 using Dms.Api.Seeding;
 
 namespace Dms.Api.Controllers;
@@ -32,7 +33,27 @@ public class SystemController(AppDbContext db, IServiceProvider services, IConfi
         return new SystemStatusResponse(
             maintenance.IsActive, maintenance.Reason, maintenance.SinceUtc,
             ToDto(system.Lockdown, withActor: isSuper),
-            current.IsAuthenticated && a.Visible ? ToDto(a) : null);
+            current.IsAuthenticated && a.Visible ? ToDto(a) : null,
+            current.IsAuthenticated ? BuildInfo.Current.Display : null);
+    }
+
+    /// <summary>
+    /// «حول النظام» — الإصدار والـcommit ولحظة البناء وآخر مهاجرة (ADR-054).
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ **آخر مهاجرةٍ في الكود مقابل آخر ما طُبّق على القاعدة** — اختلافُهما يعني تحديثاً لم يكتمل
+    /// (والطبيعيّ أن يتساويا: الإقلاع يطبّق المهاجرات). 🔐 للمصادَق وحده، والقراءة خفيفة (لا تُستطلع).
+    /// </remarks>
+    [HttpGet("about")]
+    [Authorize]
+    public async Task<SystemAboutResponse> About(CancellationToken ct)
+    {
+        var all = db.Database.GetMigrations().ToList();
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToList();
+        var v = BuildInfo.Current;
+        return new SystemAboutResponse(
+            v.Display, v.ShortCommit, BuildInfo.BuiltAtUtc,
+            all.LastOrDefault(), applied.LastOrDefault(), applied.Count);
     }
 
     // ───────────── إيقاف النظام وشريط الإعلان (ADR-050) — للسوبر أدمن وحده ─────────────

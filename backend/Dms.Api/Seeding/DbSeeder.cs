@@ -1,3 +1,4 @@
+using Dms.Api.Ops;
 using Dms.Domain;
 using Dms.Infrastructure.Auth;
 using Dms.Infrastructure.Persistence;
@@ -41,6 +42,41 @@ public static class DbSeeder
 
         // تم إزالة بذر الشركة الافتراضية بناءً على طلب المستخدم ليكون النظام فارغاً تماماً
 
+        RecordVersionChange(db, await LastRecordedVersionAsync(db), BuildInfo.Current, logger);
+
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>آخر إصدارٍ سُجّل في التدقيق — <c>null</c> إن لم يُسجَّل شيء.</summary>
+    private static async Task<string?> LastRecordedVersionAsync(AppDbContext db) =>
+        await db.AuditLogs.IgnoreQueryFilters()
+            .Where(a => a.Action == "AppVersion")
+            .OrderByDescending(a => a.LogId)
+            .Select(a => a.EntityId)
+            .FirstOrDefaultAsync();
+
+    /// <summary>
+    /// يسجّل في التدقيق **أوّلَ إقلاعٍ بإصدارٍ جديد** — «من 0.9.0 إلى 0.9.1» (ADR-054).
+    /// </summary>
+    /// <remarks>
+    /// 🔑 **بالرقم وحده لا بالـcommit** — وإلا سُجّل سطرٌ مع كل بناءٍ للتطوير.
+    /// ⚠️ **واستعادةُ نسخةٍ قديمة تُرجع سجلَّ التدقيق معها** — فيُسجَّل الإصدار ثانيةً بعدها، وهذا صحيح:
+    /// القاعدة المستعادة لم تشهد هذا الإصدار.
+    /// </remarks>
+    private static void RecordVersionChange(AppDbContext db, string? last, AppVersion current, ILogger logger)
+    {
+        if (last == current.Display) return;
+        db.AuditLogs.Add(new AuditLog
+        {
+            UserId = null,
+            CompanyId = null,
+            Action = "AppVersion",
+            EntityType = "System",
+            EntityId = current.Display,
+            Details = (last is null ? $"أوّل إقلاعٍ بالإصدار {current.Display}" : $"من {last} إلى {current.Display}")
+                      + (current.ShortCommit is { } c ? $" · {c}" : ""),
+            Timestamp = DateTime.UtcNow,
+        });
+        logger.LogInformation("إصدار البرنامج: {From} ⟵ {To}", last ?? "—", current.Display);
     }
 }

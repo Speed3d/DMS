@@ -39,6 +39,20 @@ $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if (-not $svc) { Die "الخدمة '$ServiceName' غير مسجّلة. راجع خطة النشر (المرحلة ب)." }
 Ok "المصدر والوجهة والخدمة جاهزة"
 
+# 🏷️ **من أيّ إصدارٍ إلى أيّ إصدار (ADR-054)** — من ملف التجميع نفسه (`0.9.0+<commit>`)، فما يُطبع
+#    هو ما سيعمل فعلاً. والخادم يسجّل التغيير في سجلّ التدقيق عند أوّل إقلاع.
+function Get-DmsVersion($dir) {
+    $dll = Join-Path $dir "Dms.Api.dll"
+    if (-not (Test-Path $dll)) { return $null }
+    return (Get-Item $dll).VersionInfo.ProductVersion
+}
+$oldVersion = Get-DmsVersion $AppDir
+$newVersion = Get-DmsVersion $SourceDir
+Ok ("الإصدار: {0}  ⟵  {1}" -f $(if ($oldVersion) { $oldVersion } else { "—" }), $newVersion)
+if ($oldVersion -and $newVersion -and ($oldVersion -split '\+')[0] -eq ($newVersion -split '\+')[0] -and $oldVersion -ne $newVersion) {
+    Warn "الرقم نفسه والـcommit مختلف — هل نسيتَ رفع الرقم في ملف VERSION؟"
+}
+
 # ⚠️ لا نستبدل ملف الأسرار إطلاقاً — يبقى ملف السيرفر كما هو.
 $prodSettings = Join-Path $AppDir "appsettings.Production.json"
 $hasProdSettings = Test-Path $prodSettings
@@ -128,7 +142,7 @@ foreach ($attempt in 1..12) {   # حتى دقيقة: الإقلاع الأول �
 
 if ($healthy) {
     Ok "النظام يستجيب — التحديث اكتمل بنجاح"
-    Write-Host "`n✔ تم التحديث. نقطة الرجوع محفوظة في: $archive" -ForegroundColor Green
+    Write-Host "`n✔ تم التحديث إلى الإصدار $newVersion. نقطة الرجوع (الإصدار $oldVersion) محفوظة في: $archive" -ForegroundColor Green
     if (-not $NoLockdown) {
         Write-Host "`n⏸ النظام ما زال موقوفاً عن المستخدمين — **وهذا مقصود**." -ForegroundColor Yellow
         Write-Host "  افحصه بنفسك (أنت تدخل وحدك)، ثم شغّله من: الإعدادات ← النظام ← «تشغيل النظام للجميع»" -ForegroundColor Yellow

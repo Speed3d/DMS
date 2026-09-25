@@ -1,0 +1,23 @@
+<Project>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       رقم إصدار البرنامج — **مصدرٌ واحد**: ملف `VERSION` في جذر المستودع (ADR-054).
+       الخادم يقرؤه هنا عند البناء، والواجهة تأخذه من سكربت البناء (`dart-define APP_VERSION`)،
+       وحارسٌ في اختبارات الواجهة يطابق `pubspec.yaml` به. 🔴 **رقمان لشيءٍ واحد يتباعدان** —
+       فلا يُكتب الإصدار في موضعٍ آخر.
+       و`InformationalVersion` يحمل رمز الـcommit تلقائياً (`0.9.0+<sha>`) — به يُعرف أيُّ كودٍ مرفوع.
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <PropertyGroup>
+    <DmsVersionFile>$(MSBuildThisFileDirectory)..\VERSION</DmsVersionFile>
+    <Version Condition="Exists('$(DmsVersionFile)')">$([System.IO.File]::ReadAllText('$(DmsVersionFile)').Trim())</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- لحظة البناء — تُعرض في «حول النظام». -->
+    <AssemblyMetadata Include="DmsBuiltAtUtc" Value="$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))" />
+  </ItemGroup>
+
+  <!-- ⚠️ **بلا الملف لا بناء** — إصدارٌ افتراضيّ (1.0.0) صامتٌ أسوأ من فشلٍ صريح. -->
+  <Target Name="DmsRequireVersionFile" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(DmsVersionFile)')" Text="ملف VERSION غير موجود في جذر المستودع ($(DmsVersionFile))." />
+  </Target>
+</Project>
