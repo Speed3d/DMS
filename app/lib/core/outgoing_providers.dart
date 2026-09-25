@@ -47,3 +47,11 @@ void invalidateOutgoing(WidgetRef ref) {
   ref.invalidate(outgoingListProvider);
   ref.invalidate(pendingDraftsProvider);
 }
+
+// ----------------- سجل حركة الصادر (ADR-056) -----------------
+/// ⚠️ **يُبطَل عند إعادة تحميل تفاصيل الكتاب** (بعد تعديلٍ أو اعتمادٍ أو ربط) — وإلا بقي السجلّ ناقصاً.
+final outgoingMovementsProvider =
+    FutureProvider.autoDispose.family<List<OutgoingMovementItem>, int>((ref, id) async {
+  final api = ref.read(apiClientProvider);
+  return await api.outgoingMovements(id);
+});

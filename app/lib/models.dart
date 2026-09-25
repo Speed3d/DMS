@@ -1468,6 +1468,33 @@ class MovementLogItem {
       );
 }
 
+/// حركةٌ في سجلّ الصادر (ADR-056). [relatedIncomingNumber] يصل لمن يرى ذلك الوارد وحده.
+class OutgoingMovementItem {
+  final int movementId;
+  final String action;
+  final String description;
+  final int? relatedIncomingId;
+  final String? relatedIncomingNumber;
+  final String performedByUserName;
+  final DateTime performedAt;
+
+  const OutgoingMovementItem({
+    required this.movementId, required this.action, required this.description,
+    this.relatedIncomingId, this.relatedIncomingNumber,
+    required this.performedByUserName, required this.performedAt,
+  });
+
+  factory OutgoingMovementItem.fromJson(Map<String, dynamic> j) => OutgoingMovementItem(
+        movementId: j['movementId'] ?? 0,
+        action: j['action'] ?? '',
+        description: j['description'] ?? '',
+        relatedIncomingId: j['relatedIncomingId'],
+        relatedIncomingNumber: j['relatedIncomingNumber'],
+        performedByUserName: j['performedByUserName'] ?? '',
+        performedAt: parseInstant(j['performedAt']),
+      );
+}
+
 /// نتيجة التحقق من ختم QR — `POST /api/verify` (ADR-043).
 ///
 /// ⚠️ **حكمان لا واحد**: [isValid] يقول إن **التوقيع** سليم، و[foundInDb] يقول إن الكتاب

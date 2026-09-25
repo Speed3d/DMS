@@ -108,7 +108,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 photo: _photo,
                 // 🔴 **بلا بطاقةٍ لا صورة**: الصورة تُكتب على البطاقة، فمن لم يُربط بعد
                 //    لا موضعَ لصورته — وزرٌّ يردّ 404 أسوأ من زرٍّ غائب.
-                onChangePhoto: linked ? _changePhoto : null,
+                onChangePhoto: profile.canChangePhoto ? _changePhoto : null, // ADR-056: والسوبر أدمن بلا بطاقة
                 busy: _photoBusy,
               ),
               Material(
@@ -124,7 +124,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     _IdentityTab(
                       profile: profile,
-                      onChangePhoto: linked ? _changePhoto : null,
+                      onChangePhoto: profile.canChangePhoto ? _changePhoto : null, // ADR-056: والسوبر أدمن بلا بطاقة
                       photoBusy: _photoBusy,
                     ),
                     if (linked) const _LeavesTab(),

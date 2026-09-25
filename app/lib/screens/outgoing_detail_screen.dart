@@ -12,6 +12,7 @@ import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/outgoing_movements.dart';
 import '../widgets/hidden_replies_note.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/related_books_card.dart';
@@ -53,6 +54,8 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
 
   void _reload() {
     _future = ref.read(apiClientProvider).outgoingGet(widget.id);
+    // 📜 السجلّ يتبع الكتاب — كلُّ ما يُعيد تحميله (تعديل · اعتماد · ربط) أضاف حركة (ADR-056).
+    ref.invalidate(outgoingMovementsProvider(widget.id));
     setState(() {});
   }
 
@@ -588,6 +591,11 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                   style: const TextStyle(fontSize: 15, height: 1.8),
                                 ),
                               ),
+                              // 📜 **سجلّ الحركة** (ADR-056، طلب المالك) — لكل الأدوار عدا القارئ، كالوارد.
+                              if (canViewOutgoingMovements(ref.watch(sessionProvider).auth?.role)) ...[
+                                const Divider(height: 48),
+                                OutgoingMovementsSection(outgoingId: widget.id),
+                              ],
                             ],
                           ),
                         ),

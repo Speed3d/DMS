@@ -234,6 +234,13 @@ void main() {
       // وكلمةُ المرور تبقى متاحةً له — الحجب للصورة وحدها.
       expect(find.text('تغيير كلمة المرور'), findsOneWidget);
     });
+
+    // 👤 **طلب المالك (2026-09-25)**: السوبر أدمن ليس موظفاً فلا بطاقة له — وكان زرّ الكاميرا يغيب عنه.
+    testWidgets('🔴 السوبر أدمن بلا بطاقة: زرّ «تغيير الصورة الشخصية» يظهر (ADR-056)', (tester) async {
+      await pumpProfile(tester, _SuperAdminApi());
+      expect(find.widgetWithText(OutlinedButton, 'تغيير الصورة الشخصية'), findsOneWidget);
+      expect(find.byTooltip('تغيير صورتي'), findsOneWidget);
+    });
   });
 
   // ══════════════════ حرّاس الرسم ══════════════════
@@ -347,13 +354,27 @@ class _LinkedApi extends _SilentApi {
 }
 
 /// مستخدمٌ **بلا بطاقة** (سوبر أدمن مثلاً) — تبويبٌ واحد وتفسيرٌ للسبب.
+/// موظفٌ **لم يُربط** ببطاقة — لا موضعَ لصورته (والسوبر أدمن صار له موضعٌ على حسابه — ADR-056).
 class _UnlinkedApi extends _SilentApi {
+  @override
+  Future<MyProfile> myProfile() async => MyProfile.fromJson(const {
+        'userId': 5,
+        'fullName': 'موظف بلا بطاقة',
+        'username': 'nocard',
+        'role': 'Employee',
+        'companyName': 'أرض العرين للتجارة والمقاولات',
+        'canChangePhoto': false,
+      });
+}
+
+/// السوبر أدمن — بلا بطاقة، **وصورتُه على حسابه** (ADR-056، قرار المالك 2026-09-25).
+class _SuperAdminApi extends _SilentApi {
   @override
   Future<MyProfile> myProfile() async => MyProfile.fromJson(const {
         'userId': 1,
         'fullName': 'مدير النظام',
         'username': 'admin',
         'role': 'SuperAdmin',
-        'companyName': 'أرض العرين للتجارة والمقاولات',
+        'canChangePhoto': true,
       });
 }

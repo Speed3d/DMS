@@ -465,6 +465,10 @@ class ApiClient {
     return body is Map<String, dynamic> ? CaseFileDetail.fromJson(body) : null;
   }
 
+  /// سجلّ حركة الصادر (ADR-056) — لكل الأدوار عدا القارئ.
+  Future<List<OutgoingMovementItem>> outgoingMovements(int id) async =>
+      (await _get('/outgoing/$id/movements') as List).map((e) => OutgoingMovementItem.fromJson(e)).toList();
+
   Future<List<MovementLogItem>> incomingMovements(int id) async =>
       (await _get('/incoming/$id/movements') as List).map((e) => MovementLogItem.fromJson(e)).toList();
 

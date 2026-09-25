@@ -867,12 +867,16 @@ class MyProfile {
   final String? address;
   final bool hasPhoto;
 
+  /// يغيّر صورته من بروفايله؟ — صاحبُ بطاقةٍ أو **السوبر أدمن** (ADR-056). **مرآةٌ للخادم** لا تُحسب هنا.
+  final bool canChangePhoto;
+
   MyProfile({
     required this.userId, required this.fullName, required this.username,
     required this.role, this.companyName, this.departmentName,
     this.employeeId, this.employeeFullName, this.employeeFullNameEn,
     this.position, this.hireDate, this.nationalId, this.phone, this.address,
     this.hasPhoto = false,
+    this.canChangePhoto = false,
   });
 
   /// تبويبا الإجازات والرواتب يظهران بهذا وحده — ولا يُسألان عن قسمٍ ولا دور.
@@ -895,6 +899,8 @@ class MyProfile {
         phone: j['phone'],
         address: j['address'],
         hasPhoto: j['hasPhoto'] ?? false,
+        // ⚠️ غيابُ الحقل (خادمٌ أقدم) ⇒ السلوك القديم: البطاقة وحدها.
+        canChangePhoto: j['canChangePhoto'] ?? (j['employeeId'] != null),
       );
 }
 
