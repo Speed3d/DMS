@@ -621,11 +621,17 @@ Test-Path "C:\temp\dms-publish\appsettings.Development.json" # يجب False
 
 ```powershell
 cd D:\DMS\app
-$build = Get-Date -Format 'yyyyMMddHHmm'
+$build   = Get-Date -Format 'yyyyMMddHHmm'
+$version = (Get-Content D:\DMS\VERSION -Raw).Trim()          # 🏷️ الإصدار من مصدره الواحد (ADR-054)
+$commit  = (git -C D:\DMS rev-parse --short HEAD).Trim()
 flutter build web --release --dart-define=API_BASE_URL=https://dms.<دومينك>.com/api `
-  --dart-define=APP_BUILD=$build --build-number=$build
+  --dart-define=APP_BUILD=$build --build-number=$build `
+  --dart-define=APP_VERSION=$version --dart-define=APP_COMMIT=$commit --build-name=$version
 ```
 
+> 🏷️ **رقم الإصدار من ملف `D:\DMS\VERSION` وحده (ADR-054)** — الخادم يقرأ الملف نفسه عند
+> `dotnet publish`، فالواجهة والخادم من الرقم نفسه. **ارفع الرقم في الملف قبل كل إصدار** (والتفصيل في
+> §14ب)، ويظهر في شاشة الدخول وأسفل القائمة الجانبية و«حول النظام».
 > ⏸️ **`APP_BUILD` و`--build-number` بالقيمة نفسها — وجديدةٌ في كل بناء (ADR-050).**
 > بهما يعرف متصفّحُ الموظف أن إصداراً أحدث نُشر فيُعيد تحميل الصفحة وحده بعد التحديث.
 > بلاهما يبقى مَن ترك الصفحة مفتوحةً على الإصدار القديم يكلّم خادماً جديداً.
@@ -1441,16 +1447,39 @@ Get-ChildItem C:\DMS\data\backups | Sort-Object LastWriteTime -Descending | Sele
 
 ## 14) تحديث النظام
 
+### 14ب) 🏷️ قبل البناء: ارفع رقم الإصدار (ADR-054)
+
+الرقم **في ملفٍّ واحد** `D:\DMS\VERSION` — ويقرؤه الخادم والواجهة معاً:
+
+| غيّر | متى | مثال |
+|---|---|---|
+| **الإصلاح** (الرقم الأخير) | إصلاح عطلٍ بلا ميزةٍ جديدة | `1.0.0` ⟵ `1.0.1` |
+| **الفرعي** (الأوسط) | ميزةٌ جديدة **أو مهاجرةُ قاعدة بيانات** | `1.0.1` ⟵ `1.1.0` |
+| **الرئيسي** (الأوّل) | تغييرٌ لا يتوافق مع ما قبله | `1.4.2` ⟵ `2.0.0` |
+
+1. غيّر الرقم في `VERSION` **وفي سطر `version:` من `app\pubspec.yaml`** (حارسٌ في الاختبارات يرفض اختلافهما).
+2. أضِف قسماً للإصدار في **`CHANGELOG.md`**: ما أُضيف · ما أُصلح · هل فيه مهاجرة.
+3. commit ثم **وسمٌ في git**: `git tag v1.0.1` ثم `git push origin v1.0.1` — فيمكن الرجوع إلى أيّ إصدارٍ بالضبط.
+4. ⚠️ **`0.9.x` قبل الإنتاج، و`1.0.0` يوم تشغيل الـMini PC** (قرار المالك) — فأوّلُ إصدارٍ حقيقيّ هو ما يستعمله الموظفون.
+
 **على جهاز التطوير:**
 ```powershell
 cd D:\DMS\backend
 dotnet publish Dms.Api -c Release -r win-x64 --self-contained false -o "C:\temp\dms-new"
 
 cd D:\DMS\app
-$build = Get-Date -Format 'yyyyMMddHHmm'
+$build   = Get-Date -Format 'yyyyMMddHHmm'
+$version = (Get-Content D:\DMS\VERSION -Raw).Trim()
+$commit  = (git -C D:\DMS rev-parse --short HEAD).Trim()
 flutter build web --release --dart-define=API_BASE_URL=https://dms.<دومينك>.com/api `
-  --dart-define=APP_BUILD=$build --build-number=$build
+  --dart-define=APP_BUILD=$build --build-number=$build `
+  --dart-define=APP_VERSION=$version --dart-define=APP_COMMIT=$commit --build-name=$version
 ```
+
+> 🏷️ **وسكربت التحديث يطبع «الإصدار: 0.9.0+… ⟵ 0.9.1+…»** قبل أن يلمس شيئاً، **ويحذّرك** إن كان الرقم
+> نفسه والـcommit مختلفاً (نسيتَ رفع الرقم). والخادم يسجّل التغيير في **سجلّ التدقيق** عند أوّل إقلاع.
+> وبعد التحديث افتح **«حول النظام»** (النقر على الإصدار أسفل القائمة): إن اختلف إصدار الواجهة عن الخادم،
+> أو بقيت مهاجرةٌ غير مطبَّقة، ظهر تنبيهٌ للسوبر أدمن.
 
 > ⚠️ **الوسم مطلوبٌ في كل بناء** — نسيانُه يُنتج واجهةً تشير إلى `localhost` وتتعطّل عند
 > كل مستخدم. **و`APP_BUILD` جديدٌ في كل بناء** — به تُعيد صفحاتُ الموظفين المفتوحة تحميلَ

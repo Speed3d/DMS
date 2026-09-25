@@ -225,7 +225,8 @@ dueFrom, dueTo, isOverdue, mineOnly, search`.
   (مَن لا يملك قسم «الوارد» لا تظهر له صفوف الوارد المؤرشف في الاثنين معاً).
 
 ## حالة النظام — `/api/system`
-| GET | `/status` | **عام** | `{maintenance, reason, since, lockdown: {active, message, since, byName}, announcement}` — يبقى مجيباً في الصيانة والإيقاف. الواجهة تستطلعه **كل 30 ثانية** (ADR-050). 🔐 **`announcement` للمصادَق وحده** (`null` لغيره) · **و`byName` للسوبر أدمن وحده** — ورسالة الإيقاف عامّةٌ عمداً (تظهر على شاشة الدخول) |
+| GET | `/status` | **عام** | `{maintenance, reason, since, lockdown: {active, message, since, byName}, announcement}` — يبقى مجيباً في الصيانة والإيقاف. الواجهة تستطلعه **كل 30 ثانية** (ADR-050). 🔐 **`announcement` للمصادَق وحده** (`null` لغيره) · **و`byName` للسوبر أدمن وحده** — ورسالة الإيقاف عامّةٌ عمداً (تظهر على شاشة الدخول). 🏷️ **و`version` (`0.9.0`) للمصادَق وحده (ADR-054)** — `null` للمجهول، فالإصدار لا يُكشف للعالم |
+| GET | `/about` | **مصادَق** | «حول النظام» (ADR-054): `{version, commit, builtAtUtc, latestMigration, appliedMigration, migrationCount}` — الإصدار **من ملف التجميع** (أصلُه `VERSION`) · `commit` مختصر (7) · **آخر مهاجرةٍ في الكود مقابل آخر المطبَّق** (اختلافُهما تحديثٌ لم يكتمل). **401** للمجهول |
 | GET | `/control` | SuperAdmin | لوحة التحكّم: `{lockdown, announcement, savedLockdownTexts[], savedAnnouncementTexts[]}` |
 | PUT | `/lockdown` | SuperAdmin | `{active, message}` — **يوقف النظام عن كل المستخدمين عدا السوبر أدمن** أو يشغّله. الرسالة **مطلوبة** عند الإيقاف (≤ 500). **لا يعود النظام وحده أبداً.** تدقيق: `SystemLockdownOn/Off` |
 | PUT | `/announcement` | SuperAdmin | `{visible, text, kind: Info\|Warning}` — شريط الإعلان. النصّ **مطلوب** عند الإظهار، **ويبقى محفوظاً عند الإخفاء**. تدقيق: `AnnouncementShown/Hidden/Changed` |
