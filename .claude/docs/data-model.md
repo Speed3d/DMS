@@ -147,7 +147,8 @@
 - `DocumentVersion`: `VersionId, DocType, DocId, VersionNo, SnapshotJson, ChangedByUserId, ChangedAt, ChangeNote?`.
 
 ### BackupRecord / BackupSchedule (نظامي — بلا عزل شركة)
-- `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled), Scope(DbOnly/Full), Category(Manual/Daily/Weekly/Monthly), Status(Success/Failed), Note?`. سياسة الاحتفاظ (جد/أب/ابن، 7/4/12/20) والتصنيف التلقائي في `Dms.Domain/Backup.cs` — ADR-014.
+- `BackupRecord`: `BackupRecordId, CreatedAt, CreatedByUserId?, FileName, SizeBytes, Type(Manual/Scheduled/**Uploaded** — مرفوعةٌ من جهاز المستخدم، ADR-055؛ عددٌ صحيح فلا مهاجرة), Scope(DbOnly/Full), Category(Manual/Daily/Weekly/Monthly), Status(Success/Failed), Note?`. سياسة الاحتفاظ (جد/أب/ابن، 7/4/12/20) والتصنيف التلقائي في `Dms.Domain/Backup.cs` — ADR-014.
+- **داخل أرشيف كل نسخة (ADR-055)**: `database.bak` · `files/` (الكاملة) · `manifest.json` (قائمة الملفات) · **`backup-info.json`** (`appVersion` · `lastMigration` · `sqlMajorVersion` · `createdAtUtc`) — وفي مجلد المرآة بجوار `database.bak`.
 - `BackupSchedule` (صفّ مفرد): `BackupScheduleId, Frequency(Off/Daily/Weekly), Enabled, Hour(0-23), LastRunAt?, NextRunAt?`.
 
 ### Counter / AuditLog

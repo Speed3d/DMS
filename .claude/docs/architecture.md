@@ -141,6 +141,12 @@
   لا يمرّ إلا التغيير والخروج و`/auth/me` والتجديد وحالة النظام. التغيير يعيد `AuthResponse` جديداً **ويُلغي رموز
   التجديد الأخرى**، وإعادةُ تعيين المدير كذلك.
 
+## استعادة نسخةٍ من جهاز المستخدم (ADR-055)
+- **رفعٌ ثم فحصٌ ثم استعادة — ثلاث خطوات لا واحدة**: `BackupUploadService` يستقبل قطعاً ≤ 32 ميغا إلى
+  `BackupDir/uploads` (القرص لا الذاكرة) ⟵ `BackupService.ImportUploadedAsync` في الخلفية (ترويسة `RESTORE HEADERONLY` ·
+  `BackupCompatibility`) ⟵ `BackupRecord` بنوع `Uploaded` ⟵ **الاستعادة بالطريق القائم** (`RestoreAsync`).
+- **`backup-info.json` في كل أرشيفٍ ومرآة** (الإصدار · آخر مهاجرة · إصدار SQL)، **و`EnsureCompatibleAsync` قبل كل استعادة**.
+
 ## وضع الصيانة (أثناء استعادة نسخة — ADR-014)
 - `IMaintenanceState` + `MaintenanceMiddleware`: أثناء الاستعادة تُرفض كل الطلبات بـ **503**، عدا `GET /api/system/status` الذي يبقى مجيباً ليعرف العميل متى عاد النظام.
 - بعد `RESTORE` تلزم ثلاث خطوات وإلا فشلت أول كتابة: `ClearAllPools()` ← `MigrateAsync()` ← `ChangeTracker.Clear()`.
