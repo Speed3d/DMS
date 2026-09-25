@@ -10,6 +10,7 @@ import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/hidden_replies_note.dart';
 import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/related_books_card.dart';
@@ -76,7 +77,8 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
         //   ٢) **فكّ الأرشفة** — يفتح قفل التعديل على السجل الرسمي، فالسبب هو الأثر
         //      الوحيد الذي يشرح لاحقاً لماذا خرج كتابٌ من الأرشيف ومن أذِن به.
         final isUnarchiving = d.status == 'Archived';
-        final noteRequired = (newStatus == 'Replied' && d.replies.isEmpty) || isUnarchiving;
+        // ⚠️ **`hasReplies` لا `replies.isEmpty`**: ردٌّ محجوبٌ عن الطالب (G20) ما زال ردّاً.
+        final noteRequired = (newStatus == 'Replied' && !d.hasReplies) || isUnarchiving;
         return AlertDialog(
           title: Text(isUnarchiving ? 'فكّ أرشفة الكتاب' : 'تغيير حالة الكتاب'),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -535,7 +537,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                                   _buildReplyRow(link, canManageLink),
                                   if (link != d.replies.last) const SizedBox(height: 10),
                                 ],
-                              ] else
+                              ] else if (d.hiddenRepliesCount == 0)
                                 Text('لم يُربط هذا الكتاب بكتاب صادر بعد.',
                                     style: TextStyle(
                                         fontSize: 13,
@@ -544,6 +546,7 @@ class _IncomingDetailScreenState extends ConsumerState<IncomingDetailScreen> {
                                             .bodyMedium
                                             ?.color
                                             ?.withValues(alpha: 0.6))),
+                              HiddenRepliesNote(count: d.hiddenRepliesCount, outgoing: true),
                               if (canManageLink) ...[
                                 const SizedBox(height: 12),
                                 Align(

@@ -246,6 +246,9 @@ class CompanyDeletePreview {
   final int departments, entities, templates;
   final int willBeErased;
 
+  /// المحذوف ناعماً في بقية الأنواع — **يُمحى فيُعلَن** (G23 — ADR-053).
+  final int deletedArchive, deletedTasks, deletedCaseFiles, deletedEmployees;
+
   /// هل يجوز الحذف الآن؟ — **يُحسب في الخادم** والواجهة مرآةٌ له.
   final bool canDelete;
   final String blockReason;
@@ -273,6 +276,10 @@ class CompanyDeletePreview {
     required this.canDelete,
     required this.blockReason,
     this.blockMessage,
+    this.deletedArchive = 0,
+    this.deletedTasks = 0,
+    this.deletedCaseFiles = 0,
+    this.deletedEmployees = 0,
   });
 
   factory CompanyDeletePreview.fromJson(Map<String, dynamic> j) => CompanyDeletePreview(
@@ -297,6 +304,10 @@ class CompanyDeletePreview {
         canDelete: j['canDelete'] ?? false,
         blockReason: j['blockReason'] ?? '',
         blockMessage: j['blockMessage'],
+        deletedArchive: j['deletedArchive'] ?? 0,
+        deletedTasks: j['deletedTasks'] ?? 0,
+        deletedCaseFiles: j['deletedCaseFiles'] ?? 0,
+        deletedEmployees: j['deletedEmployees'] ?? 0,
       );
 
   /// الأسطر التي تُعرض في البيان — **ما فيه صفرٌ لا يُذكر**.
@@ -306,9 +317,13 @@ class CompanyDeletePreview {
         ('وارد', liveIncoming, false),
         ('وارد محذوف', deletedIncoming, true),
         ('أرشيف', archive, false),
+        ('أرشيف محذوف', deletedArchive, true),
         ('موظفون مُسنَدون', employees, false),
+        ('إسنادات موظفين مفكوكة', deletedEmployees, true),
         ('مهام', tasks, false),
+        ('مهام محذوفة', deletedTasks, true),
         ('معاملات', caseFiles, false),
+        ('معاملات محذوفة', deletedCaseFiles, true),
         ('مستخدمون مُسنَدون', users, false),
         ('أقسام', departments, false),
         ('جهات', entities, false),
@@ -1079,6 +1094,8 @@ class OutgoingDetail {
   final String? bodyJson;
   /// الكتب الواردة التي يردّ عليها هذا الصادر — **قائمة** منذ ADR-045.
   final List<ReplyLink> repliesTo;
+  /// واردٌ يجيبه هذا الصادر **ولا يراه الطالب** — بالعدد وحده (G20 — ADR-053).
+  final int hiddenRepliesCount;
   OutgoingDetail({
     required this.outgoingId,
     required this.companyId,
@@ -1103,6 +1120,7 @@ class OutgoingDetail {
     this.canApprove = false,
     this.bodyJson,
     this.repliesTo = const [],
+    this.hiddenRepliesCount = 0,
   });
   bool get isFinal => status == 'Final';
   factory OutgoingDetail.fromJson(Map<String, dynamic> j) => OutgoingDetail(
@@ -1129,6 +1147,7 @@ class OutgoingDetail {
         canApprove: j['canApprove'] ?? false,
         bodyJson: j['bodyJson'],
         repliesTo: ReplyLink.listFrom(j['repliesTo']),
+        hiddenRepliesCount: j['hiddenRepliesCount'] ?? 0,
       );
 }
 
@@ -1316,6 +1335,8 @@ class IncomingDetail {
   final num? amountInIqd;
   /// الكتب الصادرة التي ردّت على هذا الوارد — **قائمة** منذ ADR-045.
   final List<ReplyLink> replies;
+  /// ردودٌ صادرة **محجوبةٌ بالعدد** عمّن لا يملك قسم الصادر (G20 — ADR-053).
+  final int hiddenRepliesCount;
   final DateTime createdAt;
 
   IncomingDetail({
@@ -1325,8 +1346,11 @@ class IncomingDetail {
     required this.receiveMethod, required this.receivedByUserId, required this.receivedByUserName,
     required this.status, this.departments = const [], this.lastAction, this.keywords, this.notes,
     this.amount, this.currency, this.exchangeRate, this.amountInIqd,
-    this.replies = const [], required this.createdAt,
+    this.replies = const [], required this.createdAt, this.hiddenRepliesCount = 0,
   });
+
+  /// هل رُدَّ عليه بكتابٍ صادر — **المحجوب يُحسب**: ردٌّ لا يراه الطالب ما زال ردّاً.
+  bool get hasReplies => replies.isNotEmpty || hiddenRepliesCount > 0;
 
   factory IncomingDetail.fromJson(Map<String, dynamic> j) => IncomingDetail(
         incomingId: j['incomingId'],
@@ -1359,6 +1383,7 @@ class IncomingDetail {
         amountInIqd: j['amountInIqd'],
         replies: ReplyLink.listFrom(j['replies']),
         createdAt: parseInstant(j['createdAt']),
+        hiddenRepliesCount: j['hiddenRepliesCount'] ?? 0,
       );
 }
 

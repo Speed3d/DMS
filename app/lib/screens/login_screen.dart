@@ -31,6 +31,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// «نسيت كلمة المرور» — يشرح الطريق الموجود فعلاً (قرار المالك 2026-09-24).
+  void _showForgotPassword() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.lock_reset_rounded, color: AppColors.action(ctx), size: 36),
+        title: const Text('نسيت كلمة المرور؟'),
+        content: const Text(
+          'تواصل مع مدير النظام ليعيّن لك كلمة مرورٍ مؤقتة.\n'
+          'وعند أوّل دخولٍ بها سيُطلب منك اختيار كلمةٍ جديدة خاصّة بك.',
+          style: TextStyle(height: 1.8),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.action(ctx),
+              foregroundColor: AppColors.onAction(ctx),
+            ),
+            child: const Text('حسناً'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _login() async {
     if (_user.text.trim().isEmpty || _pass.text.isEmpty) return;
     setState(() { _busy = true; _error = null; });
@@ -111,12 +137,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: const Icon(Icons.apartment, color: AppColors.navy, size: 32),
                 ),
                 const SizedBox(width: 14),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('DMS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 0.5)),
-                    Text('Document Management System', style: TextStyle(color: Color(0xFF9DB0D2), fontSize: 12.5)),
-                  ],
+                // ⚠️ **مرِنٌ لا بعرضه الطبيعيّ**: كان يفيض 184 بكسلاً على هاتفٍ بعرض 360
+                //    (الحشوة 72 من كل جهة) — كشفه حارسُ `review_gaps_test`.
+                const Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('DMS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 0.5)),
+                      Text('Document Management System',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Color(0xFF9DB0D2), fontSize: 12.5)),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -275,9 +308,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Text('تذكّرني', style: TextStyle(fontSize: 13, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6))),
                 ],
               ),
-              TextButton(
-                onPressed: () {},
-                child: Text('نسيت كلمة المرور؟', style: TextStyle(color: isDark ? AppColors.navyDark : AppColors.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+              // ⚠️ **كان `onPressed: () {}`** — ثامنُ «زرٍّ بلا وظيفة» (ADR-053). والنظام لا يرسل
+              //    بريداً ولا رسائل، فالطريق الوحيد إعادةُ تعيينٍ بيد المدير (كلمةٌ مؤقتة يُجبَر
+              //    صاحبها على تغييرها — G19). فالزرّ يقول ذلك بدل أن يَعِد بما لا يوجد.
+              //    ⚠️ **ومرِنٌ داخل السطر**: كان يفيض 31 بكسلاً حين يتّسع الخطّ (هاتفٌ ضيّق ·
+              //    تكبيرُ الخطّ) — كشفه حارسُ هذا الزرّ نفسه.
+              Flexible(
+                child: TextButton(
+                  key: const Key('forgot-password'),
+                  onPressed: _showForgotPassword,
+                  child: Text('نسيت كلمة المرور؟',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: isDark ? AppColors.navyDark : AppColors.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
               )
             ],
           ),

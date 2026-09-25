@@ -12,6 +12,7 @@ import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/hidden_replies_note.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/related_books_card.dart';
 import '../widgets/status_pill.dart';
@@ -476,11 +477,11 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                               // 🔐 **لا تحمل إلا ما يراه الطالب**: الخادم يبنيها من
                               //    `IncomingService.Query()`، وكان الحقل المفرد يقرأ الجدول
                               //    مباشرةً فيكشف رقم واردٍ محجوبٍ بحدّ القسم.
-                              if (d.repliesTo.isNotEmpty) ...[
+                              if (d.repliesTo.isNotEmpty || d.hiddenRepliesCount > 0) ...[
                                 const Divider(height: 32),
                                 Row(children: [
                                   Text(
-                                      d.repliesTo.length == 1
+                                      d.repliesTo.length + d.hiddenRepliesCount == 1
                                           ? 'الارتباط بالوارد'
                                           : 'الواردات المردود عليها',
                                       style: const TextStyle(
@@ -532,6 +533,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                   ]),
                                   if (link != d.repliesTo.last) const SizedBox(height: 10),
                                 ],
+                                HiddenRepliesNote(count: d.hiddenRepliesCount, outgoing: false),
                               ],
 
                               if (d.qrContent != null) ...[

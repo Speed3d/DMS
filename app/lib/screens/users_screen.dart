@@ -455,7 +455,8 @@ class _DelegationsTabState extends ConsumerState<_DelegationsTab> {
   Future<void> _create() async {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final users = await ref.read(apiClientProvider).users();
+    // 🔐 **القارئ لا يُفوَّض إليه الاعتماد (G22 — ADR-053)** — والخادم يرفضه، فلا يُعرض خياراً.
+    final users = (await ref.read(apiClientProvider).users()).where((u) => u.role != 'Reader').toList();
     if (!mounted) return;
     if (users.isEmpty) {
       messenger.showSnackBar(const SnackBar(content: Text('لا يوجد مستخدمون للتفويض إليهم.')));
@@ -581,6 +582,10 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
   /// صراحةً. إخفاؤهما هنا يمنع المانح من ظنّ أنه منحهما.
   bool get _roleMayHaveHr => _role != 'Reader';
 
+  /// يعتمد ويدير حالات الوارد — **كلُّ دورٍ فوق القارئ** (G22 — ADR-053). مرآةٌ لتجريد الخادم
+  /// في `ResolveLinksAsync`: مفتاحٌ يُعرض للقارئ ثم يُصفَّر صامتاً أسوأ من غيابه.
+  bool get _roleMayProcess => _role != 'Reader';
+
   @override
   void initState() {
     super.initState();
@@ -649,8 +654,8 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
         'companyId': cid,
         'modules': _roleExemptFromModules ? kAllModules : a.modules,
         'departmentId': _isSubordinate ? a.departmentId : null,
-        'canApprove': a.canApprove,
-        'canManageIncoming': _isSubordinate && a.canManageIncoming,
+        'canApprove': _roleMayProcess && a.canApprove,
+        'canManageIncoming': _isSubordinate && _roleMayProcess && a.canManageIncoming,
         // كالتي قبلها: تخصّ المرؤوس وحده — المدير فأعلى يرى الكل بحكم دوره أصلاً.
         'canViewAllIncoming': _isSubordinate && a.canViewAllIncoming,
         // ⚠️ **بخلاف أخواتها**: هاتان لا تخصّان المرؤوس وحده — أيُّ دورٍ فوق القارئ
@@ -764,7 +769,7 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                           // Hint: كانت معروضة أسفل البطاقة بعيداً عن خانة الوارد، فبدت صلاحيةً
                           // ثانيةً مستقلّة. هي ليست كذلك: «الوارد» يفتح القسم، وهذه تحدّد إلى أي
                           // مدى يُحرّك الموظف الكتاب. الإزاحة تُظهر التبعية بلا دمجٍ يُفقد التمييز.
-                          if (m == 'Incoming' && enabled && _isSubordinate)
+                          if (m == 'Incoming' && enabled && _isSubordinate && _roleMayProcess)
                             Padding(
                               padding: const EdgeInsetsDirectional.only(start: 28),
                               child: SwitchListTile(
@@ -886,6 +891,7 @@ class _UserFormPageState extends ConsumerState<_UserFormPage> {
                       }).toList(),
                     ),
 
+            if (_roleMayProcess)
             SwitchListTile(
               value: access.canApprove,
               contentPadding: EdgeInsets.zero,
