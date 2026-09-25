@@ -131,6 +131,12 @@
 - `Restrict` على القسم مقصود: حذف قسم محال إليه كتب **يُرفض** (رسالة صريحة: «عطّله بدل حذفه»).
 - `AssignedByUserId` ليس للسجل فقط — عليه تقوم قاعدة **«مَن أحال يبقى يرى»**.
 
+### OutgoingMovement (سجلّ حركة الصادر — ADR-056، migration `AddOutgoingMovementsAndUserPhoto`)
+- `MovementId, CompanyId, OutgoingId (FK Cascade, فهرس), Action(50), Description(500), RelatedIncomingId?, PerformedByUserId, PerformedAt (فهرس)` — فلترٌ عام بالشركة.
+- `Action` من `OutgoingActions`: `Created` · `Edited` · `Approved` · `EditedApproved` · `LinkedIncoming` · `UnlinkedIncoming` · `Deleted`.
+- 🔐 **`Description` محايدٌ دائماً**، ورقم الوارد يُحلّ عند القراءة لمن يراه وحده (`RelatedIncomingId`). ويُمحى مع الشركة صراحةً.
+- **وفي `User`: `PhotoBlobKey?` (500)** — صورة **السوبر أدمن** بلا بطاقة (ADR-056)؛ ومَن له بطاقة صورتُه على `Employee`.
+
 ### MovementLog (سجل حركة الوارد)
 `MovementId, IncomingId→IncomingBook (Cascade), CompanyId, Action, Description, FromDepartment?, ToDepartment?, PerformedByUserId, PerformedAt`.
 - مستقل عن `AuditLog` العام: يوثّق دورة حياة الكتاب تشغيلياً (Registered/StatusChanged/Forwarded/LinkedToOutgoing/UnlinkedFromOutgoing/Updated) ويُعرض Timeline في شاشة التفاصيل للسوبر أدمن ورئيس الشركة فقط.
@@ -221,7 +227,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 31 migration** (آخرها `AddClientRequests`، 2026-09-24). ✅ **كلُّها مُطبَّقة على `DmsDb`**. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`) — و`AddClientRequests` نفسها طُبّقت قبل الدمج بتشغيلٍ للتجربة (`dotnet run` يطبّق عند الإقلاع)، وسلمت لأنها جدولٌ جديد. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
+**السلسلة الحالية — 32 migration** (آخرها `AddOutgoingMovementsAndUserPhoto`، 2026-09-25). ✅ **كلُّها مُطبَّقة على `DmsDb`**. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`) — و`AddClientRequests` نفسها طُبّقت قبل الدمج بتشغيلٍ للتجربة (`dotnet run` يطبّق عند الإقلاع)، وسلمت لأنها جدولٌ جديد. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
 
 | # | Migration | ما أضافه |
 |---|---|---|
@@ -250,6 +256,7 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 28 | `AddNotifications` | جدول `Notifications` (مفتاحه `long`) + **فهرسٌ فريد مُرشَّح على `(RecipientUserId, DedupKey)`** يمنع الإغراق على مستوى القاعدة — ADR-038. **إضافة بحتة**. طُبِّقت **2026-09-07** |
 | 29–30 | `AddBookReplies` · `AddCaseFiles` | المعاملات (ADR-045) — مُطبَّقتان |
 | 31 | `AddClientRequests` | جدول `ClientRequests` + فهرسٌ فريد `(UserId, Key)` — ADR-051. **إضافة بحتة** (جدولٌ جديد لا يمسّ القائم). طُبِّقت على `DmsDb` **2026-09-24** |
+| 32 | `AddOutgoingMovementsAndUserPhoto` | جدول `OutgoingMovements` (FK Cascade + فهرسان) + عمود `Users.PhotoBlobKey` — ADR-056. **إضافة بحتة**. ⚠️ **تُطبَّق على `DmsDb` عند أوّل تشغيلٍ لخادم المالك بعد الدمج** |
 
 > **ملاحظات:**
 > - 🔴 **الدفعة ٦ (الخدمة الخلفية — ADR-039) بلا مهاجرة** — أعمدةُ حالة التصعيد الثلاثة
