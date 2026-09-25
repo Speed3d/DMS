@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/app_version.dart';
+import '../core/remembered_user.dart';
 import '../core/session.dart';
 import '../core/system_status.dart';
 import '../models.dart';
@@ -20,10 +21,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _pass = TextEditingController();
   bool _busy = false;
   String? _error;
-  bool _rememberMe = true;
+  /// «تذكّرني» — **مؤشَّرٌ إن كان للجهاز اسمٌ محفوظ**، وإلا فلا: جهازٌ عامّ لا يحفظ اسماً بلا طلب.
+  bool _rememberMe = false;
 
   /// أثناء الإيقاف: أظهر المسؤولُ نموذجَ الدخول برابط «دخول المسؤول» (ADR-050).
   bool _adminMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 🔑 **الاسم المحفوظ يملأ الحقل** — والتركيز لكلمة المرور تلقائياً بعده.
+    RememberedUser.load().then((name) {
+      if (!mounted || name == null || _user.text.isNotEmpty) return;
+      setState(() {
+        _user.text = name;
+        _rememberMe = true;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -64,6 +79,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final api = ref.read(apiClientProvider);
       final result = await api.login(_user.text.trim(), _pass.text);
+      // ⚠️ **قبل `setAuth`** — بعده تُستبدل الشاشة فلا يبقى مَن يحفظ. **وبعد نجاح الدخول وحده**:
+      //    اسمٌ خاطئ لا يُحفظ.
+      await RememberedUser.afterLogin(_user.text, remember: _rememberMe);
       await ref.read(sessionProvider.notifier).setAuth(result);
     } on ApiException catch (e) {
       setState(() => _error = e.message);

@@ -825,6 +825,37 @@ class ApiClient {
       JobInfo.fromJson(await _post('/backup/mirror', {'targetPath': targetPath}));
 
   /// يبدأ الاستعادة من مرآة — تدميرية، بنفس كلمة تأكيد الاستعادة العادية.
+  // ── استعادة نسخةٍ من جهاز المستخدم (ADR-055): رفعٌ بقطع ثم فحصٌ خلفيّ ──
+
+  /// يبدأ الرفع — الخادم يفحص الاسم والحجم ومساحة القرص **قبل** أوّل بايت.
+  Future<BackupUploadSession> backupUploadStart(String fileName, int sizeBytes) async =>
+      BackupUploadSession.fromJson(
+          await _post('/backup/uploads', {'fileName': fileName, 'sizeBytes': sizeBytes}) as Map<String, dynamic>);
+
+  /// قطعةٌ بالترتيب — بايتاتٌ خامّ. ⚠️ **مهلةٌ طويلة لهذا الطلب وحده**: 32 ميغا على خطٍّ بطيء
+  /// تتجاوز الافتراض (30 ثانية) فيُقطع رفعٌ سليم.
+  Future<BackupUploadSession> backupUploadChunk(String uploadId, int index, Uint8List bytes) async {
+    try {
+      final res = await _dio.put('/backup/uploads/$uploadId/chunks/$index',
+          data: bytes,
+          options: Options(
+            contentType: 'application/octet-stream',
+            sendTimeout: const Duration(minutes: 10),
+            receiveTimeout: const Duration(minutes: 10),
+          ));
+      return BackupUploadSession.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _map(e);
+    }
+  }
+
+  /// اكتمل الرفع — الفحص يجري في الخلفية ويُتابَع كغيره (ADR-049).
+  Future<JobInfo> backupUploadComplete(String uploadId) async =>
+      JobInfo.fromJson(await _post('/backup/uploads/$uploadId/complete', null));
+
+  /// يُلغي رفعاً — أفضل جهد (الخادم يحذف المتروك بعد يومٍ أيضاً).
+  Future<void> backupUploadAbort(String uploadId) => _delete('/backup/uploads/$uploadId');
+
   Future<JobInfo> backupRestoreFromMirror(String sourcePath) async => JobInfo.fromJson(
       await _post('/backup/mirror/restore', {'sourcePath': sourcePath, 'confirmation': kRestoreConfirmation}));
 

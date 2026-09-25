@@ -18,7 +18,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # of the product and file versions while build-number is used as the build suffix.
 # 🏷️ **الرقم يطابق ملف `VERSION` في جذر المستودع** (ADR-054) — وحارسُ `version_sync_test` يفرض ذلك.
 # والبناء للنشر يمرّر `--build-name` من الملف نفسه، و`--build-number` برقم البناء (`APP_BUILD`).
-version: 0.9.0+1
+version: 0.10.0+1
 
 environment:
   sdk: ^3.12.0

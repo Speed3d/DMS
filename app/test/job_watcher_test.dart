@@ -144,7 +144,7 @@ void main() {
         job('Succeeded', message: 'تمت النسخة الاحتياطية (1.0 MB).'),
       ]));
 
-      await tester.tap(find.text('نسخة احتياطية الآن'));
+      await tester.tap(find.byKey(const Key('backup-run-now'))); // «أخذ نسخة الآن» في شريط الأزرار (ADR-055)
       await tester.pump();
       expect(api.runCalls, 1);
       // البطاقة تظهر والمرحلة معها
@@ -161,7 +161,7 @@ void main() {
     testWidgets('الرفض الفوريّ (عمليةٌ أخرى جارية) يُعرض كما هو ولا تظهر بطاقة', (tester) async {
       final api = _BackupApi(polls: const [], startError: ApiException(409, '«استعادة نسخة احتياطية» جاريةٌ الآن'));
       await pump(tester, api);
-      await tester.tap(find.text('نسخة احتياطية الآن'));
+      await tester.tap(find.byKey(const Key('backup-run-now'))); // «أخذ نسخة الآن» في شريط الأزرار (ADR-055)
       await tester.pumpAndSettle();
       expect(find.textContaining('جاريةٌ الآن'), findsOneWidget);
       expect(find.textContaining('— جارية'), findsNothing);

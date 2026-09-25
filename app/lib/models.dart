@@ -657,6 +657,61 @@ String backupCategoryLabel(String category) => switch (category) {
       _ => category,
     };
 
+/// نوعُ النسخة للعرض — **المرفوعة من جهازٍ آخر تُميَّز** (ADR-055): لم يأخذها هذا الخادم.
+String backupKindLabel(BackupRecordModel r) =>
+    r.type == 'Uploaded' ? 'مرفوعة من جهاز' : backupCategoryLabel(r.category);
+
+/// أنواع الفلترة في قائمة النسخ — `null` = الكل.
+const Map<String?, String> kBackupKindFilters = {
+  null: 'الكل',
+  'Manual': 'يدوية',
+  'Daily': 'يومية',
+  'Weekly': 'أسبوعية',
+  'Monthly': 'شهرية',
+  'Uploaded': 'مرفوعة',
+};
+
+/// فلترة قائمة النسخ — **دالّةٌ نقيّة** تُختبر (ADR-042: لا مزوّدَ يشتقّ من مزوّد).
+///
+/// [kind]: تصنيفُ الاحتفاظ، أو `'Uploaded'` للمرفوعة (وهي «يدوية» في الاحتفاظ فتُستثنى منها
+/// كي لا تظهر في الاثنين). [query]: في اسم الملف والملاحظة.
+List<BackupRecordModel> filterBackups(
+  List<BackupRecordModel> all, {
+  String? kind,
+  String? scope,
+  bool? succeeded,
+  String query = '',
+}) {
+  final q = query.trim().toLowerCase();
+  return all.where((r) {
+    if (kind == 'Uploaded' && r.type != 'Uploaded') return false;
+    if (kind != null && kind != 'Uploaded' && (r.category != kind || r.type == 'Uploaded')) return false;
+    if (scope != null && r.scope != scope) return false;
+    if (succeeded != null && (r.status == 'Success') != succeeded) return false;
+    if (q.isNotEmpty &&
+        !r.fileName.toLowerCase().contains(q) &&
+        !(r.note ?? '').toLowerCase().contains(q)) {
+      return false;
+    }
+    return true;
+  }).toList();
+}
+
+/// رفعٌ بدأ — معرّفه وحجم القطعة الذي ينتظره الخادم (ADR-055).
+class BackupUploadSession {
+  final String uploadId;
+  final int chunkSize;
+  final int receivedBytes;
+  final int nextIndex;
+  const BackupUploadSession(this.uploadId, this.chunkSize, this.receivedBytes, this.nextIndex);
+  factory BackupUploadSession.fromJson(Map<String, dynamic> j) => BackupUploadSession(
+        j['uploadId'] as String,
+        (j['chunkSize'] as num?)?.toInt() ?? 32 * 1024 * 1024,
+        (j['receivedBytes'] as num?)?.toInt() ?? 0,
+        (j['nextIndex'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class BackupRecordModel {
   final int id;
   final DateTime createdAt;

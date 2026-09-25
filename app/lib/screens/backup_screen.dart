@@ -1,7 +1,9 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/api_client.dart';
+import '../core/backup_upload.dart';
 import '../core/downloader.dart';
 import '../core/job_watcher.dart';
 import '../core/session.dart';
@@ -28,6 +30,22 @@ class _State extends ConsumerState<BackupScreen> {
 
   /// العملية الطويلة الجارية (نسخ · مرآة · استعادة) — تُعرض بطاقةَ تقدّمٍ أعلى الشاشة.
   JobInfo? _job;
+
+  /// رفعُ نسخةٍ من الجهاز الجاري (ADR-055) — اسمُ الملف ونسبةُ ما وصل (قبل أن يبدأ الفحص في الخادم).
+  String? _uploadName;
+  double _uploadProgress = 0;
+
+  // فلترة القائمة — **محلّية**: النسخ عشراتٌ لا آلاف (سياسة الاحتفاظ تقلّمها).
+  final _search = TextEditingController();
+  String? _kindFilter;
+  String? _scopeFilter;
+  bool? _statusFilter;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -167,6 +185,41 @@ class _State extends ConsumerState<BackupScreen> {
 
   Future<void> _runNow() => _runJob(() => ref.read(apiClientProvider).backupRun());
 
+  /// **استعادة نسخةٍ من جهازي** (ADR-055) — يرفع ملف `.zip` بقطع، ثم يفحصه الخادم ويضيفه إلى القائمة.
+  ///
+  /// 🐛 **بلاغ المالك (2026-09-24)**: نسخةٌ من جهاز التطوير لم تكن تُستعاد على الدومين ولا العكس — لا طريق
+  /// لإدخالها. 🔑 **الرفع لا يستعيد**: تظهر النسخة في القائمة، والاستعادة بزرّها القائم وضماناته.
+  Future<void> _uploadFromDevice() async {
+    // ⚠️ **تدفّقٌ لا بايتات**: `withReadStream` فلا يُحمَّل الملف كلُّه في ذاكرة المتصفّح.
+    final picked = await FilePicker.pickFiles(
+        type: FileType.custom, allowedExtensions: const ['zip'], withReadStream: true);
+    final file = picked?.files.single;
+    if (file == null || file.readStream == null || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+      _info = null;
+      _uploadName = file.name;
+      _uploadProgress = 0;
+    });
+    try {
+      final job = await uploadBackupFile(
+        ref.read(apiClientProvider),
+        fileName: file.name,
+        sizeBytes: file.size,
+        content: file.readStream!,
+        onProgress: (p) { if (mounted) setState(() => _uploadProgress = p); },
+      );
+      if (mounted) setState(() => _uploadName = null);
+      await _follow(job);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = 'تعذّر رفع النسخة: ${e.message}');
+    } finally {
+      if (mounted) setState(() { _busy = false; _job = null; _uploadName = null; });
+    }
+  }
+
   /// استعادة نسخة — عملية تدميرية، لذا التأكيد بكتابة الكلمة يدوياً لا بزرّ واحد.
   /// Hint: شاشة كاملة لا حوار (حقل نصّي داخل حوار يسبب خلل disposed EngineFlutterView على الويب).
   Future<void> _restore(BackupRecordModel r) async {
@@ -282,25 +335,87 @@ class _State extends ConsumerState<BackupScreen> {
                 '**لا تُكرّر**: الملف الموجود يُتخطّى، فالمرة الأولى طويلة والتالية دقائق.',
                 style: TextStyle(color: Colors.grey, fontSize: 12.5, height: 1.6),
               ),
-              const SizedBox(height: 12),
-              Wrap(spacing: 12, runSpacing: 12, children: [
-                FilledButton.icon(
-                  onPressed: _busy ? null : _runMirror,
-                  icon: const Icon(Icons.drive_file_move_rounded, size: 18),
-                  label: const Text('تشغيل المرآة'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _restoreMirror,
-                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.danger),
-                  icon: const Icon(Icons.settings_backup_restore_rounded, size: 18),
-                  label: const Text('استعادة من مرآة'),
-                ),
-              ]),
+              const SizedBox(height: 6),
+              // ⚠️ **الأزرار في الشريط أعلى الشاشة** — والبطاقة تشرح وحدها (كان الزرّان هنا وحدهما،
+              //    فبحث المالك عن «استعادة» فوجد «استعادة من مرآة» ووجّهه إلى نسخةٍ عادية).
+              const Text(
+                'تُشغَّل من «تشغيل المرآة» في الشريط أعلاه، وتُستعاد من «استعادة من مرآة». '
+                'أمّا الملف المضغوط (.zip) الذي تنزّله من القائمة فيُستعاد من «استعادة نسخة من جهازي».',
+                style: TextStyle(fontSize: 12.5, height: 1.6),
+              ),
             ],
           ),
         ),
       );
   String _dt(DateTime d) => DateFormat('yyyy-MM-dd HH:mm').format(d.toLocal());
+
+  /// القائمة بعد الفلترة — دالّةٌ نقيّة في `models.dart` (ADR-042).
+  List<BackupRecordModel> get _shown => filterBackups(_list,
+      kind: _kindFilter, scope: _scopeFilter, succeeded: _statusFilter, query: _search.text);
+
+  /// 🔎 **بحثٌ وفلترة** (ADR-055) — بالاسم والملاحظة والنوع والنطاق والحالة.
+  Widget _filterBar() => Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 240,
+            child: TextField(
+              key: const Key('backup-search'),
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                  isDense: true, prefixIcon: Icon(Icons.search, size: 18), hintText: 'بحث في الاسم والملاحظة'),
+            ),
+          ),
+          SizedBox(
+            width: 150,
+            child: DropdownButtonFormField<String?>(
+              key: const Key('backup-kind-filter'),
+              initialValue: _kindFilter,
+              isDense: true,
+              // ⚠️ **يُقصّ داخل عرضه لا يفيض** — كان «قاعدة فقط» يفيض بكسلين حين يكبر الخطّ.
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'النوع', isDense: true),
+              items: [for (final e in kBackupKindFilters.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+              onChanged: (v) => setState(() => _kindFilter = v),
+            ),
+          ),
+          SizedBox(
+            width: 170,
+            child: DropdownButtonFormField<String?>(
+              initialValue: _scopeFilter,
+              isDense: true,
+              // ⚠️ **يُقصّ داخل عرضه لا يفيض** — كان «قاعدة فقط» يفيض بكسلين حين يكبر الخطّ.
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'النطاق', isDense: true),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('الكل')),
+                DropdownMenuItem(value: 'Full', child: Text('كاملة')),
+                DropdownMenuItem(value: 'DbOnly', child: Text('قاعدة فقط')),
+              ],
+              onChanged: (v) => setState(() => _scopeFilter = v),
+            ),
+          ),
+          SizedBox(
+            width: 140,
+            child: DropdownButtonFormField<bool?>(
+              initialValue: _statusFilter,
+              isDense: true,
+              // ⚠️ **يُقصّ داخل عرضه لا يفيض** — كان «قاعدة فقط» يفيض بكسلين حين يكبر الخطّ.
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'الحالة', isDense: true),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('الكل')),
+                DropdownMenuItem(value: true, child: Text('ناجحة')),
+                DropdownMenuItem(value: false, child: Text('فاشلة')),
+              ],
+              onChanged: (v) => setState(() => _statusFilter = v),
+            ),
+          ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -324,6 +439,77 @@ class _State extends ConsumerState<BackupScreen> {
             style: TextStyle(color: Colors.grey, fontSize: 12.5, height: 1.6),
           ),
           const SizedBox(height: 16),
+
+          // 🧰 **شريط الأزرار — كلُّ ما يُفعل هنا في موضعٍ واحد** (ADR-055، طلب المالك). كانت الاستعادة
+          //    من الجهاز غائبة، و«استعادة من مرآة» مدفونةً في بطاقتها فظُنّت الاستعادةَ الوحيدة.
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                key: const Key('backup-run-now'),
+                onPressed: _busy ? null : _runNow,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.action(context),
+                  foregroundColor: AppColors.onAction(context),
+                ),
+                icon: const Icon(Icons.backup_rounded, size: 18),
+                label: const Text('أخذ نسخة الآن'),
+              ),
+              OutlinedButton.icon(
+                key: const Key('backup-upload'),
+                onPressed: _busy ? null : _uploadFromDevice,
+                icon: const Icon(Icons.upload_file_rounded, size: 18),
+                label: const Text('استعادة نسخة من جهازي'),
+              ),
+              OutlinedButton.icon(
+                key: const Key('backup-mirror-restore'),
+                onPressed: _busy ? null : _restoreMirror,
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.danger),
+                icon: const Icon(Icons.settings_backup_restore_rounded, size: 18),
+                label: const Text('استعادة من مرآة'),
+              ),
+              OutlinedButton.icon(
+                key: const Key('backup-mirror-run'),
+                onPressed: _busy ? null : _runMirror,
+                icon: const Icon(Icons.drive_file_move_rounded, size: 18),
+                label: const Text('تشغيل المرآة'),
+              ),
+              TextButton.icon(
+                onPressed: _busy ? null : _load,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('تحديث'),
+              ),
+            ],
+          ),
+          if (_info != null)
+            Padding(padding: const EdgeInsets.only(top: 10), child: Text(_info!, style: const TextStyle(color: Colors.green))),
+          if (_error != null)
+            Padding(padding: const EdgeInsets.only(top: 10), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+          const SizedBox(height: 16),
+
+          // ⬆️ **الرفع قبل أن يبدأ الفحص** — نسبةُ ما وصل الخادم (والفحص بعده بطاقةُ العمليات المعتادة).
+          if (_uploadName != null) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('رفع النسخة: $_uploadName',
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(value: _uploadProgress),
+                    const SizedBox(height: 6),
+                    Text('${(_uploadProgress * 100).toStringAsFixed(0)}% — لا تغلق الصفحة حتى يكتمل الرفع.',
+                        style: const TextStyle(fontSize: 12.5)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // ⚙️ العملية الجارية أعلى الشاشة — **فوق كل شيء** لأنها ما ينتظره المالك الآن.
           if (_job != null) ...[
@@ -393,35 +579,27 @@ class _State extends ConsumerState<BackupScreen> {
           ),
           const SizedBox(height: 16),
 
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              FilledButton.icon(
-                onPressed: _busy ? null : _runNow,
-                icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.backup),
-                label: const Text('نسخة احتياطية الآن'),
-              ),
-              TextButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh), label: const Text('تحديث')),
-            ],
-          ),
-          if (_info != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_info!, style: const TextStyle(color: Colors.green))),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-          const SizedBox(height: 16),
-
-          Text('النسخ السابقة (${_list.length})', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+              _shown.length == _list.length
+                  ? 'النسخ السابقة (${_list.length})'
+                  : 'النسخ السابقة — المعروض ${_shown.length} من ${_list.length}',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
+          _filterBar(),
+          const SizedBox(height: 10),
           if (_list.isEmpty)
             const Text('لا توجد نسخ بعد.', style: TextStyle(color: Colors.grey))
+          else if (_shown.isEmpty)
+            const Text('لا نسخ تطابق البحث.', style: TextStyle(color: Colors.grey))
           else
-            ..._list.map((r) => Card(
+            ..._shown.map((r) => Card(
                   child: ListTile(
                     leading: Icon(r.status == 'Success' ? Icons.check_circle : Icons.error,
                         color: r.status == 'Success' ? Colors.green : Colors.red),
                     title: Text(_dt(r.createdAt)),
                     // النطاق والتصنيف يوضّحان ماذا تتضمّن النسخة ولماذا يختلف حجمها.
                     subtitle: Text(
-                        '${backupCategoryLabel(r.category)} • ${backupScopeLabel(r.scope)} • ${_size(r.sizeBytes)}'
+                        '${backupKindLabel(r)} • ${backupScopeLabel(r.scope)} • ${_size(r.sizeBytes)}'
                         '${r.note != null ? '\n${r.note}' : ''}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
