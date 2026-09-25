@@ -68,6 +68,7 @@ public static class DependencyInjection
         // 🛡️ منع إنشاء الكتاب نفسه مرّتين بعد انقطاع (ADR-051).
         services.AddScoped<IIdempotencyService, IdempotencyService>();
         services.AddScoped<IBackupService, BackupService>();
+        services.AddScoped<IBackupUploadService, BackupUploadService>();
 
         // ⚙️ العمليات الطويلة خارج الطلب (حدّ Cloudflare ~100 ثانية) — singleton لأن سجلّها
         //    وقفلها الحصريّ يجب أن يعيشا بين الطلبات. والحاملُ scoped: لكلّ نطاقٍ مستخدمُه.

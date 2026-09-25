@@ -67,6 +67,16 @@ public interface IBackupService
     Task<MirrorResult> MirrorAsync(string targetPath, CancellationToken ct = default, IJobProgress? progress = null);
 
     /// <summary>استعادة من مرآة — عملية تدميرية تتطلب تأكيداً صريحاً.</summary>
+    /// <summary>
+    /// يفحص نسخةً **مرفوعة من جهاز المستخدم** ويسجّلها في القائمة (ADR-055) — ولا يستعيدها.
+    /// </summary>
+    /// <remarks>
+    /// الفحص: أرشيفٌ سليم فيه <c>database.bak</c> · **ترويسةُ الـbak من SQL Server نفسه** (صالحةٌ وإصدارُها
+    /// لا يفوق هذا الخادم) · **وإصدارُ البرنامج وآخرُ مهاجرة** لا يفوقان هذا الخادم. أيُّ رفضٍ يحذف الملف.
+    /// </remarks>
+    Task<BackupRecord> ImportUploadedAsync(string partPath, string originalName,
+        CancellationToken ct = default, IJobProgress? progress = null);
+
     Task<MirrorRestoreResult> RestoreFromMirrorAsync(string sourcePath, string confirmation,
         CancellationToken ct = default, IJobProgress? progress = null);
 }
@@ -92,6 +102,39 @@ public sealed class BackupService(
 {
     /// <summary>كلمة التأكيد المطلوبة للاستعادة (Hint: حاجز ثانٍ فوق صلاحية السوبر أدمن).</summary>
     public const string RestoreConfirmation = "استعادة";
+
+    // ─────────────────────────── أصل النسخة وتوافقها (ADR-055) ───────────────────────────
+
+    private string ConnectionString => config.GetConnectionString("Default")!;
+
+    /// <summary>الإصدار الرئيسيّ لـSQL Server هنا — ثابتٌ طوال عمر الخدمة فيُحفظ بعد أوّل سؤال.</summary>
+    private static int? _serverSqlMajor;
+
+    private async Task<int> ServerSqlMajorAsync(CancellationToken ct) =>
+        _serverSqlMajor ??= await BackupOriginReader.ServerSqlMajorAsync(ConnectionString, ct);
+
+    /// <summary>ما تحمله كلُّ نسخةٍ جديدة عن نفسها — الإصدار وآخر مهاجرة وإصدار SQL Server.</summary>
+    private async Task<BackupOriginReader.BackupInfo> CurrentOriginAsync(CancellationToken ct)
+    {
+        int? sql = null;
+        try { sql = await ServerSqlMajorAsync(ct); }
+        catch { /* ⚠️ غيابُه لا يُفشل نسخة — يُفحص من ترويسة الـbak عند الرفع */ }
+        return new BackupOriginReader.BackupInfo(
+            BackupOriginReader.CurrentAppVersion.Display,
+            db.Database.GetMigrations().LastOrDefault(), sql, DateTime.UtcNow);
+    }
+
+    /// <summary>
+    /// 🔴 **لا تُستعاد نسخةٌ أحدث من الخادم** — قاعدةٌ واحدة (`BackupCompatibility`) عند الرفع وقبل كل استعادة.
+    /// </summary>
+    /// <returns>الحكم مع رسالته (للتنبيه حين تُقبل نسخةٌ قديمة بلا إصدار).</returns>
+    internal async Task<(BackupVerdict Verdict, string Message)> EnsureCompatibleAsync(BackupOrigin origin, CancellationToken ct)
+    {
+        var result = BackupCompatibility.Check(origin, BackupOriginReader.CurrentAppVersion,
+            db.Database.GetMigrations().ToList(), await ServerSqlMajorAsync(ct));
+        if (!BackupCompatibility.Allows(result.Verdict)) throw new ValidationException(result.Message);
+        return result;
+    }
 
     public async Task<BackupRecord> RunAsync(
         BackupType type, BackupScope scope, RetentionCategory category,
@@ -141,6 +184,7 @@ public sealed class BackupService(
 
         var status = BackupStatus.Success;
         string? note = null;
+        var origin = await CurrentOriginAsync(ct);
 
         // 1) نسخ قاعدة البيانات (على اتصال مستقل لتفادي استراتيجية إعادة المحاولة/المعاملات).
         progress?.Report(stagePrefix + "نسخ قاعدة البيانات");
@@ -195,6 +239,8 @@ public sealed class BackupService(
             // Hint: المسار والحجم يكفيان لكشف الفقد، ولا نحسب بصمة تجزئة — على 80 غيغا
             //       تستغرق دقائق طويلة في كل نسخة يومية مقابل فائدة لا نحتاجها هنا.
             WriteManifest(zip, paths.StorageRoot);
+            // 🏷️ **أصلُ النسخة** (ADR-055) — به يُرفض استعادتها فوق برنامجٍ أقدم منها.
+            BackupOriginReader.Write(zip, origin);
         }
         catch (Exception ex)
         {
@@ -297,6 +343,10 @@ public sealed class BackupService(
         }
         if (!hasDb)
             throw new ValidationException("الأرشيف لا يحتوي نسخة قاعدة بيانات (database.bak).");
+
+        // 🔴 **قبل أن يُلمس شيء** (ADR-055): نسخةٌ من إصدارٍ أحدث تُرفض هنا — فتعود رسالةً فوراً
+        //    بدل قاعدةٍ متقدّمةٍ على الكود. (والنسخ المرفوعة فُحصت عند رفعها أيضاً، ومعها ترويسة الـbak.)
+        await EnsureCompatibleAsync(BackupOriginReader.FromZip(zipPath), ct);
 
         return (rec, zipPath, hasFiles);
     }
@@ -528,6 +578,8 @@ public sealed class BackupService(
             }
 
             File.Copy(stagedBak, bakPath, overwrite: true);
+            // 🏷️ أصلُ المرآة بجوار قاعدتها (ADR-055) — تُفحص به قبل استعادتها.
+            BackupOriginReader.Write(target, await CurrentOriginAsync(ct));
         }
         catch (Exception ex)
         {
@@ -591,7 +643,22 @@ public sealed class BackupService(
 
         var source = MirrorPathValidator.Validate(sourcePath, paths.StorageRoot, paths.BackupDir);
         if (!File.Exists(Path.Combine(source, "database.bak")))
-            throw new NotFoundException($"لم يُعثر على database.bak في المسار المحدّد ({source}).");
+        {
+            // 🐛 **بلاغ المالك (2026-09-24)**: وجّه «استعادة من مرآة» إلى مجلدٍ فيه نسخةٌ عادية (`.zip`)
+            //    فقيل له «لم يُعثر على database.bak» — صحيحٌ ولا يدلّه على شيء. المرآةُ مجلدٌ فيه
+            //    `database.bak` و`files/`، والنسخةُ العادية ملفٌّ مضغوط **يُستعاد من «استعادة نسخة من جهازي»**.
+            var zips = Directory.Exists(source) ? Directory.GetFiles(source, "*.zip").Length : 0;
+            throw zips > 0
+                ? new ValidationException(
+                    $"هذا المجلد فيه نسخةٌ عادية مضغوطة ({zips} ملف .zip) لا مرآة. " +
+                    "استعِدها من زرّ «استعادة نسخة من جهازي» في شاشة النسخ الاحتياطي.")
+                : new NotFoundException(
+                    $"لم يُعثر على مرآةٍ في المسار ({source}) — المرآة مجلدٌ فيه database.bak ومجلد files، " +
+                    "يُنشئه زرّ «تشغيل المرآة».");
+        }
+
+        // 🔴 **وتوافقُ الإصدار قبل أن يُلمس شيء** (ADR-055).
+        EnsureCompatibleAsync(BackupOriginReader.FromDirectory(source), CancellationToken.None).GetAwaiter().GetResult();
         return source;
     }
 
@@ -662,6 +729,87 @@ public sealed class BackupService(
 
         return new MirrorRestoreResult(source, restored,
             $"تمت الاستعادة من المرآة. أُعيد {restored} ملفاً، وأُنشئت نسخة أمان قبل الاستبدال.");
+    }
+
+    // ─────────────────────────── نسخةٌ مرفوعة من جهاز المستخدم (ADR-055) ───────────────────────────
+
+    public async Task<BackupRecord> ImportUploadedAsync(string partPath, string originalName,
+        CancellationToken ct = default, IJobProgress? progress = null)
+    {
+        var accepted = false;
+        var checkBak = Path.Combine(paths.BackupDir, $"upload-check-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}.bak");
+        try
+        {
+            progress?.Report("فحص الأرشيف");
+            bool hasFiles;
+            try
+            {
+                using var zip = ZipFile.OpenRead(partPath);
+                var db0 = zip.GetEntry("database.bak")
+                          ?? throw new ValidationException(
+                              "هذا الملف ليس نسخةً احتياطية من النظام — لا يحوي نسخة قاعدة البيانات (database.bak).");
+                hasFiles = zip.Entries.Any(e => e.FullName.StartsWith("files/", StringComparison.Ordinal));
+
+                // ⚠️ **تُفكّ قاعدةُ النسخة إلى مجلد النسخ** — محرّك SQL يقرؤها بحسابه، ويكتب هناك أصلاً.
+                progress?.Report("فكّ نسخة قاعدة البيانات للفحص");
+                db0.ExtractToFile(checkBak, overwrite: true);
+            }
+            catch (InvalidDataException)
+            {
+                throw new ValidationException("الملف ليس أرشيفاً مضغوطاً سليماً — ربما انقطع التنزيل أو الرفع.");
+            }
+
+            progress?.Report("فحص نسخة قاعدة البيانات");
+            int? bakSql;
+            try { bakSql = await BackupOriginReader.BakSqlMajorAsync(ConnectionString, checkBak, ct); }
+            catch (Microsoft.Data.SqlClient.SqlException ex)
+            {
+                // 🔑 **الترويسة يقرؤها SQL Server نفسه** — فإن رفضها فهي ليست نسخةً يمكن استعادتها هنا.
+                //    (ونسخةٌ من SQL Server أحدث تُرفض هنا بخطأ الإصدار نفسه.)
+                throw new ValidationException("تعذّر على SQL Server قراءة نسخة قاعدة البيانات في الملف: " + ex.Message);
+            }
+
+            // 🔑 **إصدارُ SQL من الترويسة لا مما كتبناه** — الحَكَم الصادق، ويصلح للنسخ القديمة.
+            var origin = BackupOriginReader.FromZip(partPath);
+            origin = origin with { SqlMajorVersion = bakSql ?? origin.SqlMajorVersion };
+            progress?.Report("فحص توافق الإصدار");
+            var (_, verdictMessage) = await EnsureCompatibleAsync(origin, ct);
+
+            // ✅ مقبولة — تنتقل إلى مجلد النسخ وتُسجَّل.
+            var fileName = $"uploaded-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            var dest = Path.Combine(paths.BackupDir, fileName);
+            File.Move(partPath, dest);
+            accepted = true;
+
+            var note = $"مرفوعة من جهاز: {originalName} · {verdictMessage}";
+            var rec = new BackupRecord
+            {
+                CreatedAt = DateTime.UtcNow,
+                CreatedByUserId = current.UserId,
+                FileName = fileName,
+                SizeBytes = new FileInfo(dest).Length,
+                Type = BackupType.Uploaded,
+                Scope = hasFiles ? BackupScope.Full : BackupScope.DbOnly,
+                // ⚠️ **يدويةٌ في الاحتفاظ** — لا تُقلَّم مع اليومية؛ يحذفها المالك متى شاء (قراره).
+                Category = RetentionCategory.Manual,
+                Status = BackupStatus.Success,
+                Note = note.Length > 1000 ? note[..1000] : note,
+            };
+            db.BackupRecords.Add(rec);
+            audit.Add("BackupUpload", nameof(BackupRecord), null,
+                $"رفع نسخة من جهاز: {originalName} ({BackupUploadService.Size(rec.SizeBytes)}) — {verdictMessage}", null);
+            await db.SaveChangesAsync(ct);
+
+            progress?.Succeed($"رُفعت النسخة وفُحصت ({BackupUploadService.Size(rec.SizeBytes)}) — " +
+                              "تجدها في القائمة، واستعِدها من زرّ الاستعادة بجانبها.");
+            return rec;
+        }
+        finally
+        {
+            if (File.Exists(checkBak)) { try { File.Delete(checkBak); } catch { /* أفضل جهد */ } }
+            // 🔴 **الرفضُ يحذف الملف** — لا يبقى على القرص ما لن يُستعاد أبداً.
+            if (!accepted && File.Exists(partPath)) { try { File.Delete(partPath); } catch { /* أفضل جهد */ } }
+        }
     }
 
     // ─────────────────────────── بيان الملفات ───────────────────────────

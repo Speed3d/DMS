@@ -13,7 +13,8 @@ namespace Dms.Api.Controllers;
 [Authorize(Roles = "SuperAdmin")] // النسخ الاحتياطي للسوبر أدمن فقط
 [RequireModule(AppModule.Backup)]
 [Route("api/[controller]")]
-public sealed class BackupController(IBackupService backup, IBackgroundJobs jobs, ICurrentUser current) : ControllerBase
+public sealed class BackupController(
+    IBackupService backup, IBackupUploadService uploads, IBackgroundJobs jobs, ICurrentUser current) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<BackupRecordDto>>> List(CancellationToken ct)
@@ -31,8 +32,10 @@ public sealed class BackupController(IBackupService backup, IBackgroundJobs jobs
     public async Task<ActionResult<BackupCoverageDto>> Coverage(CancellationToken ct)
     {
         var records = await backup.ListAsync(ct);
+        // ⚠️ **المرفوعة من جهازٍ آخر لا تُحسب** (ADR-055) — التغطية سؤالٌ عن بيانات **هذا** الخادم،
+        //    ونسخةٌ جاءت من غيره لا تحميها.
         var lastFull = records
-            .Where(r => r.Scope == BackupScope.Full && r.Status == BackupStatus.Success)
+            .Where(r => r.Scope == BackupScope.Full && r.Status == BackupStatus.Success && r.Type != BackupType.Uploaded)
             .OrderByDescending(r => r.CreatedAt)
             .FirstOrDefault();
 
@@ -142,6 +145,42 @@ public sealed class BackupController(IBackupService backup, IBackgroundJobs jobs
             return null;
         });
         return Accepted(JobResponse.From(job));
+    }
+
+    // ════════ استعادة نسخةٍ من جهاز المستخدم (ADR-055) — رفعٌ بقطع ثم فحصٌ خلفيّ ════════
+    //
+    // 🐛 **بلاغ المالك (2026-09-24)**: لا طريق لاستعادة نسخةٍ أُخذت على جهازٍ آخر. الآن: تبدأ الرفع ·
+    //    تُرسل القطع بالترتيب (≤ 32 ميغا — حدّ Cloudflare 100) · ثم «اكتمل» فتُفحص في الخلفية وتصير
+    //    نسخةً في القائمة. **والاستعادة بعدها بالزرّ القائم** بضماناته كلّها.
+
+    /// <summary>يبدأ رفع نسخة — يفحص الاسم والحجم ومساحة القرص **قبل** أوّل بايت.</summary>
+    [HttpPost("uploads")]
+    public ActionResult<UploadSession> StartUpload(StartBackupUploadRequest req) =>
+        uploads.Start(req.FileName, req.SizeBytes);
+
+    /// <summary>قطعةٌ بالترتيب — الجسم بايتاتٌ خامّ (<c>application/octet-stream</c>).</summary>
+    /// <remarks>⚠️ **حدُّ الطلب مرفوعٌ هنا وحدها** — الافتراض (~28 ميغا) أصغر من القطعة.</remarks>
+    [HttpPut("uploads/{uploadId}/chunks/{index:int}")]
+    [RequestSizeLimit(BackupUploadService.MaxChunkRequestBytes)]
+    public async Task<ActionResult<UploadSession>> UploadChunk(string uploadId, int index, CancellationToken ct) =>
+        await uploads.AppendAsync(uploadId, index, Request.Body, ct);
+
+    /// <summary>اكتمل الرفع — يُفحص الملف **في الخلفية** (فكُّ القاعدة وقراءة ترويستها قد يطول) ويُسجَّل.</summary>
+    [HttpPost("uploads/{uploadId}/complete")]
+    public ActionResult<JobResponse> CompleteUpload(string uploadId)
+    {
+        var (part, name) = uploads.EnsureComplete(uploadId);
+        var job = jobs.Start("backup-upload", "فحص نسخةٍ مرفوعة", current, async (sp, progress, ct) =>
+            Map(await sp.GetRequiredService<IBackupService>().ImportUploadedAsync(part, name, ct, progress)));
+        return Accepted(JobResponse.From(job));
+    }
+
+    /// <summary>يُلغي رفعاً ويحذف ما وصل منه.</summary>
+    [HttpDelete("uploads/{uploadId}")]
+    public IActionResult AbortUpload(string uploadId)
+    {
+        uploads.Abort(uploadId);
+        return NoContent();
     }
 
     [HttpGet("schedule")]

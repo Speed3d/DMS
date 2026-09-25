@@ -614,6 +614,9 @@ public sealed record MirrorRequest(string TargetPath);
 public sealed record MirrorRestoreRequest(string SourcePath, string Confirmation);
 public sealed record BackupScheduleDto(BackupFrequency Frequency, bool Enabled, int Hour, DateTime? LastRunAt, DateTime? NextRunAt);
 public sealed record UpdateBackupScheduleRequest(BackupFrequency Frequency, bool Enabled, int Hour);
+/// <summary>بدء رفع نسخةٍ من جهاز المستخدم (ADR-055).</summary>
+public sealed record StartBackupUploadRequest(string FileName, long SizeBytes);
+
 public sealed record RestoreBackupRequest(string Confirmation);
 
 // ----------------- Audit / Verify -----------------

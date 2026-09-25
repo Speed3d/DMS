@@ -1,7 +1,8 @@
 namespace Dms.Domain;
 
 public enum BackupFrequency { Off = 0, Daily = 1, Weekly = 2 }
-public enum BackupType { Manual = 0, Scheduled = 1 }
+/// <remarks><c>Uploaded</c>: مرفوعةٌ من جهاز المستخدم (ADR-055) — لا يأخذها هذا الخادم بل يستوردها.</remarks>
+public enum BackupType { Manual = 0, Scheduled = 1, Uploaded = 2 }
 public enum BackupStatus { Success = 0, Failed = 1 }
 
 /// <summary>
