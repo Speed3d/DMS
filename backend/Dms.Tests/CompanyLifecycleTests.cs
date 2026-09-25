@@ -49,6 +49,34 @@ public class CompanyLifecycleTests
         Assert.Equal(5, c.WillBeErased);   // ⚠️ ويُعلَن أنه سيُمحى فعلياً
     }
 
+    // ─────────────────────── G23 (ADR-053): البيان لا يُعلن أقلّ ممّا يُمحى ───────────────────────
+
+    [Fact]
+    public void SoftDeletedOfEveryKind_IsCountedInWhatWillBeErased()
+    {
+        // 🔴 كان البيان يعدّ محذوفَ الصادر والوارد وحدهما — والحذفُ يمحو معهما الأرشيفَ
+        //    والمهامَّ والمعاملاتِ وإسناداتِ الموظفين المحذوفة ناعماً.
+        var c = new CompanyContents(0, 1, 0, 1, 0, 0, 0, 0,
+            Users: 0, SoleCompanyUsers: 0, Departments: 0, Entities: 0, Templates: 0,
+            DeletedArchive: 2, DeletedTasks: 3, DeletedCaseFiles: 4, DeletedEmployees: 5);
+
+        Assert.Equal(16, c.DeletedRecords);
+        Assert.Equal(16, c.WillBeErased);
+        Assert.Equal(0, c.LiveRecords);   // ⚠️ ولا يمنع الحذف — قرار المالك 2026-09-21
+    }
+
+    [Fact]
+    public void SoftDeletedOfEveryKind_DoesNotBlockDeletion()
+    {
+        var c = new CompanyContents(0, 0, 0, 0, 0, 0, 0, 0,
+            Users: 0, SoleCompanyUsers: 0, Departments: 0, Entities: 0, Templates: 0,
+            DeletedArchive: 1, DeletedTasks: 1, DeletedCaseFiles: 1, DeletedEmployees: 1);
+
+        Assert.Equal(CompanyBlockReason.None, CompanyLifecycle.CanDelete(
+            isEnabled: false, isActiveCompany: false, isLastCompany: false,
+            contents: c, name: "س", confirmation: "س"));
+    }
+
     [Theory]
     [InlineData(1, 0, 0, 0, 0, 0)]   // صادر حيّ
     [InlineData(0, 1, 0, 0, 0, 0)]   // وارد حيّ

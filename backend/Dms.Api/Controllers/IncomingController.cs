@@ -110,7 +110,8 @@ public sealed class IncomingController(
             b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
             d.Replies.Select(r => new ReplyLinkDto(
                 r.OutgoingId, r.Number, r.Date, r.Subject, r.LinkedAt)).ToList(),
-            b.CreatedAt);
+            b.CreatedAt,
+            d.HiddenReplies);
     }
 
     [HttpPost]

@@ -77,7 +77,11 @@ public sealed class CompanyDeletionService(
         SoleCompanyUsers: await SoleCompanyUsersAsync(id, ct),
         Departments:      await db.Departments.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct),
         Entities:         await db.Entities.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct),
-        Templates:        await db.Templates.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct));
+        Templates:        await db.Templates.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id, ct),
+        DeletedArchive:   await db.ArchiveDocs.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && x.IsDeleted, ct),
+        DeletedTasks:     await db.DmsTasks.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && x.IsDeleted, ct),
+        DeletedCaseFiles: await db.CaseFiles.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && x.IsDeleted, ct),
+        DeletedEmployees: await db.EmployeeCompanies.IgnoreQueryFilters().CountAsync(x => x.CompanyId == id && x.IsDeleted, ct));
 
     private async Task<(Company c, CompanyContents contents, CompanyBlockReason block)> CheckAsync(
         int id, string? confirm, CancellationToken ct)

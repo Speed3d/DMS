@@ -41,7 +41,11 @@ public sealed record CompanyDeletePreviewResponse(
     int Users, int SoleCompanyUsers,
     int Departments, int Entities, int Templates,
     int WillBeErased,
-    bool CanDelete, string BlockReason, string? BlockMessage);
+    bool CanDelete, string BlockReason, string? BlockMessage,
+    // المحذوف ناعماً في بقية الأنواع — يُمحى فيُعلَن (G23 — ADR-053). و`DeletedRecords` مجموعُ
+    // المحذوف كلِّه **محسوباً في الخادم** فلا تجمعه الواجهة فتتباعد.
+    int DeletedArchive = 0, int DeletedTasks = 0, int DeletedCaseFiles = 0, int DeletedEmployees = 0,
+    int DeletedRecords = 0);
 
 public sealed record CompanyResponse(int CompanyId, string Name, string Prefix, bool IsActive, string? DefaultSignatoryName, string? DefaultSignatoryTitle, string? LogoImageKey);
 
@@ -396,7 +400,14 @@ public sealed record OutgoingDetail(
     /// يفتح صفحةً تعرض **أقلَّ** ممّا يراه. وفائدتُه أن يُنسَخ ويُرسَل لمن يريد التحقق.
     /// ⚠️ **ويُعاد ولو لم يُضبط `PublicBaseUrl`** (مساراً نسبياً) — فالفحص الآليّ يحتاجه.
     /// </remarks>
-    string? VerifyUrl = null);
+    string? VerifyUrl = null,
+
+    /// <summary>واردٌ يجيبه هذا الصادر **ولا يراه الطالب** — بالعدد وحده (G20 — ADR-053).</summary>
+    /// <remarks>
+    /// يُحجب لسببين: لا يملك قسم الوارد أصلاً، أو الوارد خارج حدّ قسمه (ADR-015/018).
+    /// كان الثاني يُسقَط صامتاً فيبدو الصادر مجيباً لكتبٍ أقلّ ممّا يجيب.
+    /// </remarks>
+    int HiddenRepliesCount = 0);
 
 public sealed record VersionResponse(int VersionNo, DateTime ChangedAt, int ChangedByUserId, string? ChangeNote);
 
@@ -443,7 +454,9 @@ public sealed record IncomingDetail(
     ReceiveMethod ReceiveMethod, int ReceivedByUserId, string ReceivedByUserName,
     IncomingStatus Status, List<IncomingAssignmentDto> Departments, string? LastAction, string? Keywords, string? Notes,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate, decimal? AmountInIqd,
-    List<ReplyLinkDto> Replies, DateTime CreatedAt);
+    List<ReplyLinkDto> Replies, DateTime CreatedAt,
+    /// <summary>ردودٌ صادرة **محجوبةٌ بالعدد** عمّن لا يملك قسم الصادر (G20 — ADR-053).</summary>
+    int HiddenRepliesCount = 0);
 
 /// <summary>رابطُ ردّ — كتابٌ في الطرف الآخر مع لحظة ربطه (ADR-045).</summary>
 /// <remarks>

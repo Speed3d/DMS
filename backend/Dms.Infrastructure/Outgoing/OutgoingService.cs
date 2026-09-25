@@ -431,6 +431,8 @@ public sealed class OutgoingService(
     {
         var role = current.Role ?? UserRole.Reader;
         if (RoleHierarchy.IsManagerOrAbove(role)) return true;
+        // 🔐 **ولا بتفويض (G22 — ADR-053)**: التفويض يمنح الاعتماد لأيّ مستلِم، والقارئ منهم.
+        if (!RoleHierarchy.IsEmployeeOrAbove(role)) return false;
         if (current.CanApprove) return true;
         // تفويض نشط ضمن المدّة
         var now = DateTime.UtcNow;

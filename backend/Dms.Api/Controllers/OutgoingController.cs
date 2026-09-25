@@ -20,7 +20,7 @@ namespace Dms.Api.Controllers;
 [Route("api/[controller]")]
 public sealed class OutgoingController(
     IOutgoingService svc, IIncomingService incoming, AppDbContext db,
-    IOptions<QrSigningOptions> qrOptions) : ControllerBase
+    IOptions<QrSigningOptions> qrOptions, ICurrentUser current) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<OutgoingListItem>>> List(
@@ -48,14 +48,26 @@ public sealed class OutgoingController(
         // 🔐 **يمرّ بـ`IIncomingService.Query()` لا بـ`db.IncomingBooks`** — وهو تصحيحُ
         //    تسريبٍ كان قائماً: القراءة المباشرة كانت تكشف رقم واردٍ **محجوبٍ بحدّ القسم**
         //    لكلّ من يرى الصادر، والكلُّ يراه (ADR-030). ومع تعدّد الردود كانت ستصير قائمةً.
-        var repliesTo = await db.BookReplies
+        //
+        // 🔐 **G20 (ADR-053): و`Query()` لا تفحص قسم الوارد** — فمَن يملك الصادر وحده كان يرى
+        //    رقم الوارد وموضوعه. الآن: بلا قسم الوارد لا يُقرأ منه شيء، **وما يُحجب يُعدّ**
+        //    (نهج ADR-045) — وكان المحجوب بحدّ القسم يُسقَط صامتاً.
+        List<ReplyLinkDto> repliesTo = current.HasModule(AppModule.Incoming)
+            ? await db.BookReplies
+                .Where(r => r.OutgoingId == id)
+                .OrderBy(r => r.LinkedAt)
+                .Join(incoming.Query(), r => r.IncomingId, i => i.IncomingId,
+                    (r, i) => new ReplyLinkDto(i.IncomingId, i.IncomingNumber, i.ReceivedDate, i.Subject, r.LinkedAt))
+                .ToListAsync(ct)
+            : [];
+        // الكلُّ من الوارد **غير المحذوف في الشركة** (الفلتر العام نافذ) — والمحجوب هو الفرق.
+        var allReplies = await db.BookReplies
             .Where(r => r.OutgoingId == id)
-            .OrderBy(r => r.LinkedAt)
-            .Join(incoming.Query(), r => r.IncomingId, i => i.IncomingId,
-                (r, i) => new ReplyLinkDto(i.IncomingId, i.IncomingNumber, i.ReceivedDate, i.Subject, r.LinkedAt))
-            .ToListAsync(ct);
+            .Join(db.IncomingBooks, r => r.IncomingId, i => i.IncomingId, (r, i) => r.IncomingId)
+            .CountAsync(ct);
 
-        return Detail(book, entityName, svc.CanCurrentUserApprove(), repliesTo);
+        return Detail(book, entityName, svc.CanCurrentUserApprove(), repliesTo,
+            hiddenReplies: allReplies - repliesTo.Count);
     }
 
     [HttpPost]
@@ -158,14 +170,15 @@ public sealed class OutgoingController(
     }
 
     private OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,
-        List<ReplyLinkDto>? repliesTo = null) => new(
+        List<ReplyLinkDto>? repliesTo = null, int hiddenReplies = 0) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
         b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
         b.QrContent, b.GeneratedPdfBlobKey != null, b.ApprovedByUserId, b.ApprovedAt,
         b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson,
         repliesTo ?? [],
-        VerifyUrl(b));
+        VerifyUrl(b),
+        hiddenReplies);
 
     /// <summary>رابط التحقق العامّ — **للمعتمد وحده**، فالمسودّة بلا رمزٍ مطبوع.</summary>
     private string? VerifyUrl(OutgoingBook b)

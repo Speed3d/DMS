@@ -237,8 +237,10 @@ public sealed class UserService(
                 CompanyId = cid,
                 Modules = ResolveModules(wish?.Modules, role, prior?.Modules),
                 DepartmentId = deptId,
-                CanApprove = byRole || (wish?.CanApprove ?? false),
-                CanManageIncoming = byRole || (wish?.CanManageIncoming ?? false),
+                // 🔐 **`grantable` تجرّد القارئ منهما (G22 — ADR-053)** كما تجرّده من أعلام الأقسام
+                //    الحسّاسة أدناه: «اطّلاعٌ لا معالجة» — لا يعتمد صادراً ولا يدير حالات الوارد.
+                CanApprove = byRole || (grantable && (wish?.CanApprove ?? false)),
+                CanManageIncoming = byRole || (grantable && (wish?.CanManageIncoming ?? false)),
                 // Hint: `byRole` يعني المدير فأعلى — وهو يرى كل كتب الشركة بحكم دوره أصلاً
                 //       (قاعدة الرؤية لا تقيّده)، فمنحُه العلَم توثيقٌ للواقع لا توسعة.
                 CanViewAllIncoming = byRole || (wish?.CanViewAllIncoming ?? false),

@@ -37,4 +37,17 @@ public class RoleHierarchyTests
     [InlineData(UserRole.Employee, false)]
     public void IsPresidentOrAbove(UserRole role, bool expected)
         => Assert.Equal(expected, RoleHierarchy.IsPresidentOrAbove(role));
+
+    /// <summary>
+    /// الحدُّ الذي يجرّد القارئ من الاعتماد وإدارة الوارد (G22 — ADR-053) ومن الأعلام الحسّاسة
+    /// (ADR-037) — قاعدةٌ واحدة لكل ما «يعالج»، فالقارئ «يطّلع ولا يعالج».
+    /// </summary>
+    [Theory]
+    [InlineData(UserRole.SuperAdmin, true)]
+    [InlineData(UserRole.President, true)]
+    [InlineData(UserRole.Manager, true)]
+    [InlineData(UserRole.Employee, true)]
+    [InlineData(UserRole.Reader, false)]
+    public void IsEmployeeOrAbove_ExcludesOnlyTheReader(UserRole role, bool expected)
+        => Assert.Equal(expected, RoleHierarchy.IsEmployeeOrAbove(role));
 }

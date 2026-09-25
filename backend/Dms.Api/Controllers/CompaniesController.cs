@@ -202,7 +202,9 @@ public sealed class CompaniesController(
             block.ToString(),
             block == CompanyBlockReason.None
                 ? null
-                : CompanyLifecycle.Explain(block, c.Name, contents));
+                : CompanyLifecycle.Explain(block, c.Name, contents),
+            contents.DeletedArchive, contents.DeletedTasks, contents.DeletedCaseFiles, contents.DeletedEmployees,
+            contents.DeletedRecords);
     }
 
     /// <summary>

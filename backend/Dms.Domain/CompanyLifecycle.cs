@@ -11,7 +11,10 @@ public sealed record CompanyContents(
     int LiveOutgoing, int DeletedOutgoing,
     int LiveIncoming, int DeletedIncoming,
     int Archive, int Employees, int Tasks, int CaseFiles,
-    int Users, int SoleCompanyUsers, int Departments, int Entities, int Templates)
+    int Users, int SoleCompanyUsers, int Departments, int Entities, int Templates,
+    // 🔴 **G23 (ADR-053): المحذوف ناعماً في بقية الأنواع يُمحى كذلك فيُعدّ.** كان البيان يعدّ
+    //    محذوفَ الصادر والوارد وحدهما، فيُعلن أقلّ ممّا يُمحى — خلافاً لـ«لا تحذف ما لا تراه».
+    int DeletedArchive = 0, int DeletedTasks = 0, int DeletedCaseFiles = 0, int DeletedEmployees = 0)
 {
     /// <summary>ما يمنع الحذف: أيُّ سجلٍّ **غير محذوف** (قرار المالك 2026-09-21).</summary>
     /// <remarks>
@@ -21,7 +24,11 @@ public sealed record CompanyContents(
     public int LiveRecords => LiveOutgoing + LiveIncoming + Archive + Employees + Tasks + CaseFiles;
 
     /// <summary>ما سيُمحى فعلياً لو مضى الحذف — **بما فيه المحذوف ناعماً**.</summary>
-    public int WillBeErased => LiveRecords + DeletedOutgoing + DeletedIncoming;
+    public int WillBeErased => LiveRecords + DeletedRecords;
+
+    /// <summary>كلُّ ما حُذف ناعماً ويُمحى مع الشركة — **لا يمنع الحذف** لكنه يُعلَن.</summary>
+    public int DeletedRecords =>
+        DeletedOutgoing + DeletedIncoming + DeletedArchive + DeletedTasks + DeletedCaseFiles + DeletedEmployees;
 }
 
 /// <summary>سببُ منع تعطيل الشركة أو حذفها — <c>null</c> يعني «مسموح».</summary>

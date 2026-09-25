@@ -32,6 +32,10 @@ public sealed class DelegationService(AppDbContext db, ICurrentUser current, IAu
 
         if (!current.IsSuperAdmin && !RoleHierarchy.CanManage(role, target.Role))
             throw new ForbiddenException("لا يمكنك التفويض إلا لمن هم أدنى منك.");
+        // 🔐 **القارئ لا يعتمد ولو بتفويض (G22 — ADR-053)** — ويُرفض هنا صراحةً لا يُقبل ثم
+        //    يُتجاهل صامتاً، فلا يظنّ المفوِّض أن التفويض يعمل.
+        if (!RoleHierarchy.IsEmployeeOrAbove(target.Role))
+            throw new ValidationException("لا يُفوَّض الاعتماد إلى «قارئ» — دوره اطّلاعٌ لا معالجة. غيّر دوره إلى «موظف» أولاً.");
         if (input.EndDate is not null && input.EndDate <= input.StartDate)
             throw new ValidationException("تاريخ نهاية التفويض يجب أن يكون بعد بدايته.");
 

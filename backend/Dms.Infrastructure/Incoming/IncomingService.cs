@@ -48,7 +48,9 @@ public sealed record IncomingDetailData(
     string? DocumentTypeName,
     string ReceivedByUserName,
     IReadOnlyList<ReplyLinkData> Replies,
-    IReadOnlyList<AssignmentData> Departments);
+    IReadOnlyList<AssignmentData> Departments,
+    // عددُ الردود المحجوبة عن الطالب لأنه لا يملك قسم الصادر (G20 — ADR-053).
+    int HiddenReplies = 0);
 
 /// <summary>كتابٌ صادرٌ ردَّ على هذا الوارد — للعرض في بطاقة الردود (ADR-045).</summary>
 public sealed record ReplyLinkData(int OutgoingId, string? Number, DateTime Date, string Subject, DateTime LinkedAt);
@@ -153,12 +155,22 @@ public sealed class IncomingService(
         // ⚠️ **الردود باستعلامٍ ثانٍ لا بـ`Include`** (درس ADR-034): `Include` نحو
         //    `OutgoingBooks` المفلتر يولّد `INNER JOIN` — وصادرٌ خرج من الفلتر (محذوفٌ
         //    ناعماً) كان **يحذف صفَّ الربط كلَّه** بدل أن يُفرّغ رقمه.
-        var replies = await db.BookReplies
+        var replyLinks = db.BookReplies
             .Where(r => r.IncomingId == id)
-            .OrderBy(r => r.LinkedAt)
-            .Join(db.OutgoingBooks, r => r.OutgoingId, o => o.OutgoingId,
-                (r, o) => new ReplyLinkData(o.OutgoingId, o.Number, o.Date, o.Subject, r.LinkedAt))
-            .ToListAsync(ct);
+            .Join(db.OutgoingBooks, r => r.OutgoingId, o => o.OutgoingId, (r, o) => new { r, o });
+
+        // 🔐 **G20 (ADR-053): رقمُ الصادر وموضوعُه لمن يملك قسم الصادر وحده.** كان يُعرض لكلّ
+        //    من يرى الوارد — ومَن لا يملك الصادر يرى الآن **العدد وحده** («المحجوب بالعدد»،
+        //    نهج ADR-045). والرؤية داخل القسم كاملة (ADR-030) فلا حاجة لـ`Query()` هنا.
+        List<ReplyLinkData> replies = [];
+        var hiddenReplies = 0;
+        if (current.HasModule(AppModule.Outgoing))
+            replies = await replyLinks
+                .OrderBy(x => x.r.LinkedAt)
+                .Select(x => new ReplyLinkData(x.o.OutgoingId, x.o.Number, x.o.Date, x.o.Subject, x.r.LinkedAt))
+                .ToListAsync(ct);
+        else
+            hiddenReplies = await replyLinks.CountAsync(ct);
 
         return new IncomingDetailData(
             book,
@@ -166,7 +178,8 @@ public sealed class IncomingService(
             docTypeName,
             await UserNameAsync(book.ReceivedByUserId, ct),
             replies,
-            departments);
+            departments,
+            hiddenReplies);
     }
 
     public async Task<IncomingBook> CreateAsync(CreateIncomingInput input, CancellationToken ct = default)
@@ -508,9 +521,9 @@ public sealed class IncomingService(
 
         await ApplyStatusAfterUnlinkAsync(incoming, outgoingId, ct);
 
-        incoming.LastAction = outgoing?.Number is { } num
-            ? $"تم فك الارتباط من الصادر {num}"
-            : "تم فك الارتباط من الصادر";
+        // 🔐 **بلا رقم الصادر (G20 — ADR-053)**: «آخر إجراء» وسجلُّ الحركة يقرؤهما كلُّ من يرى
+        //    الوارد — ومنهم من لا يملك قسم الصادر. والرقم يبقى في سجلّ التدقيق وحده.
+        incoming.LastAction = "تم فك الارتباط من كتابٍ صادر";
         incoming.UpdatedAt = DateTime.UtcNow;
 
         db.MovementLogs.Add(new MovementLog
@@ -518,14 +531,13 @@ public sealed class IncomingService(
             CompanyId = incoming.CompanyId,
             IncomingId = incoming.IncomingId,
             Action = "UnlinkedFromOutgoing",
-            Description = outgoing?.Number is { } n
-                ? $"تم فك ربط الكتاب من الصادر رقم {n}"
-                : "تم فك ربط الكتاب من الصادر",
+            Description = "تم فك ربط الكتاب من كتابٍ صادر",
             PerformedByUserId = current.UserId!.Value,
             PerformedAt = DateTime.UtcNow
         });
 
-        audit.Add("Unlink", nameof(IncomingBook), incomingId.ToString(), null, incoming.CompanyId);
+        audit.Add("Unlink", nameof(IncomingBook), incomingId.ToString(),
+            outgoing?.Number is { } num ? $"Unlinked from {num}" : null, incoming.CompanyId);
         await db.SaveChangesAsync(ct);
     }
 
@@ -573,7 +585,10 @@ public sealed class IncomingService(
         });
 
         incoming.Status = IncomingStatus.Replied;   // الربط بصادر معتمد = ردّ رسمي
-        incoming.LastAction = $"تم الرد بالصادر {outgoing.Number}";
+        // 🔐 **النصوص الثلاثة بلا رقم الصادر (G20 — ADR-053)** — كان «آخر إجراء» يحمله لكل من
+        //    يرى الوارد، فيُفشي ما حجبته `replies`. كشفه `gaps-e2e` بمطابقة الردّ الخامّ كلِّه.
+        //    والرقم لمن يملك قسم الصادر في بطاقة الردود، وفي سجلّ التدقيق (`Linked to …`).
+        incoming.LastAction = "تم الرد بكتابٍ صادر";
         incoming.UpdatedAt = DateTime.UtcNow;
 
         db.MovementLogs.Add(new MovementLog
@@ -581,7 +596,7 @@ public sealed class IncomingService(
             CompanyId = incoming.CompanyId,
             IncomingId = incoming.IncomingId,
             Action = "LinkedToOutgoing",
-            Description = $"تم ربط الكتاب بالصادر رقم {outgoing.Number}",
+            Description = "تم ربط الكتاب بردٍّ صادر",
             PerformedByUserId = current.UserId!.Value,
             PerformedAt = DateTime.UtcNow
         });
@@ -595,7 +610,8 @@ public sealed class IncomingService(
             RecipientUserId: incoming.ReceivedByUserId,
             CompanyId: incoming.CompanyId,
             Title: "صدر ردٌّ على كتابٍ استلمتَه",
-            Body: $"{incoming.Subject} — بالصادر {outgoing.Number}",
+            // ⚠️ **يصل مَن سجّل الوارد** — وقد لا يملك قسم الصادر، فلا رقمَ في النصّ.
+            Body: $"{incoming.Subject} — صدر بشأنه ردٌّ رسميّ",
             Category: NotificationKeys.IncomingCategory,
             EntityType: nameof(IncomingBook),
             EntityId: incoming.IncomingId,

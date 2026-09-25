@@ -40,9 +40,15 @@ public sealed class HttpCurrentUser : ICurrentUser
     private int? PerCompany(string claim) =>
         PerCompanyClaim.Read(_user?.FindFirstValue(claim), ActiveCompanyId);
 
-    public bool CanApprove => PerCompany(DmsClaims.CanApprove) == 1;
+    // 🔐 **القارئ لا يعتمد ولا يدير الوارد مهما حمل العلَم (G22 — ADR-053).** دوره «اطّلاعٌ
+    //    لا معالجة»، وكان العلَم يُمنح له في الشاشة فيعتمد كتاباً رسمياً بختمٍ موقَّع.
+    //    ⚠️ **الحارس هنا لا في الحفظ وحده**: الإسنادات القائمة قد تحمل `true` من قبل، والرمز
+    //    الصادر قبل الإصلاح يحمله — وهذا الموضع يقرأ الاثنين.
+    public bool CanApprove =>
+        RoleHierarchy.IsEmployeeOrAbove(Role ?? UserRole.Reader) && PerCompany(DmsClaims.CanApprove) == 1;
 
-    public bool CanManageIncoming => PerCompany(DmsClaims.CanManageIncoming) == 1;
+    public bool CanManageIncoming =>
+        RoleHierarchy.IsEmployeeOrAbove(Role ?? UserRole.Reader) && PerCompany(DmsClaims.CanManageIncoming) == 1;
 
     public bool CanViewAllIncoming => PerCompany(DmsClaims.CanViewAllIncoming) == 1;
 
