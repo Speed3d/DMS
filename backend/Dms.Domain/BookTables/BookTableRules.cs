@@ -100,6 +100,9 @@ public static partial class BookTableRules
                 if (covered[r, c]) Fail($"خليةٌ داخل دمجٍ آخر (الصفّ {r + 1}، العمود {c + 1}).");
                 if (cell.RowSpan < 1 || cell.ColSpan < 1 || r + cell.RowSpan > rows || c + cell.ColSpan > cols)
                     Fail($"دمجٌ يخرج عن حدود الجدول (الصفّ {r + 1}، العمود {c + 1}).");
+                // صفوف العناوين تتكرّر في أعلى كل صفحة كتلةً واحدة — فخليةٌ منها تمتدّ إلى ما تحتها لا تُرسم.
+                if (r < t.HeaderRows && r + cell.RowSpan > t.HeaderRows)
+                    Fail($"خليةٌ في صفوف العناوين تمتدّ إلى ما تحتها (العمود {c + 1}). زِد عدد صفوف العناوين أو فكّ الدمج.");
                 for (var rr = r; rr < r + cell.RowSpan; rr++)
                     for (var cc = c; cc < c + cell.ColSpan; cc++)
                     {

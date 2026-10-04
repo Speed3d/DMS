@@ -49,10 +49,13 @@ public sealed class PdfGenerator
                     .Image(assets.Header).FitArea();
 
                 // المتن: علامة مائية خلف المحتوى + الحقول
+                // المساحة المحجوزة للتوقيع والختم: في كل صفحة ما دام شيءٌ منهما يُطبع في كل صفحة (ADR-057)،
+                // وفي «الأخيرة وحدها» تُفرَّغ من الصفحات الأخرى فيمتدّ فيها المتن — وتُحجز في آخره فقط (أدناه).
+                var reserveEveryPage = PrintPageRules.ReserveEveryPage(book.SignatureMode);
                 page.Content()
                     .PaddingHorizontal(40)
                     .PaddingTop(5)
-                    .PaddingBottom(120) // نضع حداً كبيراً لمنع النص من النزول لمنطقة الباركود والتوقيع
+                    .PaddingBottom(reserveEveryPage ? PrintPageRules.SignatureZonePt : 0)
                     .ContentFromRightToLeft()
                     .Layers(layers =>
                     {
@@ -90,15 +93,25 @@ public sealed class PdfGenerator
                             });
 
                             // الجهة والموضوع (في المنتصف، أسفل السطر السابق)
-                            col.Item().PaddingTop(10).AlignCenter().Column(c =>
-                            {
-                                c.Spacing(5);
-                                c.Item().AlignCenter().Text(book.Entity).SemiBold().FontSize(15);
-                                c.Item().AlignCenter().Text($"الموضوع / {book.Subject}").SemiBold().FontSize(14);
-                            });
+                            if (book.PrintEntity || book.PrintSubject)
+                                col.Item().PaddingTop(10).AlignCenter().Column(c =>
+                                {
+                                    c.Spacing(5);
+                                    if (book.PrintEntity)
+                                        c.Item().AlignCenter().Text(book.Entity).SemiBold().FontSize(15);
+                                    if (book.PrintSubject)
+                                        c.Item().AlignCenter().Text($"الموضوع / {book.Subject}").SemiBold().FontSize(14);
+                                });
 
                             // المتن الرئيسي للكتاب (نستخدم المترجم الجديد للـ HTML لدعم التنسيقات والمحاذاة)
-                            col.Item().PaddingTop(15).Column(bodyCol => bodyCol.RenderHtml(book.Body));
+                            col.Item().PaddingTop(15)
+                                .DefaultTextStyle(x => x.FontFamily(HtmlToQuestPdf.BodyFontFamily).FontSize(HtmlToQuestPdf.BaseFontSize))
+                                .Column(bodyCol => bodyCol.RenderHtml(book.Body, book.Tables));
+
+                            // «الأخيرة وحدها»: كتلةٌ فارغة بارتفاع المساحة المحجوزة **لا تنقسم** — إن لم يتّسع لها آخر الصفحة
+                            // انتقلت إلى صفحةٍ جديدة، فيجد التوقيع والختم مكانهما دائماً ولا يعلوان نصّاً.
+                            if (!reserveEveryPage)
+                                col.Item().ShowEntire().Height(PrintPageRules.SignatureZonePt);
 
                             // (تم إخفاء التفاصيل المالية من الطباعة بناءً على طلب المستخدم، لكنها تظل محفوظة في قاعدة البيانات)
 
@@ -120,7 +133,9 @@ public sealed class PdfGenerator
                         .Row(row =>
                         {
                             // اليسار الفيزيائي: التوقيع واسم المدير (نزحفه لليمين قليلاً بزيادة الـ PaddingLeft)
-                            row.RelativeItem().PaddingLeft(50).AlignLeft().AlignBottom().ContentFromRightToLeft().Column(sig =>
+                            row.RelativeItem().PaddingLeft(50).AlignLeft().AlignBottom()
+                                .ShowIf(ctx => PrintPageRules.ShowSignature(book.SignatureMode, ctx.PageNumber, ctx.TotalPages))
+                                .ContentFromRightToLeft().Column(sig =>
                             {
                                 if (!string.IsNullOrWhiteSpace(book.SignatoryName))
                                 {
@@ -133,7 +148,9 @@ public sealed class PdfGenerator
                             // اليمين الفيزيائي: الباركود (يُخفى في المعاينة)
                             if (assets.QrPng != null)
                             {
-                                row.AutoItem().AlignRight().AlignBottom().Width(70).Column(qr =>
+                                row.AutoItem().AlignRight().AlignBottom().Width(70)
+                                    .ShowIf(ctx => PrintPageRules.ShowStamp(book.SignatureMode, ctx.PageNumber, ctx.TotalPages))
+                                    .Column(qr =>
                                 {
                                     qr.Item().AlignCenter().Image(assets.QrPng).FitWidth();
                                     qr.Item().AlignCenter().Text("امسح الرمز للتحقق").FontSize(8).FontColor(Colors.Grey.Darken3);
@@ -141,7 +158,9 @@ public sealed class PdfGenerator
                             }
                             else
                             {
-                                row.AutoItem().AlignRight().AlignBottom().Width(70).Height(70).AlignCenter().AlignMiddle()
+                                row.AutoItem().AlignRight().AlignBottom().Width(70).Height(70)
+                                    .ShowIf(ctx => PrintPageRules.ShowStamp(book.SignatureMode, ctx.PageNumber, ctx.TotalPages))
+                                    .AlignCenter().AlignMiddle()
                                     .Border(1).BorderColor(Colors.Grey.Medium)
                                     .Background(Colors.Grey.Lighten4)
                                     .Padding(5)
@@ -149,17 +168,19 @@ public sealed class PdfGenerator
                             }
                         });
 
-                    // ترقيم الصفحات: لا يظهر في الصفحة الأولى، ويظهر من الصفحة الثانية فصاعداً
+                    // ترقيم الصفحات (ADR-057): «صفحة 1 من 5» يبدأ من الأولى، بخيارٍ لكل كتاب — ولا ترقيم في الكتاب
+                    // ذي الصفحة الواحدة (قرار المالك). كان «- 2 -» يتخطّى الأولى دائماً.
                     layers.Layer()
-                        .SkipOnce() // يتخطى الصفحة الأولى
+                        .ShowIf(ctx => PrintPageRules.ShowPageNumber(book.PageNumbers, ctx.TotalPages))
                         .AlignBottom()
                         .AlignCenter()
                         .PaddingBottom(20)
                         .Text(text =>
                         {
-                            text.Span("- ").FontSize(12);
+                            text.Span("صفحة ").FontSize(12);
                             text.CurrentPageNumber().FontSize(12);
-                            text.Span(" -").FontSize(12);
+                            text.Span(" من ").FontSize(12);
+                            text.TotalPages().FontSize(12);
                         });
                 });
             });

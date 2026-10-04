@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Dms.Documents.Models;
 using HtmlAgilityPack;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
@@ -8,8 +9,16 @@ namespace Dms.Documents.Pdf;
 
 public static class HtmlToQuestPdf
 {
-    /// <summary>الحجم الأساسي للمتن — مطابق لـ PdfGenerator DefaultTextStyle.FontSize.</summary>
-    private const float BaseFontSize = 13f;
+    /// <summary>
+    /// الحجم الأساسي للمتن بالنقاط — **Times New Roman 12** (قرار المالك، ADR-057)، ويطابقه نمط المتن في PdfGenerator.
+    /// </summary>
+    public const float BaseFontSize = 12f;
+
+    /// <summary>خط المتن والجداول الافتراضيّ (قرار المالك — كما في كتبه على Word).</summary>
+    public const string BodyFontFamily = "Times New Roman";
+
+    /// <summary>هامش الخلية الداخليّ بالنقاط.</summary>
+    private const float CellPadding = 4f;
 
     /// <summary>عائلات الخطوط المسجّلة فعلياً في QuestPDF (انظر ArabicFonts.EnsureRegistered).</summary>
     private static readonly HashSet<string> RegisteredFonts =
@@ -49,30 +58,152 @@ public static class HtmlToQuestPdf
         return RegisteredFonts.Contains(first) ? first : null;
     }
 
-    public static void RenderHtml(this ColumnDescriptor column, string html)
+    /// <summary>
+    /// يرسم متن الكتاب: فقراتٌ ونصوص، و<b>جداول</b> (ADR-057) — كلُّ وسم <c>data-dms-table</c> يأخذ الجدول التالي من
+    /// <paramref name="tables"/> بترتيبه (والقائمة أعدّتها طبقة البنية من الوسوم نفسها بعد الفحص والحساب).
+    /// </summary>
+    public static void RenderHtml(this ColumnDescriptor column, string html, IReadOnlyList<PrintTable>? tables = null)
+        => RenderBlocks(column, html, tables, inCell: false);
+
+    /// <summary>
+    /// 🔑 **راسمُ فقراتٍ واحد للمتن ولخلايا الجداول** — فالتنسيق المختلط داخل الخلية (عريض · لون · حجم · خط · محاذاة)
+    /// يُرسم بالقواعد نفسها التي يُرسم بها المتن، لا بنسخةٍ ثانيةٍ تتباعد.
+    /// </summary>
+    private static void RenderBlocks(ColumnDescriptor column, string html, IReadOnlyList<PrintTable>? tables, bool inCell)
     {
         if (string.IsNullOrWhiteSpace(html))
             return;
 
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
+        if (doc.DocumentNode == null) return;
 
-        if (doc.DocumentNode != null)
+        var tableIndex = 0;
+        foreach (var node in doc.DocumentNode.ChildNodes)
         {
-            foreach (var node in doc.DocumentNode.ChildNodes)
+            if (!inCell && node.NodeType == HtmlNodeType.Element && node.Attributes.Contains("data-dms-table"))
             {
-                if (node.NodeType == HtmlNodeType.Element || (node.NodeType == HtmlNodeType.Text && !string.IsNullOrWhiteSpace(node.InnerText)))
+                // الجدول بترتيبه — وغيابُه (قائمةٌ أقصر) يُتخطّى بلا انهيار: لا يُرسم ما لم يُفحص.
+                if (tables is not null && tableIndex < tables.Count)
                 {
-                    var align = GetAlignment(node);
-                    column.Item().Text(text => 
-                    {
-                        text.DefaultTextStyle(x => x.LineHeight(1.6f));
-                        ApplyAlignment(text, align);
-                        ProcessNode(node, text, isBold: false, isItalic: false, isUnderline: false, color: null, fontSize: null, fontFamily: null);
-                    });
+                    var t = tables[tableIndex];
+                    column.Item().PaddingVertical(6).Element(c => RenderTable(c, t));
                 }
+                tableIndex++;
+                continue;
+            }
+
+            if (node.NodeType == HtmlNodeType.Element || (node.NodeType == HtmlNodeType.Text && !string.IsNullOrWhiteSpace(node.InnerText)))
+            {
+                var align = GetAlignment(node);
+                column.Item().Text(text =>
+                {
+                    // الخلية أضيق وأكثف من المتن: تباعدٌ أقلّ، ومحاذاةٌ لبداية السطر افتراضاً (لا ضبط).
+                    text.DefaultTextStyle(x => x.LineHeight(inCell ? 1.25f : 1.6f));
+                    ApplyAlignment(text, align, inCell ? "start" : "justify");
+                    ProcessNode(node, text, isBold: false, isItalic: false, isUnderline: false, color: null, fontSize: null, fontFamily: null);
+                });
             }
         }
+    }
+
+    // ─────────────────────────── الجداول (ADR-057) ───────────────────────────
+
+    /// <summary>جدولٌ بعرضه ومحاذاته — والأضيق من المتن يُوضع في صفٍّ بفراغين نسبيّين.</summary>
+    private static void RenderTable(IContainer container, PrintTable t)
+    {
+        if (t.WidthPct >= 100)
+        {
+            DrawTable(container, t);
+            return;
+        }
+
+        var rest = 100f - t.WidthPct;
+        var (before, after) = t.Align switch
+        {
+            "start" => (0f, rest),
+            "end" => (rest, 0f),
+            _ => (rest / 2, rest / 2),
+        };
+        container.Row(row =>
+        {
+            if (before > 0) row.RelativeItem(before);
+            row.RelativeItem(t.WidthPct).Element(c => DrawTable(c, t));
+            if (after > 0) row.RelativeItem(after);
+        });
+    }
+
+    private static void DrawTable(IContainer container, PrintTable t)
+    {
+        // اتجاه الجدول نفسه (عربيّ يبدأ من اليمين · إنجليزيّ من اليسار) — والنصّ في كل خلية يحدّد اتجاهه بنفسه.
+        var directed = t.Rtl ? container.ContentFromRightToLeft() : container.ContentFromLeftToRight();
+        directed.Table(table =>
+        {
+            table.ColumnsDefinition(cols =>
+            {
+                foreach (var w in t.ColumnWeights) cols.RelativeColumn(w);
+            });
+
+            // صفوف العناوين: تتكرّر في أعلى كل صفحة (table.Header) — أو تُرسم صفوفاً عادية «في البداية فقط».
+            var headerSeparate = t.RepeatHeader && t.HeaderRows > 0;
+            if (headerSeparate)
+                table.Header(h =>
+                {
+                    foreach (var cell in t.Cells.Where(c => c.Row < t.HeaderRows))
+                        DrawCell(h.Cell(), cell, rowOffset: 0, t);
+                });
+
+            foreach (var cell in t.Cells.Where(c => !headerSeparate || c.Row >= t.HeaderRows))
+                DrawCell(table.Cell(), cell, rowOffset: headerSeparate ? t.HeaderRows : 0, t);
+        });
+    }
+
+    private static void DrawCell(QuestPDF.Elements.Table.ITableCellContainer slot, PrintCell cell, int rowOffset, PrintTable t)
+    {
+        IContainer c = slot
+            .Row((uint)(cell.Row - rowOffset + 1)).Column((uint)(cell.Col + 1))
+            .RowSpan((uint)cell.RowSpan).ColumnSpan((uint)cell.ColSpan);
+
+        if (t.BorderPt > 0) c = c.Border(t.BorderPt).BorderColor(t.BorderColor);
+        if (!string.IsNullOrEmpty(cell.Bg)) c = c.Background(cell.Bg);
+        c = c.Padding(CellPadding);
+        c = cell.VAlign switch
+        {
+            "top" => c.AlignTop(),
+            "bottom" => c.AlignBottom(),
+            _ => c.AlignMiddle(),
+        };
+
+        if (IsNumeric(cell.Html))
+        {
+            // 🔑 **الرقم لا ينكسر على سطرين** (قرار المالك): ارتفاعُ سطرٍ واحد + تصغيرٌ عند الضيق — في Word انكسر
+            //    «1,425,00 / 0» لضيق العمود، وهنا يصغر الرقم قليلاً ويبقى كاملاً.
+            var size = MaxFontSize(cell.Html) ?? BaseFontSize;
+            c.Height(size * 1.45f).ScaleToFit().AlignMiddle().Column(col => RenderBlocks(col, cell.Html, null, inCell: true));
+        }
+        else
+        {
+            c.Column(col => RenderBlocks(col, cell.Html, null, inCell: true));
+        }
+    }
+
+    /// <summary>خليةٌ نصُّها رقمٌ خالص (بفواصل أو كسرٍ أو أرقامٍ هندية) — تُحرس من الانكسار.</summary>
+    public static bool IsNumeric(string html)
+    {
+        var text = HtmlEntity.DeEntitize(Regex.Replace(html ?? "", "<[^>]*>", "")).Trim();
+        return text.Length > 0 && NumberText.IsMatch(text);
+    }
+
+    private static readonly Regex NumberText =
+        new(@"^[-\u2212]?[0-9\u0660-\u0669\u06F0-\u06F9][0-9\u0660-\u0669\u06F0-\u06F9,.\u066B\u066C\s\u00A0]*$", RegexOptions.Compiled);
+
+    private static float? MaxFontSize(string html)
+    {
+        float? max = null;
+        foreach (Match m in Regex.Matches(html, @"font-size:[^;""']+", RegexOptions.IgnoreCase))
+            if (ParseFontSize(m.Value) is { } v && (max is null || v > max)) max = v;
+        if (Regex.IsMatch(html, @"<h[1-3]\b", RegexOptions.IgnoreCase)) max = Math.Max(max ?? 0, BaseFontSize * 1.5f);
+        return max;
     }
 
     private static string GetAlignment(HtmlNode node)
@@ -94,15 +225,15 @@ public static class HtmlToQuestPdf
         return "default";
     }
 
-    private static void ApplyAlignment(TextDescriptor text, string align)
+    private static void ApplyAlignment(TextDescriptor text, string align, string fallback = "justify")
     {
-        switch (align)
+        switch (align == "default" ? fallback : align)
         {
             case "center": text.AlignCenter(); break;
             case "left": text.AlignLeft(); break;
             case "right": text.AlignRight(); break;
-            case "justify": text.Justify(); break;
-            default: text.Justify(); break; // الافتراضي
+            case "start": text.AlignStart(); break;
+            default: text.Justify(); break;
         }
     }
 

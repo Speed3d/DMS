@@ -79,6 +79,12 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
         Amount = book.Amount,
         Currency = book.Currency?.ToString(),
         ExchangeRate = book.ExchangeRate,
+        // ADR-057: الجداول مفحوصةً ومحسوبة · وخيارات الطباعة
+        Tables = BookTablePrintMapper.Map(book.BodyHtml),
+        PrintEntity = book.PrintEntity,
+        PrintSubject = book.PrintSubject,
+        PageNumbers = book.PageNumbers,
+        SignatureMode = BookTablePrintMapper.Mode(book.SignaturePlacement),
     };
 
     // Hint: صور القالب ثابتة، فتُخزَّن مؤقتاً بمفتاح التخزين نفسه — وهو يحمل Guid فريداً لكل

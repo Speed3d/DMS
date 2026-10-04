@@ -105,4 +105,31 @@ public static class TableFormulas
         value.ToString(decimals > 0 ? "N2" : "N0", CultureInfo.InvariantCulture);
 
     private static bool HasFraction(string text) => text.Contains('.') || text.Contains('٫');
+
+    /// <summary>
+    /// نصُّ الخلية بقيمةٍ محسوبة **مع إبقاء تنسيقها** — يُستبدل أوّلُ نصٍّ فيها وتُفرَّغ البقيّة، فخليةُ مجموعٍ
+    /// عريضةٌ بحجم 14 تبقى عريضةً بحجم 14 بالرقم الجديد.
+    /// </summary>
+    public static string WithText(string? html, string text)
+    {
+        var encoded = System.Net.WebUtility.HtmlEncode(text);
+        if (string.IsNullOrEmpty(html)) return $"<p>{encoded}</p>";
+
+        var replaced = false;
+        var result = System.Text.RegularExpressions.Regex.Replace(html, @">([^<]*)<", m =>
+        {
+            if (m.Groups[1].Value.Trim().Length == 0) return m.Value;
+            if (replaced) return "><";
+            replaced = true;
+            return $">{encoded}<";
+        });
+        if (replaced) return result;
+
+        // خليةٌ بلا نصّ: يُدرج **داخل أعمق وسمٍ فارغ** — قبل أوّل وسمِ إغلاق — فيرث تنسيقه كاملاً
+        // (<p><strong><span style="font-size: 14pt"></span></strong></p> ⟵ الرقم عريضٌ بحجم 14). ويُحذف السطر الفارغ.
+        // 🐛 كان يُدرج بعد وسم الفقرة **خارج** <strong>/<span> فخرج المجموع رفيعاً صغيراً (كشفته طباعة فاتورة المالك).
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(html, @"<br\s*/?>", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var close = cleaned.IndexOf("</", StringComparison.Ordinal);
+        return close > 0 ? cleaned.Insert(close, encoded) : $"<p>{encoded}</p>";
+    }
 }
