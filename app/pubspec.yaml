@@ -54,6 +54,8 @@ dependencies:
   vsc_quill_delta_to_html: ^1.0.5
   # ADR-057: قراءة جدولٍ منسوخ من Word (HTML) — كان تابعاً غير مباشر، صار صريحاً.
   html: ^0.15.6
+  # ADR-057: قراءة HTML من الحافظة (جدول Word بعريضه ولون خلاياه) — تابعٌ لـflutter_quill بالإصدار نفسه، صار صريحاً.
+  quill_native_bridge: ^11.1.0
   printing: ^5.14.3
   pdf: ^3.12.0
 

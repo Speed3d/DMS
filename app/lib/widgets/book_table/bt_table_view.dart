@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import '../../core/book_table/book_table.dart';
 import '../../core/book_table/table_formulas.dart';
-import '../../core/book_table/table_serializer.dart';
 import 'bt_grid.dart';
 import 'bt_rich_text.dart';
 
@@ -11,23 +9,43 @@ import 'bt_rich_text.dart';
 const kPaperFont = 'Times New Roman';
 const kPaperBase = TextStyle(fontFamily: kPaperFont, fontSize: 12, height: 1.25, color: Color(0xFF111111));
 
+/// حشوة الخلية على الورقة — والطباعة بالقيمة نفسها.
+const kCellPadding = EdgeInsets.all(4);
+
 /// جدولٌ مرسومٌ على الورقة (ADR-057) — بعرضه ومحاذاته واتجاهه ودمجه وألوانه وحدوده، كما يطبعه الخادم.
 ///
 /// [words] نصوص «كتابة بالحروف» مفهرسةً بمعرّف الخلية (يولّدها الخادم) — وغيابُها يُظهر علامةً لا فراغاً.
 class BtTableView extends StatelessWidget {
-  const BtTableView({super.key, required this.table, this.words = const {}, this.cellBuilder});
+  const BtTableView({
+    super.key,
+    required this.table,
+    this.words = const {},
+    this.weights,
+    this.contentBuilder,
+    this.cellBuilder,
+    this.gridWrapper,
+  });
 
   final BtTable table;
   final Map<String, String> words;
 
-  /// يستبدل محتوى خلية (المحرّر يرسم الخلية النشطة بمحرّرها — الدفعة ٧).
-  final Widget Function(BtSlot slot, Widget content)? cellBuilder;
+  /// أوزان أعمدةٍ بدل أوزان الجدول — **سحبُ الحدّ يُرى وهو يُسحب** ولا يُكتب في المستند إلا عند الإفلات.
+  final List<double>? weights;
+
+  /// يستبدل **محتوى** خلية (المحرّر يضع محرّر الخلية النشطة مكان نصّها) — والخلفية والحشوة كما هي.
+  final Widget? Function(BtSlot slot)? contentBuilder;
+
+  /// يلفّ **الخلية كلَّها** (التحديد · النقر).
+  final Widget Function(BtSlot slot, Widget box)? cellBuilder;
+
+  /// يلفّ الشبكة داخل إطار عرضها (مقابض سحب حدود الأعمدة).
+  final Widget Function(Widget grid)? gridWrapper;
 
   @override
   Widget build(BuildContext context) {
     final computed = BtFormulas.evaluate(table);
     final grid = BtGrid(
-      weights: [for (final c in table.cols) c.weight],
+      weights: weights ?? [for (final c in table.cols) c.weight],
       rowCount: table.rowCount,
       rtl: table.rtl,
       borderWidth: table.borderWidthPt,
@@ -43,34 +61,30 @@ class BtTableView extends StatelessWidget {
           ),
       ],
     );
-    final factor = table.widthPct.clamp(30, 100) / 100;
-    if (factor >= 1) return grid;
-    // «بداية» السطر في المستند العربيّ يمين
-    final align = switch (table.align) {
-      'start' => Alignment.centerRight,
-      'end' => Alignment.centerLeft,
-      _ => Alignment.center,
-    };
-    return Align(alignment: align, child: FractionallySizedBox(widthFactor: factor, child: grid));
+    return btTableFrame(table, gridWrapper?.call(grid) ?? grid);
   }
 
   Widget _cell(BtSlot s, Map<String, BtComputed> computed) {
     final cell = s.cell;
     final style = btSpanStyle(kPaperBase, cell.inlineStyle ?? const {});
-    Widget content;
-    if (cell.formula != null) {
-      content = _single(computed[cell.id]?.text ?? '', style, cell);
-    } else if (cell.words != null) {
-      final w = cell.words!;
-      final core = words[cell.id];
-      final text = [w.prefix?.trim(), core ?? '…', w.suffix?.trim()].where((x) => x != null && x.isNotEmpty).join(' ');
-      content = _single(text, core == null ? style.copyWith(color: const Color(0xFF888888)) : style, cell);
-    } else {
-      content = BtRichText(delta: cell.delta, base: kPaperBase);
+    Widget? content = contentBuilder?.call(s);
+    if (content == null) {
+      if (cell.formula != null) {
+        content = _single(computed[cell.id]?.text ?? '', style, cell, number: true);
+      } else if (cell.words != null) {
+        final w = cell.words!;
+        final core = words[cell.id];
+        final text = [w.prefix?.trim(), core ?? '…', w.suffix?.trim()].where((x) => x != null && x.isNotEmpty).join(' ');
+        content = _single(text, core == null ? style.copyWith(color: const Color(0xFF888888)) : style, cell);
+      } else if (_isNumber(cell)) {
+        content = _single(cell.text, style, cell, number: true);
+      } else {
+        content = BtRichText(delta: cell.delta, base: kPaperBase);
+      }
     }
     final box = Container(
       color: btParseColor(cell.bg),
-      padding: const EdgeInsets.all(4),
+      padding: kCellPadding,
       alignment: switch (cell.vAlign) {
         'top' => Alignment.topCenter,
         'bottom' => Alignment.bottomCenter,
@@ -81,49 +95,51 @@ class BtTableView extends StatelessWidget {
     return cellBuilder?.call(s, box) ?? box;
   }
 
+  /// رقمٌ خالصٌ في سطرٍ واحد — يُرسم بلا التفاف.
+  static bool _isNumber(BtCell cell) {
+    final t = cell.text;
+    return t.isNotEmpty && !t.contains('\n') && BtFormulas.parseNumber(t) != null;
+  }
+
   /// نصٌّ محسوب بتنسيق الخلية ومحاذاة سطرها.
-  Widget _single(String text, TextStyle style, BtCell cell) {
+  ///
+  /// [number]: **الرقم لا ينكسر أبداً** (قرار المالك) — إن ضاق العمود صغُر قليلاً، كما تفعل الطباعة (`ScaleToFit`).
+  Widget _single(String text, TextStyle style, BtCell cell, {bool number = false}) {
     final lines = btDeltaLines(cell.delta);
-    final align = switch (lines.isEmpty ? null : lines.first.block['align']) {
+    final a = lines.isEmpty ? null : lines.first.block['align'];
+    final align = switch (a) {
       'center' => TextAlign.center,
       'left' => TextAlign.left,
       'right' => TextAlign.right,
       _ => TextAlign.start,
     };
-    return SizedBox(width: double.infinity, child: Text(text, style: style, textAlign: align));
+    if (!number) return SizedBox(width: double.infinity, child: Text(text, style: style, textAlign: align));
+    final box = switch (a) {
+      'center' => Alignment.center,
+      'left' => Alignment.centerLeft,
+      'right' => Alignment.centerRight,
+      _ => AlignmentDirectional.centerStart,
+    };
+    return SizedBox(
+      width: double.infinity,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: box,
+        child: Text(text, style: style, softWrap: false, maxLines: 1),
+      ),
+    );
   }
 }
 
-/// البلوك المضمَّن `dms-table` داخل محرّر Quill — **عرضٌ** في هذه الدفعة (التحرير في الدفعة ٧).
-///
-/// ⚠️ بلا هذا الباني يرمي Quill عند فتح كتابٍ فيه جدول (نوعُ بلوكٍ لا يعرف رسمه) — فهو شرطٌ لفتح الكتب لا تجميلٌ.
-class BtEmbedBuilder extends quill.EmbedBuilder {
-  BtEmbedBuilder({this.words = const {}});
-  final Map<String, String> words;
-
-  @override
-  String get key => kDmsTableEmbed;
-
-  @override
-  bool get expanded => true;
-
-  @override
-  String toPlainText(quill.Embed node) => '\n';
-
-  @override
-  Widget build(BuildContext context, quill.EmbedContext embedContext) {
-    BtTable table;
-    try {
-      table = BtJson.fromEmbedData(embedContext.node.value.data);
-    } catch (_) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 6),
-        child: Text('⚠️ جدولٌ تالف لا يمكن عرضه', style: TextStyle(color: Colors.red)),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: BtTableView(table: table, words: words),
-    );
-  }
+/// عرض الجدول ومحاذاته في الصفحة — مشتركٌ بين العرض والمحرّر.
+Widget btTableFrame(BtTable table, Widget grid) {
+  final factor = table.widthPct.clamp(30, 100) / 100;
+  if (factor >= 1) return grid;
+  // «بداية» السطر في المستند العربيّ يمين
+  final align = switch (table.align) {
+    'start' => Alignment.centerRight,
+    'end' => Alignment.centerLeft,
+    _ => Alignment.center,
+  };
+  return Align(alignment: align, child: FractionallySizedBox(widthFactor: factor, child: grid));
 }

@@ -60,22 +60,92 @@ class BtPaste {
   /// شبكة نصوص من HTML فيه `<table>` (Word · Excel على الويب) — أو `null` إن لم يكن فيه جدول.
   /// الخلية المدموجة أفقياً تُفرَد خاناتٍ فارغة بعدها (الدمج يُعاد في المحرّر إن أراده المستخدم).
   static List<List<String>>? parseHtmlTable(String source) {
+    final cells = parseHtmlCells(source);
+    return cells == null ? null : [for (final r in cells) [for (final c in r) c.text]];
+  }
+
+  /// كـ[parseHtmlTable] ومعها **العريض ولون الخلفية** لكل خلية (قرار المالك: «النصّ والعريض ولون الخلفية»).
+  static List<List<BtPasteCell>>? parseHtmlCells(String source) {
     final doc = html.parse(source);
     final table = doc.querySelector('table');
     if (table == null) return null;
-    final rows = <List<String>>[];
+    final rows = <List<BtPasteCell>>[];
     for (final tr in table.querySelectorAll('tr')) {
-      final row = <String>[];
+      final row = <BtPasteCell>[];
       for (final td in tr.children.where((e) => e.localName == 'td' || e.localName == 'th')) {
-        row.add(_text(td));
+        final text = _text(td);
+        row.add(BtPasteCell(text, bold: text.isEmpty ? null : _isBold(td), bg: _background(td)));
         final span = int.tryParse(td.attributes['colspan'] ?? '') ?? 1;
         for (var k = 1; k < span; k++) {
-          row.add('');
+          row.add(const BtPasteCell(''));
         }
       }
       if (row.isNotEmpty) rows.add(row);
     }
-    return rows.isEmpty ? null : _rectangular(rows);
+    if (rows.isEmpty) return null;
+    final width = rows.fold<int>(0, (m, r) => r.length > m ? r.length : m);
+    return [for (final r in rows) [...r, for (var i = r.length; i < width; i++) const BtPasteCell('')]];
+  }
+
+  /// شبكةٌ من نصٍّ عاديّ — الخلايا نصوصٌ بلا تنسيق.
+  static List<List<BtPasteCell>> plainCells(List<List<String>> grid) => [
+        for (final r in grid) [for (final t in r) BtPasteCell(t)]
+      ];
+
+  /// نسخٌ إلى الحافظة بصيغة Excel: Tab بين الخلايا وسطرٌ بين الصفوف — والخلية ذات السطر أو التنصيص بين علامتي تنصيص.
+  static String toTsv(List<List<String>> grid) => grid
+      .map((row) => row.map((v) => v.contains('\t') || v.contains('\n') || v.contains('"') ? '"${v.replaceAll('"', '""')}"' : v).join('\t'))
+      .join('\n');
+
+  /// عريضةٌ إن كان **كلُّ نصّها** داخل `<b>`/`<strong>` أو بخطٍّ عريض — نصفُ عريضٍ لا يُعدّ عريضاً.
+  static bool _isBold(dom.Element td) {
+    bool boldStyle(dom.Element e) {
+      final w = RegExp(r'font-weight\s*:\s*(\w+)', caseSensitive: false).firstMatch(e.attributes['style'] ?? '')?.group(1);
+      return w != null && (w == 'bold' || w == 'bolder' || (int.tryParse(w) ?? 0) >= 600);
+    }
+
+    var anyText = false;
+    var allBold = true;
+    void walk(dom.Node n, bool bold) {
+      if (n is dom.Text) {
+        if (n.text.trim().isNotEmpty) {
+          anyText = true;
+          if (!bold) allBold = false;
+        }
+      } else if (n is dom.Element) {
+        final b = bold || n.localName == 'b' || n.localName == 'strong' || n.localName == 'th' || boldStyle(n);
+        for (final c in n.nodes) {
+          walk(c, b);
+        }
+      }
+    }
+
+    walk(td, boldStyle(td));
+    return anyText && allBold;
+  }
+
+  /// لون خلفية الخلية من `background`/`background-color`/`bgcolor` — بصيغة `#RRGGBB` وحدها (قاعدة الخادم).
+  static String? _background(dom.Element td) {
+    final style = td.attributes['style'] ?? '';
+    final m = RegExp(r'background(?:-color)?\s*:\s*([^;]+)', caseSensitive: false).firstMatch(style);
+    return _hex(m?.group(1)) ?? _hex(td.attributes['bgcolor']);
+  }
+
+  static String? _hex(String? v) {
+    if (v == null) return null;
+    final s = v.trim().toLowerCase();
+    final hex = RegExp(r'#([0-9a-f]{6})\b').firstMatch(s);
+    if (hex != null) {
+      final h = hex.group(1)!.toUpperCase();
+      return h == 'FFFFFF' ? null : '#$h';   // الأبيض = بلا لون (Word يكتبه لكل خلية)
+    }
+    final rgb = RegExp(r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)').firstMatch(s);
+    if (rgb != null) {
+      final parts = [for (var i = 1; i <= 3; i++) int.parse(rgb.group(i)!).clamp(0, 255)];
+      if (parts.every((p) => p == 255)) return null;
+      return '#${parts.map((p) => p.toRadixString(16).padLeft(2, '0')).join().toUpperCase()}';
+    }
+    return null;
   }
 
   /// نصّ الخلية: `<br>` والفقرات أسطرٌ، والمسافات المتكرّرة تُطوى.
@@ -105,4 +175,12 @@ class BtPaste {
     final width = rows.fold<int>(0, (m, r) => r.length > m ? r.length : m);
     return [for (final r in rows) [...r, for (var i = r.length; i < width; i++) '']];
   }
+}
+
+/// خليةٌ ملصوقة: نصّها — ومعه العريض ولون الخلفية إن حدّدهما المصدر (`null` = لم يحدّد ⟵ يبقى شكل الخلية كما هو).
+class BtPasteCell {
+  const BtPasteCell(this.text, {this.bold, this.bg});
+  final String text;
+  final bool? bold;
+  final String? bg;
 }

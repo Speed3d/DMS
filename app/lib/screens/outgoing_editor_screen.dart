@@ -18,6 +18,10 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/book_paper.dart';
+import '../widgets/book_table/bt_dialogs.dart';
+import '../widgets/book_table/bt_editor_hub.dart';
+import '../widgets/book_table/bt_table_editor.dart';
+import '../widgets/book_table/bt_table_toolbar.dart';
 import '../widgets/book_table/bt_table_view.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/draft_widgets.dart';
@@ -68,6 +72,9 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
   final _rate = TextEditingController();
   final _note = TextEditingController();
   late final quill.QuillController _quill;
+
+  /// محرّك الجداول (الدفعة ٧) — التحديد والخلية المفتوحة خارج شجرة Quill فلا تضيع مع إعادة بنائها.
+  late final BtEditorHub _tables;
   final _editorFocus = FocusNode(debugLabel: 'paper');
   final _editorScroll = ScrollController();
   final _paperScroll = ScrollController();
@@ -121,7 +128,22 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
   void initState() {
     super.initState();
     final b = widget.book;
-    _quill = b == null ? quill.QuillController.basic() : _controllerFrom(b);
+    _tables = BtEditorHub(
+      fetchWords: (value, currency) => ref.read(apiClientProvider).numberWords(value, currency),
+      onMessage: _say,
+      askPasteAsTable: (rows, cols) => showBtPasteAsTableDialog(context, rows, cols),
+      focusMain: (offset) {
+        final max = _quill.document.length - 1;
+        _quill.updateSelection(TextSelection.collapsed(offset: offset.clamp(0, max < 0 ? 0 : max)), quill.ChangeSource.local);
+        _editorFocus.requestFocus();
+      },
+    );
+    _quill = b == null ? quill.QuillController.basic(config: _quillConfig) : _controllerFrom(b);
+    _tables.attach(_quill);
+    // نقرةٌ في المتن تُغادر الجدول (وتحفظ الخلية المفتوحة)
+    _editorFocus.addListener(() => _tables.onMainFocus(_editorFocus.hasPrimaryFocus));
+    // الكتابة في خليةٍ لم تُغادَر بعد تغيّر الناتج: المعاينة تُعلَّم قديمةً وتُجدوَل
+    _tables.contentTick.addListener(_changed);
     if (b != null) {
       _subject.text = b.subject;
       _headerPhrase.text = b.headerPhrase ?? '';
@@ -156,6 +178,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
     for (final c in [..._watched, _note]) {
       c.dispose();
     }
+    _tables.dispose();
     _quill.dispose();
     _editorFocus.dispose();
     _editorScroll.dispose();
@@ -163,12 +186,19 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
     super.dispose();
   }
 
+  /// لصقُ جدولٍ منسوخ في المتن يُعرض «إدراجه جدولاً؟» (الجداول — ADR-057).
+  /// ⚠️ `onClipboardPaste` «تجريبيّ» في flutter_quill — لا بديل عنه، والإصدار مثبَّت وحارسه في `outgoing_table_editor_test.dart`.
+  quill.QuillControllerConfig get _quillConfig => quill.QuillControllerConfig(
+        // ignore: experimental_member_use
+        clipboardConfig: quill.QuillClipboardConfig(onClipboardPaste: _tables.onMainPaste),
+      );
+
   /// محرّرٌ من Delta المخزّن (تنسيقٌ كامل وجداول)، أو من نصٍّ خامّ لكتبٍ قديمة بلا Delta.
   quill.QuillController _controllerFrom(OutgoingDetail b) {
     if (b.bodyJson != null && b.bodyJson!.isNotEmpty) {
       try {
         final doc = quill.Document.fromJson(jsonDecode(b.bodyJson!) as List);
-        return quill.QuillController(document: doc, selection: const TextSelection.collapsed(offset: 0));
+        return quill.QuillController(document: doc, selection: const TextSelection.collapsed(offset: 0), config: _quillConfig);
       } catch (_) {
         // Delta تالف ⟵ النصّ الخامّ أدناه
       }
@@ -176,7 +206,22 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
     return quill.QuillController(
       document: quill.Document()..insert(0, '${b.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), '')}\n'),
       selection: const TextSelection.collapsed(offset: 0),
+      config: _quillConfig,
     );
+  }
+
+  void _say(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 4)));
+  }
+
+  /// «إدراج جدول» — عند المؤشّر في المتن.
+  Future<void> _insertTable() async {
+    _tables.exit();
+    final t = await showBtInsertDialog(context);
+    if (t != null && mounted) _tables.insertTable(t);
   }
 
   // ─────────────────────────── التغيّر والمعاينة ───────────────────────────
@@ -292,7 +337,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
         'headerPhrase': _headerPhrase.text,
         'signatoryName': _signatoryName.text,
         'signatoryTitle': _signatoryTitle.text,
-        'body': _quill.document.toDelta().toJson(),
+        'body': _tables.bodyDelta(),   // بالخلية المفتوحة — فلا يضيع ما كُتب ولم يُغادَر
         'showFinancials': _showFinancials,
         'amount': _amount.text,
         'rate': _rate.text,
@@ -482,7 +527,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
       if (report) setState(() => _error = problem);
       return (null, problem);
     }
-    final delta = _quill.document.toDelta().toJson();
+    final delta = _tables.bodyDelta();   // بالخلية المفتوحة
     return (
       {
         'entityId': _entityId,
@@ -785,7 +830,39 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
         border: Border.all(color: theme.dividerColor),
       ),
       padding: const EdgeInsets.all(8),
-      child: quill.QuillSimpleToolbar(controller: _quill, config: kQuillToolbarConfig),
+      // الشريط ينتقل إلى الخلية المفتوحة (تنسيقٌ مختلط داخلها) — وتحته شريط الجدول ما دام جدولٌ نشطاً
+      child: ListenableBuilder(
+        listenable: _tables,
+        builder: (context, _) {
+          final cell = _tables.cell;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: quill.QuillSimpleToolbar(
+                      key: ObjectKey(cell ?? _quill),
+                      controller: cell ?? _quill,
+                      config: cell != null ? kQuillCellToolbarConfig : kQuillToolbarConfig,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  OutlinedButton.icon(
+                    key: const Key('insert-table'),
+                    onPressed: _insertTable,
+                    icon: const Icon(Icons.table_chart_outlined, size: 16),
+                    label: const Text('جدول'),
+                    style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                  ),
+                ],
+              ),
+              if (_tables.active) BtTableToolbar(hub: _tables),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -807,7 +884,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
         scrollable: false,
         padding: EdgeInsets.zero,
         placeholder: 'اكتب نصّ الكتاب هنا…',
-        embedBuilders: [BtEmbedBuilder()],
+        embedBuilders: [BtEmbedBuilder(hub: _tables)],
         customStyles: quill.DefaultStyles(
           paragraph: quill.DefaultTextBlockStyle(
             kPaperBase.copyWith(height: 1.6),

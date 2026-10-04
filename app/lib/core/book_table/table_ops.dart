@@ -1,5 +1,6 @@
 import 'book_table.dart';
 import 'table_formulas.dart';
+import 'table_paste.dart';
 
 /// عمليات الجدول (ADR-057) — **كلُّها نقيّة**: تأخذ جدولاً وتعيد نسخةً معدّلة، والأصل لا يُمسّ (فالتراجع حفظُ السابقة).
 ///
@@ -358,7 +359,257 @@ class BtOps {
     return t;
   }
 
+  /// جدولٌ من شبكةٍ ملصوقة في متن الكتاب (لا في جدول) — الصفّ الأوّل عناوين عريضةٌ في الوسط كما في `blank`.
+  static BtTable fromGrid(List<List<BtPasteCell>> grid) {
+    final rows = grid.length.clamp(1, 600);
+    final cols = grid.fold<int>(1, (m, r) => r.length > m ? r.length : m).clamp(1, 30);
+    return pasteCells(blank(rows, cols, header: rows > 1), 0, 0, grid);
+  }
+
+  /// كاللصق النصّيّ — ومعه **العريض ولون الخلفية** إن جاء بهما المصدر (جدول Word بـHTML). ما لم يحدّده المصدر يبقى كما هو.
+  static BtTable pasteCells(BtTable src, int r, int c, List<List<BtPasteCell>> grid) {
+    var t = paste(src, r, c, [for (final row in grid) [for (final cell in row) cell.text]]);
+    if (!grid.any((row) => row.any((cell) => cell.bold != null || cell.bg != null))) return t;
+    // الصفوف المُدرجة قبل صفّ المجموع تُزيح المواضع — فالمواضع تُعاد من الشبكة كما وقعت في اللصق
+    final targets = _pasteTargets(src, r, grid.length);
+    t = t.copy();
+    for (var i = 0; i < grid.length && i < targets.length; i++) {
+      for (var j = 0; j < grid[i].length; j++) {
+        final rr = targets[i], cc = c + j;
+        if (rr >= t.rowCount || cc >= t.colCount) continue;
+        final cell = t.rows[rr].cells[cc];
+        if (cell == null || cell.formula != null) continue;
+        final p = grid[i][j];
+        if (p.bg != null) cell.bg = p.bg;
+        if (p.bold != null) _setInline(cell, {'bold': p.bold! ? true : null});
+      }
+    }
+    return t;
+  }
+
+  /// صفوف الجدول التي وقع عليها كل صفٍّ من الشبكة — بالقاعدة نفسها في [paste] (الإدراج قبل صفّ المجموع).
+  static List<int> _pasteTargets(BtTable src, int r, int count) {
+    final out = <int>[];
+    var t = src;
+    for (var i = 0; i < count; i++) {
+      final rr = r + i;
+      if (rr >= t.rowCount) {
+        t = insertRow(t, t.rowCount);
+      } else if (_isTotalRow(t, rr)) {
+        t = insertRow(t, rr);
+      }
+      out.add(rr);
+    }
+    return out;
+  }
+
+  // ─────────────────────────── التحرير (الدفعة ٧) ───────────────────────────
+
+  /// يطبّق تنسيق النصّ على **كل نصّ** الخلايا المحدّدة (تحديد عدّة خلايا) — `null` في القيمة يُزيل السمة.
+  /// السمات: `bold` · `italic` · `underline` · `strike` · `size` · `font` · `color` — و`align` لسطور الخلية.
+  static BtTable formatCells(BtTable src, int r1, int c1, int r2, int c2, Map<String, Object?> attrs) =>
+      editCells(src, r1, c1, r2, c2, (cell) {
+        final inline = {for (final e in attrs.entries) if (e.key != 'align') e.key: e.value};
+        if (inline.isNotEmpty) _setInline(cell, inline);
+        if (attrs.containsKey('align')) _setBlock(cell, 'align', attrs['align']);
+      });
+
+  /// يمسح محتوى الخلايا المحدّدة — النصّ **والجمع والكتابة بالحروف** (كما يفعل Delete في Excel) ويُبقي شكلها.
+  static BtTable clearCells(BtTable src, int r1, int c1, int r2, int c2) {
+    final t = editCells(src, r1, c1, r2, c2, (cell) {
+      setText(cell, '');
+      cell
+        ..formula = null
+        ..words = null;
+    });
+    return t;
+  }
+
+  /// يجعل الخلية **جمعاً حيّاً** للعمود [col] — ويُزيل نصّها و«الكتابة بالحروف» فيها (الخادم يرفض الاثنين معاً).
+  static BtTable setSum(BtTable src, String cellId, int? col) {
+    final t = src.copy();
+    final s = t.findCell(cellId);
+    if (s == null) return src;
+    if (col == null) {
+      s.cell.formula = null;
+      return t;
+    }
+    setText(s.cell, '');
+    s.cell
+      ..words = null
+      ..formula = BtFormula(col: col.clamp(0, t.colCount - 1));
+    return t;
+  }
+
+  /// «كتابة بالحروف» للخلية — أو إزالتها بـ`null`. ويُزيل الجمع فيها.
+  static BtTable setWords(BtTable src, String cellId, BtWords? words) {
+    final t = src.copy();
+    final s = t.findCell(cellId);
+    if (s == null || words?.sourceCellId == cellId) return src;
+    if (words != null) {
+      setText(s.cell, '');
+      s.cell.formula = null;
+    }
+    s.cell.words = words;
+    return t;
+  }
+
+  /// المصدر المقترح لـ«كتابة بالحروف»: خلية جمعٍ في الصفّ نفسه، وإلا آخر خلية جمعٍ قبلها في الجدول.
+  static String? suggestWordsSource(BtTable t, String cellId) {
+    final me = t.findCell(cellId);
+    if (me == null) return null;
+    String? sameRow;
+    String? before;
+    for (final s in t.masters) {
+      if (s.cell.formula == null || s.cell.id == cellId) continue;
+      if (s.row == me.row) sameRow ??= s.cell.id;
+      if (s.row < me.row || (s.row == me.row && s.col < me.col)) before = s.cell.id;
+    }
+    return sameRow ?? before;
+  }
+
+  /// عدد صفوف العناوين — `null` إن أمكن، وإلا السبب (خليةٌ مدموجة تعبر الحدّ الجديد).
+  static String? headerRowsProblem(BtTable t, int n) {
+    if (n < 0 || n > t.rowCount) return 'عدد صفوف العناوين خارج الجدول.';
+    for (final s in t.masters) {
+      if (s.row < n && s.row + s.cell.rowSpan > n) return 'خليةٌ مدموجة تعبر حدّ العناوين — فكّ دمجها أولاً.';
+    }
+    return null;
+  }
+
+  static BtTable setHeaderRows(BtTable src, int n) {
+    if (headerRowsProblem(src, n) != null) return src;
+    return src.copy()..headerRows = n;
+  }
+
+  /// عمود الترقيم التلقائيّ — أو إيقافه بـ`null`.
+  static BtTable setNumberingCol(BtTable src, int? col) =>
+      src.copy()..numberingCol = col?.clamp(0, src.colCount - 1);
+
+  /// أوزان الأعمدة (سحب الحدّ) — ولا عمودَ أضيق من [minShare] من العرض (عمودٌ بعرض صفر لا يُرى ولا يُنقر).
+  static BtTable setColumnWeights(BtTable src, List<double> weights, {double minShare = 0.02}) {
+    if (weights.length != src.colCount) return src;
+    final total = weights.fold<double>(0, (a, b) => a + (b > 0 ? b : 0));
+    if (total <= 0) return src;
+    final t = src.copy();
+    for (var i = 0; i < t.colCount; i++) {
+      final share = (weights[i] > 0 ? weights[i] : 0) / total;
+      t.cols[i].weight = (share < minShare ? minShare : share) * 100;
+    }
+    return t;
+  }
+
+  /// نصوص المستطيل المحدّد للنسخ — خلية الجمع **بقيمتها المحسوبة**، والخانة المدموجة فارغة (كما يفعل Excel).
+  static List<List<String>> copyGrid(BtTable t, int r1, int c1, int r2, int c2, {Map<String, String> words = const {}}) {
+    final (top, left, bottom, right) = _norm(r1, c1, r2, c2);
+    final computed = BtFormulas.evaluate(t);
+    return [
+      for (var r = top; r <= bottom && r < t.rowCount; r++)
+        [
+          for (var c = left; c <= right && c < t.colCount; c++)
+            switch (t.rows[r].cells[c]) {
+              null => '',
+              final BtCell cell when cell.formula != null => computed[cell.id]?.text ?? '',
+              final BtCell cell when cell.words != null => words[cell.id] ?? '',
+              final BtCell cell => cell.text,
+            }
+        ]
+    ];
+  }
+
+  /// السمات التي تُطبع داخل الخلية — وغيرُها يُسقط قبل الحفظ.
+  ///
+  /// 🔴 **الرابط وحده يُفشل الحفظ كلَّه**: يخرج `<a>` والخادم يرفض في الخلية كل وسمٍ خارج قائمته (400). **ولون التظليل يُطبع
+  /// لونَ خطّ** (`background-color` يطابق نمطَ `color:` في محرّك الطباعة) — ولون الخلية مكانه خلفيةُ الخلية لا التظليل.
+  static const cellInlineKeys = {'bold', 'italic', 'underline', 'strike', 'size', 'font', 'color'};
+  static const cellBlockKeys = {'align'};
+
+  /// Delta خليةٍ بلا ما لا يُطبع — ولا يبقى إلا النصّ (لا صورة ولا بلوك مضمَّن)، وينتهي بسطرٍ جديد دائماً.
+  static List<Map<String, dynamic>> sanitizeDelta(List<Map<String, dynamic>> delta) {
+    final out = <Map<String, dynamic>>[];
+    for (final op in delta) {
+      final ins = op['insert'];
+      if (ins is! String || ins.isEmpty) continue;
+      final a = (op['attributes'] as Map?)?.cast<String, dynamic>();
+      final keep = <String, dynamic>{
+        if (a != null)
+          for (final e in a.entries)
+            if (e.value != null && (cellInlineKeys.contains(e.key) || (cellBlockKeys.contains(e.key) && ins.contains('\n'))))
+              e.key: e.value,
+      };
+      out.add({'insert': ins, if (keep.isNotEmpty) 'attributes': keep});
+    }
+    if (out.isEmpty || !(out.last['insert'] as String).endsWith('\n')) out.add({'insert': '\n'});
+    return out;
+  }
+
   // ─────────────────────────── مساعدات ───────────────────────────
+
+  /// يضع سمات النصّ على كل أجزاء الخلية (و`null` يُزيل) — ويحفظها للخلية الفارغة في `textStyle`.
+  static void _setInline(BtCell cell, Map<String, Object?> attrs) {
+    Map<String, dynamic>? merge(Map<String, dynamic>? base) {
+      final m = <String, dynamic>{...?base};
+      for (final e in attrs.entries) {
+        if (e.value == null || e.value == false) {
+          m.remove(e.key);
+        } else {
+          m[e.key] = e.value;
+        }
+      }
+      return m.isEmpty ? null : m;
+    }
+
+    final out = <Map<String, dynamic>>[];
+    for (final op in cell.delta) {
+      final ins = op['insert'];
+      final a = (op['attributes'] as Map?)?.cast<String, dynamic>();
+      if (ins is! String) continue;
+      // السطر الجديد يحمل سمات السطر (المحاذاة) — والنصّ يحمل سمات النصّ: يُقسَم كلّ جزءٍ عند السطور
+      final parts = ins.split('\n');
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].isNotEmpty) {
+          final inline = merge({for (final e in (a ?? const {}).entries) if (!cellBlockKeys.contains(e.key)) e.key: e.value});
+          out.add({'insert': parts[i], if (inline != null) 'attributes': inline});
+        }
+        if (i < parts.length - 1) {
+          final block = {for (final e in (a ?? const {}).entries) if (cellBlockKeys.contains(e.key)) e.key: e.value};
+          out.add({'insert': '\n', if (block.isNotEmpty) 'attributes': block});
+        }
+      }
+    }
+    cell.delta = out.isEmpty ? BtCell.emptyDelta() : out;
+    cell.textStyle = merge(cell.textStyle);
+  }
+
+  /// سمة سطرٍ (المحاذاة) على كل أسطر الخلية — `null` يُزيلها.
+  static void _setBlock(BtCell cell, String key, Object? value) {
+    cell.delta = [
+      for (final op in cell.delta)
+        if (op['insert'] is String && (op['insert'] as String).contains('\n'))
+          ..._splitLines(op, key, value)
+        else
+          op,
+    ];
+  }
+
+  static List<Map<String, dynamic>> _splitLines(Map<String, dynamic> op, String key, Object? value) {
+    final ins = op['insert'] as String;
+    final a = (op['attributes'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final inline = {for (final e in a.entries) if (!cellBlockKeys.contains(e.key)) e.key: e.value};
+    final block = {for (final e in a.entries) if (cellBlockKeys.contains(e.key)) e.key: e.value};
+    if (value == null) {
+      block.remove(key);
+    } else {
+      block[key] = value;
+    }
+    final parts = ins.split('\n');
+    return [
+      for (var i = 0; i < parts.length; i++) ...[
+        if (parts[i].isNotEmpty) {'insert': parts[i], if (inline.isNotEmpty) 'attributes': inline},
+        if (i < parts.length - 1) {'insert': '\n', if (block.isNotEmpty) 'attributes': block},
+      ],
+    ];
+  }
 
   /// صفٌّ تبدأ فيه خلية جمعٍ أو «كتابة بالحروف» — صفّ المجموع.
   static bool _isTotalRow(BtTable t, int r) =>
