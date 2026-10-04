@@ -97,6 +97,7 @@ public sealed class OutgoingService(
 
         var amountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
         ValidateRequired(input.Subject, input.BodyHtml);
+        ValidateSize(input.BodyHtml, input.BodyJson);
 
         var book = new OutgoingBook
         {
@@ -133,6 +134,7 @@ public sealed class OutgoingService(
         EnsureCanModifyDraft(book);
         await ValidateRefsAsync(book.CompanyId, input.EntityId, input.TemplateId, ct);
         ValidateRequired(input.Subject, input.BodyHtml);
+        ValidateSize(input.BodyHtml, input.BodyJson);
         var before = OutgoingFields.Of(book);
 
         book.EntityId = input.EntityId;
@@ -244,6 +246,7 @@ public sealed class OutgoingService(
             throw new ValidationException("التعديل بعد الاعتماد يخص الكتب المعتمدة فقط.");
         await ValidateRefsAsync(book.CompanyId, input.EntityId, input.TemplateId, ct);
         ValidateRequired(input.Subject, input.BodyHtml);
+        ValidateSize(input.BodyHtml, input.BodyJson, input.ChangeNote);
 
         // تزامن متفائل: امنع الكتابة فوق نسخة قديمة
         db.Entry(book).Property(b => b.RowVersion).OriginalValue = input.RowVersion;
@@ -359,6 +362,7 @@ public sealed class OutgoingService(
     public async Task<byte[]> PreviewPdfAsync(CreateOutgoingInput input, CancellationToken ct = default)
     {
         var companyId = ResolveCompanyId(input.CompanyId);
+        ValidateSize(input.BodyHtml, input.BodyJson);
         await ValidateRefsAsync(companyId, input.EntityId, input.TemplateId, ct);
 
         var company = await db.Companies.FindAsync([companyId], ct);
@@ -432,6 +436,13 @@ public sealed class OutgoingService(
     {
         if (string.IsNullOrWhiteSpace(subject)) throw new ValidationException("الموضوع مطلوب.");
         if (string.IsNullOrWhiteSpace(body)) throw new ValidationException("نص الكتاب مطلوب.");
+    }
+
+    /// <summary>حدود الحجم (<see cref="OutgoingContentLimits"/>) — قبل أيّ كتابةٍ أو رسم PDF.</summary>
+    private static void ValidateSize(string? bodyHtml, string? bodyJson, string? changeNote = null)
+    {
+        if (OutgoingContentLimits.Violation(bodyHtml, bodyJson, changeNote) is { } error)
+            throw new ValidationException(error);
     }
 
     private void EnsureCanModifyDraft(OutgoingBook book)

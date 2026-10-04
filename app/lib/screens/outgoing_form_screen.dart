@@ -660,10 +660,14 @@ class _OutgoingFormScreenState extends ConsumerState<OutgoingFormScreen> {
                             const Flexible(child: Text('محتوى الكتاب (المحرر)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                             const Spacer(),
                             if (_error != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                                child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
+                              // Hint: مرنةٌ لا ثابتة — رسالةٌ طويلة (من الخادم أو التحقّق) كانت تُفيض الرأس.
+                              Flexible(
+                                flex: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ),
                               ),
                           ],
                         ),

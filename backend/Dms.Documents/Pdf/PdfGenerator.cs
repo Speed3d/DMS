@@ -98,13 +98,7 @@ public sealed class PdfGenerator
                             });
 
                             // المتن الرئيسي للكتاب (نستخدم المترجم الجديد للـ HTML لدعم التنسيقات والمحاذاة)
-                            col.Item().PaddingTop(15).Column(bodyCol =>
-                            {
-                                Console.WriteLine("=== HTML FROM FRONTEND ===");
-                                Console.WriteLine(book.Body);
-                                Console.WriteLine("==========================");
-                                bodyCol.RenderHtml(book.Body);
-                            });
+                            col.Item().PaddingTop(15).Column(bodyCol => bodyCol.RenderHtml(book.Body));
 
                             // (تم إخفاء التفاصيل المالية من الطباعة بناءً على طلب المستخدم، لكنها تظل محفوظة في قاعدة البيانات)
 

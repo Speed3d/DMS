@@ -34,8 +34,8 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
   bool _showFinancials = false;
   
   late DateTime _date;
-  late int _entityId;
-  late int _templateId;
+  int? _entityId;
+  int? _templateId;
   String? _currency;
   bool _busy = false;
   String? _error;
@@ -104,13 +104,20 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
     final api = ref.read(apiClientProvider);
     final entities = await api.entities();
     final templates = await api.templates();
-    return _Refs(entities, templates.where((t) => t.isActive).toList());
+    final active = templates.where((t) => t.isActive).toList();
+    // جهةٌ حُذفت أو قالبٌ عُطِّل منذ الحفظ ⇒ بلا قيمةٍ مختارة (وإلا سقطت المنسدلة لأن قيمتها
+    // ليست في عناصرها) — ويُطلب الاختيار عند الحفظ بدل إرسال معرّفٍ يرفضه الخادم.
+    _entityId = safeDropdownValue(_entityId, entities.map((e) => e.entityId));
+    _templateId = safeDropdownValue(_templateId, active.map((t) => t.templateId));
+    return _Refs(entities, active);
   }
 
   String _getHtmlFromBody() => quillDeltaToHtml(_quillController.document.toDelta().toJson());
 
   /// يبني حمولة الكتاب مع التحقق (يعرض الخطأ ويعيد null عند الفشل).
   Map<String, dynamic>? _buildPayload() {
+    if (_entityId == null) { setState(() => _error = 'اختر الجهة المستلمة.'); return null; }
+    if (_templateId == null) { setState(() => _error = 'اختر القالب — القالب السابق لم يعُد فعّالاً.'); return null; }
     if (_subject.text.trim().isEmpty) { setState(() => _error = 'الموضوع مطلوب.'); return null; }
     if (_quillController.document.isEmpty()) { setState(() => _error = 'نص الكتاب مطلوب.'); return null; }
 
@@ -249,7 +256,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                               
                                   DropdownButtonFormField<int>(
                                     isExpanded: true,
-                                    initialValue: _entityId,
+                                    initialValue: safeDropdownValue(_entityId, refs.entities.map((e) => e.entityId)),
                                     decoration: _inputDecoration('الجهة المستلمة', Icons.business_rounded),
                                     items: refs.entities.map((e) => DropdownMenuItem(value: e.entityId, child: Text(e.name, overflow: TextOverflow.ellipsis))).toList(),
                                     onChanged: (v) => setState(() => _entityId = v ?? _entityId),
@@ -258,7 +265,7 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                               
                                   DropdownButtonFormField<int>(
                                     isExpanded: true,
-                                    initialValue: _templateId,
+                                    initialValue: safeDropdownValue(_templateId, refs.templates.map((t) => t.templateId)),
                                     decoration: _inputDecoration('القالب المعتمد', Icons.style_rounded),
                                     items: refs.templates.map((t) => DropdownMenuItem(value: t.templateId, child: Text(t.name, overflow: TextOverflow.ellipsis))).toList(),
                                     onChanged: (v) => setState(() => _templateId = v ?? _templateId),
@@ -330,10 +337,14 @@ class _OutgoingEditDraftScreenState extends ConsumerState<OutgoingEditDraftScree
                                           const Text('تعديل نص الكتاب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                                           const Spacer(),
                                           if (_error != null)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                              decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                                              child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
+                                            // Hint: مرنةٌ لا ثابتة — رسالةٌ طويلة (من الخادم أو التحقّق) كانت تُفيض الرأس.
+                                            Flexible(
+                                              flex: 3,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                                                child: Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.bold)),
+                                              ),
                                             ),
                                         ],
                                       ),
