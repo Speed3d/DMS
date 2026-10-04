@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dms.Documents.Storage;
 using Dms.Domain;
+using Dms.Domain.BookTables;
 using Dms.Infrastructure.Documents;
 using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Persistence;
@@ -13,18 +14,45 @@ namespace Dms.Infrastructure.Outgoing;
 public sealed record CreateOutgoingInput(
     int? CompanyId, int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null,
+    int? OutgoingBookTypeId = null, bool? PrintEntity = null, bool? PrintSubject = null,
+    bool? PageNumbers = null, SignaturePlacement? SignaturePlacement = null);
 
 public sealed record UpdateOutgoingInput(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null,
+    int? OutgoingBookTypeId = null, bool? PrintEntity = null, bool? PrintSubject = null,
+    bool? PageNumbers = null, SignaturePlacement? SignaturePlacement = null);
 
 public sealed record EditApprovedInput(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    byte[] RowVersion, string? ChangeNote, string? BodyJson = null);
+    byte[] RowVersion, string? ChangeNote, string? BodyJson = null,
+    int? OutgoingBookTypeId = null, bool? PrintEntity = null, bool? PrintSubject = null,
+    bool? PageNumbers = null, SignaturePlacement? SignaturePlacement = null);
+
+/// <summary>
+/// النوع وخيارات الطباعة كما وصلت في الطلب (ADR-057) — <c>null</c> في أيّ حقل = **لم يُرسَل**:
+/// الافتراض عند الإنشاء، والقائم عند التعديل (فعميلٌ أقدم لا يعرفها لا يصفّرها صامتاً — قاعدة ADR-048).
+/// </summary>
+internal sealed record PrintChoice(
+    int? OutgoingBookTypeId, bool? PrintEntity, bool? PrintSubject, bool? PageNumbers, SignaturePlacement? SignaturePlacement)
+{
+    public static PrintChoice Of(CreateOutgoingInput i) => new(i.OutgoingBookTypeId, i.PrintEntity, i.PrintSubject, i.PageNumbers, i.SignaturePlacement);
+    public static PrintChoice Of(UpdateOutgoingInput i) => new(i.OutgoingBookTypeId, i.PrintEntity, i.PrintSubject, i.PageNumbers, i.SignaturePlacement);
+    public static PrintChoice Of(EditApprovedInput i) => new(i.OutgoingBookTypeId, i.PrintEntity, i.PrintSubject, i.PageNumbers, i.SignaturePlacement);
+
+    /// <summary>يطبّق ما أُرسل ويُبقي ما لم يُرسَل.</summary>
+    public void ApplyOptions(OutgoingBook b)
+    {
+        if (PrintEntity is { } pe) b.PrintEntity = pe;
+        if (PrintSubject is { } ps) b.PrintSubject = ps;
+        if (PageNumbers is { } pn) b.PageNumbers = pn;
+        if (SignaturePlacement is { } sp) b.SignaturePlacement = sp;
+    }
+}
 
 /// <summary>حركةٌ في سجلّ الصادر مع اسم منفّذها (ADR-056).</summary>
 public sealed record OutgoingMovementData(OutgoingMovement Log, string PerformedByUserName);
@@ -98,6 +126,9 @@ public sealed class OutgoingService(
         var amountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
         ValidateRequired(input.Subject, input.BodyHtml);
         ValidateSize(input.BodyHtml, input.BodyJson);
+        BookTableRules.ValidateBody(input.BodyHtml);
+        var choice = PrintChoice.Of(input);
+        var typeId = await ResolveBookTypeAsync(companyId, choice.OutgoingBookTypeId, current: null, ct);
 
         var book = new OutgoingBook
         {
@@ -116,9 +147,11 @@ public sealed class OutgoingService(
             ExchangeRate = input.ExchangeRate,
             AmountInIqd = amountInIqd,
             Status = BookStatus.Draft,
+            OutgoingBookTypeId = typeId,
             CreatedByUserId = current.UserId!.Value,
             CreatedAt = DateTime.UtcNow,
         };
+        choice.ApplyOptions(book);
         db.OutgoingBooks.Add(book);
         audit.Add("Create", nameof(OutgoingBook), null, $"مسودّة: {book.Subject}", companyId);
         Log(book, OutgoingActions.Created, "إنشاء مسودّة");
@@ -135,7 +168,11 @@ public sealed class OutgoingService(
         await ValidateRefsAsync(book.CompanyId, input.EntityId, input.TemplateId, ct);
         ValidateRequired(input.Subject, input.BodyHtml);
         ValidateSize(input.BodyHtml, input.BodyJson);
+        BookTableRules.ValidateBody(input.BodyHtml);
+        var choice = PrintChoice.Of(input);
+        var typeId = await ResolveBookTypeAsync(book.CompanyId, choice.OutgoingBookTypeId, book.OutgoingBookTypeId, ct);
         var before = OutgoingFields.Of(book);
+        var beforeHtml = book.BodyHtml;
 
         book.EntityId = input.EntityId;
         book.TemplateId = input.TemplateId;
@@ -150,11 +187,14 @@ public sealed class OutgoingService(
         book.Currency = input.Currency;
         book.ExchangeRate = input.ExchangeRate;
         book.AmountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
+        book.OutgoingBookTypeId = typeId;
+        choice.ApplyOptions(book);
         book.UpdatedAt = DateTime.UtcNow;
 
         audit.Add("Update", nameof(OutgoingBook), id.ToString(), "تعديل مسودّة", book.CompanyId);
         Log(book, OutgoingActions.Edited,
-            OutgoingChanges.Summary("تعديل المسودّة", OutgoingChanges.Describe(before, OutgoingFields.Of(book))));
+            OutgoingChanges.Summary("تعديل المسودّة", OutgoingChanges.Describe(before, OutgoingFields.Of(book))),
+            details: BookTableDiff.Describe(beforeHtml, book.BodyHtml).Details);
         await db.SaveChangesAsync(ct);
         return book;
     }
@@ -247,6 +287,9 @@ public sealed class OutgoingService(
         await ValidateRefsAsync(book.CompanyId, input.EntityId, input.TemplateId, ct);
         ValidateRequired(input.Subject, input.BodyHtml);
         ValidateSize(input.BodyHtml, input.BodyJson, input.ChangeNote);
+        BookTableRules.ValidateBody(input.BodyHtml);
+        var choice = PrintChoice.Of(input);
+        var typeId = await ResolveBookTypeAsync(book.CompanyId, choice.OutgoingBookTypeId, book.OutgoingBookTypeId, ct);
 
         // تزامن متفائل: امنع الكتابة فوق نسخة قديمة
         db.Entry(book).Property(b => b.RowVersion).OriginalValue = input.RowVersion;
@@ -269,6 +312,7 @@ public sealed class OutgoingService(
 
         // تطبيق التعديلات (الرقم يبقى ثابتاً)
         var beforeEdit = OutgoingFields.Of(book);
+        var beforeHtml = book.BodyHtml;
         book.EntityId = input.EntityId;
         book.TemplateId = input.TemplateId;
         book.Date = input.Date;
@@ -282,6 +326,8 @@ public sealed class OutgoingService(
         book.Currency = input.Currency;
         book.ExchangeRate = input.ExchangeRate;
         book.AmountInIqd = FinancialCalculator.ComputeIqd(input.Amount, input.Currency, input.ExchangeRate);
+        book.OutgoingBookTypeId = typeId;
+        choice.ApplyOptions(book);
         book.UpdatedAt = DateTime.UtcNow;
 
         // إعادة توليد PDF/QR — يُحفظ بمفتاح جديد (فريد) دون المساس بالـ PDF القديم،
@@ -299,7 +345,8 @@ public sealed class OutgoingService(
         Log(book, OutgoingActions.EditedApproved,
             OutgoingChanges.Summary($"تعديل بعد الاعتماد (الإصدار {lastVersion + 1})",
                 OutgoingChanges.Describe(beforeEdit, OutgoingFields.Of(book)))
-            + (string.IsNullOrWhiteSpace(input.ChangeNote) ? "" : $" — {input.ChangeNote.Trim()}"));
+            + (string.IsNullOrWhiteSpace(input.ChangeNote) ? "" : $" — {input.ChangeNote.Trim()}"),
+            details: BookTableDiff.Describe(beforeHtml, book.BodyHtml).Details);
 
         try
         {
@@ -363,6 +410,7 @@ public sealed class OutgoingService(
     {
         var companyId = ResolveCompanyId(input.CompanyId);
         ValidateSize(input.BodyHtml, input.BodyJson);
+        BookTableRules.ValidateBody(input.BodyHtml);
         await ValidateRefsAsync(companyId, input.EntityId, input.TemplateId, ct);
 
         var company = await db.Companies.FindAsync([companyId], ct);
@@ -391,6 +439,7 @@ public sealed class OutgoingService(
             CreatedByUserId = current.UserId ?? 0,
             CreatedAt = DateTime.UtcNow,
         };
+        PrintChoice.Of(input).ApplyOptions(book);
 
         var result = await renderer.RenderPdfAsync(book, template!, entity!, company!, isPreview: true, ct);
         return result.Pdf;
@@ -419,6 +468,24 @@ public sealed class OutgoingService(
             throw new ValidationException("الجهة غير موجودة في هذه الشركة.");
         if (templateId.HasValue && !await db.Templates.AnyAsync(t => t.TemplateId == templateId.Value && t.CompanyId == companyId && t.IsActive, ct))
             throw new ValidationException("القالب غير موجود أو غير مُفعّل في هذه الشركة.");
+    }
+
+    /// <summary>
+    /// نوع الكتاب (ADR-057): المُرسَل يجب أن يكون من الشركة نفسها؛ وغيابُه ⟵ القائم عند التعديل،
+    /// أو «كتاب رسمي» عند الإنشاء (قرار المالك) — وإن لم يوجد فأوّل نوعٍ في الشركة، وإلا بلا نوع.
+    /// </summary>
+    private async Task<int?> ResolveBookTypeAsync(int companyId, int? requested, int? current, CancellationToken ct)
+    {
+        if (requested is { } id)
+            return await db.OutgoingBookTypes.AnyAsync(t => t.OutgoingBookTypeId == id && t.CompanyId == companyId, ct)
+                ? id
+                : throw new ValidationException("نوع الكتاب غير موجود في هذه الشركة.");
+        if (current is not null) return current;
+
+        var types = db.OutgoingBookTypes.Where(t => t.CompanyId == companyId);
+        return await types.Where(t => t.Name == DefaultOutgoingBookTypes.Default)
+                   .Select(t => (int?)t.OutgoingBookTypeId).FirstOrDefaultAsync(ct)
+               ?? await types.OrderBy(t => t.OutgoingBookTypeId).Select(t => (int?)t.OutgoingBookTypeId).FirstOrDefaultAsync(ct);
     }
 
     private async Task<(Company company, Template template, Entity entity)> LoadRefsAsync(OutgoingBook book, CancellationToken ct)
@@ -459,13 +526,14 @@ public sealed class OutgoingService(
 
     /// <summary>يضيف حركةً للكتاب — تُحفظ مع العملية نفسها (لا سطرَ بلا عمليته ولا عمليةَ بلا سطرها).</summary>
     /// <remarks>⚠️ **بخاصية التنقّل لا بالمعرّف** — عند الإنشاء لا معرّف بعد، وEF يملؤه عند الحفظ.</remarks>
-    private void Log(OutgoingBook book, string action, string description, int? relatedIncomingId = null) =>
+    private void Log(OutgoingBook book, string action, string description, int? relatedIncomingId = null, string? details = null) =>
         db.OutgoingMovements.Add(new OutgoingMovement
         {
             OutgoingBook = book,
             CompanyId = book.CompanyId,
             Action = action,
             Description = description.Length > 500 ? description[..500] : description,
+            Details = details,
             RelatedIncomingId = relatedIncomingId,
             PerformedByUserId = current.UserId!.Value,
             PerformedAt = DateTime.UtcNow,
@@ -519,9 +587,12 @@ public sealed class OutgoingService(
             throw new ForbiddenException("صلاحيتك لا تسمح بهذه العملية.");
     }
 
+    /// <remarks>ADR-057: صارت تحفظ <c>BodyJson</c> (كانت تُسقطه فلا يُستعاد تنسيق إصدارٍ سابق) والنوعَ والخيارات.</remarks>
     private static string Snapshot(OutgoingBook b) => JsonSerializer.Serialize(new
     {
-        b.Number, b.Date, b.EntityId, b.TemplateId, b.Subject, b.BodyHtml,
-        b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd, b.QrContent
+        b.Number, b.Date, b.EntityId, b.TemplateId, b.Subject, b.BodyHtml, b.BodyJson,
+        b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle,
+        b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd, b.QrContent,
+        b.OutgoingBookTypeId, b.PrintEntity, b.PrintSubject, b.PageNumbers, b.SignaturePlacement,
     });
 }

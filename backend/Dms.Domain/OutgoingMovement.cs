@@ -24,6 +24,12 @@ public class OutgoingMovement
     /// <summary>الوصف للعرض — محايدٌ لا يحمل رقم كتابٍ من وحدةٍ أخرى.</summary>
     public string Description { get; set; } = string.Empty;
 
+    /// <summary>
+    /// تفاصيل الحركة أسطراً (ADR-057) — اليوم: ما تغيّر في الجداول بالقديم والجديد. <c>Description</c> محدودٌ
+    /// بـ500 حرف، وتعديل فاتورةٍ قد يمسّ عشرات الخلايا.
+    /// </summary>
+    public string? Details { get; set; }
+
     /// <summary>الوارد المرتبط (للربط وفكّه) — يُعرض رقمه لمن يراه وحده.</summary>
     public int? RelatedIncomingId { get; set; }
 
@@ -47,11 +53,14 @@ public static class OutgoingActions
 public sealed record OutgoingFields(
     int EntityId, int? TemplateId, DateTime Date, string? HeaderPhrase,
     string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate)
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate,
+    int? OutgoingBookTypeId = null, bool PrintEntity = true, bool PrintSubject = true, bool PageNumbers = true,
+    SignaturePlacement SignaturePlacement = SignaturePlacement.LastPage)
 {
     public static OutgoingFields Of(OutgoingBook b) => new(
         b.EntityId, b.TemplateId, b.Date, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle,
-        b.Subject, b.BodyHtml, b.Amount, b.Currency, b.ExchangeRate);
+        b.Subject, b.BodyHtml, b.Amount, b.Currency, b.ExchangeRate,
+        b.OutgoingBookTypeId, b.PrintEntity, b.PrintSubject, b.PageNumbers, b.SignaturePlacement);
 }
 
 /// <summary>
@@ -67,7 +76,11 @@ public static class OutgoingChanges
     {
         var changed = new List<string>();
         if (before.Subject.Trim() != after.Subject.Trim()) changed.Add("الموضوع");
-        if (before.BodyHtml != after.BodyHtml) changed.Add("المتن");
+        // ADR-057: «المتن» = النصّ خارج الجداول، و«الجداول» وحدها — وتفاصيلها في BookTableDiff.
+        if (BookTables.BookTableCodec.StripTables(before.BodyHtml) != BookTables.BookTableCodec.StripTables(after.BodyHtml))
+            changed.Add("المتن");
+        if (!BookTables.BookTableCodec.ExtractJson(before.BodyHtml).SequenceEqual(BookTables.BookTableCodec.ExtractJson(after.BodyHtml)))
+            changed.Add("الجداول");
         if (before.EntityId != after.EntityId) changed.Add("الجهة");
         if (before.Date.Date != after.Date.Date) changed.Add("التاريخ");
         if (before.Amount != after.Amount || before.Currency != after.Currency || before.ExchangeRate != after.ExchangeRate)
@@ -76,6 +89,10 @@ public static class OutgoingChanges
         if (Norm(before.SignatoryName) != Norm(after.SignatoryName) || Norm(before.SignatoryTitle) != Norm(after.SignatoryTitle))
             changed.Add("الموقّع");
         if (before.TemplateId != after.TemplateId) changed.Add("القالب");
+        if (before.OutgoingBookTypeId != after.OutgoingBookTypeId) changed.Add("النوع");
+        if (before.PrintEntity != after.PrintEntity || before.PrintSubject != after.PrintSubject
+            || before.PageNumbers != after.PageNumbers || before.SignaturePlacement != after.SignaturePlacement)
+            changed.Add("خيارات الطباعة");
         return changed;
     }
 

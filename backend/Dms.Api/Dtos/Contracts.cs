@@ -349,12 +349,17 @@ public sealed record CaseFileDetail(
 public sealed record CreateOutgoingRequest(
     int? CompanyId, int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null,
+    // ADR-057: النوع وخيارات الطباعة — null = الافتراض (إنشاء) أو القائم (تعديل)، فلا يصفّرها عميلٌ أقدم.
+    int? OutgoingBookTypeId = null, bool? PrintEntity = null, bool? PrintSubject = null,
+    bool? PageNumbers = null, SignaturePlacement? SignaturePlacement = null);
 
 public sealed record UpdateOutgoingRequest(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
-    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null);
+    decimal? Amount, Currency? Currency, decimal? ExchangeRate, string? BodyJson = null,
+    int? OutgoingBookTypeId = null, bool? PrintEntity = null, bool? PrintSubject = null,
+    bool? PageNumbers = null, SignaturePlacement? SignaturePlacement = null);
 
 /// <summary>اعتماد الصادر — ومعه **اختيارياً** الواردات التي يردّ عليها (ADR-045).</summary>
 /// <remarks>
@@ -371,13 +376,17 @@ public sealed record EditApprovedRequest(
     int EntityId, int? TemplateId, DateTime Date,
     string? HeaderPhrase, string? SignatoryName, string? SignatoryTitle, string Subject, string BodyHtml,
     decimal? Amount, Currency? Currency, decimal? ExchangeRate,
-    string RowVersion, string? ChangeNote, string? BodyJson = null);
+    string RowVersion, string? ChangeNote, string? BodyJson = null,
+    int? OutgoingBookTypeId = null, bool? PrintEntity = null, bool? PrintSubject = null,
+    bool? PageNumbers = null, SignaturePlacement? SignaturePlacement = null);
 
 public sealed record OutgoingListItem(
     int OutgoingId, string? Number, DateTime Date, string Subject,
     string EntityName, BookStatus Status, decimal? AmountInIqd, DateTime CreatedAt,
     /// <summary>شارةُ المعاملة في القائمة — `null` لمن لا معاملة له (ADR-045).</summary>
-    int? CaseFileId = null);
+    int? CaseFileId = null,
+    /// <summary>نوع الكتاب (ADR-057).</summary>
+    int? OutgoingBookTypeId = null, string? OutgoingBookTypeName = null);
 
 public sealed record OutgoingDetail(
     int OutgoingId, int CompanyId, string? Number, int? Year, int? SerialNo, DateTime Date,
@@ -407,7 +416,12 @@ public sealed record OutgoingDetail(
     /// يُحجب لسببين: لا يملك قسم الوارد أصلاً، أو الوارد خارج حدّ قسمه (ADR-015/018).
     /// كان الثاني يُسقَط صامتاً فيبدو الصادر مجيباً لكتبٍ أقلّ ممّا يجيب.
     /// </remarks>
-    int HiddenRepliesCount = 0);
+    int HiddenRepliesCount = 0,
+
+    // ── ADR-057: نوع الكتاب وخيارات الطباعة ──
+    int? OutgoingBookTypeId = null, string? OutgoingBookTypeName = null,
+    bool PrintEntity = true, bool PrintSubject = true, bool PageNumbers = true,
+    SignaturePlacement SignaturePlacement = SignaturePlacement.LastPage);
 
 public sealed record VersionResponse(int VersionNo, DateTime ChangedAt, int ChangedByUserId, string? ChangeNote);
 
@@ -470,7 +484,16 @@ public sealed record ReplyLinkDto(int BookId, string? Number, DateTime Date, str
 public sealed record OutgoingMovementItem(
     int MovementId, string Action, string Description,
     int? RelatedIncomingId, string? RelatedIncomingNumber,
-    string PerformedByUserName, DateTime PerformedAt);
+    string PerformedByUserName, DateTime PerformedAt,
+    /// <summary>تفاصيل أسطراً — ما تغيّر في الجداول بالقديم والجديد (ADR-057).</summary>
+    string? Details = null);
+
+/// <summary>نوع الكتاب الصادر (ADR-057) — نظيرُ <c>DocumentTypeRequest</c>.</summary>
+public sealed record OutgoingBookTypeRequest(int? CompanyId, string Name);
+public sealed record OutgoingBookTypeResponse(int OutgoingBookTypeId, int CompanyId, string Name);
+
+/// <summary>المبلغ بالحروف (ADR-057).</summary>
+public sealed record NumberWordsResponse(string Words);
 
 public sealed record MovementLogItem(
     int MovementId, string Action, string Description,
