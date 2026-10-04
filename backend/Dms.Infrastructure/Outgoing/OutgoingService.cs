@@ -401,9 +401,8 @@ public sealed class OutgoingService(
     public async Task<byte[]> GetWordAsync(int id, CancellationToken ct = default)
     {
         var book = await GetAsync(id, ct);
-        var entity = await db.Entities.FindAsync([book.EntityId], ct);
-        var company = await db.Companies.FindAsync([book.CompanyId], ct);
-        return renderer.RenderWord(book, entity!, company!);
+        var (company, template, entity) = await LoadRefsAsync(book, ct);
+        return await renderer.RenderWordAsync(book, template, entity, company, ct);
     }
 
     public async Task<byte[]> PreviewPdfAsync(CreateOutgoingInput input, CancellationToken ct = default)
