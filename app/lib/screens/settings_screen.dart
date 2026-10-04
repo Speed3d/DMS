@@ -105,7 +105,7 @@ class SettingsScreen extends ConsumerWidget {
     final showHr = session.canSeePayroll;
 
     return DefaultTabController(
-      length: 6 + (showHr ? 1 : 0) + (isSuper ? 1 : 0),
+      length: 7 + (showHr ? 1 : 0) + (isSuper ? 1 : 0),
       child: Column(
         children: [
           Row(
@@ -116,6 +116,8 @@ class SettingsScreen extends ConsumerWidget {
                   const Tab(text: 'الجهات'),
                   const Tab(text: 'الأقسام'),
                   const Tab(text: 'أنواع المستندات'),
+                  // ADR-057: قائمةٌ منفصلة لما تُصدره الشركة (قرار المالك) — لا «شكوى» و«مخطّط» في إنشاء فاتورة.
+                  const Tab(text: 'أنواع الصادر'),
                   const Tab(text: 'القوالب'),
                   const Tab(text: 'أسعار الصرف'),
                   if (showHr) const Tab(text: 'الموظفون والرواتب'),
@@ -152,6 +154,7 @@ class SettingsScreen extends ConsumerWidget {
               const _EntitiesTab(),
               const _DepartmentsTab(),
               const _DocumentTypesTab(),
+              const _OutgoingBookTypesTab(),
               const _TemplatesTab(),
               const _RatesTab(),
               if (showHr) const HrSettingsScreen(),
@@ -548,6 +551,107 @@ class _DocumentTypesTabState extends ConsumerState<_DocumentTypesTab> {
                 ListTile(
                   leading: const Icon(Icons.label_outline_rounded),
                   title: Text(t.name),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'تعديل', onPressed: () => _rename(t)),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        tooltip: 'حذف',
+                        onPressed: () => _delete(t),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+}
+
+// ----- أنواع الصادر (ADR-057) -----
+/// أنواع الكتاب الصادر — كتاب رسمي · فاتورة · عرض سعر · وما يضيفه المالك. نظيرُ [_DocumentTypesTab].
+class _OutgoingBookTypesTab extends ConsumerStatefulWidget {
+  const _OutgoingBookTypesTab();
+  @override
+  ConsumerState<_OutgoingBookTypesTab> createState() => _OutgoingBookTypesTabState();
+}
+
+class _OutgoingBookTypesTabState extends ConsumerState<_OutgoingBookTypesTab> {
+  late Future<List<OutgoingBookTypeModel>> _f;
+  @override
+  void initState() { super.initState(); _f = ref.read(apiClientProvider).outgoingBookTypes(); }
+  void _reload() => setState(() { _f = ref.read(apiClientProvider).outgoingBookTypes(); });
+
+  Future<void> _run(Future<void> Function() action, {String? done}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await action();
+      if (mounted) _reload();
+      if (done != null) messenger.showSnackBar(SnackBar(content: Text(done), backgroundColor: Colors.green));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _add() async {
+    final r = await _prompt(context, 'نوع كتابٍ صادر جديد', [_Field('name', 'اسم النوع (مثل: كشف كميات)')]);
+    if (r == null || r['name']!.trim().isEmpty) return;
+    await _run(() => ref.read(apiClientProvider).createOutgoingBookType(r['name']!.trim()));
+  }
+
+  Future<void> _rename(OutgoingBookTypeModel t) async {
+    final r = await _prompt(context, 'تعديل النوع', [_Field('name', 'اسم النوع', initial: t.name)]);
+    if (r == null || r['name']!.trim().isEmpty) return;
+    await _run(() => ref.read(apiClientProvider).updateOutgoingBookType(t.outgoingBookTypeId, r['name']!.trim()));
+  }
+
+  Future<void> _delete(OutgoingBookTypeModel t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف نوع كتابٍ صادر'),
+        content: Text('هل تريد حذف النوع «${t.name}»؟\n'
+            'لن يتم الحذف إن كان مستخدَماً في كتبٍ صادرة — عدّل اسمه بدل حذفه.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _run(() => ref.read(apiClientProvider).deleteOutgoingBookType(t.outgoingBookTypeId),
+        done: 'تم حذف النوع «${t.name}».');
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<OutgoingBookTypeModel>>(
+        future: _f,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) return Center(child: Text('خطأ: ${snap.error}'));
+          final list = snap.data ?? const <OutgoingBookTypeModel>[];
+          return _Section(
+            addLabel: 'نوع جديد',
+            onAdd: _add,
+            children: [
+              if (list.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('لا توجد أنواعٌ للصادر بعد. أضِف ما تُصدره الشركة '
+                      '(كتاب رسمي · فاتورة · عرض سعر …) لتصنيف الكتب والفلترة بها.',
+                      style: TextStyle(color: Colors.grey)),
+                ),
+              for (final (i, t) in list.indexed)
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(t.name),
+                  // الأوّل هو افتراض الكتاب الجديد (قرار المالك: «كتاب رسمي») — يُقال صراحةً.
+                  subtitle: i == 0 ? const Text('الافتراضي للكتاب الجديد') : null,
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

@@ -284,9 +284,10 @@ class ApiClient {
       _post('/exchange-rates', {'currency': currency, 'rate': rate, 'effectiveDate': DateTime.now().toIso8601String()});
 
   // ---------- الصادر ----------
-  Future<List<OutgoingListItem>> outgoingList({String? status, String? search}) async {
+  Future<List<OutgoingListItem>> outgoingList({String? status, String? search, int? typeId}) async {
     final q = <String, dynamic>{};
     if (status != null) q['status'] = status;
+    if (typeId != null) q['typeId'] = typeId;   // فلتر نوع الكتاب (ADR-057)
     if (search != null && search.isNotEmpty) q['search'] = search;
     return (await _get('/outgoing', query: q) as List).map((e) => OutgoingListItem.fromJson(e)).toList();
   }
@@ -327,6 +328,22 @@ class ApiClient {
 
   Future<List<VersionModel>> versions(int id) async =>
       (await _get('/outgoing/$id/versions') as List).map((e) => VersionModel.fromJson(e)).toList();
+
+  /// المبلغ بالحروف لخلية «كتابة بالحروف» (ADR-057) — **التفقيط في الخادم وحده** فلا تتباعد صياغتان.
+  Future<String> numberWords(num value, String currency) async =>
+      ((await _get('/outgoing/number-words', query: {'value': value.toString(), 'currency': currency}))
+          as Map<String, dynamic>)['words'] as String? ?? '';
+
+  // ---------- أنواع الصادر (ADR-057) ----------
+  Future<List<OutgoingBookTypeModel>> outgoingBookTypes() async =>
+      (await _get('/outgoing-book-types') as List).map((e) => OutgoingBookTypeModel.fromJson(e)).toList();
+
+  Future<void> createOutgoingBookType(String name) => _post('/outgoing-book-types', {'name': name});
+
+  Future<void> updateOutgoingBookType(int id, String name) => _put('/outgoing-book-types/$id', {'name': name});
+
+  /// يفشل بـ409 إن كان النوع مستعملاً في كتابٍ صادر (الخادم يذكر العدد).
+  Future<void> deleteOutgoingBookType(int id) => _delete('/outgoing-book-types/$id');
 
   // ---------- أنواع المستندات ----------
   Future<List<DocumentTypeModel>> documentTypes() async =>

@@ -16,16 +16,18 @@ void main() {
         {'insert': '\n'},
       ];
 
-  group('حجم الخط الرقمي يصل إلى HTML', () {
-    test('حجم 18 يُنتج font-size: 18px', () {
-      expect(quillDeltaToHtml(delta('نص', size: '18')), contains('font-size: 18px'));
+  group('حجم الخط الرقمي يصل إلى HTML — بالنقاط كما في Word (ADR-057)', () {
+    test('حجم 12 يُنتج font-size: 12pt (لا 12px التي كانت تُطبع 9)', () {
+      final html = quillDeltaToHtml(delta('نص', size: '12'));
+      expect(html, contains('font-size: 12pt'));
+      expect(html, isNot(contains('px')));
     });
 
     test('كل حجم في قائمة المحرر يصل فعلاً (عدا «مسح»)', () {
       for (final entry in kQuillFontSizes.entries) {
         if (entry.value == '0') continue; // «مسح» تزيل الحجم عمداً
         final html = quillDeltaToHtml(delta('نص', size: entry.value));
-        expect(html, contains('font-size: ${entry.value}px'),
+        expect(html, contains('font-size: ${entry.value}pt'),
             reason: 'الحجم «${entry.key}» لا يصل إلى الـHTML');
       }
     });
