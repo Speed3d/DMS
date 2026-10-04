@@ -12,6 +12,7 @@ import '../core/company_providers.dart';
 import '../core/form_drafts.dart';
 import '../core/local_storage.dart';
 import '../core/outgoing_providers.dart';
+import '../core/paper_fonts.dart';
 import '../core/quill_html.dart';
 import '../core/quill_toolbar.dart';
 import '../core/session.dart';
@@ -165,6 +166,10 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
     }
     if (_isCreate) _drafts = _createAutosaver();
     _refs = _loadRefs();
+    // خطوط الطباعة للورقة — تصل ثم تُعاد الورقة بها (كي تنكسر الأسطر كما في الـPDF)
+    PaperFonts.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
     for (final c in _watched) {
       c.addListener(_changed);
     }

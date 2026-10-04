@@ -81,6 +81,12 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # ADR-057: خطوط الطباعة نفسها (Times New Roman · Arial · Amiri · Cairo — عاديٌّ وعريض، كما يسجّلها الخادم) لترسم «الورقة»
+  # كما تُطبع. ⚠️ **أصولٌ لا `fonts:`** — `fonts:` تُنزَّل كلُّها عند الإقلاع (~5.4 ميغا لكل زائرٍ أوّل مرّة)، والأصول تُحمَّل عند
+  # فتح المحرّر وحده (`core/paper_fonts.dart`) ثم يحفظها المتصفّح.
+  assets:
+    - assets/fonts/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

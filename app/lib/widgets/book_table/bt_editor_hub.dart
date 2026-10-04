@@ -81,7 +81,9 @@ class BtEditorHub extends ChangeNotifier {
 
   void attach(quill.QuillController controller) {
     _main?.removeListener(_onMainChanged);
-    _main = controller..addListener(_onMainChanged);
+    _main = controller
+      ..addListener(_onMainChanged)
+      ..onReplaceText = _onMainReplace;
   }
 
   // ─────────────────────────── الحالة ───────────────────────────
@@ -293,13 +295,15 @@ class BtEditorHub extends ChangeNotifier {
   /// [keepFocus]: تغييرٌ داخل الجدول لا يمسّ التركيز (`ignoreFocus`) — ⚠️ **وQuill لا يعيد بناء المتن معه**، فالجدول يقرأ
   /// بياناته من المستند عبر المحرّك (`BtTableEditor`) لا من نسخةٍ التقطها عند بنائه. والإدراج والحذف (سطرٌ يُضاف أو يُزال)
   /// يحتاجان إعادة بناءٍ كاملة ⟵ بلا `ignoreFocus`، والتركيز يُستردّ في نافذة الاسترداد.
-  void _embedInto(int index, int len, BtTable t, TextSelection? selection, {bool keepFocus = true}) {
+  void _embedInto(int index, int len, BtTable t, TextSelection? selection, {bool keepFocus = true, bool lineAfter = false}) {
     final toggled = main.toggledStyle;
     main.toggledStyle = const quill.Style();
     // 🔴 **كل تغييرٍ في الجدول خطوةُ تراجعٍ مستقلّة**: Quill يدمج ما يقع في 400 ملّيثانية في خطوةٍ واحدة — وحفظُ الخلية ثم
     //    «صفٌّ تحت» يقعان في اللحظة نفسها، فكان Ctrl+Z سيمحو المكتوب مع الصفّ. وبعده كذلك: كتابةُ المتن لا تُدمج فيه.
     main.document.history.lastRecorded = 0;
     main.replaceText(index, len, quill.CustomBlockEmbed(kDmsTableEmbed, BtJson.toEmbedData(t)), selection, ignoreFocus: keepFocus);
+    // جدولٌ صار آخرَ ما في الكتاب ⟵ فقرةٌ فارغة بعده (وإلا لا موضعَ للكتابة بعده — كما يفعل Word) — في خطوة التراجع نفسها
+    if (lineAfter && index + 2 >= main.document.length) main.replaceText(index + 1, 0, '\n', null, ignoreFocus: keepFocus);
     main.document.history.lastRecorded = 0;
     main.toggledStyle = toggled;
   }
@@ -316,7 +320,7 @@ class BtEditorHub extends ChangeNotifier {
     final index = (s.isValid ? s.start : max).clamp(0, max);
     sel = BtSelection(t.id, 0, 0, 0, 0);
     _arm();
-    _embedInto(index, 0, t, TextSelection.collapsed(offset: index + 1), keepFocus: false);
+    _embedInto(index, 0, t, TextSelection.collapsed(offset: index + 1), keepFocus: false, lineAfter: true);
     final first = t.ownerOf(0, 0)!.cell;
     if (_editable(first)) {
       _beginEdit(first);
@@ -474,6 +478,7 @@ class BtEditorHub extends ChangeNotifier {
       config: quill.QuillControllerConfig(clipboardConfig: quill.QuillClipboardConfig(onClipboardPaste: _onCellPaste)),
     );
     if (_wasEmpty && _emptyStyle != null) ctl.toggledStyle = quill.Style.fromJson(_emptyStyle);
+    ctl.onReplaceText = _onCellReplace;
     ctl.addListener(_onCellChanged);
     cell = ctl;
     cellFocus = FocusNode(debugLabel: 'bt-cell');
@@ -564,6 +569,19 @@ class BtEditorHub extends ChangeNotifier {
         scroll?.dispose();
       });
     }
+  }
+
+  /// الخروج إلى النصّ (Esc · «إنهاء»): المؤشّر في **أوّل السطر الذي بعد الجدول** — ويُنشأ السطر إن كان الجدول آخرَ ما في
+  /// الكتاب. كتابٌ محفوظٌ ينتهي بجدول كان لا موضعَ للكتابة بعده (النقر تحت الجدول خارج المحرّر). كما في Word.
+  void leaveToText() {
+    final s = sel;
+    final loc = s == null ? null : locate(s.tableId);
+    exit();
+    if (loc == null) return;
+    if (loc.offset + 2 >= main.document.length) {
+      main.replaceText(loc.offset + 1, 0, '\n', null, ignoreFocus: true);
+    }
+    focusMain?.call(loc.offset + 2);
   }
 
   /// الخروج من الجدول: تُحفظ الخلية المفتوحة ويزول التحديد.
@@ -738,9 +756,7 @@ class BtEditorHub extends ChangeNotifier {
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.escape) {
-      final loc = locate(s.tableId);
-      exit();
-      if (loc != null) focusMain?.call(loc.offset + 1);
+      leaveToText();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.tab) {
@@ -894,9 +910,84 @@ class BtEditorHub extends ChangeNotifier {
     final grid = await readClipboardGrid();
     if (grid == null || grid.first.length < 2) return false;   // عمودٌ واحد = أسطر نصّ، لا جدول
     final ask = askPasteAsTable;
-    if (ask == null || !await ask(grid.length, grid.first.length)) return false;
+    if (ask == null) return false;
+    if (!await ask(grid.length, grid.first.length)) {
+      final text = [for (final r in grid) r.map((c) => c.text).join('\t')].join('\n');
+      final at = main.selection;
+      _insertPlainIntoMain(at.start, at.end - at.start, text);
+      return true;
+    }
     insertTable(BtOps.fromGrid(grid));
     return true;
+  }
+
+  // ─────────────────────────── اللصق على الويب ───────────────────────────
+  //
+  // 🔴 **على الويب يلصق المتصفّح نفسه** (`DefaultTextEditingShortcuts` يترك Ctrl+V للمتصفّح داخل حقول الكتابة) — فلا يمرّ
+  //    باعتراض اللصق (`onClipboardPaste`) أصلاً، ويصل المحرّرَ **نصّاً خامّاً بعلامات Tab**: جدولُ Excel كان سيُلصق كلُّه في
+  //    خليةٍ واحدة، وجدولٌ في المتن بلا «إدراجه جدولاً؟». (كشفه فحص مصدر Flutter بعد أن مرّت حرّاس الاختبار — فهي تعمل خارج الويب.)
+  //    ⟵ الحارس عند **كل نصٍّ يدخل المحرّر** (`onReplaceText`): نصٌّ فيه Tab وأطول من حرفٍ **لا يأتي من لوحة المفاتيح**
+  //    (Tab نعترضه للتنقّل) ⟵ هو لصقٌ من جدول.
+
+  bool _bypass = false;
+
+  static bool _looksLikeGrid(Object? data) => data is String && data.length > 1 && data.contains('\t');
+
+  bool _onCellReplace(int index, int len, Object? data) {
+    if (_bypass || !_looksLikeGrid(data)) return true;
+    unawaited(_pasteRawIntoCell(data as String));
+    return false;
+  }
+
+  Future<void> _pasteRawIntoCell(String text) async {
+    final tsv = BtPaste.parseTsv(text);
+    final s = sel;
+    final head = activeTable?.ownerOf(s?.hr ?? 0, s?.hc ?? 0);
+    if (tsv == null || s == null || head == null) return;
+    // جدول Word بعريضه ولونه إن أمكنت قراءة HTML الحافظة (والمقاسان واحد) — وإلا نصّ الجدول كما وصل
+    var grid = BtPaste.plainCells(tsv);
+    try {
+      final html = await _readHtml().timeout(const Duration(seconds: 2));
+      final rich = html != null && html.toLowerCase().contains('<table') ? BtPaste.parseHtmlCells(html) : null;
+      if (rich != null && rich.length == grid.length && rich.first.length == grid.first.length) grid = rich;
+    } catch (_) {
+      // لا إذن لقراءة الحافظة أو لا HTML — يكفي النصّ
+    }
+    if (sel?.tableId != s.tableId) return;
+    stopEditing(notify: false);
+    sel = BtSelection(s.tableId, head.row, head.col, head.row, head.col);
+    _pasteGrid(grid, head.row, head.col);
+  }
+
+  bool _onMainReplace(int index, int len, Object? data) {
+    if (_bypass || sel != null || !_looksLikeGrid(data)) return true;
+    final grid = BtPaste.parseTsv(data as String);
+    if (grid == null || grid.first.length < 2) return true;
+    unawaited(_askRawIntoMain(index, len, data, grid));
+    return false;
+  }
+
+  Future<void> _askRawIntoMain(int index, int len, String text, List<List<String>> grid) async {
+    final ask = askPasteAsTable;
+    final asTable = ask != null && await ask(grid.length, grid.first.length);
+    if (_disposed) return;
+    if (!asTable) {
+      _insertPlainIntoMain(index, len, text);
+      return;
+    }
+    final max = math.max(0, main.document.length - 1);
+    if (len > 0) main.replaceText(index.clamp(0, max), len, '', null);
+    main.updateSelection(TextSelection.collapsed(offset: index.clamp(0, math.max(0, main.document.length - 1))), quill.ChangeSource.local);
+    insertTable(BtOps.fromGrid(BtPaste.plainCells(grid)));
+  }
+
+  void _insertPlainIntoMain(int index, int len, String text) {
+    _bypass = true;
+    try {
+      main.replaceText(index, len, text, TextSelection.collapsed(offset: index + text.length));
+    } finally {
+      _bypass = false;
+    }
   }
 
   // ─────────────────────────── سحب حدّ العمود ───────────────────────────

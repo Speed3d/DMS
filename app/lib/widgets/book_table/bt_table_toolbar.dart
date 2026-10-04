@@ -136,7 +136,7 @@ class BtTableToolbar extends StatelessWidget {
             builder: (context) =>
                 btn('bt-delete-table', Icons.delete_forever_rounded, 'حذف الجدول', () => _deleteTable(context), color: AppColors.danger),
           ),
-          btn('bt-done', Icons.check_rounded, 'إنهاء تحرير الجدول (Esc)', hub.exit, color: theme.colorScheme.primary),
+          btn('bt-done', Icons.check_rounded, 'إنهاء تحرير الجدول (Esc) — والكتابة بعده', hub.leaveToText, color: theme.colorScheme.primary),
         ],
       ),
     );

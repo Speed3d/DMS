@@ -125,6 +125,50 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('جدولٌ في آخر الكتاب يُدرج ومعه سطرٌ فارغ بعده — فيُكتب بعده (كما في Word)', (tester) async {
+      await pump(tester, mode: OutgoingEditorMode.create);
+      await tester.tap(find.byKey(const Key('insert-table')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bt-insert-ok')));
+      await wait(tester);
+      final h = hubOf(tester);
+      final ops = h.main.document.toDelta().toJson();
+      final i = ops.indexWhere((op) => op['insert'] is Map);
+      expect(i, greaterThanOrEqualTo(0));
+      final after = ops.sublist(i + 1).map((op) => op['insert']).join();
+      expect(after, '\n\n', reason: 'سطر البلوك ثم فقرةٌ فارغة بعده');
+      // وجدولٌ يُدرج وسط نصٍّ لا يُضاف بعده شيء
+      h.exit();
+      h.main.replaceText(0, 0, 'قبل', const TextSelection.collapsed(offset: 1));
+      await wait(tester);
+      final len = h.main.document.length;
+      h.insertTable(BtOps.blank(2, 2));
+      await wait(tester);
+      expect(h.main.document.length, len + 1, reason: 'البلوك وحده — النصّ بعده يكفي');
+    });
+
+    testWidgets('كتابٌ محفوظٌ ينتهي بجدول: Esc يُخرج إلى سطرٍ جديد بعده — والمتن صاحب التركيز', (tester) async {
+      final body = jsonEncode([
+        {'insert': 'قبل الجدول\n'},
+        {
+          'insert': {kDmsTableEmbed: BtJson.toEmbedData(BtOps.invoice())}
+        },
+        {'insert': '\n'},
+      ]);
+      await pump(tester, body: body);
+      final h = hubOf(tester);
+      final len = h.main.document.length;
+      await tapCell(tester, 1, 1);
+      await key(tester, LogicalKeyboardKey.escape);   // الخلية ⟵ التحديد
+      await key(tester, LogicalKeyboardKey.escape);   // التحديد ⟵ النصّ
+      expect(h.active, isFalse);
+      expect(h.main.document.length, len + 1, reason: 'سطرٌ جديد بعد الجدول');
+      expect(mainFocus(tester).hasPrimaryFocus, isTrue);
+      expect(h.main.selection.baseOffset, 'قبل الجدول\n'.length + 2, reason: 'المؤشّر في السطر الجديد');
+      h.main.replaceText(h.main.selection.baseOffset, 0, 'بعد', null);
+      expect(h.main.document.toPlainText().endsWith('بعد\n'), isTrue);
+    });
+
     testWidgets('🔴 النقر على خلية يُبقي التركيز فيها — وCtrl+A يحدّد نصّ الخلية لا المستند (عيب الدفعة ٠)', (tester) async {
       await pump(tester);
       final h = hubOf(tester);
@@ -160,6 +204,24 @@ void main() {
       expect(h.cell!.document.toPlainText().trim(), 'أبج', reason: 'التراجع في الخلية');
       expect(h.main.document.toPlainText(), mainText, reason: 'لا تراجع في المتن');
       expect(stored(h).rows[1].cells[1]!.text, isEmpty, reason: 'الخلية لم تُغادَر بعد');
+    });
+
+    testWidgets('🔴 المتن مُركَّزٌ ثم نقرٌ على خلية ⟵ التركيز للخلية، وCtrl+A وBackspace لا يمسحان المتن', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      final mainText = h.main.document.toPlainText();
+      h.main.updateSelection(const TextSelection.collapsed(offset: 2), quill.ChangeSource.local);
+      mainFocus(tester).requestFocus();
+      await wait(tester);
+      expect(mainFocus(tester).hasPrimaryFocus, isTrue);
+      await tapCell(tester, 2, 5);
+      expect(h.editing, isTrue);
+      expect(h.cellFocus!.hasPrimaryFocus, isTrue, reason: 'المتن لا يحتفظ بالتركيز بعد النقر على خلية');
+      expect(mainFocus(tester).hasPrimaryFocus, isFalse);
+      await key(tester, LogicalKeyboardKey.keyA, ctrl: true);
+      await key(tester, LogicalKeyboardKey.backspace);
+      expect(h.main.document.toPlainText(), mainText, reason: 'المتن كما هو');
+      expect(h.tableCount, 1);
     });
 
     testWidgets('النقر في المتن يُغادر الجدول ويحفظ الخلية', (tester) async {
@@ -483,6 +545,71 @@ void main() {
       await wait(tester);
       expect(h.tableCount, 2);
       expect(stored(h).rows[1].cells[1]!.text, '1,000');
+    });
+
+    testWidgets('لصق نصّاً عاديّاً في المتن: يُدرج مرّةً واحدة — بلا سؤالٍ ثانٍ', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      h.main.updateSelection(const TextSelection.collapsed(offset: 3), quill.ChangeSource.local);
+      mainFocus(tester).requestFocus();
+      await wait(tester);
+      clipboard('أ\tب\nج\tد\n');
+      await key(tester, LogicalKeyboardKey.keyV, ctrl: true);
+      await tester.pumpAndSettle(const Duration(milliseconds: 50), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+      await tester.tap(find.byKey(const Key('bt-paste-as-text')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 50), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+      expect(find.text('لصق جدول'), findsNothing, reason: 'لا يُسأل مرّتين');
+      expect(h.tableCount, 1);
+      expect('أ\tب'.allMatches(h.main.document.toPlainText()).length, 1, reason: 'النصّ مرّةً واحدة');
+    });
+
+    group('🔴 على الويب يلصق المتصفّح نفسه — نصٌّ خامّ بعلامات Tab يصل المحرّر مباشرة', () {
+      testWidgets('في خلية: يصير لصق جدول (يملأ من هنا ويُدرج قبل المجموع) لا نصّاً في خليةٍ واحدة', (tester) async {
+        await pump(tester);
+        final h = hubOf(tester);
+        await tapCell(tester, 1, 1);
+        // ما يفعله المحرّر حين يكتب المتصفّح اللصق في حقله: replaceText بنصٍّ خامّ — بلا onClipboardPaste
+        h.cell!.replaceText(0, 0, 'أ\t1\nب\t2\nج\t3\nد\t4', const TextSelection.collapsed(offset: 15));
+        await wait(tester, 100);
+        final t = stored(h);
+        expect(t.rows[1].cells[1]!.text, 'أ', reason: 'لا «أ⇥1⏎ب…» في خليةٍ واحدة');
+        expect(t.rowCount, 6);
+        expect([for (var r = 1; r <= 4; r++) t.rows[r].cells[2]!.text], ['1', '2', '3', '4']);
+        expect(BtOps.validate(t), isNull);
+      });
+
+      testWidgets('في المتن: «إدراجه جدولاً؟» ⟵ نصّاً عاديّاً يُدرج كما وصل', (tester) async {
+        await pump(tester);
+        final h = hubOf(tester);
+        h.main.replaceText(3, 0, 'البند\tالمبلغ\nأ\t1,000', const TextSelection.collapsed(offset: 3));
+        await tester.pumpAndSettle(const Duration(milliseconds: 50), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+        expect(find.text('لصق جدول'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('bt-paste-as-text')));
+        await tester.pumpAndSettle(const Duration(milliseconds: 50), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+        expect(h.tableCount, 1);
+        expect(h.main.document.toPlainText(), contains('البند\tالمبلغ'));
+      });
+
+      testWidgets('في المتن: «جدولاً» ⟵ جدولٌ عند موضع اللصق', (tester) async {
+        await pump(tester);
+        final h = hubOf(tester);
+        h.main.replaceText(3, 0, 'البند\tالمبلغ\nأ\t1,000', const TextSelection.collapsed(offset: 3));
+        await tester.pumpAndSettle(const Duration(milliseconds: 50), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+        await tester.tap(find.byKey(const Key('bt-paste-as-table')));
+        await wait(tester);
+        expect(h.tableCount, 2);
+        expect(stored(h).rows[1].cells[1]!.text, '1,000');
+        expect(h.main.document.toPlainText(), isNot(contains('البند\tالمبلغ')));
+      });
+
+      testWidgets('Tab واحد يُكتب في المتن كما هو — ليس لصقاً', (tester) async {
+        await pump(tester);
+        final h = hubOf(tester);
+        h.main.replaceText(3, 0, '\t', const TextSelection.collapsed(offset: 4));
+        await wait(tester);
+        expect(find.text('لصق جدول'), findsNothing);
+        expect(h.main.document.toPlainText().substring(3, 4), '\t');
+      });
     });
   });
 }
