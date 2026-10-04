@@ -25,6 +25,10 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
   String? _status;
   final _search = TextEditingController();
 
+  // ── فلتر نوع الكتاب (ADR-057) ──
+  int? _typeId;
+  List<OutgoingBookTypeModel> _types = const [];
+
   @override
   void initState() {
     super.initState();
@@ -32,10 +36,21 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
     // **بفلترها** بدل أن تعرض كل الصادر وتُكذّب الرقم الذي ضُغط عليه.
     _status = takeNavIntent<OutgoingStatusIntent>(ref)?.status;
     _reload();
+    _loadTypes();
+  }
+
+  /// الأنواع للفلتر — وفشلُها (خادمٌ أقدم · انقطاع) يُخفي الفلتر ولا يُسقط القائمة.
+  Future<void> _loadTypes() async {
+    try {
+      final types = await ref.read(apiClientProvider).outgoingBookTypes();
+      if (mounted) setState(() => _types = types);
+    } catch (_) {
+      // بلا فلتر نوع
+    }
   }
 
   void _reload() {
-    _future = ref.read(apiClientProvider).outgoingList(status: _status, search: _search.text);
+    _future = ref.read(apiClientProvider).outgoingList(status: _status, search: _search.text, typeId: _typeId);
     setState(() {});
   }
 
@@ -89,6 +104,38 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                   ),
                 );
 
+                // فلتر النوع — يغيب إن لم تصل الأنواع (فلا قائمةٌ فارغة تَعِد بفلترٍ لا يعمل)
+                final typeWidget = _types.isEmpty
+                    ? null
+                    : Container(
+                        key: const Key('outgoing-type-filter'),
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: theme.dividerColor, width: 1.5),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int?>(
+                            // نوعٌ حُذف بعد اختياره ⟵ «كل الأنواع» لا انهيار
+                            value: safeDropdownValue(_typeId, _types.map((t) => t.outgoingBookTypeId)),
+                            isExpanded: true,
+                            hint: const Text('نوع الكتاب', style: TextStyle(fontSize: 14)),
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                            items: [
+                              const DropdownMenuItem<int?>(value: null, child: Text('جميع الأنواع')),
+                              for (final t in _types)
+                                DropdownMenuItem<int?>(value: t.outgoingBookTypeId, child: Text(t.name, overflow: TextOverflow.ellipsis)),
+                            ],
+                            onChanged: (v) {
+                              _typeId = v;
+                              _reload();
+                            },
+                          ),
+                        ),
+                      );
+
                 final buttonWidget = SizedBox(
                   height: 48,
                   child: ElevatedButton.icon(
@@ -117,6 +164,7 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                       searchWidget,
                       const SizedBox(height: 16),
                       filterWidget,
+                      if (typeWidget != null) ...[const SizedBox(height: 16), typeWidget],
                       const SizedBox(height: 16),
                       buttonWidget,
                     ],
@@ -130,6 +178,7 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                       Row(
                         children: [
                           Expanded(child: filterWidget),
+                          if (typeWidget != null) ...[const SizedBox(width: 16), Expanded(child: typeWidget)],
                           const SizedBox(width: 16),
                           Expanded(child: buttonWidget),
                         ],
@@ -143,6 +192,7 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                     Expanded(flex: 3, child: searchWidget),
                     const SizedBox(width: 16),
                     Expanded(flex: 2, child: filterWidget),
+                    if (typeWidget != null) ...[const SizedBox(width: 16), Expanded(flex: 2, child: typeWidget)],
                     const SizedBox(width: 16),
                     buttonWidget,
                   ],
@@ -244,7 +294,16 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                                           // الموضوع
                                           Expanded(
                                             flex: 3,
-                                            child: Text(it.subject, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, height: 1.5)),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(it.subject, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, height: 1.5)),
+                                                // نوع الكتاب (ADR-057) — تصنيفٌ يُرى في القائمة بلا عمودٍ جديد يضيّق الجدول
+                                                if (it.bookTypeName != null && it.bookTypeName!.isNotEmpty)
+                                                  Text(it.bookTypeName!,
+                                                      style: TextStyle(fontSize: 11, color: AppColors.action(context), fontWeight: FontWeight.w600)),
+                                              ],
+                                            ),
                                           ),
 
                                           // المبلغ

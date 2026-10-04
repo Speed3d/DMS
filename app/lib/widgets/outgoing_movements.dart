@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../core/outgoing_providers.dart';
+import '../models.dart';
 import '../core/theme.dart';
 
 /// هل يرى المستخدم سجلّ حركة الصادر؟ — **كلُّ الأدوار عدا القارئ**، كالوارد (قرار المالك 2026-09-25).
@@ -61,6 +62,7 @@ class OutgoingMovementsSection extends ConsumerWidget {
                                   : '${m.description} (${m.relatedIncomingNumber})',
                               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                             ),
+                            if (m.details != null && m.details!.trim().isNotEmpty) _MovementDetails(movement: m),
                             const SizedBox(height: 4),
                             Text(
                               '${m.performedByUserName} • ${DateFormat('yyyy/MM/dd HH:mm').format(m.performedAt.toLocal())}',
@@ -77,6 +79,55 @@ class OutgoingMovementsSection extends ConsumerWidget {
             );
           },
         ),
+      ],
+    );
+  }
+}
+
+/// تفاصيل الحركة قابلةً للطيّ (ADR-057، قرار المالك ت١١) — ما تغيّر في الجداول: ملخّصٌ لكل جدول ثم أوّل عشر خلايا بالقديم والجديد.
+///
+/// ⚠️ **مطويّةٌ افتراضاً**: تعديلُ فاتورةٍ قد يغيّر عشرات الخلايا، وسجلٌّ يُفتح كلُّه يدفن الحركات الأخرى تحت جدولٍ واحد.
+class _MovementDetails extends StatefulWidget {
+  const _MovementDetails({required this.movement});
+  final OutgoingMovementItem movement;
+  @override
+  State<_MovementDetails> createState() => _MovementDetailsState();
+}
+
+class _MovementDetailsState extends State<_MovementDetails> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = widget.movement.details!.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final action = AppColors.action(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          key: Key('movement-details-${widget.movement.movementId}'),
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 16, color: action),
+              const SizedBox(width: 4),
+              Text(_open ? 'إخفاء التفاصيل' : 'التفاصيل (${lines.length})',
+                  style: TextStyle(fontSize: 12, color: action, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+        if (_open)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 2, bottom: 2),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SelectableText(lines.join('\n'), style: const TextStyle(fontSize: 12, height: 1.6)),
+          ),
       ],
     );
   }
