@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -24,6 +26,16 @@ class _FakeApi extends ApiClient {
 
   @override
   Future<List<TemplateModel>> templates() async => [_template(2, true), _template(5, false)];
+
+  // ADR-057: المحرّر المشترك يطلب الأنواع وصور القالب والمعاينة — والشبكة الحقيقية لا تكتمل داخل الاختبار.
+  @override
+  Future<List<OutgoingBookTypeModel>> outgoingBookTypes() async => [OutgoingBookTypeModel(1, 1, 'كتاب رسمي')];
+
+  @override
+  Future<Uint8List?> getTemplateImage(int id, String kind) async => null;
+
+  @override
+  Future<Uint8List> previewOutgoing(Map<String, dynamic> body) async => Uint8List(0);
 
   @override
   Future<OutgoingDetail> editApproved(int id, Map<String, dynamic> body) async {
