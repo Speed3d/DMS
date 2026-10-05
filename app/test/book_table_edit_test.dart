@@ -178,6 +178,28 @@ void main() {
     });
   });
 
+  group('خلية الجمع والحروف في الطباعة', () {
+    test('🔴 تُرسَل غلافَ تنسيقها لا سطراً فارغاً — فيُطبع المجموع عريضاً بحجم 14 كنموذج المالك', () {
+      final t = BtOps.invoice();
+      final sum = BtJson.cellHtml(t.rows.last.cells[2]!);
+      final words = BtJson.cellHtml(t.rows.last.cells[4]!);
+      for (final h in [sum, words]) {
+        expect(h, contains('<strong'), reason: 'الخادم يُدرج الرقم في أعمق وسمٍ فارغ فيرث العريض');
+        expect(h, contains('font-size: 14pt'));
+        expect(h, contains('text-align:center'));
+        expect(h, isNot(contains('<br')), reason: 'سطرٌ فارغ يُسقط التنسيق');
+        expect(h, isNot(contains('DMSV')), reason: 'لا يبقى أثرٌ للعلامة المؤقّتة');
+      }
+    });
+
+    test('خليةٌ عاديّةٌ فارغة كما هي — وخلية جمعٍ بلا تنسيقٍ محفوظ كما هي', () {
+      final plain = BtCell(id: 'c');
+      expect(BtJson.cellHtml(plain), contains('<br'));
+      final bare = BtCell(id: 's', formula: BtFormula(col: 0));
+      expect(BtJson.cellHtml(bare), isNot(contains('<strong')));
+    });
+  });
+
   group('تنقية الخلية', () {
     test('الرابط والتظليل والعناوين تُسقط — والعريض واللون والحجم والمحاذاة تبقى', () {
       final d = BtOps.sanitizeDelta([

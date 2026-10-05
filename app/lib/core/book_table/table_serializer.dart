@@ -54,7 +54,29 @@ class BtJson {
       };
 
   /// HTML نصّ الخلية — بالمحوّل نفسه الذي يحوّل المتن (التنسيق المختلط يصل الطباعة كما هو).
-  static String cellHtml(BtCell c) => quillDeltaToHtml(c.delta);
+  ///
+  /// 🔴 **خلية الجمع والحروف فارغةٌ في المحرّر** (نصّها يولّده الخادم) **وتنسيقها في `textStyle`** — فكانت تُرسَل `<p><br/></p>`
+  /// ويُطبع المجموع **رفيعاً صغيراً** وهو في المحرّر وفي نموذج المالك **عريضٌ بحجم 14** (كشفته فاتورة المالك مبنيّةً بعمليات المحرّر).
+  /// الآن تُرسَل **غلافَ تنسيقها فارغاً** (`<p …><strong><span style="font-size: 14pt"></span></strong></p>`) — والخادم يُدرج الرقم في
+  /// أعمق وسمٍ فارغ (`TableFormulas.WithText`) فيرثه كاملاً.
+  static String cellHtml(BtCell c) {
+    final style = c.textStyle;
+    if ((c.formula != null || c.words != null) && c.isEmpty && style != null && style.isNotEmpty) {
+      Map<String, dynamic>? block;
+      for (final op in c.delta) {
+        final a = op['attributes'];
+        if (op['insert'] is String && (op['insert'] as String).contains('\n') && a is Map) block = Map<String, dynamic>.from(a);
+      }
+      return quillDeltaToHtml([
+        {'insert': _mark, 'attributes': style},
+        {'insert': '\n', if (block != null) 'attributes': block},
+      ]).replaceAll(_mark, '');
+    }
+    return quillDeltaToHtml(c.delta);
+  }
+
+  /// علامةٌ مؤقّتة تحمل التنسيق ثم تُحذف (المحوّل لا يُخرج وسماً حول نصٍّ فارغ).
+  static const _mark = 'DMSVALUE';
 
   /// قراءةٌ متسامحة — حقلٌ غائب يأخذ افتراضه، فلا تُسقط مسوّدةٌ قديمة المحرّر.
   static BtTable fromJson(Map<String, dynamic> j) {
