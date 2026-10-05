@@ -83,6 +83,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.Name).IsRequired().HasMaxLength(200);
             e.Property(x => x.PageSize).HasMaxLength(10);
             e.Property(x => x.FontFamily).HasMaxLength(100);
+            e.Property(x => x.PageNumberAlign).HasMaxLength(10).HasDefaultValue(PageNumberPosition.Center);
             e.HasOne(x => x.Company).WithMany(c => c.Templates)
                 .HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);

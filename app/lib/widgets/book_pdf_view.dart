@@ -85,14 +85,18 @@ class _BookPdfViewState extends State<BookPdfView> {
                 final bytes = snap.data!;
                 return ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: PdfPreview(
+                  child: KeyedSubtree(
                     key: const Key('book-pdf'),
-                    // ⚠️ نسخةٌ جديدة في كل استدعاء — على الويب تُنقل البايتات إلى Web Worker فيصير المخزن الأصليّ منفصلاً.
-                    build: (format) => Uint8List.fromList(bytes),
-                    canChangeOrientation: false,
-                    canChangePageFormat: false,
-                    canDebug: false,
-                    pdfFileName: widget.fileName,
+                    child: PdfPreview(
+                      // 🔴 عارضٌ جديد لكل ملفّ — مكتبة العرض تُهمل ملفّاً يصل أثناء رسم سابقه (انظر `PdfPreviewPane`).
+                      key: ObjectKey(bytes),
+                      // ⚠️ نسخةٌ جديدة في كل استدعاء — على الويب تُنقل البايتات إلى Web Worker فيصير المخزن الأصليّ منفصلاً.
+                      build: (format) => Uint8List.fromList(bytes),
+                      canChangeOrientation: false,
+                      canChangePageFormat: false,
+                      canDebug: false,
+                      pdfFileName: widget.fileName,
+                    ),
                   ),
                 );
               },

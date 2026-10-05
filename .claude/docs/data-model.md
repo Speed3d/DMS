@@ -8,7 +8,10 @@
 `CompanyId, Name, Prefix (فريد), IsActive, CreatedAt` — شركة. `Prefix` يدخل في رقم الكتاب.
 
 ### Template
-`TemplateId, CompanyId→Company, Name, HeaderImageKey?, FooterImageKey?, WatermarkImageKey?, WatermarkOpacity(0-100), Margin{Top,Right,Bottom,Left}, PageSize, FontFamily, IsActive, CreatedAt, UpdatedAt` — قالب بالصور (مفاتيح Blob).
+`TemplateId, CompanyId→Company, Name, HeaderImageKey?, FooterImageKey?, WatermarkImageKey?, WatermarkOpacity(0-100), Margin{Top,Right,Bottom,Left}, PageSize, FontFamily, PageNumberAlign, PageNumberOffsetX, PageNumberOffsetY, IsActive, CreatedAt, UpdatedAt` — قالب بالصور (مفاتيح Blob).
+- 🆕 **موضع «صفحة X من Y» (ADR-058 — مهاجرة 34 `AddTemplatePageNumberPosition`)**: `PageNumberAlign` نصّ ≤ 10 (`right`·`center`·`left`،
+  افتراضاً `center`) · `PageNumberOffsetX` و`PageNumberOffsetY` أعدادٌ بالمليمتر (يميناً وللأعلى موجبة · حتى ±80 و±30 · افتراضاً 0).
+  **والافتراض = السلوك السابق** فالقوالب القائمة لا تتغيّر. القواعد في `Dms.Domain/PageNumberPosition.cs`.
 
 ### User / UserCompany (تعدد الشركات — ADR-011 · صلاحيات لكل شركة — ADR-017)
 - `User`: `UserId, FullName, Username (فريد), PasswordHash, Role(enum), CompanyId? (الشركة **الرئيسية** — دورها افتراضٌ عند غياب ترويسة `X-Company-Id` فقط), IsActive, MustChangePassword, FailedLoginCount, LockedUntil?, CreatedByUserId?, CreatedAt, AssignedCompanies (تنقّل)`.

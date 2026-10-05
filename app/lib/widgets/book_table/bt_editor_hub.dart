@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -27,6 +28,22 @@ class BtSelection {
   int get left => math.min(ac, hc);
   int get right => math.max(ac, hc);
   bool get single => ar == hr && ac == hc;
+}
+
+/// خليةٌ تحت المؤشّر — تحملها كل خليةٍ مرسومة (`MetaData`) فيُعرف بالفحص ما تحت الفأرة أثناء السحب.
+class BtCellRef {
+  const BtCellRef(this.tableId, this.row, this.col);
+  final String tableId;
+  final int row, col;
+}
+
+/// ضغطةٌ بدأت على خلية: موضعها ونوع الجهاز.
+class _Press {
+  _Press(this.tableId, this.row, this.col, this.at, {required this.touch});
+  final String tableId;
+  final int row, col;
+  final Offset at;
+  final bool touch;
 }
 
 /// جدولٌ في المستند بموضعه.
@@ -113,6 +130,146 @@ class BtEditorHub extends ChangeNotifier {
 
   bool get editing => editingCellId != null && cell != null;
   bool get active => sel != null;
+
+  /// هل في الكتاب جدولٌ نشط؟ — لما يكفيه هذا وحده (إخفاء مؤشّر المتن) فلا يُعاد بناؤه مع كل حرفٍ في الخلية.
+  final activeNotifier = ValueNotifier<bool>(false);
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    activeNotifier.value = sel != null;
+    super.notifyListeners();
+  }
+
+  // ─────────────────────────── المؤشّر على الجدول (بلاغ المالك 2026-10-05) ───────────────────────────
+  //
+  // 🔴 **محرّر المتن يستقبل كلَّ نقرة ولو كانت على خلية** (`_TransparentTapGestureRecognizer`) — فينقل مؤشّره إلى الجدول
+  //    **ويأخذ لوحة المفاتيح** (`_requestKeyboard` في `onSingleTapUp`). فكان المالك يرى المؤشّرين معاً، والكتابة تذهب
+  //    إلى المتن «إلا بالصدفة» — بحسب أيّهما فتح اتصاله بلوحة المفاتيح آخراً. وسحبُ الفأرة على الخلايا كان **تحديدَ نصٍّ
+  //    في المتن** يغطّي الجدول كلَّه («يتحدّد الجدول بالكامل»).
+  //    ⟵ الجدول يُعلن أن المؤشّر نزل عليه (`Listener` يرى الحدث قبل أيّ مُميِّز إيماءة)، ومحرّر المتن **يتخلّى** عن النقرة
+  //    (`onTapDown`/`onTapUp` تُعيد `true`) — والسحب يحدّد خلايا لا نصّاً.
+
+  /// المؤشّر الحاليّ نزل على جدول — يُصفَّر بعد انتهاء حدث الرفع كلّه (فيراه محرّر المتن في الرفع نفسه).
+  bool tablePointer = false;
+
+  void tablePointerDown() => tablePointer = true;
+
+  void tablePointerUp() => scheduleMicrotask(() => tablePointer = false);
+
+  _Press? _press;
+  bool _dragging = false;
+  bool _endEditAfterDrag = false;
+
+  /// ضغطةٌ على خلية — لا تفتح شيئاً حتى يُعرف: نقرةٌ هي أم سحب.
+  void pressCell(String tableId, int r, int c, Offset at, {bool touch = false}) {
+    _press = _Press(tableId, r, c, at, touch: touch);
+    _dragging = false;
+    // جدولٌ غير نشط يصير نشطاً **لحظة الضغط بالفأرة** لا في منتصف السحب: ظهور شريط الجدول يُغيّر التخطيط، فإن وقع أثناء السحب
+    // تحرّكت الخلايا تحت المؤشّر. (اللمس لا: الضغط باللمس قد يكون بدايةَ تمرير.)
+    if (!touch && sel?.tableId != tableId) {
+      final o = locate(tableId)?.table.ownerOf(r, c);
+      if (o == null) return;
+      stopEditing(notify: false);
+      sel = BtSelection(tableId, o.row, o.col, o.row, o.col);
+      _focusTableSoon();
+      notifyListeners();
+    }
+  }
+
+  /// حركةٌ والزرّ مضغوط: إن خرجت من خلية البداية صار تحديدَ خلايا (أفقياً أو عمودياً أو مستطيلاً) — كما في Word وExcel.
+  /// **واللمس لا يحدّد بالسحب** (السحب باللمس تمريرٌ للصفحة).
+  void pressMove(Offset at, BtCellRef? over) {
+    final p = _press;
+    if (p == null) return;
+    if (p.touch) {
+      if ((at - p.at).distance > kTouchSlop) _press = null;
+      return;
+    }
+    if (over == null || over.tableId != p.tableId) return;
+    if (!_dragging) {
+      if ((at - p.at).distance < 4) return;   // ارتعاشُ اليد عند النقر ليس سحباً
+      final t = locate(p.tableId)?.table;
+      final from = t?.ownerOf(p.row, p.col), to = t?.ownerOf(over.row, over.col);
+      if (t == null || from == null || to == null || from.cell.id == to.cell.id) return;
+      _dragging = true;
+      if (editing && from.cell.id == editingCellId) {
+        // 🔴 السحب بدأ داخل الخلية المفتوحة: محرّرها يملك هذا السحب (تحديد نصّها) — **ولا يُهدم أثناءه**، فـQuill يُجدوِل
+        //    بعد كل حركةٍ ما يقرأ سياق محرّره (`_dragOffsetListener`) فيرمي إن هُدم. يُحفظ ما فيها الآن ويُغلق بعد الرفع.
+        commitCell();
+        _endEditAfterDrag = true;
+      } else {
+        stopEditing(notify: false);
+      }
+    }
+    final next = _expand(p.tableId, BtSelection(p.tableId, p.row, p.col, over.row, over.col));
+    final s = sel;
+    if (s != null && s.tableId == next.tableId && s.ar == next.ar && s.ac == next.ac && s.hr == next.hr && s.hc == next.hc) return;
+    sel = next;
+    _focusTableSoon();
+    notifyListeners();
+  }
+
+  /// رفعُ الزرّ: بلا سحبٍ ⟵ نقرةٌ (تفتح الخلية · ومع Shift يمتدّ التحديد).
+  void pressUp({bool extend = false}) {
+    final p = _press;
+    _press = null;
+    if (p == null) return;
+    if (_dragging) {
+      _dragging = false;
+      if (_endEditAfterDrag) {
+        _endEditAfterDrag = false;
+        // بعد أن يُنهي محرّر الخلية سحبه (يقع في الحدث نفسه بعد هذا) — ثم يُهدم في الإطار الذي يليه
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_disposed) return;
+          stopEditing(notify: false);
+          _focusTableSoon();
+          notifyListeners();
+        });
+        WidgetsBinding.instance.scheduleFrame();
+      }
+      return;
+    }
+    tapCell(p.tableId, p.row, p.col, extend: extend);
+  }
+
+  void pressCancel() {
+    _press = null;
+    _dragging = false;
+    if (_endEditAfterDrag) {
+      _endEditAfterDrag = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _disposed ? null : stopEditing());
+      WidgetsBinding.instance.scheduleFrame();
+    }
+  }
+
+  /// تحديد الصفوف أو الأعمدة التي يمسّها التحديد كاملةً — أو الجدول كلّه.
+  void selectRows() => _selectSpan(rows: true);
+  void selectCols() => _selectSpan(rows: false);
+
+  void selectAll() {
+    final s = sel;
+    final t = s == null ? null : locate(s.tableId)?.table;
+    if (s == null || t == null) return;
+    stopEditing(notify: false);
+    sel = BtSelection(s.tableId, 0, 0, t.rowCount - 1, t.colCount - 1);
+    _focusTableSoon();
+    notifyListeners();
+  }
+
+  void _selectSpan({required bool rows}) {
+    final s = sel;
+    final t = s == null ? null : locate(s.tableId)?.table;
+    if (s == null || t == null) return;
+    stopEditing(notify: false);
+    sel = _expand(
+        s.tableId,
+        rows
+            ? BtSelection(s.tableId, s.top, 0, s.bottom, t.colCount - 1)
+            : BtSelection(s.tableId, 0, s.left, t.rowCount - 1, s.right));
+    _focusTableSoon();
+    notifyListeners();
+  }
 
   // ─────────────────────────── القراءة ───────────────────────────
 
@@ -1089,6 +1246,7 @@ class BtEditorHub extends ChangeNotifier {
     _cellScroll?.dispose();
     tableFocus.dispose();
     contentTick.dispose();
+    activeNotifier.dispose();
     super.dispose();
   }
 }

@@ -31,6 +31,7 @@ class BtTableToolbar extends StatelessWidget {
     final spans = head.cell.rowSpan > 1 || head.cell.colSpan > 1;
     final action = AppColors.action(context);
     final theme = Theme.of(context);
+    final fmt = !hub.editing;
 
     Widget btn(String key, IconData icon, String tip, VoidCallback? onPressed, {Color? color}) => IconButton(
           key: Key(key),
@@ -62,6 +63,11 @@ class BtTableToolbar extends StatelessWidget {
             padding: const EdgeInsetsDirectional.only(start: 4, end: 6),
             child: Text('الجدول', style: TextStyle(fontWeight: FontWeight.bold, color: action, fontSize: 12.5)),
           ),
+          // ── التحديد (أو اسحب بالفأرة على الخلايا · أو Shift+نقر) ──
+          btn('bt-select-row', Icons.table_rows_outlined, 'تحديد الصفّ كاملاً', hub.selectRows),
+          btn('bt-select-col', Icons.view_week_outlined, 'تحديد العمود كاملاً', hub.selectCols),
+          btn('bt-select-all', Icons.select_all_rounded, 'تحديد الجدول كلّه', hub.selectAll),
+          gap(),
           // ── الصفوف والأعمدة ──
           btn('bt-row-above', Icons.vertical_align_top_rounded, 'صفٌّ فوق', () => hub.applyRect((t, top, l, b, r) => BtOps.insertRow(t, top))),
           btn('bt-row-below', Icons.vertical_align_bottom_rounded, 'صفٌّ تحت',
@@ -74,7 +80,7 @@ class BtTableToolbar extends StatelessWidget {
           btn('bt-del-col', Icons.view_column_outlined, 'حذف الأعمدة المحدّدة', () => _deleteCols(t, s)),
           gap(),
           // ── الدمج ──
-          btn('bt-merge', Icons.call_merge_rounded, 'دمج الخلايا (حدّد عدّة خلايا بـShift+نقر)',
+          btn('bt-merge', Icons.call_merge_rounded, 'دمج الخلايا (حدّد عدّة خلايا بالسحب أو Shift+نقر)',
               canMerge ? () => hub.applyRect(BtOps.merge) : null),
           btn('bt-unmerge', Icons.call_split_rounded, 'فكّ الدمج',
               spans ? () => hub.apply((t, s) => BtOps.unmerge(t, head.row, head.col)) : null),
@@ -87,22 +93,25 @@ class BtTableToolbar extends StatelessWidget {
             'middle': 'وسط الخلية',
             'bottom': 'أسفل الخلية',
           }, current: head.cell.vAlign, onPick: (v) => hub.applyRect((t, top, l, b, r) => BtOps.editCells(t, top, l, b, r, (c) => c.vAlign = v))),
-          if (!hub.editing) ...[
-            btn('bt-bold', Icons.format_bold_rounded, 'عريض (للمحدّد كلّه)', () => _toggle(t, 'bold')),
-            btn('bt-italic', Icons.format_italic_rounded, 'مائل', () => _toggle(t, 'italic')),
-            btn('bt-underline', Icons.format_underlined_rounded, 'تسطير', () => _toggle(t, 'underline')),
-            _menu<String>('bt-size', Icons.format_size_rounded, 'حجم الخط', {
-              for (final n in ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36']) n: n,
-            }, onPick: (v) => _format({'size': v})),
-            _colorMenu('bt-color', Icons.format_color_text_rounded, 'لون النصّ', kBtInkColors, noneLabel: 'الافتراضي',
-                onPick: (hex) => _format({'color': hex})),
-            _menu<String>('bt-align', Icons.format_align_center_rounded, 'محاذاة النصّ', {
-              'right': 'يمين',
-              'center': 'وسط',
-              'left': 'يسار',
-              'justify': 'ضبط',
-            }, onPick: (v) => _format({'align': v})),
-          ],
+          // تنسيق النصّ **للمحدّد كلّه** — ظاهرٌ دائماً ومعطَّلٌ أثناء الكتابة (فالخلية المفتوحة ينسّقها شريط المحرّر بالتنسيق
+          // المختلط): كان يظهر ويختفي فيتغيّر ارتفاع الشريط **أثناء السحب على الخلايا** وتتحرّك الورقة تحت المؤشّر.
+          btn('bt-bold', Icons.format_bold_rounded, 'عريض (للمحدّد كلّه)', fmt ? () => _toggle(t, 'bold') : null),
+          btn('bt-italic', Icons.format_italic_rounded, 'مائل', fmt ? () => _toggle(t, 'italic') : null),
+          btn('bt-underline', Icons.format_underlined_rounded, 'تسطير', fmt ? () => _toggle(t, 'underline') : null),
+          _menu<String>('bt-font', Icons.font_download_outlined, 'نوع الخط', {
+            for (final f in ['Times New Roman', 'Arial', 'Amiri', 'Cairo']) f: f,
+          }, enabled: fmt, onPick: (v) => _format({'font': v})),
+          _menu<String>('bt-size', Icons.format_size_rounded, 'حجم الخط', {
+            for (final n in ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '36']) n: n,
+          }, enabled: fmt, onPick: (v) => _format({'size': v})),
+          _colorMenu('bt-color', Icons.format_color_text_rounded, 'لون النصّ', kBtInkColors, noneLabel: 'الافتراضي',
+              enabled: fmt, onPick: (hex) => _format({'color': hex})),
+          _menu<String>('bt-align', Icons.format_align_center_rounded, 'محاذاة النصّ', {
+            'right': 'يمين',
+            'center': 'وسط',
+            'left': 'يسار',
+            'justify': 'ضبط',
+          }, enabled: fmt, onPick: (v) => _format({'align': v})),
           gap(),
           // ── الجدول ──
           _bordersMenu(t),
@@ -244,9 +253,11 @@ class BtTableToolbar extends StatelessWidget {
 
   // ─────────────────────────── القوائم ───────────────────────────
 
-  Widget _menu<T>(String key, IconData icon, String tip, Map<T, String> items, {T? current, required ValueChanged<T> onPick}) =>
+  Widget _menu<T>(String key, IconData icon, String tip, Map<T, String> items,
+          {T? current, bool enabled = true, required ValueChanged<T> onPick}) =>
       PopupMenuButton<T>(
         key: Key(key),
+        enabled: enabled,
         tooltip: tip,
         icon: Icon(icon, size: 18),
         padding: const EdgeInsets.all(4),
@@ -258,9 +269,11 @@ class BtTableToolbar extends StatelessWidget {
         ],
       );
 
-  Widget _colorMenu(String key, IconData icon, String tip, List<String> colors, {required String noneLabel, required ValueChanged<String?> onPick}) =>
+  Widget _colorMenu(String key, IconData icon, String tip, List<String> colors,
+          {required String noneLabel, bool enabled = true, required ValueChanged<String?> onPick}) =>
       PopupMenuButton<String>(
         key: Key(key),
+        enabled: enabled,
         tooltip: tip,
         icon: Icon(icon, size: 18),
         padding: const EdgeInsets.all(4),

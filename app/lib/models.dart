@@ -359,6 +359,10 @@ class TemplateModel {
   final String fontFamily;
   final bool isActive;
   final bool hasHeader, hasFooter, hasWatermark;
+
+  /// موضع «صفحة X من Y» (بلاغ المالك 2026-10-05): `right` · `center` · `left` — وإزاحةٌ بالمليمتر (يميناً · للأعلى موجبة).
+  final String pageNumberAlign;
+  final int pageNumberOffsetX, pageNumberOffsetY;
   TemplateModel({
     required this.templateId,
     required this.companyId,
@@ -374,6 +378,9 @@ class TemplateModel {
     required this.hasHeader,
     required this.hasFooter,
     required this.hasWatermark,
+    this.pageNumberAlign = 'center',
+    this.pageNumberOffsetX = 0,
+    this.pageNumberOffsetY = 0,
   });
   factory TemplateModel.fromJson(Map<String, dynamic> j) => TemplateModel(
         templateId: j['templateId'],
@@ -390,6 +397,9 @@ class TemplateModel {
         hasHeader: j['hasHeader'] ?? false,
         hasFooter: j['hasFooter'] ?? false,
         hasWatermark: j['hasWatermark'] ?? false,
+        pageNumberAlign: j['pageNumberAlign'] ?? 'center',
+        pageNumberOffsetX: j['pageNumberOffsetX'] ?? 0,
+        pageNumberOffsetY: j['pageNumberOffsetY'] ?? 0,
       );
   Map<String, dynamic> toJson() => {
         'templateId': templateId,
@@ -406,6 +416,9 @@ class TemplateModel {
         'hasHeader': hasHeader,
         'hasFooter': hasFooter,
         'hasWatermark': hasWatermark,
+        'pageNumberAlign': pageNumberAlign,
+        'pageNumberOffsetX': pageNumberOffsetX,
+        'pageNumberOffsetY': pageNumberOffsetY,
       };
 }
 

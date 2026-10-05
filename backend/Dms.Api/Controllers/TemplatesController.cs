@@ -50,6 +50,9 @@ public sealed class TemplatesController(
             MarginLeft = req.MarginLeft,
             PageSize = string.IsNullOrWhiteSpace(req.PageSize) ? "A4" : req.PageSize,
             FontFamily = string.IsNullOrWhiteSpace(req.FontFamily) ? "Amiri" : req.FontFamily,
+            PageNumberAlign = PageNumberPosition.Align(req.PageNumberAlign),
+            PageNumberOffsetX = PageNumberPosition.OffsetX(req.PageNumberOffsetX ?? 0),
+            PageNumberOffsetY = PageNumberPosition.OffsetY(req.PageNumberOffsetY ?? 0),
             IsActive = req.IsActive,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -75,6 +78,9 @@ public sealed class TemplatesController(
         t.MarginLeft = req.MarginLeft;
         t.PageSize = string.IsNullOrWhiteSpace(req.PageSize) ? "A4" : req.PageSize;
         t.FontFamily = string.IsNullOrWhiteSpace(req.FontFamily) ? "Amiri" : req.FontFamily;
+        if (req.PageNumberAlign is not null) t.PageNumberAlign = PageNumberPosition.Align(req.PageNumberAlign);
+        if (req.PageNumberOffsetX is int x) t.PageNumberOffsetX = PageNumberPosition.OffsetX(x);
+        if (req.PageNumberOffsetY is int y) t.PageNumberOffsetY = PageNumberPosition.OffsetY(y);
         t.IsActive = req.IsActive;
         t.UpdatedAt = DateTime.UtcNow;
         audit.Add("Update", nameof(Template), id.ToString(), null, t.CompanyId);
@@ -186,5 +192,6 @@ public sealed class TemplatesController(
             t.TemplateId, t.CompanyId, t.Name, t.WatermarkOpacity,
             t.MarginTop, t.MarginRight, t.MarginBottom, t.MarginLeft,
             t.PageSize, t.FontFamily, t.IsActive,
-            t.HeaderImageKey != null, t.FooterImageKey != null, t.WatermarkImageKey != null);
+            t.HeaderImageKey != null, t.FooterImageKey != null, t.WatermarkImageKey != null,
+            t.PageNumberAlign, t.PageNumberOffsetX, t.PageNumberOffsetY);
 }

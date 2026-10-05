@@ -239,6 +239,27 @@ $pv=Bytes POST "/outgoing/preview" (Book "300 بند $mk" (Body @($big)) $tInvoi
 $sw.Stop()
 if((IsPdf $pv) -and $sw.Elapsed.TotalSeconds -lt 60){ Ok "جدولٌ من 300 بند: PDF في $([math]::Round($sw.Elapsed.TotalSeconds,1)) ثانية" } else { Bad "جدول 300 بند: $($pv.S) في $($sw.Elapsed.TotalSeconds) ثانية" }
 
+Write-Host "`n=== ١٢) موضع ترقيم الصفحات في القالب (بلاغ المالك 2026-10-05) ===" -ForegroundColor Cyan
+function TplBody($t,[hashtable]$extra){ $b=[ordered]@{companyId=$cid;name=$t.name;watermarkOpacity=$t.watermarkOpacity;marginTop=$t.marginTop;marginRight=$t.marginRight
+  marginBottom=$t.marginBottom;marginLeft=$t.marginLeft;pageSize=$t.pageSize;fontFamily=$t.fontFamily;isActive=$t.isActive}
+  if($extra){ foreach($k in $extra.Keys){ $b[$k]=$extra[$k] } }; return $b }
+$t0=(Api GET "/templates/$tplId" $null $admin $cid).B
+Expect "القالب يُعيد الموضع (القائم ⟵ الوسط بلا إزاحة)" "$($t0.pageNumberAlign)|$($t0.pageNumberOffsetX)|$($t0.pageNumberOffsetY)" 'center|0|0'
+$r=Api PUT "/templates/$tplId" (TplBody $t0 @{pageNumberAlign='right';pageNumberOffsetX=12;pageNumberOffsetY=-4}) $admin $cid
+Expect "حفظ: يمين · 12 مم يميناً · 4 مم للأسفل" "$($r.S)|$($r.B.pageNumberAlign)|$($r.B.pageNumberOffsetX)|$($r.B.pageNumberOffsetY)" '200|right|12|-4'
+$r=Api PUT "/templates/$tplId" (TplBody $t0) $admin $cid
+Expect "عميلٌ أقدم بلا الحقول ⟵ الموضع باقٍ لا يُصفَّر" "$($r.B.pageNumberAlign)|$($r.B.pageNumberOffsetX)|$($r.B.pageNumberOffsetY)" 'right|12|-4'
+$r=Api PUT "/templates/$tplId" (TplBody $t0 @{pageNumberOffsetX=500;pageNumberOffsetY=-500}) $admin $cid
+Expect "إزاحةٌ فوق الحدّ تُحصر (80 · -30)" "$($r.B.pageNumberOffsetX)|$($r.B.pageNumberOffsetY)" '80|-30'
+$r=Api PUT "/templates/$tplId" (TplBody $t0 @{pageNumberAlign='top'}) $admin $cid
+if($r.S -eq 400 -and "$($r.B.error)" -match '\p{IsArabic}'){ Ok "موضعٌ غير معروف ⟵ 400 برسالةٍ عربية" } else { Bad "موضعٌ غير معروف: $($r.S) $($r.B.error)" }
+Expect "🔐 القارئ لا يعدّل القالب" (Api PUT "/templates/$tplId" (TplBody $t0 @{pageNumberAlign='left'}) $tR $cid).S 403
+$long='' ; foreach($i in 1..70){ $long+='<p>نصٌّ طويلٌ يملأ الصفحة ليمتدّ الكتاب إلى صفحتين فيُطبع الترقيم بالموضع الجديد.</p>' }
+$pv=Bytes POST "/outgoing/preview" (Book "ترقيم يمين $mk" $long $null $null) $tE $cid
+if(IsPdf $pv){ Ok "المعاينة بالموضع الجديد: PDF" } else { Bad "المعاينة بالموضع الجديد: $($pv.S)" }
+$r=Api PUT "/templates/$tplId" (TplBody $t0 @{pageNumberAlign='center';pageNumberOffsetX=0;pageNumberOffsetY=0}) $admin $cid
+Expect "الإعادة إلى الوسط" "$($r.B.pageNumberAlign)|$($r.B.pageNumberOffsetX)|$($r.B.pageNumberOffsetY)" 'center|0|0'
+
 Write-Host "`n============ النتيجة ============" -ForegroundColor Cyan
 Write-Host "  نجح: $pass" -ForegroundColor Green
 Write-Host "  فشل: $fail" -ForegroundColor $(if($fail){'Red'}else{'Green'})
