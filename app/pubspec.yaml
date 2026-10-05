@@ -18,7 +18,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # of the product and file versions while build-number is used as the build suffix.
 # 🏷️ **الرقم يطابق ملف `VERSION` في جذر المستودع** (ADR-054) — وحارسُ `version_sync_test` يفرض ذلك.
 # والبناء للنشر يمرّر `--build-name` من الملف نفسه، و`--build-number` برقم البناء (`APP_BUILD`).
-version: 0.11.1+1
+version: 0.12.0+1
 
 environment:
   sdk: ^3.12.0
@@ -52,6 +52,10 @@ dependencies:
   flutter_svg: ^2.0.10
   flutter_html: ^3.0.0
   vsc_quill_delta_to_html: ^1.0.5
+  # ADR-057: قراءة جدولٍ منسوخ من Word (HTML) — كان تابعاً غير مباشر، صار صريحاً.
+  html: ^0.15.6
+  # ADR-057: قراءة HTML من الحافظة (جدول Word بعريضه ولون خلاياه) — تابعٌ لـflutter_quill بالإصدار نفسه، صار صريحاً.
+  quill_native_bridge: ^11.1.0
   printing: ^5.14.3
   pdf: ^3.12.0
 
@@ -76,6 +80,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # ADR-057: خطوط الطباعة نفسها (Times New Roman · Arial · Amiri · Cairo — عاديٌّ وعريض، كما يسجّلها الخادم) لترسم «الورقة»
+  # كما تُطبع. ⚠️ **أصولٌ لا `fonts:`** — `fonts:` تُنزَّل كلُّها عند الإقلاع (~5.4 ميغا لكل زائرٍ أوّل مرّة)، والأصول تُحمَّل عند
+  # فتح المحرّر وحده (`core/paper_fonts.dart`) ثم يحفظها المتصفّح.
+  assets:
+    - assets/fonts/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

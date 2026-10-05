@@ -88,6 +88,8 @@ public sealed class CompaniesController(
         // Hint: بدونها تبدأ الشركة بقائمة أنواع فارغة، فيجد المستخدم الحقل معطّلاً في نموذج
         //       الوارد ولا يعرف أنه يُملأ من الإعدادات. نقطة انطلاق يعدّلها كما يشاء.
         db.DocumentTypes.AddRange(DefaultDocumentTypes.For(c.CompanyId));
+        // وأنواع الصادر (ADR-057) — «كتاب رسمي» أوّلها وهو افتراضُ الكتاب الجديد.
+        db.OutgoingBookTypes.AddRange(DefaultOutgoingBookTypes.For(c.CompanyId));
         await db.SaveChangesAsync(ct);
 
         return new CompanyResponse(c.CompanyId, c.Name, c.Prefix, c.IsActive, c.DefaultSignatoryName, c.DefaultSignatoryTitle, c.LogoImageKey);

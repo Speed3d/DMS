@@ -1597,6 +1597,18 @@ namespace Dms.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<int?>("OutgoingBookTypeId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("PageNumbers")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PrintEntity")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("PrintSubject")
+                        .HasColumnType("bit");
+
                     b.Property<string>("QrContent")
                         .HasColumnType("nvarchar(max)");
 
@@ -1616,6 +1628,9 @@ namespace Dms.Infrastructure.Migrations
 
                     b.Property<string>("SignatoryTitle")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SignaturePlacement")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -1644,6 +1659,8 @@ namespace Dms.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[Number] IS NOT NULL");
 
+                    b.HasIndex("OutgoingBookTypeId");
+
                     b.HasIndex("TemplateId");
 
                     b.HasIndex("CompanyId", "Year", "SerialNo")
@@ -1651,6 +1668,30 @@ namespace Dms.Infrastructure.Migrations
                         .HasFilter("[SerialNo] IS NOT NULL");
 
                     b.ToTable("OutgoingBooks");
+                });
+
+            modelBuilder.Entity("Dms.Domain.OutgoingBookType", b =>
+                {
+                    b.Property<int>("OutgoingBookTypeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OutgoingBookTypeId"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("OutgoingBookTypeId");
+
+                    b.HasIndex("CompanyId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("OutgoingBookTypes");
                 });
 
             modelBuilder.Entity("Dms.Domain.OutgoingMovement", b =>
@@ -1673,6 +1714,9 @@ namespace Dms.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("OutgoingId")
                         .HasColumnType("int");
@@ -2355,12 +2399,19 @@ namespace Dms.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Dms.Domain.OutgoingBookType", "OutgoingBookType")
+                        .WithMany()
+                        .HasForeignKey("OutgoingBookTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Dms.Domain.Template", "Template")
                         .WithMany()
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Entity");
+
+                    b.Navigation("OutgoingBookType");
 
                     b.Navigation("Template");
                 });

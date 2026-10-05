@@ -610,8 +610,12 @@ class OutgoingListItem {
   /// معرّف المعاملة — شارةٌ في صفّ القائمة، و`null` لمن لا معاملة له (ADR-045).
   final int? caseFileId;
 
+  /// نوع الكتاب (كتاب رسمي · فاتورة · عرض سعر …) — ADR-057.
+  final int? bookTypeId;
+  final String? bookTypeName;
+
   OutgoingListItem(this.outgoingId, this.number, this.date, this.subject,
-      this.entityName, this.status, this.amountInIqd, [this.caseFileId]);
+      this.entityName, this.status, this.amountInIqd, [this.caseFileId, this.bookTypeId, this.bookTypeName]);
   factory OutgoingListItem.fromJson(Map<String, dynamic> j) => OutgoingListItem(
         j['outgoingId'],
         j['number'],
@@ -621,6 +625,8 @@ class OutgoingListItem {
         j['status'] ?? 'Draft',
         j['amountInIqd'],
         j['caseFileId'],
+        j['outgoingBookTypeId'],
+        j['outgoingBookTypeName'],
       );
 }
 
@@ -1113,6 +1119,32 @@ class DocumentTypeModel {
       DocumentTypeModel(j['documentTypeId'], j['companyId'], j['name'] ?? '');
 }
 
+/// نوع الكتاب الصادر (ADR-057) — قائمةٌ لكل شركة، منفصلةٌ عن «أنواع المستندات» (للوارد).
+class OutgoingBookTypeModel {
+  final int outgoingBookTypeId;
+  final int companyId;
+  final String name;
+  OutgoingBookTypeModel(this.outgoingBookTypeId, this.companyId, this.name);
+  factory OutgoingBookTypeModel.fromJson(Map<String, dynamic> j) =>
+      OutgoingBookTypeModel(j['outgoingBookTypeId'], j['companyId'], j['name'] ?? '');
+}
+
+/// في أيّ صفحاتٍ يُطبع التوقيع والختم (ADR-057) — **الموضع والحجم ثابتان**، والخيار يحدّد الصفحات وحدها.
+enum SignaturePlacement {
+  /// في الصفحة الأخيرة وحدها — الافتراضي (قرار المالك).
+  lastPage('LastPage', 'في الصفحة الأخيرة وحدها'),
+  stampEveryPage('StampEveryPage', 'الختم في كل صفحة والتوقيع في الأخيرة'),
+  everyPage('EveryPage', 'الاثنان في كل صفحة');
+
+  const SignaturePlacement(this.wire, this.label);
+  final String wire;
+  final String label;
+
+  /// قيمةٌ مجهولة (خادمٌ أحدث) ⟵ الافتراض، لا انهيار.
+  static SignaturePlacement parse(String? v) =>
+      values.firstWhere((x) => x.wire == v, orElse: () => lastPage);
+}
+
 class VersionModel {
   final int versionNo;
   final DateTime changedAt;
@@ -1151,6 +1183,14 @@ class OutgoingDetail {
   final List<ReplyLink> repliesTo;
   /// واردٌ يجيبه هذا الصادر **ولا يراه الطالب** — بالعدد وحده (G20 — ADR-053).
   final int hiddenRepliesCount;
+
+  // ── ADR-057: نوع الكتاب وخيارات الطباعة (وغيابُها — خادمٌ أقدم — هو الافتراض) ──
+  final int? bookTypeId;
+  final String? bookTypeName;
+  final bool printEntity;
+  final bool printSubject;
+  final bool pageNumbers;
+  final SignaturePlacement signaturePlacement;
   OutgoingDetail({
     required this.outgoingId,
     required this.companyId,
@@ -1176,6 +1216,12 @@ class OutgoingDetail {
     this.bodyJson,
     this.repliesTo = const [],
     this.hiddenRepliesCount = 0,
+    this.bookTypeId,
+    this.bookTypeName,
+    this.printEntity = true,
+    this.printSubject = true,
+    this.pageNumbers = true,
+    this.signaturePlacement = SignaturePlacement.lastPage,
   });
   bool get isFinal => status == 'Final';
   factory OutgoingDetail.fromJson(Map<String, dynamic> j) => OutgoingDetail(
@@ -1203,6 +1249,12 @@ class OutgoingDetail {
         bodyJson: j['bodyJson'],
         repliesTo: ReplyLink.listFrom(j['repliesTo']),
         hiddenRepliesCount: j['hiddenRepliesCount'] ?? 0,
+        bookTypeId: j['outgoingBookTypeId'],
+        bookTypeName: j['outgoingBookTypeName'],
+        printEntity: j['printEntity'] ?? true,
+        printSubject: j['printSubject'] ?? true,
+        pageNumbers: j['pageNumbers'] ?? true,
+        signaturePlacement: SignaturePlacement.parse(j['signaturePlacement']),
       );
 }
 
@@ -1478,10 +1530,14 @@ class OutgoingMovementItem {
   final String performedByUserName;
   final DateTime performedAt;
 
+  /// تفاصيل أسطراً — ما تغيّر في الجداول بالقديم والجديد (ADR-057).
+  final String? details;
+
   const OutgoingMovementItem({
     required this.movementId, required this.action, required this.description,
     this.relatedIncomingId, this.relatedIncomingNumber,
     required this.performedByUserName, required this.performedAt,
+    this.details,
   });
 
   factory OutgoingMovementItem.fromJson(Map<String, dynamic> j) => OutgoingMovementItem(
@@ -1492,6 +1548,7 @@ class OutgoingMovementItem {
         relatedIncomingNumber: j['relatedIncomingNumber'],
         performedByUserName: j['performedByUserName'] ?? '',
         performedAt: parseInstant(j['performedAt']),
+        details: j['details'],
       );
 }
 

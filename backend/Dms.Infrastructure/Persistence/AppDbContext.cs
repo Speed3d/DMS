@@ -36,6 +36,7 @@ public class AppDbContext : DbContext
     public DbSet<Entity> Entities => Set<Entity>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DocumentType> DocumentTypes => Set<DocumentType>();
+    public DbSet<OutgoingBookType> OutgoingBookTypes => Set<OutgoingBookType>();
     public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
     public DbSet<OutgoingBook> OutgoingBooks => Set<OutgoingBook>();
     public DbSet<ArchiveDoc> ArchiveDocs => Set<ArchiveDoc>();
@@ -138,6 +139,14 @@ public class AppDbContext : DbContext
             e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
         });
 
+        // ---- OutgoingBookType (ADR-057) — نظيرُ DocumentType للصادر ----
+        b.Entity<OutgoingBookType>(e =>
+        {
+            e.Property(x => x.Name).IsRequired().HasMaxLength(200);
+            e.HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();   // يمنع التسابق خلف حارس الـController
+            e.HasQueryFilter(x => !_filterByCompany || x.CompanyId == _companyId);
+        });
+
         // ---- ExchangeRate (عام، بلا فلترة شركة) ----
         b.Entity<ExchangeRate>(e =>
         {
@@ -165,6 +174,11 @@ public class AppDbContext : DbContext
                 .HasForeignKey(x => x.EntityId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Template).WithMany()
                 .HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
+            // Restrict: حذف نوعٍ مستعمل يرفضه الـController بـ409 قبل أن يصل القاعدة.
+            e.HasOne(x => x.OutgoingBookType).WithMany()
+                .HasForeignKey(x => x.OutgoingBookTypeId).OnDelete(DeleteBehavior.Restrict);
+            // ⚠️ لا HasDefaultValue(true) للأعلام الثلاثة: EF لا يرسل false (قيمة CLR الافتراضية) عند الإدراج
+            // فيطبّق افتراض القاعدة true — ويضيع اختيار المستخدم صامتاً. قيمة الصفوف القائمة تضبطها المهاجرة.
 
             e.HasQueryFilter(x => (!_filterByCompany || x.CompanyId == _companyId) && !x.IsDeleted);
         });

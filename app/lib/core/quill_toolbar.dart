@@ -78,3 +78,31 @@ const kQuillToolbarConfig = quill.QuillSimpleToolbarConfig(
   showListCheck: false,
   buttonOptions: kQuillButtonOptions,
 );
+
+/// شريط المحرّر حين تكون **خلية جدولٍ مفتوحة للكتابة** (ADR-057) — الشريط نفسه ينتقل إلى الخلية.
+///
+/// 🔴 **لا يُعرض إلا ما يُطبع داخل الخلية كما يُرى** (`BtOps.cellInlineKeys`): الرابط يُخرج `<a>` **والخادم يرفض الكتاب
+/// كلَّه** (400) · التظليل يُطبع لونَ خطٍّ · والعناوين والقوائم والإزاحة لا يرسمها عرض الخلية — ولون الخلية في شريط الجدول.
+/// وما يتسلّل رغم ذلك (لصقٌ غنيّ) يُنقّى عند الحفظ (`BtOps.sanitizeDelta`).
+const kQuillCellToolbarConfig = quill.QuillSimpleToolbarConfig(
+  multiRowsDisplay: true,
+  showDividers: false,
+  toolbarSectionSpacing: 2,
+  toolbarRunSpacing: 2,
+  showAlignmentButtons: true,
+  showCodeBlock: false,
+  showInlineCode: false,
+  showQuote: false,
+  showClearFormat: false,
+  showSearchButton: false,
+  showSubscript: false,
+  showSuperscript: false,
+  showListCheck: false,
+  showListNumbers: false,
+  showListBullets: false,
+  showHeaderStyle: false,
+  showIndent: false,
+  showLink: false,
+  showBackgroundColorButton: false,
+  buttonOptions: kQuillButtonOptions,
+);

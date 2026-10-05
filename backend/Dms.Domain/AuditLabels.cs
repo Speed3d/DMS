@@ -121,6 +121,7 @@ public static class AuditLabels
         ["Entity"] = "جهة",
         ["Template"] = "قالب",
         ["DocumentType"] = "نوع مستند",
+        ["OutgoingBookType"] = "نوع كتاب صادر",
         ["ExchangeRate"] = "سعر صرف",
         ["User"] = "مستخدم",
         ["ApprovalDelegation"] = "تفويض اعتماد",

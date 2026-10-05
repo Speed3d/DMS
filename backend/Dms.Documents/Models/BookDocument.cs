@@ -29,4 +29,12 @@ public sealed record BookDocument
             : Amount;
 
     public bool HasFinancials => Amount is not null;
+
+    // ── ADR-057: الجداول وخيارات الطباعة ──
+    /// <summary>جداول المتن بترتيب وسومها <c>data-dms-table</c> فيه — مفحوصةٌ ومحسوبة.</summary>
+    public IReadOnlyList<PrintTable> Tables { get; init; } = [];
+    public bool PrintEntity { get; init; } = true;
+    public bool PrintSubject { get; init; } = true;
+    public bool PageNumbers { get; init; } = true;
+    public PrintSignatureMode SignatureMode { get; init; } = PrintSignatureMode.LastPage;
 }

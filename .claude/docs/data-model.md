@@ -84,6 +84,20 @@
 ### OutgoingBook (الصادر)
 `OutgoingId, CompanyId, Number?, Year?, SerialNo?, Date, EntityId→Entity, Subject, BodyHtml, TemplateId→Template, Status(Draft/Final), Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), QrContent?, QrSignature?, GeneratedPdfBlobKey?, CreatedByUserId, CreatedAt, ApprovedByUserId?, ApprovedAt?, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?, RowVersion`.
 - فهارس فريدة: `(CompanyId, Year, SerialNo)` و `Number` (حيث ليست null).
+- **ADR-057 (migration `AddOutgoingBookTypesAndPrintOptions` — 33):** `OutgoingBookTypeId?→OutgoingBookType (Restrict)` ·
+  `PrintEntity` · `PrintSubject` · `PageNumbers` (bool — **الافتراض `1` في المهاجرة لا `HasDefaultValue(true)`**: EF لا يُرسل `false`
+  حين يساوي الافتراض) · `SignaturePlacement` (int: `LastPage=0` الافتراض للجديد · `StampEveryPage=1` · `EveryPage=2` — **والكتب القائمة
+  ضُبطت `2`** فتُطبع كما كانت). **`null` في الطلب = الافتراض في الإنشاء والقائم في التعديل.**
+- **الجداول بلا عمودٍ جديد**: بلوكٌ `dms-table` داخل `BodyJson` (Delta كل خلية) · **ووسمٌ واحد في `BodyHtml`**
+  `<div data-dms-table="JSON مُهرَّب">` (نموذج `v: 1` بـ`html` كل خلية) — والخادم يقرأ النموذج (`Dms.Domain/BookTables/BookTableCodec`)
+  ويفحصه (`BookTableRules`: 30 عموداً · 600 صفّ · 25 جدولاً) ويعيد حساب الجمع عند كل طباعة. حدّ المتن (`OutgoingContentLimits`):
+  `BodyHtml` ≤ 4M حرف · `BodyJson` ≤ 6M.
+
+### OutgoingBookType (أنواع الصادر — ADR-057، migration 33)
+`OutgoingBookTypeId, CompanyId, Name(100)` — فريدٌ على `(CompanyId, Name)` · فلترٌ عام بالشركة · **منفصلٌ عن `DocumentType` (أنواع الوارد)**.
+- بذرٌ ثلاثيّ لكل شركة (`DefaultOutgoingBookTypes`: كتاب رسمي · فاتورة · عرض سعر) — بالمهاجرة للقائمة وفي `CompaniesController.Create`
+  للجديدة · والكتب القائمة أُسندت إلى «كتاب رسمي».
+- الحذفُ يُرفض ما دام كتابٌ **حيّ** يستعمله (409)؛ والمحذوف ناعماً يُفكّ ارتباطه أوّلاً (`Restrict`) · ويُمحى مع الشركة (`CompanyDeletionService`).
 
 ### IncomingBook (الوارد)
 `IncomingId, CompanyId, IncomingNumber?, Year?, SerialNo?, ExternalNumber?, ExternalDate?, ReceivedDate, ReceivedTime?, EntityId→Entity (الجهة المرسِلة), Subject, DocumentTypeId?, ReceiveMethod(Manual/Mail/Email), ReceivedByUserId, Status(New/InReview/Replied/Closed/Archived), LastAction?, Keywords?, Notes?, Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), ReplyOutgoingId?→OutgoingBook, CreatedByUserId, CreatedAt, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?`.
@@ -135,6 +149,8 @@
 - `MovementId, CompanyId, OutgoingId (FK Cascade, فهرس), Action(50), Description(500), RelatedIncomingId?, PerformedByUserId, PerformedAt (فهرس)` — فلترٌ عام بالشركة.
 - `Action` من `OutgoingActions`: `Created` · `Edited` · `Approved` · `EditedApproved` · `LinkedIncoming` · `UnlinkedIncoming` · `Deleted`.
 - 🔐 **`Description` محايدٌ دائماً**، ورقم الوارد يُحلّ عند القراءة لمن يراه وحده (`RelatedIncomingId`). ويُمحى مع الشركة صراحةً.
+- **ADR-057: `Details?` (`nvarchar(max)`)** — ما تغيّر في الجداول أسطراً (`BookTableDiff`): ملخّصٌ لكل جدول ثم **أوّل عشر خلايا بالقديم
+  والجديد** ثم «وN غيرها» (`Description` محدودٌ بـ500 فلا يتّسع). و«المتن» يُذكر في الوصف إن تغيّر النصّ خارج الجداول.
 - **وفي `User`: `PhotoBlobKey?` (500)** — صورة **السوبر أدمن** بلا بطاقة (ADR-056)؛ ومَن له بطاقة صورتُه على `Employee`.
 
 ### MovementLog (سجل حركة الوارد)

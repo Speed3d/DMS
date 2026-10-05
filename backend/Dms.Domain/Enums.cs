@@ -27,6 +27,20 @@ public enum Currency
     USD = 1,
 }
 
+/// <summary>
+/// في أيّ صفحاتٍ يُطبع التوقيع وختم QR في الكتاب الصادر (ADR-057) — **الموضع والحجم ثابتان**، والخيار
+/// يحدّد الصفحات وحدها (قرار المالك 2026-10-04).
+/// </summary>
+public enum SignaturePlacement
+{
+    /// <summary>في الصفحة الأخيرة وحدها، بعد نهاية المتن — <b>الافتراضي</b>.</summary>
+    LastPage = 0,
+    /// <summary>الختم في كل صفحة، والتوقيع في الأخيرة.</summary>
+    StampEveryPage = 1,
+    /// <summary>الاثنان في كل صفحة (السلوك قبل ADR-057).</summary>
+    EveryPage = 2,
+}
+
 /// <summary>نوع الجهة.</summary>
 public enum EntityKind
 {

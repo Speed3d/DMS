@@ -28,6 +28,24 @@ public class OutgoingBook
     public int? TemplateId { get; set; }
     public BookStatus Status { get; set; } = BookStatus.Draft;
 
+    /// <summary>نوع الكتاب (كتاب رسمي · فاتورة · عرض سعر …) — تصنيفٌ للفلترة والعرض (ADR-057).</summary>
+    /// <remarks>
+    /// ⚠️ **اختياريّ عمداً** في القاعدة: الكتب السابقة للميزة أُسندت إلى «كتاب رسمي» بالمهاجرة، والعلاقة
+    /// الاختيارية تُقرأ بـ<c>LEFT JOIN</c> — فلا يحذف الفلترُ العامّ على الأنواع الكتابَ من القائمة (درس ADR-034).
+    /// </remarks>
+    public int? OutgoingBookTypeId { get; set; }
+    public OutgoingBookType? OutgoingBookType { get; set; }
+
+    // ── خيارات الطباعة لكل كتاب (ADR-057) — الجهة والموضوع يبقيان مسجَّلَين، والخيار يتحكّم في طباعتهما وحدها ──
+    /// <summary>طباعة سطر الجهة.</summary>
+    public bool PrintEntity { get; set; } = true;
+    /// <summary>طباعة سطر «الموضوع / …».</summary>
+    public bool PrintSubject { get; set; } = true;
+    /// <summary>«صفحة 1 من 5» أسفل كل صفحة (ولا ترقيم في الكتاب ذي الصفحة الواحدة).</summary>
+    public bool PageNumbers { get; set; } = true;
+    /// <summary>في أيّ صفحاتٍ يُطبع التوقيع والختم.</summary>
+    public SignaturePlacement SignaturePlacement { get; set; } = SignaturePlacement.LastPage;
+
     // الحقول المالية
     public decimal? Amount { get; set; }
     public Currency? Currency { get; set; }

@@ -288,7 +288,7 @@ class _ShellApi extends ApiClient {
   //    **فبدت الشارات الأربعُ معطوبةً وهي سليمة**. خامسُ تكرارٍ لدرس «قبل تصديق فشلٍ،
   //    تحقّق من الأداة»، وهذه المرّة كاد يدفعني إلى «إصلاح» ما ليس معطوباً.
   @override
-  Future<List<OutgoingListItem>> outgoingList({String? status, String? search}) async => const [];
+  Future<List<OutgoingListItem>> outgoingList({String? status, String? search, int? typeId}) async => const [];
 
   @override
   Future<List<IncomingListItem>> incomingList({

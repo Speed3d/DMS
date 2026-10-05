@@ -71,8 +71,31 @@
   `TemplateAssetCache` (**singleton** — `BookRenderer` scoped فلا يصلح لحملها).
 - **آمن بلا إبطال يدوي:** مفتاح التخزين يحمل `Guid` فريداً لكل رفع، فالصورة الجديدة تُنتج
   مفتاحاً جديداً والمدخل القديم لا يُستعلَم عنه. الشفافية تدخل في مفتاح العلامة المائية.
-- **قياس:** توليد معاينة 2115 ⇒ **1495 مللي**. الباقي هو تخطيط QuestPDF وتضمين الخطوط العربية،
-  ولهذا بقيت المعاينة **بتحديث عند الطلب** لا تلقائياً.
+- **قياس:** توليد معاينة 2115 ⇒ **1495 مللي**. الباقي هو تخطيط QuestPDF وتضمين الخطوط العربية.
+  ⚠️ **ومنذ ADR-057 صارت المعاينة في المحرّر تلقائية** بعد توقّف الكتابة 1.8 ثانية — **طلبٌ واحد لا طلبٌ لكل حرف**، وطلبٌ أثناء آخر يُصفّ
+  ولا يتزاحم، والتلقائية لا تُنشئ جهةً جديدة. (فاتورة 74 صفّاً ~1.5 ثانية · جدول 300 بند في `outgoing-tables-e2e`.)
+
+## الجداول داخل الصادر (ADR-057)
+```
+الواجهة (Flutter)                                   الخادم (.NET)
+core/book_table/   النموذج Bt* · BtOps (نقيّة)      Dms.Domain/BookTables/  BookTable · BookTableCodec ·
+                   BtFormulas · BtJson · BtPaste                            BookTableRules · TableFormulas ·
+widgets/book_table/ BtGrid (دمجٌ عموديّ) ·                                  ArabicNumberWords · BookTableDiff
+                   BtTableView · BtEditorHub ·      Dms.Infrastructure/Documents/BookTablePrintMapper
+                   BtTableEditor · Toolbar · Dialogs  ⟵ يجسر (Documents لا يعرف Domain)
+screens/outgoing_editor_screen  (الشاشة الواحدة)    Dms.Documents/  PrintTable · HtmlToQuestPdf (فقراتٌ مشتركة +
+widgets/book_paper · book_pdf_view                                  جداول) · PdfGenerator · Word/{WordExporter,
+                                                                    WordHtml, WordTables, WordImages}
+```
+- **مصدرٌ واحد بصورتين**: Delta المحرّر (`BodyJson`) يحمل الجدول **بـDelta كل خلية**، و`BodyHtml` يحمله **وسماً واحداً بـ`html` كل خلية**
+  — والخادم لا يفهم Delta ولا يحتاج.
+- **الخادم حَكَم الطباعة**: يفحص كل جدولٍ في الإنشاء والتعديل والمعاينة (`ValidateBody`) **ويعيد حساب الجمع والحروف عند كل طباعة**.
+- **خلية الجمع والحروف** تُرسَل **غلافَ تنسيقها فارغاً** (`<p><strong><span style="font-size: 14pt"></span></strong></p>`) والخادم يُدرج
+  النصّ في أعمق وسمٍ فارغ (`TableFormulas.WithText`) فيرثه.
+- **المحرّر (`BtEditorHub`)** يحمل التحديد والخلية المفتوحة **خارج شجرة Quill** — لأن Quill يعيد بناء البلوك مع كل تغيير — ومحرّرَ خليةٍ
+  **واحداً** للجلسة ينتقل بمفتاحه العامّ. ⚠️ **ودروس محرّرٍ داخل محرّر** (أفعالٌ «قابلة للتجاوز» · نقرةٌ «شفّافة» · `ignoreFocus` لا يعيد البناء ·
+  دمج التراجع · لصق الويب يمرّ بالمتصفّح) — في ADR-057 بتفصيلها.
+- **الورقة بخطوط الطباعة نفسها** (`assets/fonts` = `Dms.Documents/Assets/Fonts` بايتاً ببايت — حارسٌ يقارنهما) تُحمَّل عند فتح المحرّر.
 
 ## التعديل بعد الاعتماد
 - لقطة JSON للنسخة الحالية في `DocumentVersions` (VersionNo تصاعدي) + تزامن متفائل (`RowVersion`) + إعادة توليد PDF/QR. الرقم يبقى ثابتاً.

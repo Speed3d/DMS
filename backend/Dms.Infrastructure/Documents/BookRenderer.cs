@@ -62,8 +62,22 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
         return $"{_qr.PublicBaseUrl.TrimEnd('/')}/v/{token}";
     }
 
-    public byte[] RenderWord(OutgoingBook book, Entity entity, Company company)
-        => _word.Generate(ToModel(book, entity, company));
+    /// <summary>
+    /// Word طبق الأصل (ADR-057): صور القالب نفسها، وصورة الختم **من <c>QrContent</c> المخزَّن** للمعتمد — لا يُعاد التوقيع
+    /// (السجلّ التشفيريّ لا يُمسّ)، والمسودّة بمربّع «نسخة للمعاينة» كالـPDF.
+    /// </summary>
+    public async Task<byte[]> RenderWordAsync(OutgoingBook book, Template template, Entity entity, Company company, CancellationToken ct = default)
+    {
+        var qrPng = book.Status == BookStatus.Final && !string.IsNullOrEmpty(book.QrContent)
+            ? QrSigner.CreateQrPng(PrintedQrPayload(book, book.QrContent))
+            : null;
+        var assets = new DocumentAssets(
+            Header: await LoadOrPlaceholderAsync(template.HeaderImageKey, () => PlaceholderImages.CreateHeader(), ct),
+            Footer: await LoadOrPlaceholderAsync(template.FooterImageKey, () => PlaceholderImages.CreateFooter(), ct),
+            Watermark: await LoadWatermarkAsync(template, ct),
+            QrPng: qrPng);
+        return _word.Generate(ToModel(book, entity, company), assets);
+    }
 
     private static BookDocument ToModel(OutgoingBook book, Entity entity, Company company) => new()
     {
@@ -79,6 +93,12 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
         Amount = book.Amount,
         Currency = book.Currency?.ToString(),
         ExchangeRate = book.ExchangeRate,
+        // ADR-057: الجداول مفحوصةً ومحسوبة · وخيارات الطباعة
+        Tables = BookTablePrintMapper.Map(book.BodyHtml),
+        PrintEntity = book.PrintEntity,
+        PrintSubject = book.PrintSubject,
+        PageNumbers = book.PageNumbers,
+        SignatureMode = BookTablePrintMapper.Mode(book.SignaturePlacement),
     };
 
     // Hint: صور القالب ثابتة، فتُخزَّن مؤقتاً بمفتاح التخزين نفسه — وهو يحمل Guid فريداً لكل

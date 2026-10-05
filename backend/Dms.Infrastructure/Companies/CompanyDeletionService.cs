@@ -239,6 +239,8 @@ public sealed class CompanyDeletionService(
             db.Templates.RemoveRange(db.Templates.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.Entities.RemoveRange(db.Entities.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.DocumentTypes.RemoveRange(db.DocumentTypes.IgnoreQueryFilters().Where(x => x.CompanyId == id));
+            // أنواع الصادر (ADR-057) — EF يحذف الكتب قبلها لأنه يعرف المفتاح الأجنبيّ (Restrict).
+            db.OutgoingBookTypes.RemoveRange(db.OutgoingBookTypes.IgnoreQueryFilters().Where(x => x.CompanyId == id));
             db.Counters.RemoveRange(db.Counters.Where(x => x.CompanyId == id));
 
             // فكّ ربط المستخدمين الذين شركتهم الرئيسية هي هذه الشركة.

@@ -12,6 +12,7 @@ import '../core/outgoing_providers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../models.dart';
+import '../widgets/book_pdf_view.dart';
 import '../widgets/outgoing_movements.dart';
 import '../widgets/hidden_replies_note.dart';
 import '../widgets/custom_card.dart';
@@ -23,16 +24,6 @@ import 'relate_book_screen.dart';
 import 'outgoing_edit_approved_screen.dart';
 import 'outgoing_edit_draft_screen.dart';
 import 'task_form_screen.dart';
-
-/// إظهار زرّ «تصدير Word» في شاشة تفاصيل الصادر.
-///
-/// 🔒 **مخفيّ بطلب المالك (2026-07-27)** — الميزة **مكتملة ومختبَرة** (النقطة تُرجِع ملف
-/// OpenXML صالحاً، والمتن يُحوَّل من HTML إلى فقرات Word حقيقية بتنسيقها)، وإنما أُخفي
-/// المدخل مؤقتاً بانتظار إشارة المالك.
-///
-/// **للإظهار: اجعل القيمة `true` — لا شيء آخر يلزم.** أُبقيت الشيفرة كاملة عمداً
-/// (الدالة `_exportWord` ونقطة الـAPI ومحوّل HTML) حتى لا يُعاد بناؤها.
-const bool _showWordExport = false;
 
 /// Hint: شاشة تفاصيل الصادر بتصميم أنيق يعتمد على البطاقات
 class OutgoingDetailScreen extends ConsumerStatefulWidget {
@@ -46,6 +37,9 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
   late Future<OutgoingDetail> _future;
   bool _busy = false;
 
+  /// يتغيّر مع كل إعادة تحميل (تعديل · اعتماد) — فيُعاد جلب الكتاب كما يُطبع.
+  int _gen = 0;
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +48,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
 
   void _reload() {
     _future = ref.read(apiClientProvider).outgoingGet(widget.id);
+    _gen++;
     // 📜 السجلّ يتبع الكتاب — كلُّ ما يُعيد تحميله (تعديل · اعتماد · ربط) أضاف حركة (ADR-056).
     ref.invalidate(outgoingMovementsProvider(widget.id));
     setState(() {});
@@ -366,7 +361,7 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
 
           return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 900),
+              constraints: const BoxConstraints(maxWidth: 1280),
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 children: [
@@ -385,9 +380,12 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                         children: [
                           StatusPill(status: d.isFinal ? 'Final' : 'Draft'),
                           const SizedBox(width: 16),
-                          Text(
-                            d.number ?? 'مسودة (بلا رقم حتى الآن)',
-                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, fontFamily: 'Tahoma', letterSpacing: -0.5),
+                          // مرنٌ يلتفّ — بعرض الهاتف كان العنوان يفيض 345 بكسلاً (الهاتف للعرض والاعتماد — قرار المالك ت١٣)
+                          Flexible(
+                            child: Text(
+                              d.number ?? 'مسودة (بلا رقم حتى الآن)',
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, fontFamily: 'Tahoma', letterSpacing: -0.5),
+                            ),
                           ),
                         ],
                       ),
@@ -407,13 +405,11 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                       ],
                       if (d.hasPdf)
                         _buildActionButton('تحميل PDF', Icons.picture_as_pdf_rounded, AppColors.gold, _downloadPdf),
-                      // 🔒 مخفيّ بطلب المالك (2026-07-27) — **جاهز ومختبَر**، ينتظر إشارته فقط.
-                      // للإظهار: اجعل `_showWordExport = true` أعلى هذا الملف. لا شيء آخر يلزم.
-                      if (_showWordExport)
-                        // Word متاح للمسودّة والمعتمد معاً — يُولَّد من بيانات الكتاب لا من ملف
-                        // مخزَّن، فلا يشترط `hasPdf` (بخلاف زر PDF الذي يقرأ ملفاً مولَّداً عند الاعتماد).
-                        _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.action(context),
-                            () => _exportWord(d)),
+                      // 📝 **ظاهرٌ منذ ADR-057 (قرار المالك ت١٤: «طبق الأصل» للمسودّة والمعتمد)** — كان مخفيّاً منذ 2026-07-27.
+                      // يُولَّد من بيانات الكتاب لا من ملفٍّ مخزَّن، فلا يشترط `hasPdf`. ⚠️ والـPDF هو النسخة الرسمية:
+                      // تقسيم الصفحات في Word قد يختلف قليلاً (محرّكٌ آخر).
+                      _buildActionButton('تصدير Word', Icons.description_rounded, AppColors.action(context),
+                          () => _exportWord(d)),
                       if (d.isFinal) ...[
                         _buildActionButton('تعديل كإصدار', Icons.edit_document, AppColors.warn, () => _editApproved(d)),
                         _buildActionButton('سجل الإصدارات', Icons.history_rounded, AppColors.action(context), _showVersions),
@@ -425,13 +421,9 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                   const SizedBox(height: 32),
 
                   // Hint: تفاصيل الكتاب موزعة على شكل بطاقات
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // القسم الأيمن (معلومات وصفية)
-                      Expanded(
-                        flex: 4,
-                        child: CustomCard(
+                  _SplitOrStack(
+                    // القسم الأيمن (معلومات وصفية)
+                    first: CustomCard(
                           padding: const EdgeInsets.all(24),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -439,6 +431,10 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                               const Text('المعلومات الأساسية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                               const Divider(height: 32),
                               _buildInfoRow('الموضوع', d.subject, Icons.subject_rounded),
+                              if (d.bookTypeName != null && d.bookTypeName!.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                _buildInfoRow('نوع الكتاب', d.bookTypeName!, Icons.category_rounded),
+                              ],
                               const SizedBox(height: 16),
                               _buildInfoRow('تاريخ الكتاب', DateFormat('yyyy/MM/dd').format(d.date), Icons.calendar_month_rounded),
                               const SizedBox(height: 16),
@@ -447,6 +443,8 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                 const SizedBox(height: 16),
                                 _buildInfoRow('الموقّع', '${d.signatoryName}${d.signatoryTitle != null && d.signatoryTitle!.isNotEmpty ? ' - ${d.signatoryTitle}' : ''}', Icons.person_rounded),
                               ],
+                              const SizedBox(height: 16),
+                              _buildInfoRow('الطباعة', _printSummary(d), Icons.print_rounded),
                               
                               if (d.amount != null) ...[
                                 const Divider(height: 32),
@@ -558,13 +556,8 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                             ],
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 24),
-
-                      // القسم الأيسر (محتوى النص)
-                      Expanded(
-                        flex: 6,
-                        child: CustomCard(
+                    // القسم الأيسر (الكتاب كما يُطبع)
+                    second: CustomCard(
                           padding: const EdgeInsets.all(32),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,24 +566,24 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                                 children: [
                                   Icon(Icons.segment_rounded, color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.5)),
                                   const SizedBox(width: 8),
-                                  const Text('نص الكتاب (المحتوى)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  const Text('الكتاب كما يُطبع', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                 ],
                               ),
                               const Divider(height: 32),
-                              // TODO: عندما نقوم بدمج flutter_quill سنقوم بعرض المحتوى بشكل أفضل
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.dividerColor),
+                              // 📄 ADR-057 (قرار المالك س٤١): كان المتن نصّاً بلا وسوم — جدولٌ طويل يصير سطراً من الأرقام المتلاصقة.
+                              //    المعتمد من ملفّه المخزَّن (النسخة الرسمية) · والمسودّة من المعاينة.
+                              if (d.isFinal && !d.hasPdf)
+                                Text('لا ملفّ PDF محفوظاً لهذا الكتاب.', style: TextStyle(color: theme.hintColor))
+                              else
+                                BookPdfView(
+                                  key: ValueKey('book-pdf-${widget.id}'),
+                                  reloadKey: _gen,
+                                  draft: !d.isFinal,
+                                  fileName: '${d.number ?? 'draft-${widget.id}'}.pdf',
+                                  load: () => d.isFinal
+                                      ? ref.read(apiClientProvider).outgoingPdf(widget.id)
+                                      : ref.read(apiClientProvider).previewDraftPdf(widget.id),
                                 ),
-                                child: SelectableText(
-                                  d.bodyHtml.replaceAll(RegExp(r'<[^>]*>'), ''), // إزالة مؤقتة للـ HTML tags حتى يتم إضافة Quill
-                                  style: const TextStyle(fontSize: 15, height: 1.8),
-                                ),
-                              ),
                               // 📜 **سجلّ الحركة** (ADR-056، طلب المالك) — لكل الأدوار عدا القارئ، كالوارد.
                               if (canViewOutgoingMovements(ref.watch(sessionProvider).auth?.role)) ...[
                                 const Divider(height: 48),
@@ -599,8 +592,6 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
                             ],
                           ),
                         ),
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -664,6 +655,35 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
 
   String _fmt(num n) =>
       n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+
+  /// خيارات طباعة الكتاب بجملةٍ واحدة — ما أُوقف يُذكر، والافتراضيّ لا يُكرَّر (ADR-057).
+  static String _printSummary(OutgoingDetail d) => [
+        'التوقيع والختم ${d.signaturePlacement.label}',
+        d.pageNumbers ? 'بترقيم الصفحات' : 'بلا ترقيم صفحات',
+        if (!d.printEntity) 'بلا سطر الجهة',
+        if (!d.printSubject) 'بلا سطر الموضوع',
+      ].join(' · ');
+}
+
+/// عمودان على الشاشة العريضة — وعمودٌ واحد على الضيّقة (المعلومات ثم الكتاب): الهاتف للعرض والاعتماد (قرار المالك ت١٣)،
+/// وعمودان بعرض الهاتف كانا يضغطان صفحة A4 في ثلثي 390 بكسلاً.
+class _SplitOrStack extends StatelessWidget {
+  const _SplitOrStack({required this.first, required this.second});
+  final Widget first;
+  final Widget second;
+
+  static const double breakpoint = 900;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, c) => c.maxWidth >= breakpoint
+            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(flex: 4, child: first),
+                const SizedBox(width: 24),
+                Expanded(flex: 7, child: second),
+              ])
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [first, const SizedBox(height: 24), second]),
+      );
 }
 
 /// شاشة اختيار الكتب الواردة التي يردّ عليها هذا الصادر — قبل الاعتماد (ADR-045).

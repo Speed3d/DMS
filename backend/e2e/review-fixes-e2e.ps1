@@ -257,7 +257,8 @@ if($dJob.state -eq 'Succeeded'){
   $tables=@('OutgoingBooks','IncomingBooks','ArchiveDocs','DmsTasks','DmsTaskUpdates','DmsTaskParticipants',
     'Departments','EmployeeCompanies','PayrollPeriods','PayrollEntries','EmployeeLeaves','EmployeeLogs',
     'EmployeeLeaveSettlements','HrSettings','CaseFiles','BookReplies','MovementLogs','Notifications',
-    'UserCompanies','Entities','DocumentTypes','Templates','Counters','ApprovalDelegations')
+    'UserCompanies','Entities','DocumentTypes','Templates','Counters','ApprovalDelegations',
+    'OutgoingBookTypes','OutgoingMovements')
   $left=@()
   foreach($t in $tables){ $n=SqlCount "SELECT COUNT(*) FROM [$t] WHERE CompanyId=$cC"; if($n -gt 0){ $left+="$t=$n" } }
   if($left.Count -eq 0){ Ok "🔴 **لا صفَّ يتيماً** في $($tables.Count) جدولاً" } else { Bad "صفوفٌ يتيمة: $($left -join ' · ')" }

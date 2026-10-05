@@ -6,6 +6,13 @@ namespace Dms.Documents.Images;
 public static class ImageOps
 {
     /// <summary>يطبّق شفافية عامة (0–100%) على صورة PNG ويعيدها PNG.</summary>
+    /// <summary>أبعاد الصورة بالبكسل بلا فكّها كاملة — لتحجيمها في Word (ADR-057). صورةٌ تالفة ⟵ (1، 1).</summary>
+    public static (int Width, int Height) Size(byte[] image)
+    {
+        using var codec = SKCodec.Create(new SKMemoryStream(image));
+        return codec is null ? (1, 1) : (Math.Max(1, codec.Info.Width), Math.Max(1, codec.Info.Height));
+    }
+
     public static byte[] ApplyOpacity(byte[] png, int opacityPercent)
     {
         opacityPercent = Math.Clamp(opacityPercent, 0, 100);

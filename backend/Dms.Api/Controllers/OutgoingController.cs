@@ -3,6 +3,7 @@ using Dms.Api.Dtos;
 using Dms.Documents.Security;
 using Dms.Infrastructure.Documents;
 using Dms.Domain;
+using Dms.Domain.BookTables;
 using Dms.Infrastructure.Services;
 using Dms.Infrastructure.Incoming;
 using Dms.Infrastructure.Outgoing;
@@ -24,17 +25,20 @@ public sealed class OutgoingController(
 {
     [HttpGet]
     public async Task<ActionResult<List<OutgoingListItem>>> List(
-        [FromQuery] BookStatus? status, [FromQuery] string? search, CancellationToken ct = default)
+        [FromQuery] BookStatus? status, [FromQuery] string? search, [FromQuery] int? typeId, CancellationToken ct = default)
     {
         var q = svc.Query();
         if (status is not null) q = q.Where(b => b.Status == status);
+        if (typeId is not null) q = q.Where(b => b.OutgoingBookTypeId == typeId);
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(b => b.Subject.Contains(search) || (b.Number != null && b.Number.Contains(search)));
 
         return await q.OrderByDescending(b => b.CreatedAt)
             .Select(b => new OutgoingListItem(
                 b.OutgoingId, b.Number, b.Date, b.Subject, b.Entity!.Name,
-                b.Status, b.AmountInIqd, b.CreatedAt, b.CaseFileId))
+                b.Status, b.AmountInIqd, b.CreatedAt, b.CaseFileId,
+                // علاقةٌ اختيارية ⟵ LEFT JOIN: الفلتر العام على الأنواع لا يحذف الكتاب من القائمة (درس ADR-034).
+                b.OutgoingBookTypeId, b.OutgoingBookType != null ? b.OutgoingBookType.Name : null))
             .ToListAsync(ct);
     }
 
@@ -66,8 +70,12 @@ public sealed class OutgoingController(
             .Join(db.IncomingBooks, r => r.IncomingId, i => i.IncomingId, (r, i) => r.IncomingId)
             .CountAsync(ct);
 
+        var typeName = book.OutgoingBookTypeId is { } tid
+            ? await db.OutgoingBookTypes.Where(t => t.OutgoingBookTypeId == tid).Select(t => t.Name).FirstOrDefaultAsync(ct)
+            : null;
+
         return Detail(book, entityName, svc.CanCurrentUserApprove(), repliesTo,
-            hiddenReplies: allReplies - repliesTo.Count);
+            hiddenReplies: allReplies - repliesTo.Count, typeName: typeName);
     }
 
     /// <summary>سجلّ حركة الكتاب — الإنشاء والتعديل والاعتماد والربط والحذف (ADR-056).</summary>
@@ -93,7 +101,7 @@ public sealed class OutgoingController(
             return new OutgoingMovementItem(
                 m.Log.MovementId, m.Log.Action, m.Log.Description,
                 seen ? rid : null, seen ? visible[rid!.Value] : null,
-                m.PerformedByUserName, m.Log.PerformedAt);
+                m.PerformedByUserName, m.Log.PerformedAt, m.Log.Details);
         }).ToList();
     }
 
@@ -109,7 +117,8 @@ public sealed class OutgoingController(
         var id = await idempotency.ExecuteAsync(idempotencyKey, nameof(OutgoingBook), async () =>
             (await svc.CreateDraftAsync(new CreateOutgoingInput(
                 req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-                req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct)).OutgoingId, ct);
+                req.Amount, req.Currency, req.ExchangeRate, req.BodyJson,
+                req.OutgoingBookTypeId, req.PrintEntity, req.PrintSubject, req.PageNumbers, req.SignaturePlacement), ct)).OutgoingId, ct);
         return await Get(id, ct);
     }
 
@@ -118,7 +127,8 @@ public sealed class OutgoingController(
     {
         await svc.UpdateDraftAsync(id, new UpdateOutgoingInput(
             req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson,
+            req.OutgoingBookTypeId, req.PrintEntity, req.PrintSubject, req.PageNumbers, req.SignaturePlacement), ct);
         return await Get(id, ct);
     }
 
@@ -142,7 +152,8 @@ public sealed class OutgoingController(
         await svc.EditAfterApprovalAsync(id, new EditApprovedInput(
             req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
             req.Amount, req.Currency, req.ExchangeRate,
-            Convert.FromBase64String(req.RowVersion), req.ChangeNote, req.BodyJson), ct);
+            Convert.FromBase64String(req.RowVersion), req.ChangeNote, req.BodyJson,
+            req.OutgoingBookTypeId, req.PrintEntity, req.PrintSubject, req.PageNumbers, req.SignaturePlacement), ct);
         return await Get(id, ct);
     }
 
@@ -176,7 +187,8 @@ public sealed class OutgoingController(
     {
         var bytes = await svc.PreviewPdfAsync(new CreateOutgoingInput(
             req.CompanyId, req.EntityId, req.TemplateId, req.Date, req.HeaderPhrase, req.SignatoryName, req.SignatoryTitle, req.Subject, req.BodyHtml,
-            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson), ct);
+            req.Amount, req.Currency, req.ExchangeRate, req.BodyJson,
+            req.OutgoingBookTypeId, req.PrintEntity, req.PrintSubject, req.PageNumbers, req.SignaturePlacement), ct);
         return File(bytes, "application/pdf");
     }
 
@@ -196,8 +208,16 @@ public sealed class OutgoingController(
         return File(bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     }
 
+    /// <summary>
+    /// المبلغ بالحروف لخلية «كتابة بالحروف» في محرّر الجداول (ADR-057) — **التفقيط في الخادم وحده**،
+    /// فالمحرّر والطباعة يقرآن الصياغة نفسها ولا يتباعدان.
+    /// </summary>
+    [HttpGet("number-words")]
+    public ActionResult<NumberWordsResponse> NumberWords([FromQuery] decimal value, [FromQuery] string currency = "IQD")
+        => new NumberWordsResponse(ArabicNumberWords.ToWords(value, currency));
+
     private OutgoingDetail Detail(OutgoingBook b, string entityName, bool canApprove,
-        List<ReplyLinkDto>? repliesTo = null, int hiddenReplies = 0) => new(
+        List<ReplyLinkDto>? repliesTo = null, int hiddenReplies = 0, string? typeName = null) => new(
         b.OutgoingId, b.CompanyId, b.Number, b.Year, b.SerialNo, b.Date,
         b.EntityId, entityName, b.TemplateId, b.HeaderPhrase, b.SignatoryName, b.SignatoryTitle, b.Subject, b.BodyHtml,
         b.Status, b.Amount, b.Currency, b.ExchangeRate, b.AmountInIqd,
@@ -205,7 +225,8 @@ public sealed class OutgoingController(
         b.CreatedAt, b.UpdatedAt, b.RowVersion is null ? "" : Convert.ToBase64String(b.RowVersion), canApprove, b.BodyJson,
         repliesTo ?? [],
         VerifyUrl(b),
-        hiddenReplies);
+        hiddenReplies,
+        b.OutgoingBookTypeId, typeName, b.PrintEntity, b.PrintSubject, b.PageNumbers, b.SignaturePlacement);
 
     /// <summary>رابط التحقق العامّ — **للمعتمد وحده**، فالمسودّة بلا رمزٍ مطبوع.</summary>
     private string? VerifyUrl(OutgoingBook b)
