@@ -20,6 +20,10 @@ class _State extends ConsumerState<TemplateEditScreen> {
   final _mBottom = TextEditingController();
   final _mLeft = TextEditingController();
   bool _active = true;
+  // موضع ترقيم الصفحات (بلاغ المالك 2026-10-05) — حدود الإزاحة كما في الخادم (`PageNumberPosition`)
+  String _pnAlign = 'center';
+  int _pnX = 0, _pnY = 0;
+  static const _maxX = 80, _maxY = 30;
   bool _loading = true;
   bool _busy = false;
   final Map<String, Uint8List?> _images = {'header': null, 'footer': null, 'watermark': null};
@@ -47,6 +51,9 @@ class _State extends ConsumerState<TemplateEditScreen> {
     _mBottom.text = '${t.marginBottom}';
     _mLeft.text = '${t.marginLeft}';
     _active = t.isActive;
+    _pnAlign = t.pageNumberAlign;
+    _pnX = t.pageNumberOffsetX.clamp(-_maxX, _maxX);
+    _pnY = t.pageNumberOffsetY.clamp(-_maxY, _maxY);
     for (final kind in _images.keys.toList()) {
       _images[kind] = await api.getTemplateImage(widget.templateId, kind);
     }
@@ -105,6 +112,9 @@ class _State extends ConsumerState<TemplateEditScreen> {
         'pageSize': 'A4',
         'fontFamily': 'Amiri',
         'isActive': _active,
+        'pageNumberAlign': _pnAlign,
+        'pageNumberOffsetX': _pnX,
+        'pageNumberOffsetY': _pnY,
       });
       if (mounted) {
         messenger.showSnackBar(const SnackBar(content: Text('تم حفظ القالب.')));
@@ -212,6 +222,8 @@ class _State extends ConsumerState<TemplateEditScreen> {
                         contentPadding: EdgeInsets.zero,
                       ),
                       const Divider(height: 32),
+                      ..._pageNumberControls(),
+                      const Divider(height: 32),
                       const Text('صور القالب', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
                       _imageRow('الهيدر', 'header'),
@@ -236,7 +248,7 @@ class _State extends ConsumerState<TemplateEditScreen> {
                     padding: const EdgeInsets.all(24),
                     child: AspectRatio(
                       aspectRatio: 1 / 1.414,
-                      child: Container(
+                      child: LayoutBuilder(builder: (context, box) => Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
                           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, spreadRadius: 2)],
@@ -278,15 +290,96 @@ class _State extends ConsumerState<TemplateEditScreen> {
                                 ),
                               ),
                             ),
+                            _pageNumberPreview(box.maxWidth),
                           ],
                         ),
-                      ),
+                      )),
                     ),
                   ),
                 ),
               ],
             ),
     );
+  }
+
+  // ─────────────────────────── موضع ترقيم الصفحات ───────────────────────────
+
+  List<Widget> _pageNumberControls() {
+    String side(int v, String pos, String neg) => v == 0 ? 'بلا إزاحة' : '${v.abs()} مم ${v > 0 ? pos : neg}';
+    return [
+      const Text('موضع ترقيم الصفحات', style: TextStyle(fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4),
+      const Text('«صفحة 1 من 3» في أسفل كل صفحة — ضعه حيث يلائم تذييل القالب، وتراه في المعاينة بجانبها.',
+          style: TextStyle(fontSize: 12, color: Colors.black54)),
+      const SizedBox(height: 10),
+      SegmentedButton<String>(
+        key: const Key('pn-align'),
+        segments: const [
+          ButtonSegment(value: 'right', label: Text('يمين'), icon: Icon(Icons.format_align_right)),
+          ButtonSegment(value: 'center', label: Text('وسط'), icon: Icon(Icons.format_align_center)),
+          ButtonSegment(value: 'left', label: Text('يسار'), icon: Icon(Icons.format_align_left)),
+        ],
+        selected: {_pnAlign},
+        onSelectionChanged: (v) => setState(() => _pnAlign = v.first),
+      ),
+      const SizedBox(height: 12),
+      Text('إزاحة أفقية: ${side(_pnX, 'يميناً', 'يساراً')}'),
+      // الشريط من اليسار إلى اليمين كالصفحة نفسها — فسحبه يميناً يحرّك الرقم يميناً
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Slider(
+          key: const Key('pn-x'),
+          value: _pnX.toDouble(),
+          min: -_maxX.toDouble(), max: _maxX.toDouble(), divisions: _maxX * 2,
+          label: '$_pnX مم',
+          onChanged: (v) => setState(() => _pnX = v.round()),
+        ),
+      ),
+      Text('إزاحة عمودية: ${side(_pnY, 'للأعلى', 'للأسفل')}'),
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Slider(
+          key: const Key('pn-y'),
+          value: _pnY.toDouble(),
+          min: -_maxY.toDouble(), max: _maxY.toDouble(), divisions: _maxY * 2,
+          label: '$_pnY مم',
+          onChanged: (v) => setState(() => _pnY = v.round()),
+        ),
+      ),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton.icon(
+          key: const Key('pn-reset'),
+          onPressed: _pnAlign == 'center' && _pnX == 0 && _pnY == 0 ? null : () => setState(() {
+            _pnAlign = 'center';
+            _pnX = 0;
+            _pnY = 0;
+          }),
+          icon: const Icon(Icons.restart_alt, size: 18),
+          label: const Text('إعادة إلى الوسط'),
+        ),
+      ),
+    ];
+  }
+
+  /// «صفحة 1 من 3» على الورقة المصغّرة بالمقاييس نفسها التي يرسم بها الخادم (`PdfGenerator`): 20 نقطة فوق الحافة ·
+  /// هامش 40 نقطة لليمين واليسار · والإزاحة بالمليمتر — وعرض A4 595 نقطة.
+  Widget _pageNumberPreview(double pageWidth) {
+    final pt = pageWidth / 595;
+    const mm = 72 / 25.4;
+    final dx = _pnX * mm * pt, dy = _pnY * mm * pt;
+    final label = Container(
+      key: const Key('pn-preview'),
+      padding: EdgeInsets.symmetric(horizontal: 3 * pt),
+      decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2)),
+      child: Text('صفحة 1 من 3', style: TextStyle(fontSize: 12 * pt, color: Colors.black87, fontFamily: 'Times New Roman')),
+    );
+    final bottom = 20 * pt + dy;
+    return switch (_pnAlign) {
+      'right' => Positioned(right: 40 * pt - dx, bottom: bottom, child: label),
+      'left' => Positioned(left: 40 * pt + dx, bottom: bottom, child: label),
+      _ => Positioned(left: 0, right: 0, bottom: bottom, child: Center(child: Transform.translate(offset: Offset(dx, 0), child: label))),
+    };
   }
 
   Widget _imageRow(String label, String kind) {

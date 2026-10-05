@@ -37,4 +37,11 @@ public sealed record BookDocument
     public bool PrintSubject { get; init; } = true;
     public bool PageNumbers { get; init; } = true;
     public PrintSignatureMode SignatureMode { get; init; } = PrintSignatureMode.LastPage;
+
+    /// <summary>موضع «صفحة X من Y» من القالب: <c>right</c> · <c>center</c> · <c>left</c>.</summary>
+    public string PageNumberAlign { get; init; } = "center";
+
+    /// <summary>إزاحة الترقيم بالنقاط — أفقياً (موجبٌ يميناً) وعمودياً (موجبٌ للأعلى).</summary>
+    public float PageNumberOffsetXPt { get; init; }
+    public float PageNumberOffsetYPt { get; init; }
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -246,6 +247,157 @@ void main() {
     });
   });
 
+  group('🔴 بلاغ المالك 2026-10-05: النقر والتحديد في الجدول', () {
+    quill.QuillEditor mainEditor(WidgetTester t) => t.widget<quill.QuillEditor>(find.byType(quill.QuillEditor).first);
+
+    Offset cellCenter(WidgetTester t, int r, int c) => t.getCenter(find.byKey(ValueKey('bt-cell-$r-$c')));
+
+    Future<void> drag(WidgetTester t, (int, int) from, (int, int) to, {PointerDeviceKind kind = PointerDeviceKind.mouse}) async {
+      // في وسط الورقة لا في أعلاها — كما يعمل المستخدم عادةً (وأعلاها يحجبه شريط الجدول حين يظهر)
+      await Scrollable.ensureVisible(t.element(find.byKey(ValueKey('bt-cell-${from.$1}-${from.$2}'))), alignment: 0.5);
+      await t.pump();
+      final a = cellCenter(t, from.$1, from.$2), b = cellCenter(t, to.$1, to.$2);
+      final g = await t.startGesture(a, kind: kind);
+      await t.pump(const Duration(milliseconds: 20));
+      for (final f in [0.2, 0.5, 0.8, 1.0]) {
+        await g.moveTo(Offset.lerp(a, b, f)!);
+        await t.pump(const Duration(milliseconds: 20));
+      }
+      await g.up();
+      await wait(t, 350);
+    }
+
+    for (final kind in [PointerDeviceKind.touch, PointerDeviceKind.mouse]) {
+      testWidgets('كتابةٌ في المتن ثم نقرة خلية (${kind.name}): التركيز في الخلية وحدها — ومؤشّر المتن لا ينتقل ولا يُرى', (tester) async {
+        await pump(tester);
+        final h = hubOf(tester);
+        // المؤشّر في النصّ خارج الجدول (كما بعد الكتابة فيه)
+        h.main.updateSelection(const TextSelection.collapsed(offset: 3), quill.ChangeSource.local);
+        mainFocus(tester).requestFocus();
+        await wait(tester);
+        expect(mainEditor(tester).config.showCursor, isNot(false));
+
+        final f = find.byKey(const ValueKey('bt-cell-1-1'));
+        await tester.ensureVisible(f);
+        await tester.pump();
+        await tester.tap(f, kind: kind);
+        await wait(tester, 350);
+
+        expect(h.editing, isTrue);
+        expect(h.cellFocus!.hasPrimaryFocus, isTrue, reason: 'الكتابة تذهب إلى الخلية');
+        expect(h.main.selection, const TextSelection.collapsed(offset: 3),
+            reason: 'محرّر المتن لم يأخذ النقرة: مؤشّره باقٍ حيث كان لا على الجدول');
+        expect(mainEditor(tester).config.showCursor, isFalse, reason: 'لا مؤشّران معاً');
+        expect(h.tablePointer, isFalse, reason: 'العلامة تُصفَّر بعد الرفع');
+
+        // نقرةٌ في النصّ تُغادر الجدول ويعود مؤشّر المتن
+        h.exit();
+        await wait(tester);
+        expect(mainEditor(tester).config.showCursor, isNot(false));
+      });
+    }
+
+    testWidgets('السحب بالفأرة يحدّد مستطيلاً من الخلايا — لا نصّ المتن ولا الجدول كلّه', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await drag(tester, (1, 1), (2, 3));
+      final s = h.sel!;
+      expect([s.top, s.left, s.bottom, s.right], [1, 1, 2, 3]);
+      expect(h.editing, isFalse);
+      expect(h.main.selection.isCollapsed, isTrue, reason: 'لا تحديدَ نصٍّ في المتن يغطّي الجدول');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('عمودياً وأفقياً: سحبٌ في عمودٍ واحد يحدّده وحده · وفي صفٍّ واحد كذلك', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await drag(tester, (1, 2), (2, 2));
+      expect([h.sel!.top, h.sel!.left, h.sel!.bottom, h.sel!.right], [1, 2, 2, 2]);
+      await drag(tester, (2, 0), (2, 3));
+      expect([h.sel!.top, h.sel!.left, h.sel!.bottom, h.sel!.right], [2, 0, 2, 3]);
+    });
+
+    testWidgets('سحبٌ يبدأ من الخلية المفتوحة ويخرج منها يصير تحديدَ خلايا', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await tapCell(tester, 1, 1);
+      expect(h.editing, isTrue);
+      await drag(tester, (1, 1), (1, 3));
+      expect(h.editing, isFalse);
+      expect([h.sel!.top, h.sel!.left, h.sel!.bottom, h.sel!.right], [1, 1, 1, 3]);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('السحب باللمس تمريرٌ لا تحديد — ولا يفتح خلية', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await drag(tester, (1, 1), (2, 3), kind: PointerDeviceKind.touch);
+      expect(h.active, isFalse);
+    });
+
+    testWidgets('المحدّد يُنسَّق كلُّه: لون الخلفية ونوع الخط · وحذف الصفوف المحدّدة', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      final rows = stored(h).rowCount;
+      await drag(tester, (1, 0), (2, 1));
+      await tester.tap(find.byKey(const Key('bt-bg')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.tap(find.byKey(const Key('bt-bg-#FFF2CC')).last);
+      await wait(tester, 400);
+      final t = stored(h);
+      for (final (r, c) in [(1, 0), (1, 1), (2, 0), (2, 1)]) {
+        expect(t.ownerOf(r, c)!.cell.bg, '#FFF2CC', reason: 'الخلية $r،$c ضمن المحدّد');
+      }
+      expect(t.ownerOf(1, 2)!.cell.bg, isNull, reason: 'خارج المحدّد لا يتغيّر');
+
+      await tester.tap(find.byKey(const Key('bt-font')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.tap(find.text('Amiri').last);
+      await wait(tester, 400);
+      final cell = stored(h).ownerOf(1, 1)!.cell;
+      expect(cell.textStyle?['font'] ?? cell.inlineStyle?['font'], 'Amiri');
+
+      await tester.tap(find.byKey(const Key('bt-del-row')));
+      await wait(tester, 400);
+      expect(stored(h).rowCount, rows - 2, reason: 'الصفّان المحدّدان وحدهما');
+    });
+
+    testWidgets('«تحديد الصفّ» و«العمود» و«الجدول كلّه» من شريط الجدول', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await tapCell(tester, 2, 1);
+      final t = stored(h);
+      await tester.tap(find.byKey(const Key('bt-select-row')));
+      await wait(tester);
+      expect([h.sel!.top, h.sel!.left, h.sel!.bottom, h.sel!.right], [2, 0, 2, t.colCount - 1]);
+      expect(h.editing, isFalse);
+      await tapCell(tester, 2, 1);
+      await tester.tap(find.byKey(const Key('bt-select-col')));
+      await wait(tester);
+      // العمود 1 يمرّ بخلية «المجموع» المدموجة مع العمود 0 ⟵ يتّسع التحديد ليشملها (كما في Excel)
+      expect([h.sel!.left, h.sel!.right], [0, 1]);
+      expect([h.sel!.top, h.sel!.bottom], [0, t.rowCount - 1]);
+      await tester.tap(find.byKey(const Key('bt-select-all')));
+      await wait(tester);
+      expect([h.sel!.top, h.sel!.left, h.sel!.bottom, h.sel!.right], [0, 0, t.rowCount - 1, t.colCount - 1]);
+    });
+
+    testWidgets('خلايا محدّدة بلا كتابة ⟵ شريط المتن معطَّل (لا ينسّق نصّ الكتاب بالخطأ) · والخلية المفتوحة ⟵ يعمل لها', (tester) async {
+      await pump(tester);
+      IgnorePointer gate() => tester.widget<IgnorePointer>(
+          find.ancestor(of: find.byType(quill.QuillSimpleToolbar), matching: find.byType(IgnorePointer)).first);
+      expect(gate().ignoring, isFalse);
+      await drag(tester, (1, 1), (2, 2));
+      expect(gate().ignoring, isTrue);
+      await tapCell(tester, 1, 1);
+      expect(gate().ignoring, isFalse);
+    });
+  });
+
   group('ما يُكتب لا يضيع', () {
     testWidgets('خليةٌ لم تُغادَر تُرسَل مع الحفظ — في HTML الطباعة وفي Delta التحرير', (tester) async {
       await pump(tester);
@@ -401,7 +553,8 @@ void main() {
       await tapCell(tester, 2, 4);
       await key(tester, LogicalKeyboardKey.escape);
       await tester.tap(find.byKey(const Key('bt-sum')));
-      await tester.pumpAndSettle();
+      // لا `pumpAndSettle`: المعاينة التلقائية تعمل الآن (لم تعُد نقرةُ الخلية تؤجّلها) ومؤشّر رسمها لا يتوقّف في بيئة الاختبار
+      await wait(tester, 400);
       expect(find.text('جمعٌ حيّ (Σ)'), findsOneWidget);
       await tester.tap(find.byKey(const Key('bt-sum-ok')));
       await wait(tester);

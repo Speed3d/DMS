@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -79,6 +81,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
   final _editorFocus = FocusNode(debugLabel: 'paper');
   final _editorScroll = ScrollController();
   final _paperScroll = ScrollController();
+  final _narrowScroll = ScrollController();
 
   bool _showFinancials = false;
   DateTime _date = DateTime.now();
@@ -188,6 +191,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
     _editorFocus.dispose();
     _editorScroll.dispose();
     _paperScroll.dispose();
+    _narrowScroll.dispose();
     super.dispose();
   }
 
@@ -749,7 +753,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _toolbar(),
+                        _HeightChange(onChange: (d) => _keepPaperStill(_paperScroll, d), child: _toolbar()),
                         _paperCaption(),
                         Expanded(
                           child: Container(
@@ -793,13 +797,14 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
               child: TabBarView(
                 children: [
                   ListView(
+                    controller: _narrowScroll,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     children: [
                       _financialBar(),
                       const SizedBox(height: 16),
                       ..._panel(refs),
                       const SizedBox(height: 16),
-                      _toolbar(),
+                      _HeightChange(onChange: (d) => _keepPaperStill(_narrowScroll, d), child: _toolbar()),
                       _paperCaption(),
                       Container(color: _desk(context), padding: const EdgeInsets.all(12), child: _paper()),
                       const SizedBox(height: 16),
@@ -826,6 +831,22 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
         onCurrencyChanged: (v) => _setOption(() => _currency = v),
       );
 
+  /// 🔴 **الورقة لا تقفز تحت يد المستخدم** (بلاغ المالك 2026-10-05): شريط الجدول يظهر فوقها حين يصير جدولٌ نشطاً —
+  /// والورقة في منطقة تمريرٍ تحته فتنزل كلُّها بارتفاعه **أثناء السحب على الخلايا** فيقع المؤشّر على صفٍّ آخر. ⟵ يُزاح
+  /// التمرير بالمقدار نفسه فتبقى الورقة حيث هي على الشاشة.
+  void _keepPaperStill(ScrollController c, double delta) {
+    if (!mounted || !c.hasClients) return;
+    final p = c.position;
+    c.jumpTo((p.pixels + delta).clamp(p.minScrollExtent, p.maxScrollExtent));
+    // والخلية المفتوحة تبقى ظاهرة — خليةٌ في أعلى الورقة كان الشريط سيحجبها
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _tables.cellKey?.currentContext;
+      if (mounted && ctx != null && ctx.mounted) {
+        Scrollable.ensureVisible(ctx, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+      }
+    });
+  }
+
   Widget _toolbar() {
     final theme = Theme.of(context);
     return Container(
@@ -847,10 +868,18 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: quill.QuillSimpleToolbar(
-                      key: ObjectKey(cell ?? _quill),
-                      controller: cell ?? _quill,
-                      config: cell != null ? kQuillCellToolbarConfig : kQuillToolbarConfig,
+                    // خلايا محدّدة بلا كتابة ⟵ شريط المتن معطَّل (كان ينسّق نصّ الكتاب بدل الخلايا) — وتنسيقها من شريط الجدول
+                    child: IgnorePointer(
+                      ignoring: _tables.active && cell == null,
+                      child: Opacity(
+                        opacity: _tables.active && cell == null ? 0.4 : 1,
+                        child: quill.QuillSimpleToolbar(
+                          key: ObjectKey(cell ?? _quill),
+                          controller: cell ?? _quill,
+                          // شكلٌ واحد ما دام الجدول نشطاً (كتابةً أو تحديداً) — فلا يتغيّر ارتفاع الشريط بين الحالتين أثناء السحب
+                          config: _tables.active ? kQuillCellToolbarConfig : kQuillToolbarConfig,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -881,29 +910,41 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
 
   /// الورقة — والرأس يُعاد رسمه مع الكتابة في حقوله، **ومحرّر المتن لا يُعاد بناؤه** (يُمرَّر ابناً ثابتاً).
   Widget _paper() {
-    final editor = quill.QuillEditor(
-      controller: _quill,
-      focusNode: _editorFocus,
-      scrollController: _editorScroll,
-      config: quill.QuillEditorConfig(
-        scrollable: false,
-        padding: EdgeInsets.zero,
-        placeholder: 'اكتب نصّ الكتاب هنا…',
-        embedBuilders: [BtEmbedBuilder(hub: _tables)],
-        customStyles: quill.DefaultStyles(
-          paragraph: quill.DefaultTextBlockStyle(
-            kPaperBase.copyWith(height: 1.6),
-            const quill.HorizontalSpacing(0, 0),
-            const quill.VerticalSpacing(0, 0),
-            const quill.VerticalSpacing(0, 0),
-            null,
-          ),
-          placeHolder: quill.DefaultTextBlockStyle(
-            kPaperBase.copyWith(height: 1.6, color: const Color(0xFF9E9E9E)),
-            const quill.HorizontalSpacing(0, 0),
-            const quill.VerticalSpacing(0, 0),
-            const quill.VerticalSpacing(0, 0),
-            null,
+    // 🔴 ضغطةٌ على جدول للجدول وحده (بلاغ المالك 2026-10-05): بلا هذا ينقل محرّر المتن مؤشّره إلى الجدول **ويأخذ لوحة
+    //    المفاتيح** فتذهب الكتابة إلى المتن — **ومؤشّره يختفي ما دام جدولٌ نشطاً** فلا يُرى مؤشّران.
+    bool onTable(Object? _, Object? _) => _tables.tablePointer;
+    final editor = ValueListenableBuilder<bool>(
+      valueListenable: _tables.activeNotifier,
+      builder: (context, tableActive, _) => quill.QuillEditor(
+        controller: _quill,
+        focusNode: _editorFocus,
+        scrollController: _editorScroll,
+        config: quill.QuillEditorConfig(
+          scrollable: false,
+          padding: EdgeInsets.zero,
+          placeholder: 'اكتب نصّ الكتاب هنا…',
+          showCursor: !tableActive,
+          onTapDown: onTable,
+          onTapUp: onTable,
+          onSingleLongTapStart: onTable,
+          onSingleLongTapMoveUpdate: onTable,
+          onSingleLongTapEnd: onTable,
+          embedBuilders: [BtEmbedBuilder(hub: _tables)],
+          customStyles: quill.DefaultStyles(
+            paragraph: quill.DefaultTextBlockStyle(
+              kPaperBase.copyWith(height: 1.6),
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(0, 0),
+              const quill.VerticalSpacing(0, 0),
+              null,
+            ),
+            placeHolder: quill.DefaultTextBlockStyle(
+              kPaperBase.copyWith(height: 1.6, color: const Color(0xFF9E9E9E)),
+              const quill.HorizontalSpacing(0, 0),
+              const quill.VerticalSpacing(0, 0),
+              const quill.VerticalSpacing(0, 0),
+              null,
+            ),
           ),
         ),
       ),
@@ -1228,4 +1269,30 @@ class _Refs {
   final List<EntityModel> entities;
   final List<TemplateModel> templates;
   final List<OutgoingBookTypeModel> types;
+}
+
+/// يُبلغ بتغيّر ارتفاع ابنه (بعد الإطار) — لتثبيت ما تحته.
+class _HeightChange extends SingleChildRenderObjectWidget {
+  const _HeightChange({required this.onChange, required super.child});
+  final void Function(double delta) onChange;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderHeightChange(onChange);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderHeightChange renderObject) => renderObject.onChange = onChange;
+}
+
+class _RenderHeightChange extends RenderProxyBox {
+  _RenderHeightChange(this.onChange);
+  void Function(double delta) onChange;
+  double? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final h = size.height, last = _last;
+    _last = h;
+    if (last != null && h != last) SchedulerBinding.instance.addPostFrameCallback((_) => onChange(h - last));
+  }
 }

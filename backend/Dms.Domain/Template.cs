@@ -24,6 +24,15 @@ public class Template
     public int MarginLeft { get; set; } = 40;
 
     public string PageSize { get; set; } = "A4";
+
+    // موضع «صفحة X من Y» (بلاغ المالك 2026-10-05) — القواعد في `PageNumberPosition`
+    public string PageNumberAlign { get; set; } = PageNumberPosition.Center;
+
+    /// <summary>إزاحةٌ أفقية بالمليمتر — موجبٌ يميناً.</summary>
+    public int PageNumberOffsetX { get; set; }
+
+    /// <summary>إزاحةٌ عمودية بالمليمتر — موجبٌ للأعلى.</summary>
+    public int PageNumberOffsetY { get; set; }
     public string FontFamily { get; set; } = "Amiri";
 
     public bool IsActive { get; set; } = true;

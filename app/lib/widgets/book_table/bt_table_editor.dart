@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
@@ -57,7 +59,8 @@ class _Broken extends StatelessWidget {
       );
 }
 
-/// الجدول قابلاً للتحرير على الورقة: النقر يفتح الخلية للكتابة · Shift+نقر يحدّد عدّة خلايا · حدود الأعمدة تُسحب.
+/// الجدول قابلاً للتحرير على الورقة: النقر يفتح الخلية للكتابة · **السحب بالفأرة** أو Shift+نقر يحدّد عدّة خلايا ·
+/// حدود الأعمدة تُسحب.
 ///
 /// 🔑 **كلُّ الحالة في [BtEditorHub]** — هذه الودجة تُبنى من جديد مع كل تغييرٍ في المستند ولا تحفظ شيئاً.
 class BtTableEditor extends StatelessWidget {
@@ -105,7 +108,30 @@ class BtTableEditor extends StatelessWidget {
             ),
           );
         }
-        return body;
+        // 🔴 المؤشّر على الجدول للجدول وحده (بلاغ المالك 2026-10-05): `Listener` يرى الحدث **قبل** مُميِّزات الإيماءة،
+        //    فيُعلم المحرّك أن الضغطة هنا — ومحرّر المتن يتخلّى عنها — ويحدّد النقرةَ من السحب بنفسه.
+        //    ⚠️ **وهو الأبعد في الشجرة دائماً**: الجدول يصير نشطاً أثناء السحب فيُلفّ بـ`Focus` — ولو كان الـ`Listener` داخله
+        //    لأُعيد إنشاؤه وانقطع السحب عن عنصرٍ جديد.
+        return Listener(
+          onPointerDown: (e) {
+            hub.tablePointerDown();
+            if (e.kind == PointerDeviceKind.mouse && e.buttons != kPrimaryMouseButton) return;   // الزرّ الأيمن لا يفتح خلية
+            final at = _cellAt(context, e.position);
+            if (at != null && at.tableId == table.id) {
+              hub.pressCell(table.id, at.row, at.col, e.position, touch: e.kind != PointerDeviceKind.mouse);
+            }
+          },
+          onPointerMove: (e) => hub.pressMove(e.position, _cellAt(context, e.position)),
+          onPointerUp: (_) {
+            hub.pressUp(extend: HardwareKeyboard.instance.isShiftPressed);
+            hub.tablePointerUp();
+          },
+          onPointerCancel: (_) {
+            hub.pressCancel();
+            hub.tablePointerUp();
+          },
+          child: body,
+        );
       },
     );
   }
@@ -139,17 +165,38 @@ class BtTableEditor extends StatelessWidget {
       );
     }
     if (!editingThis) {
+      // النقر والسحب يعالجهما `Listener` الجدول — وهنا **تُكسب الضغطة بالفأرة فوراً** (`EagerGestureRecognizer`) فيخسر
+      // سحبُ تحديد النصّ في محرّر المتن ولا يغطّي الجدول. والخلية المفتوحة بلا هذا: النقر والسحب فيها لنصّها.
       w = MouseRegion(
         cursor: s.cell.formula != null || s.cell.words != null ? SystemMouseCursors.basic : SystemMouseCursors.text,
-        child: GestureDetector(
+        child: RawGestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => hub.tapCell(table.id, s.row, s.col, extend: HardwareKeyboard.instance.isShiftPressed),
+          gestures: _eager,
           child: w,
         ),
       );
     }
+    w = MetaData(metaData: BtCellRef(table.id, s.row, s.col), behavior: HitTestBehavior.translucent, child: w);
     return KeyedSubtree(key: ValueKey('bt-cell-${s.row}-${s.col}'), child: w);
   }
+}
+
+final _eager = <Type, GestureRecognizerFactory>{
+  EagerGestureRecognizer: GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+    () => EagerGestureRecognizer(supportedDevices: const {PointerDeviceKind.mouse}),
+    (_) {},
+  ),
+};
+
+/// الخلية تحت نقطةٍ من الشاشة — من علامة `MetaData` التي تحملها كل خلية.
+BtCellRef? _cellAt(BuildContext context, Offset global) {
+  final result = HitTestResult();
+  WidgetsBinding.instance.hitTestInView(result, global, View.of(context).viewId);
+  for (final e in result.path) {
+    final target = e.target;
+    if (target is RenderMetaData && target.metaData is BtCellRef) return target.metaData as BtCellRef;
+  }
+  return null;
 }
 
 /// مقابض سحب حدود الأعمدة — **والسحب يُرى وهو يحدث** ولا يُكتب في المستند إلا عند الإفلات (خطوة تراجعٍ واحدة).

@@ -9,6 +9,9 @@ namespace Dms.Documents.Pdf;
 /// <summary>الصور الجاهزة للقالب (تأتي من الشركة في الإنتاج، ومن المولّد البديل في الاختبار).</summary>
 public sealed record DocumentAssets(byte[] Header, byte[] Footer, byte[] Watermark, byte[]? QrPng);
 
+/// <summary>الـPDF ومعه صفحةُ نهاية المتن وعددُ الصفحات وهل حُجزت مساحة التوقيع في كل صفحة.</summary>
+public sealed record PdfRenderResult(byte[] Pdf, int BodyEndPage, int TotalPages, bool ReservedEveryPage);
+
 /// <summary>
 /// مولّد PDF بـ QuestPDF (أصلي، بلا متصفح) — يثبت:
 ///  - صفحة A4 + صورة هيدر/فوتر.
@@ -24,14 +27,40 @@ public sealed class PdfGenerator
         ArabicFonts.EnsureRegistered();
     }
 
-    public byte[] Generate(BookDocument book, DocumentAssets assets)
-        => BuildDocument(book, assets).GeneratePdf();
+    public byte[] Generate(BookDocument book, DocumentAssets assets) => Render(book, assets).Pdf;
 
-    /// <summary>معاينة الصفحات كصور PNG (للفحص البصري/الاختبار) — نفس محرّك العرض.</summary>
+    /// <summary>
+    /// يرسم الكتاب ويُعيد معه ما يلزم للتحقّق من التخطيط. 🔴 **في «الأخيرة وحدها» لا تبقى صفحةٌ أخيرة فيها التوقيع
+    /// وحده** (بلاغ المالك 2026-10-05): تفريغُ مساحة التوقيع من الصفحات يجعل كتلتَه المحجوزة تنتقل وحدها إلى صفحةٍ جديدة
+    /// إن انتهى المتن في أسفل الصفحة — وقاسها المسحُ في ثلث الحالات (33 من 112). فإن وقع ذلك يُعاد الرسم **بالحجز في
+    /// كل صفحة**: آخرُ صفحةٍ من المتن تبقى فيها مساحةُ التوقيع دائماً، والتوقيع والختم يبقيان في الأخيرة وحدها.
+    /// </summary>
+    public PdfRenderResult Render(BookDocument book, DocumentAssets assets)
+    {
+        var reserve = PrintPageRules.ReserveEveryPage(book.SignatureMode);
+        var probe = new LayoutProbe();
+        var pdf = BuildDocument(book, assets, reserve, probe).GeneratePdf();
+        if (!reserve && PrintPageRules.SignatureAlone(probe.BodyEndPage, probe.TotalPages))
+        {
+            reserve = true;
+            probe = new LayoutProbe();
+            pdf = BuildDocument(book, assets, reserve, probe).GeneratePdf();
+        }
+        return new PdfRenderResult(pdf, probe.BodyEndPage, probe.TotalPages, reserve);
+    }
+
+    /// <summary>معاينة الصفحات كصور PNG (للفحص البصري/الاختبار) — نفس محرّك العرض وقرار الحجز نفسه.</summary>
     public IEnumerable<byte[]> GeneratePreviewImages(BookDocument book, DocumentAssets assets)
-        => BuildDocument(book, assets).GenerateImages();
+        => BuildDocument(book, assets, Render(book, assets).ReservedEveryPage, new LayoutProbe()).GenerateImages();
 
-    private static IDocument BuildDocument(BookDocument book, DocumentAssets assets)
+    /// <summary>يسجّل أثناء الرسم صفحةَ نهاية المتن وعددَ الصفحات (آخرُ مرورٍ للتخطيط هو الذي يبقى).</summary>
+    private sealed class LayoutProbe
+    {
+        public int BodyEndPage;
+        public int TotalPages;
+    }
+
+    private static IDocument BuildDocument(BookDocument book, DocumentAssets assets, bool reserveEveryPage, LayoutProbe probe)
     {
         return Document.Create(doc =>
         {
@@ -50,8 +79,8 @@ public sealed class PdfGenerator
 
                 // المتن: علامة مائية خلف المحتوى + الحقول
                 // المساحة المحجوزة للتوقيع والختم: في كل صفحة ما دام شيءٌ منهما يُطبع في كل صفحة (ADR-057)،
-                // وفي «الأخيرة وحدها» تُفرَّغ من الصفحات الأخرى فيمتدّ فيها المتن — وتُحجز في آخره فقط (أدناه).
-                var reserveEveryPage = PrintPageRules.ReserveEveryPage(book.SignatureMode);
+                // وفي «الأخيرة وحدها» تُفرَّغ من الصفحات الأخرى فيمتدّ فيها المتن — وتُحجز في آخره فقط (أدناه)،
+                // إلا إن انتقل الحجز وحده إلى صفحةٍ فارغة فيُعاد الرسم بالحجز في كل صفحة (`Render`).
                 page.Content()
                     .PaddingHorizontal(40)
                     .PaddingTop(5)
@@ -106,7 +135,12 @@ public sealed class PdfGenerator
                             // المتن الرئيسي للكتاب (نستخدم المترجم الجديد للـ HTML لدعم التنسيقات والمحاذاة)
                             col.Item().PaddingTop(15)
                                 .DefaultTextStyle(x => x.FontFamily(HtmlToQuestPdf.BodyFontFamily).FontSize(HtmlToQuestPdf.BaseFontSize))
-                                .Column(bodyCol => bodyCol.RenderHtml(book.Body, book.Tables));
+                                .Column(bodyCol =>
+                                {
+                                    bodyCol.RenderHtml(book.Body, book.Tables);
+                                    // علامةٌ بلا ارتفاع في آخر المتن: تسجّل الصفحة التي انتهى فيها (لا تُغيّر التخطيط).
+                                    bodyCol.Item().Height(0).ShowIf(ctx => { probe.BodyEndPage = ctx.PageNumber; return true; });
+                                });
 
                             // «الأخيرة وحدها»: كتلةٌ فارغة بارتفاع المساحة المحجوزة **لا تنقسم** — إن لم يتّسع لها آخر الصفحة
                             // انتقلت إلى صفحةٍ جديدة، فيجد التوقيع والختم مكانهما دائماً ولا يعلوان نصّاً.
@@ -168,13 +202,32 @@ public sealed class PdfGenerator
                             }
                         });
 
+                    // عدّاد الصفحات للتحقّق (لا يرسم شيئاً)
+                    layers.Layer().ShowIf(ctx =>
+                    {
+                        if (ctx.TotalPages is int total) probe.TotalPages = total;
+                        return false;
+                    });
+
                     // ترقيم الصفحات (ADR-057): «صفحة 1 من 5» يبدأ من الأولى، بخيارٍ لكل كتاب — ولا ترقيم في الكتاب
                     // ذي الصفحة الواحدة (قرار المالك). كان «- 2 -» يتخطّى الأولى دائماً.
-                    layers.Layer()
+                    // وموضعه من القالب (بلاغ المالك 2026-10-05): يمين · وسط · يسار بهامش المتن، وإزاحةٌ بالمليمتر — الوسط بلا
+                    // إزاحةٍ هو السلوك السابق نفسه.
+                    var number = layers.Layer()
                         .ShowIf(ctx => PrintPageRules.ShowPageNumber(book.PageNumbers, ctx.TotalPages))
                         .AlignBottom()
-                        .AlignCenter()
                         .PaddingBottom(20)
+                        .ContentFromLeftToRight()
+                        .PaddingHorizontal(book.PageNumberAlign == "center" ? 0 : 40)
+                        .OffsetX(book.PageNumberOffsetXPt)
+                        .OffsetY(-book.PageNumberOffsetYPt);
+                    number = book.PageNumberAlign switch
+                    {
+                        "right" => number.AlignRight(),
+                        "left" => number.AlignLeft(),
+                        _ => number.AlignCenter(),
+                    };
+                    number.ContentFromRightToLeft()
                         .Text(text =>
                         {
                             text.Span("صفحة ").FontSize(12);

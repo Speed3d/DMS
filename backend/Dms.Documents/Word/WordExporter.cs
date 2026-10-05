@@ -105,7 +105,7 @@ public sealed class WordExporter
         var stampEvery = book.SignatureMode != PrintSignatureMode.LastPage;
         if (sigEvery || stampEvery) footer.AppendChild(SignatureRow(part, book, assets, sigEvery, stampEvery));
 
-        if (book.PageNumbers) footer.AppendChild(PageNumber());
+        if (book.PageNumbers) footer.AppendChild(PageNumber(book));
 
         var p = FullBleed();
         if (assets is not null)
@@ -127,7 +127,7 @@ public sealed class WordExporter
     /// «صفحة X من Y» — و<b>لا ترقيم في الصفحة الواحدة</b> (قرار المالك) بحقلٍ شرطيّ:
     /// <c>{ IF { NUMPAGES } > 1 "صفحة { PAGE } من { NUMPAGES }" "" }</c> يحدّثه Word عند الفتح والطباعة.
     /// </summary>
-    private static Paragraph PageNumber()
+    private static Paragraph PageNumber(BookDocument book)
     {
         var s = new WordHtml.Style(HalfPoints: 24);
         Run Code(string c) => new(WordHtml.Props(s, rtl: true), new FieldCode(c) { Space = SpaceProcessingModeValues.Preserve });
@@ -147,12 +147,36 @@ public sealed class WordExporter
         runs.Add(Txt("صفحة 1 من 2"));
         runs.Add(Ch(FieldCharValues.End));
 
-        var p = new Paragraph(new ParagraphProperties(
-            new BiDi(),
-            new SpacingBetweenLines { Before = "60", After = "60" },
-            new Justification { Val = JustificationValues.Center }));
+        var p = new Paragraph(PageNumberPlacement(book));
         foreach (var r in runs) p.AppendChild(r);
         return p;
+    }
+
+    /// <summary>
+    /// موضع الترقيم من القالب (بلاغ المالك 2026-10-05): المحاذاة **فيزيائية** — فالفقرة بلا <c>bidi</c> (Word يقلب يمين/يسار
+    /// في الفقرة العربية) والنصّ العربيّ في مقاطع RTL. والإزاحة الأفقية مسافةٌ بادئة، والعمودية تباعدٌ قبل السطر أو بعده.
+    /// ⚠️ تقريبٌ لموضع الـPDF — والـPDF هو النسخة الرسمية.
+    /// </summary>
+    private static ParagraphProperties PageNumberPlacement(BookDocument book)
+    {
+        static int Twips(float pt) => (int)Math.Round(pt * 20);
+        var x = Twips(book.PageNumberOffsetXPt);
+        var y = Twips(book.PageNumberOffsetYPt);
+        var (jc, ind) = book.PageNumberAlign switch
+        {
+            "right" => (JustificationValues.Right, x == 0 ? null : new Indentation { Right = (-x).ToString() }),
+            "left" => (JustificationValues.Left, x == 0 ? null : new Indentation { Left = x.ToString() }),
+            // الوسط يتحرّك نصفَ المسافة البادئة ⟵ تُضاعف
+            _ => (JustificationValues.Center, x == 0 ? null : x > 0 ? new Indentation { Left = (2 * x).ToString() } : new Indentation { Right = (-2 * x).ToString() }),
+        };
+        var props = new ParagraphProperties(new SpacingBetweenLines
+        {
+            Before = (60 + Math.Max(0, -y)).ToString(),
+            After = (60 + Math.Max(0, y)).ToString(),
+        });
+        if (ind is not null) props.AppendChild(ind);
+        props.AppendChild(new Justification { Val = jc });
+        return props;
     }
 
     // ─────────────────────────── كتل الرأس والتوقيع ───────────────────────────

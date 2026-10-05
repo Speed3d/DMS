@@ -53,12 +53,15 @@ public sealed record CompanyResponse(int CompanyId, string Name, string Prefix, 
 public sealed record TemplateRequest(
     int? CompanyId, string Name, int WatermarkOpacity,
     int MarginTop, int MarginRight, int MarginBottom, int MarginLeft,
-    string PageSize, string FontFamily, bool IsActive);
+    string PageSize, string FontFamily, bool IsActive,
+    // موضع ترقيم الصفحات — `null` = الافتراض في الإنشاء والقائم في التعديل (فعميلٌ أقدم لا يصفّره)
+    string? PageNumberAlign = null, int? PageNumberOffsetX = null, int? PageNumberOffsetY = null);
 public sealed record TemplateResponse(
     int TemplateId, int CompanyId, string Name, int WatermarkOpacity,
     int MarginTop, int MarginRight, int MarginBottom, int MarginLeft,
     string PageSize, string FontFamily, bool IsActive,
-    bool HasHeader, bool HasFooter, bool HasWatermark);
+    bool HasHeader, bool HasFooter, bool HasWatermark,
+    string PageNumberAlign, int PageNumberOffsetX, int PageNumberOffsetY);
 
 // ----------------- Entity / DocumentType / ExchangeRate -----------------
 public sealed record EntityRequest(int? CompanyId, string Name, EntityKind Kind, string? Notes);

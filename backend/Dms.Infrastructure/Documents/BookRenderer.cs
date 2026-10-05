@@ -23,7 +23,7 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
     public async Task<PdfRenderResult> RenderPdfAsync(
         OutgoingBook book, Template template, Entity entity, Company company, bool isPreview = false, CancellationToken ct = default)
     {
-        var model = ToModel(book, entity, company);
+        var model = ToModel(book, template, entity, company);
 
         // توقيع محتوى الـ QR (يتطلب رقماً رسمياً — متاح بعد الاعتماد)
         string qrContent = string.Empty;
@@ -76,10 +76,10 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
             Footer: await LoadOrPlaceholderAsync(template.FooterImageKey, () => PlaceholderImages.CreateFooter(), ct),
             Watermark: await LoadWatermarkAsync(template, ct),
             QrPng: qrPng);
-        return _word.Generate(ToModel(book, entity, company), assets);
+        return _word.Generate(ToModel(book, template, entity, company), assets);
     }
 
-    private static BookDocument ToModel(OutgoingBook book, Entity entity, Company company) => new()
+    private static BookDocument ToModel(OutgoingBook book, Template template, Entity entity, Company company) => new()
     {
         CompanyName = company.Name,
         Number = book.Number ?? "(مسودّة)",
@@ -99,6 +99,10 @@ public sealed class BookRenderer(IFileStorage storage, IOptions<QrSigningOptions
         PrintSubject = book.PrintSubject,
         PageNumbers = book.PageNumbers,
         SignatureMode = BookTablePrintMapper.Mode(book.SignaturePlacement),
+        // موضع الترقيم من القالب (بلاغ المالك 2026-10-05)
+        PageNumberAlign = PageNumberPosition.Align(template.PageNumberAlign),
+        PageNumberOffsetXPt = PageNumberPosition.OffsetX(template.PageNumberOffsetX) * PageNumberPosition.PointsPerMm,
+        PageNumberOffsetYPt = PageNumberPosition.OffsetY(template.PageNumberOffsetY) * PageNumberPosition.PointsPerMm,
     };
 
     // Hint: صور القالب ثابتة، فتُخزَّن مؤقتاً بمفتاح التخزين نفسه — وهو يحمل Guid فريداً لكل

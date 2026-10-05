@@ -61,6 +61,11 @@ public static class PrintPageRules
     public static bool ShowStamp(PrintSignatureMode mode, int page, int? total) =>
         mode != PrintSignatureMode.LastPage || page == total;
 
+    /// <summary>
+    /// هل انتقلت كتلة التوقيع وحدها إلى صفحةٍ بعد آخر المتن؟ — الصفحة الأخيرة عندئذٍ بلا نصٍّ إطلاقاً (بلاغ المالك).
+    /// </summary>
+    public static bool SignatureAlone(int bodyEndPage, int totalPages) => bodyEndPage > 0 && totalPages > bodyEndPage;
+
     /// <summary>«صفحة X من Y» — ولا ترقيم في الكتاب ذي الصفحة الواحدة (قرار المالك).</summary>
     public static bool ShowPageNumber(bool enabled, int? total) => enabled && total is > 1;
 }
