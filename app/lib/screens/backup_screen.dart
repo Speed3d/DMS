@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import '../core/api_client.dart';
 import '../core/backup_upload.dart';
 import '../core/downloader.dart';
@@ -22,6 +24,9 @@ class BackupScreen extends ConsumerStatefulWidget {
 class _State extends ConsumerState<BackupScreen> {
   BackupScheduleModel? _schedule;
   List<BackupRecordModel> _list = [];
+
+  /// ملفاتٌ على القرص لا يعرفها النظام (ADR-059) — البطاقة تظهر حين توجد وحدها.
+  List<UnrecordedBackupModel> _unrecorded = [];
   String _freq = 'Off';
   bool _enabled = false;
   int _hour = 2;
@@ -122,6 +127,18 @@ class _State extends ConsumerState<BackupScreen> {
       _error = e.message;
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+    // 🔎 الملفات بلا سجلّ **في الخلفية بعد ظهور الشاشة** — قراءة كل أرشيفٍ تأخذ وقتاً، والبطاقة ليست ما ينتظره المالك
+    unawaited(_refreshUnrecorded());
+  }
+
+  /// ⚠️ خطؤها لا يُفشل الشاشة (خادمٌ أقدم بلا النقطة · انقطاع) — تبقى البطاقة غائبة فحسب.
+  Future<void> _refreshUnrecorded() async {
+    try {
+      final list = await ref.read(apiClientProvider).backupUnrecorded();
+      if (mounted) setState(() => _unrecorded = list);
+    } on ApiException {
+      if (mounted) setState(() => _unrecorded = []);
     }
   }
 
@@ -272,6 +289,118 @@ class _State extends ConsumerState<BackupScreen> {
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message), backgroundColor: Colors.red));
     }
+  }
+
+  // ─────────────────────────── ملفاتٌ بلا سجلّ (ADR-059) ───────────────────────────
+
+  Future<void> _adoptUnrecorded(UnrecordedBackupModel f) async {
+    setState(() { _busy = true; _error = null; _info = null; });
+    try {
+      await ref.read(apiClientProvider).backupAdoptUnrecorded(f.fileName);
+      _info = 'أُعيدت «${f.fileName}» إلى القائمة — تُستعاد وتُنزَّل وتُحذف منها كأيّ نسخة.';
+    } on ApiException catch (e) {
+      _error = e.message;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    await _load(keepMessages: true);
+  }
+
+  Future<void> _deleteUnrecorded(UnrecordedBackupModel f) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('حذف ملف نسخة'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Text('سيُحذف «${f.fileName}» (${_size(f.sizeBytes)}) نهائياً من القرص.\n'
+            'إن كنتَ استعدتَ نسخةً أقدم منه فقد يكون نسخةً حقيقية — أعِده إلى القائمة بدل حذفه.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+          FilledButton(
+            key: const Key('unrecorded-delete-ok'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() { _busy = true; _error = null; _info = null; });
+    try {
+      await ref.read(apiClientProvider).backupDeleteUnrecorded(f.fileName);
+      _info = 'حُذف «${f.fileName}» (${_size(f.sizeBytes)}).';
+    } on ApiException catch (e) {
+      _error = e.message;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    await _load(keepMessages: true);
+  }
+
+  /// 🔎 **ملفاتٌ في مجلد النسخ لا يعرفها النظام** — كانت تتراكم بصمت (وُجد منها 108 بـ19 غيغابايت): الاستعادة تمحو سجلّات ما أُخذ
+  /// بعد النسخة المُستعادة، وحذفُ «مرفوعة» كان يترك ملفها. **تُعرض ولا تُحذف تلقائياً** — فقد تكون نسخةً حقيقية.
+  Widget _unrecordedCard() {
+    final total = _unrecorded.fold<int>(0, (a, f) => a + f.sizeBytes);
+    final warn = AppColors.warn;
+    return Card(
+      key: const Key('unrecorded-card'),
+      color: warn.withValues(alpha: 0.07),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.folder_open_rounded, color: warn),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('ملفات نسخٍ على القرص لا يعرفها النظام — ${_unrecorded.length} (${_size(total)})',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            const Text(
+              'لا تظهر في القائمة ولا يحذفها التقليم التلقائيّ. تحدث بعد استعادة نسخةٍ قديمة (تختفي سجلّات ما أُخذ بعدها) — '
+              'فإن كانت نسخاً حقيقية **أعِدها إلى القائمة**، وما لا تحتاجه احذفه.',
+              style: TextStyle(fontSize: 12.5, height: 1.6),
+            ),
+            const SizedBox(height: 10),
+            for (final f in _unrecorded)
+              Padding(
+                key: ValueKey('unrecorded-${f.fileName}'),
+                padding: const EdgeInsets.only(top: 6),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  runSpacing: 4,
+                  children: [
+                    Text(f.fileName, textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text('${_dt(f.when)} · ${_size(f.sizeBytes)} · ${f.hasFiles ? 'كاملة' : 'قاعدة فقط'}'
+                        '${f.appVersion == null ? '' : ' · الإصدار ${f.appVersion}'}',
+                        style: const TextStyle(fontSize: 12.5, color: Colors.grey)),
+                    if (f.problem != null)
+                      Text(f.problem!, style: const TextStyle(fontSize: 12.5, color: AppColors.danger)),
+                    TextButton.icon(
+                      key: ValueKey('unrecorded-adopt-${f.fileName}'),
+                      onPressed: _busy || f.problem != null ? null : () => _adoptUnrecorded(f),
+                      icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                      label: const Text('إعادة إلى القائمة'),
+                    ),
+                    TextButton.icon(
+                      key: ValueKey('unrecorded-delete-${f.fileName}'),
+                      onPressed: _busy ? null : () => _deleteUnrecorded(f),
+                      style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      label: const Text('حذف'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _size(int b) => b >= 1048576 ? '${(b / 1048576).toStringAsFixed(1)} MB' : '${(b / 1024).toStringAsFixed(0)} KB';
@@ -514,6 +643,11 @@ class _State extends ConsumerState<BackupScreen> {
           // ⚙️ العملية الجارية أعلى الشاشة — **فوق كل شيء** لأنها ما ينتظره المالك الآن.
           if (_job != null) ...[
             JobProgressCard(job: _job!),
+            const SizedBox(height: 16),
+          ],
+
+          if (_unrecorded.isNotEmpty) ...[
+            _unrecordedCard(),
             const SizedBox(height: 16),
           ],
 

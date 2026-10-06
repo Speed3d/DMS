@@ -1,5 +1,7 @@
 ﻿param([string]$AdminPwd='Admin@12345', [string]$Base='http://localhost:5091/api',
-      [string]$VersionFile="$PSScriptRoot\..\..\VERSION")
+      [string]$VersionFile="$PSScriptRoot\..\..\VERSION",
+      # مجلد نسخ الخادم المُختبَر (ADR-059 — يُصنع فيه ملفٌّ بلا سجلّ). الافتراض = افتراض الخادم بلا `Backup__Dir`.
+      [string]$BackupDir="$PSScriptRoot\..\Dms.Api\App_Data\Backups")
 # ════════════════════════════════════════════════════════════════════════════
 #  استعادة نسخةٍ من جهاز المستخدم (ADR-055) — **بلاغ المالك 2026-09-24**:
 #  أخذ نسخةً على جهاز التطوير وأخرى على الدومين ولم يستطع استعادة أيٍّ منهما على الآخر.
@@ -123,6 +125,56 @@ $mirrorDir=Join-Path $work "not-a-mirror"; New-Item -ItemType Directory -Force $
 Copy-Item $zip (Join-Path $mirrorDir "backup.zip")
 $mr=Api POST "/backup/mirror/restore" @{sourcePath=$mirrorDir;confirmation='استعادة'} $admin
 Expect "🐛 مجلدُ نسخةٍ عادية ليس مرآة ⇒ 400 (كان 404 «لم يُعثر على database.bak»)" $mr.S 400
+
+Write-Host "`n=== ٦) ملفاتٌ على القرص لا يعرفها النظام (ADR-059) ===" -ForegroundColor Cyan
+if(-not (Test-Path $BackupDir)){ Bad "مجلد النسخ غير موجود: $BackupDir — مرّر -BackupDir" } else {
+  $old=(Get-Date).AddHours(-1)
+  $good=Join-Path $BackupDir 'backup-20200101-000000.zip'; Copy-Item $zip $good; (Get-Item $good).LastWriteTime=$old
+  $upl=Join-Path $BackupDir 'uploaded-20200101-000003.zip'; Copy-Item $zip $upl; (Get-Item $upl).LastWriteTime=$old
+  $broken=Join-Path $BackupDir 'backup-20200101-000002.zip'; [IO.File]::WriteAllBytes($broken,[byte[]](1,2,3,4)); (Get-Item $broken).LastWriteTime=$old
+  $fresh=Join-Path $BackupDir 'backup-20200101-000001.zip'; Copy-Item $zip $fresh; (Get-Item $fresh).LastWriteTime=(Get-Date)
+  $foreign=Join-Path $BackupDir 'notes.zip'; Copy-Item $zip $foreign; (Get-Item $foreign).LastWriteTime=$old
+
+  $list=@((Api GET "/backup/unrecorded" $null $admin).B)
+  $names=@($list | ForEach-Object { $_.fileName })
+  if($names -contains 'backup-20200101-000000.zip'){ Ok "ملفٌّ بلا سجلّ يظهر" } else { Bad "الملف بلا سجلّ لا يظهر: $($names -join ', ')" }
+  $g=$list | Where-Object { $_.fileName -eq 'backup-20200101-000000.zip' }
+  Expect "   ومعه ما كتبته النسخة عن نفسها (الإصدار)" $g.appVersion $expected
+  Expect "   ولا مشكلة فيه" "$($g.problem)" ''
+  if($names -notcontains 'backup-20200101-000001.zip'){ Ok "🔑 الملف الحديث (قد يكون نسخةً تُكتب الآن) لا يظهر" } else { Bad "الملف الحديث ظهر" }
+  if($names -notcontains 'notes.zip'){ Ok "🔐 ملفٌّ بغير نمط النظام لا يظهر" } else { Bad "notes.zip ظهر" }
+  $b=$list | Where-Object { $_.fileName -eq 'backup-20200101-000002.zip' }
+  if($b -and $b.problem){ Ok "الأرشيف التالف يظهر بمشكلته لا يُخفى" } else { Bad "التالف: $($b | ConvertTo-Json -Compress)" }
+  $recs=@((Api GET "/backup" $null $admin).B | ForEach-Object { $_.fileName })
+  if(-not ($names | Where-Object { $recs -contains $_ })){ Ok "ولا يظهر فيها ملفٌّ مسجَّل" } else { Bad "ظهر ملفٌّ مسجَّل" }
+
+  Expect "🔐 اسمٌ بغير نمط النظام ⟵ 400" (Api POST "/backup/unrecorded/notes.zip/adopt" $null $admin).S 400
+  Expect "🔐 محاولة مسار ⟵ ليس 200" ([int]((Api POST "/backup/unrecorded/..%2Fappsettings.json/adopt" $null $admin).S -ne 200)) 1
+  Expect "🔐 للسوبر أدمن وحده — المجهول 401" (Api GET "/backup/unrecorded" $null $null).S 401
+  Expect "التالف لا يُعاد إلى القائمة ⟵ 400" (Api POST "/backup/unrecorded/backup-20200101-000002.zip/adopt" $null $admin).S 400
+  Expect "الحديث لا يُمسّ ⟵ 409" (Api DELETE "/backup/unrecorded/backup-20200101-000001.zip" $null $admin).S 409
+  Expect "غير الموجود ⟵ 404" (Api DELETE "/backup/unrecorded/backup-20200101-235959.zip" $null $admin).S 404
+
+  $ad=Api POST "/backup/unrecorded/backup-20200101-000000.zip/adopt" $null $admin
+  Expect "«إعادة إلى القائمة» ⟵ 200" $ad.S 200
+  $inList=@((Api GET "/backup" $null $admin).B) | Where-Object { $_.fileName -eq 'backup-20200101-000000.zip' }
+  if($inList -and "$($inList.note)" -match 'أُعيدت إلى القائمة'){ Ok "   وصارت في القائمة بملاحظتها" } else { Bad "   ليست في القائمة" }
+  Expect "   بنطاقها الصحيح (كاملة)" $inList.scope 'Full'
+  if(@((Api GET "/backup/unrecorded" $null $admin).B | Where-Object { $_.fileName -eq 'backup-20200101-000000.zip' }).Count -eq 0){ Ok "   واختفت من «بلا سجلّ»" } else { Bad "   ما زالت بلا سجلّ" }
+  Expect "   ولا تُحذف من «بلا سجلّ» بعدها ⟵ 409" (Api DELETE "/backup/unrecorded/backup-20200101-000000.zip" $null $admin).S 409
+
+  Expect "حذف التالف ⟵ 204" (Api DELETE "/backup/unrecorded/backup-20200101-000002.zip" $null $admin).S 204
+  if(-not (Test-Path $broken)){ Ok "   وحُذف من القرص" } else { Bad "   ما زال على القرص" }
+
+  # 🐛 حذفُ نسخةٍ «مرفوعة» من القائمة كان يترك ملفها على القرص (الحارس يقبل `backup-` وحده)
+  $ad2=Api POST "/backup/unrecorded/uploaded-20200101-000003.zip/adopt" $null $admin
+  Expect "المرفوعة تُعاد إلى القائمة بنوعها (Uploaded)" $ad2.B.type 'Uploaded'
+  Expect "   وحذفُها من القائمة ⟵ 204" (Api DELETE "/backup/$($ad2.B.backupRecordId)" $null $admin).S 204
+  if(-not (Test-Path $upl)){ Ok "🐛 ويحذف ملفها من القرص (كان يبقى بلا سجلّ)" } else { Bad "   الملف بقي على القرص" }
+  $ad1=@((Api GET "/backup" $null $admin).B) | Where-Object { $_.fileName -eq 'backup-20200101-000000.zip' }
+  Expect "تنظيف: حذف المُعادة من القائمة" (Api DELETE "/backup/$($ad1.backupRecordId)" $null $admin).S 204
+  Remove-Item $fresh, $foreign -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "`n=== ٥) الرفع الصحيح ثم الاستعادة — سيناريو المالك ===" -ForegroundColor Cyan
 $u=UploadFile $zip "dev-machine-$mk.zip" $admin

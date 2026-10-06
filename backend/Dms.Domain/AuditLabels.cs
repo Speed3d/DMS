@@ -86,6 +86,8 @@ public static class AuditLabels
         ["Mirror"] = "مرآة إلى قرص خارجي",
         ["RestoreMirror"] = "استعادة من المرآة",
         ["BackupUpload"] = "رفع نسخة احتياطية من جهاز",
+        ["BackupAdopt"] = "إعادة نسخةٍ بلا سجلّ إلى القائمة",
+        ["BackupDeleteUnrecorded"] = "حذف ملف نسخةٍ بلا سجلّ",
 
         // ── الموظفون ──
         ["Terminate"] = "إنهاء خدمة",

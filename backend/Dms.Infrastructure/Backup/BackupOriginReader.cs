@@ -48,6 +48,15 @@ public static class BackupOriginReader
         return ToOrigin(JsonSerializer.Deserialize<BackupInfo>(s, Json));
     }
 
+    /// <summary>ما كتبته النسخة عن نفسها كاملاً (ومعه لحظة إنشائها) — أو <c>null</c> لنسخةٍ قديمة بلا الملف.</summary>
+    public static BackupInfo? InfoFromZip(ZipArchive zip)
+    {
+        var entry = zip.GetEntry(InfoFileName);
+        if (entry is null) return null;
+        using var s = entry.Open();
+        return JsonSerializer.Deserialize<BackupInfo>(s, Json);
+    }
+
     /// <summary>يقرأ أصل المرآة من مجلدها.</summary>
     public static BackupOrigin FromDirectory(string directory)
     {

@@ -752,6 +752,31 @@ class BackupRecordModel {
         j['status'] ?? 'Success', j['note']);
 }
 
+/// ملفُّ نسخةٍ على القرص **لا يعرفه النظام** (ADR-059) — بعد استعادة نسخةٍ قديمة تختفي سجلّات ما أُخذ بعدها، فقد يكون
+/// نسخةً حقيقية. [problem] غير فارغ ⟵ أرشيفٌ لا يُستعاد (تالف أو بلا قاعدة).
+class UnrecordedBackupModel {
+  final String fileName;
+  final int sizeBytes;
+  final DateTime modifiedAt;
+  final DateTime? createdAt;
+  final bool hasFiles;
+  final String? appVersion;
+  final String? problem;
+  UnrecordedBackupModel(this.fileName, this.sizeBytes, this.modifiedAt, this.createdAt, this.hasFiles, this.appVersion, this.problem);
+  factory UnrecordedBackupModel.fromJson(Map<String, dynamic> j) => UnrecordedBackupModel(
+        j['fileName'] ?? '',
+        j['sizeBytes'] ?? 0,
+        parseInstant(j['modifiedAtUtc']),
+        j['createdAtUtc'] == null ? null : parseInstant(j['createdAtUtc']),
+        j['hasFiles'] ?? false,
+        j['appVersion'],
+        j['problem'],
+      );
+
+  /// لحظة النسخة كما كتبتها في نفسها — وإلا آخر تعديلٍ للملف.
+  DateTime get when => createdAt ?? modifiedAt;
+}
+
 class FinancialRow {
   final String source;
   final String number;

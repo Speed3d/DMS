@@ -526,6 +526,15 @@ class ApiClient {
   /// حذف نسخة احتياطية — يرفضه الخادم بـ 409 إن كانت النسخة الناجحة الوحيدة.
   Future<void> backupDelete(int id) => _delete('/backup/$id');
 
+  /// ملفات نسخٍ على القرص لا يعرفها النظام (ADR-059) — والإعادة إلى القائمة والحذف بقرار السوبر أدمن.
+  Future<List<UnrecordedBackupModel>> backupUnrecorded() async =>
+      (await _get('/backup/unrecorded') as List).map((e) => UnrecordedBackupModel.fromJson(e)).toList();
+
+  Future<void> backupAdoptUnrecorded(String fileName) async =>
+      await _post('/backup/unrecorded/${Uri.encodeComponent(fileName)}/adopt', null);
+
+  Future<void> backupDeleteUnrecorded(String fileName) => _delete('/backup/unrecorded/${Uri.encodeComponent(fileName)}');
+
   // ---------- الأرشيف ----------
 
   /// **عدسة الأرشيف** — الوارد المؤرشف + الأضابير الورقية في قائمة واحدة.
