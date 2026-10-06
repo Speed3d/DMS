@@ -199,6 +199,25 @@ public sealed class BackupController(
         return NoContent();
     }
 
+    // ─────────── ملفاتٌ بلا سجلّ (ADR-059) — تُعرض وتُعاد أو تُحذف بقرار السوبر أدمن ───────────
+
+    [HttpGet("unrecorded")]
+    public async Task<ActionResult<List<UnrecordedBackupDto>>> Unrecorded(CancellationToken ct)
+        => (await backup.ListUnrecordedAsync(ct))
+            .Select(f => new UnrecordedBackupDto(f.FileName, f.SizeBytes, f.ModifiedAtUtc, f.HasFiles, f.AppVersion, f.LastMigration, f.CreatedAtUtc, f.Problem))
+            .ToList();
+
+    [HttpPost("unrecorded/{fileName}/adopt")]
+    public async Task<ActionResult<BackupRecordDto>> Adopt(string fileName, CancellationToken ct)
+        => Map(await backup.AdoptUnrecordedAsync(fileName, ct));
+
+    [HttpDelete("unrecorded/{fileName}")]
+    public async Task<IActionResult> DeleteUnrecorded(string fileName, CancellationToken ct)
+    {
+        await backup.DeleteUnrecordedAsync(fileName, ct);
+        return NoContent();
+    }
+
     [HttpGet("{id:int}/download")]
     public async Task<IActionResult> Download(int id, CancellationToken ct)
     {

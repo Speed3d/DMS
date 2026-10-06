@@ -636,6 +636,10 @@ public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int
 /// <paramref name="Urgency"/>: <c>Ok</c> · <c>Soon</c> (٣ أيام) · <c>Urgent</c> (يوم/يومان) ·
 /// <c>Overdue</c> (تجاوزت الحدّ **أو لم تُؤخذ قط**).
 /// </remarks>
+/// <summary>ملفُّ نسخةٍ على القرص لا يعرفه النظام (ADR-059).</summary>
+public sealed record UnrecordedBackupDto(string FileName, long SizeBytes, DateTime ModifiedAtUtc, bool HasFiles,
+    string? AppVersion, string? LastMigration, DateTime? CreatedAtUtc, string? Problem);
+
 public sealed record BackupCoverageDto(
     DateTime? LastFullBackupAt, int? DaysSinceFullBackup, int MaxAgeDays, string Urgency, string Message);
 

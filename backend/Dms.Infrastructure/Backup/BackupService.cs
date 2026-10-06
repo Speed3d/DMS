@@ -79,7 +79,21 @@ public interface IBackupService
 
     Task<MirrorRestoreResult> RestoreFromMirrorAsync(string sourcePath, string confirmation,
         CancellationToken ct = default, IJobProgress? progress = null);
+
+    /// <summary>ملفاتُ نسخٍ على القرص **لا يعرفها النظام** (ADR-059) — تُعرض ولا تُمسّ.</summary>
+    Task<List<UnrecordedBackup>> ListUnrecordedAsync(CancellationToken ct = default);
+
+    /// <summary>يُعيد ملفاً بلا سجلّ إلى القائمة (بعد فحص الأرشيف والتوافق) — فيُستعاد ويُنزَّل ويُحذف كأيّ نسخة.</summary>
+    Task<BackupRecord> AdoptUnrecordedAsync(string fileName, CancellationToken ct = default);
+
+    /// <summary>يحذف ملفاً بلا سجلّ — بقرار السوبر أدمن وحده، ولا يمسّ ملفاً مسجَّلاً.</summary>
+    Task DeleteUnrecordedAsync(string fileName, CancellationToken ct = default);
 }
+
+/// <summary>ملفُّ نسخةٍ على القرص بلا سجلّ — ومعه ما تقوله النسخة عن نفسها إن وُجد (`backup-info.json`).</summary>
+public sealed record UnrecordedBackup(
+    string FileName, long SizeBytes, DateTime ModifiedAtUtc, bool HasFiles,
+    string? AppVersion, string? LastMigration, DateTime? CreatedAtUtc, string? Problem);
 
 /// <summary>حصيلة تشغيل المرآة.</summary>
 /// <param name="Copied">ملفات نُسخت (جديدة أو تغيّر حجمها).</param>
@@ -294,8 +308,8 @@ public sealed class BackupService(
             try
             {
                 var path = Path.Combine(paths.BackupDir, rec.FileName);
-                // حارس أمان: لا نحذف إلا ملفات النسخ الاحتياطية بنمطها المعروف داخل مجلد النسخ.
-                if (File.Exists(path) && Path.GetFileName(rec.FileName).StartsWith("backup-", StringComparison.Ordinal))
+                // حارس أمان: لا نحذف إلا ملفات النسخ بنمطها المعروف داخل مجلد النسخ (`backup-…` و`uploaded-…`).
+                if (File.Exists(path) && BackupFiles.IsBackupFileName(Path.GetFileName(rec.FileName)))
                     File.Delete(path);
             }
             catch
@@ -812,6 +826,102 @@ public sealed class BackupService(
         }
     }
 
+    // ─────────────────────────── ملفاتٌ بلا سجلّ (ADR-059) ───────────────────────────
+
+    public async Task<List<UnrecordedBackup>> ListUnrecordedAsync(CancellationToken ct = default)
+    {
+        if (!Directory.Exists(paths.BackupDir)) return [];
+        var recorded = (await db.BackupRecords.Select(r => r.FileName).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var now = DateTime.UtcNow;
+        var list = new List<UnrecordedBackup>();
+        foreach (var file in new DirectoryInfo(paths.BackupDir).EnumerateFiles("*.zip", SearchOption.TopDirectoryOnly))
+        {
+            if (!BackupFiles.IsUnrecorded(file.Name, file.LastWriteTimeUtc, recorded, now)) continue;
+            list.Add(Describe(file));
+        }
+        return [.. list.OrderByDescending(f => f.CreatedAtUtc ?? f.ModifiedAtUtc)];
+    }
+
+    /// <summary>ما في الأرشيف عن نفسه — وأرشيفٌ لا يُقرأ يُعرض بمشكلته لا يُخفى.</summary>
+    private static UnrecordedBackup Describe(FileInfo file)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(file.FullName);
+            var hasDb = zip.GetEntry("database.bak") is not null;
+            var hasFiles = zip.Entries.Any(e => e.FullName.StartsWith("files/", StringComparison.Ordinal));
+            var info = BackupOriginReader.InfoFromZip(zip);
+            return new UnrecordedBackup(file.Name, file.Length, file.LastWriteTimeUtc, hasFiles,
+                info?.AppVersion, info?.LastMigration, info?.CreatedAtUtc,
+                hasDb ? null : "لا يحوي نسخة قاعدة البيانات (database.bak) — لا يُستعاد.");
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or System.Text.Json.JsonException)
+        {
+            return new UnrecordedBackup(file.Name, file.Length, file.LastWriteTimeUtc, false, null, null, null,
+                "أرشيفٌ تالف لا يُقرأ — لا يُستعاد.");
+        }
+    }
+
+    /// <summary>
+    /// الملف بلا سجلّ بعينه — وإلا خطأٌ بالعربية: اسمٌ بغير نمط النظام (400) · غير موجود (404) · مسجَّلٌ أو يُكتب الآن (409).
+    /// </summary>
+    private async Task<FileInfo> ResolveUnrecordedAsync(string fileName, CancellationToken ct)
+    {
+        // 🔐 الاسم يدخل في مسار ملف — نمط النظام وحده (لا مجلدات ولا `..`).
+        if (!BackupFiles.IsBackupFileName(fileName))
+            throw new ValidationException("اسم ملفٍّ غير صالح — يُقبل اسم نسخةٍ بنمط النظام وحده.");
+        var file = new FileInfo(Path.Combine(paths.BackupDir, fileName));
+        if (!file.Exists) throw new NotFoundException("الملف غير موجود في مجلد النسخ.");
+        if (await db.BackupRecords.AnyAsync(r => r.FileName == fileName, ct))
+            throw new ConflictException("هذه النسخة مسجَّلة في القائمة — تُدار من هناك.");
+        if (DateTime.UtcNow - file.LastWriteTimeUtc < BackupFiles.MinAge)
+            throw new ConflictException("الملف حديثٌ جداً وقد يكون نسخةً تُكتب الآن — أعِد المحاولة بعد دقائق.");
+        return file;
+    }
+
+    public async Task<BackupRecord> AdoptUnrecordedAsync(string fileName, CancellationToken ct = default)
+    {
+        var file = await ResolveUnrecordedAsync(fileName, ct);
+        var d = Describe(file);
+        if (d.Problem is not null) throw new ValidationException(d.Problem);
+
+        // 🔴 **لا تُعاد نسخةٌ أحدث من الخادم** — القاعدة نفسها التي تحرس الرفع والاستعادة (`BackupCompatibility`).
+        var (_, verdict) = await EnsureCompatibleAsync(BackupOriginReader.FromZip(file.FullName), ct);
+
+        var note = $"أُعيدت إلى القائمة — كانت على القرص بلا سجلّ · {verdict}";
+        var rec = new BackupRecord
+        {
+            CreatedAt = d.CreatedAtUtc ?? file.LastWriteTimeUtc,
+            CreatedByUserId = current.UserId,
+            FileName = file.Name,
+            SizeBytes = file.Length,
+            Type = file.Name.StartsWith("uploaded-", StringComparison.Ordinal) ? BackupType.Uploaded : BackupType.Manual,
+            Scope = d.HasFiles ? BackupScope.Full : BackupScope.DbOnly,
+            // ⚠️ يدويةٌ في الاحتفاظ — لا تُقلَّم مع اليومية؛ يحذفها المالك متى شاء
+            Category = RetentionCategory.Manual,
+            Status = BackupStatus.Success,
+            Note = note.Length > 1000 ? note[..1000] : note,
+        };
+        db.BackupRecords.Add(rec);
+        audit.Add("BackupAdopt", nameof(BackupRecord), null, $"إعادة نسخةٍ بلا سجلّ إلى القائمة: {file.Name}", null);
+        await db.SaveChangesAsync(ct);
+        return rec;
+    }
+
+    public async Task DeleteUnrecordedAsync(string fileName, CancellationToken ct = default)
+    {
+        var file = await ResolveUnrecordedAsync(fileName, ct);
+        var size = file.Length;   // ⚠️ يُقرأ قبل الحذف — `FileInfo` يتحدّث بعده فيرمي (كشفه الحارس: 500)
+        try { file.Delete(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new ConflictException("تعذّر حذف الملف: " + ex.Message);
+        }
+        audit.Add("BackupDeleteUnrecorded", nameof(BackupRecord), null,
+            $"حذف ملف نسخةٍ بلا سجلّ: {file.Name} ({BackupUploadService.Size(size)})", null);
+        await db.SaveChangesAsync(ct);
+    }
+
     // ─────────────────────────── بيان الملفات ───────────────────────────
 
     /// <summary>صفٌّ في بيان الملفات: المسار النسبي وحجمه.</summary>
@@ -947,8 +1057,9 @@ public sealed class BackupService(
         try
         {
             var path = Path.Combine(paths.BackupDir, rec.FileName);
-            // حارس أمان: لا نحذف إلا ملفات النسخ بنمطها المعروف داخل مجلد النسخ.
-            if (File.Exists(path) && Path.GetFileName(rec.FileName).StartsWith("backup-", StringComparison.Ordinal))
+            // حارس أمان: لا نحذف إلا ملفات النسخ بنمطها المعروف داخل مجلد النسخ (`backup-…` و`uploaded-…`).
+            // 🐛 كان يقبل `backup-` وحده — فحذفُ نسخةٍ «مرفوعة» يمحو سجلّها ويترك ملفها على القرص بلا سجلّ (ADR-059).
+            if (File.Exists(path) && BackupFiles.IsBackupFileName(Path.GetFileName(rec.FileName)))
                 File.Delete(path);
         }
         catch (Exception ex)

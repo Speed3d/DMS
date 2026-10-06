@@ -290,6 +290,9 @@ dueFrom, dueTo, isOverdue, mineOnly, search`.
 | PUT | `/uploads/{uploadId}/chunks/{index}` | قطعةٌ **بايتاتٌ خامّ** (`application/octet-stream`، ≤ 40 ميغا؛ الواجهة ترسل 32). **بالترتيب**: قطعةٌ قبل أوانها **409**، **وإعادةُ قطعةٍ وصلت تُتجاهل** (200 بالحالة نفسها). معرّفٌ ليس 32 حرفاً سداسياً ⇒ **404** |
 | POST | `/uploads/{uploadId}/complete` | **202 + عملية فحص** (`backup-upload`): أرشيفٌ سليم فيه `database.bak` · ترويسته من SQL Server (`RESTORE HEADERONLY`) · **وتوافق الإصدار** (`BackupCompatibility`) — ثم يصير **نسخةً في القائمة بنوع `Uploaded`** (يدويةٌ في الاحتفاظ). **المرفوضة تُحذف**. ولم يكتمل الرفع ⇒ **400** |
 | DELETE | `/uploads/{uploadId}` | إلغاء رفعٍ وحذف ما وصل (204). والمتروك يُحذف بعد 24 ساعة |
+| GET | `/unrecorded` | 🆕 **ملفات نسخٍ على القرص لا يعرفها النظام (ADR-059)**: `[{fileName, sizeBytes, modifiedAtUtc, hasFiles, appVersion?, lastMigration?, createdAtUtc?, problem?}]` — باسم النظام وحده، **وأقدم من 15 دقيقة** (الحديث قد يُكتب الآن)، والتالف بـ`problem` |
+| POST | `/unrecorded/{fileName}/adopt` | 🆕 «إعادة إلى القائمة»: أرشيفٌ سليم **و`BackupCompatibility`** ⟵ `BackupRecordDto` (يدويةٌ في الاحتفاظ · نوعها `Uploaded` لـ`uploaded-…`). اسمٌ بغير نمط النظام **400** · غير موجود **404** · مسجَّلٌ أو حديث **409** · تالفٌ أو أحدث من الخادم **400** |
+| DELETE | `/unrecorded/{fileName}` | 🆕 حذف ملفٍّ بلا سجلّ (204) — لا يمسّ المسجَّل ولا الحديث (409). وكلاهما في سجلّ التدقيق |
 
 > **النطاق والاحتفاظ (ADR-014):** اليومية «قاعدة فقط» (خفيفة)، والأسبوعية/الشهرية/اليدوية كاملة. الاحتفاظ: 7 يومية · 4 أسبوعية · 12 شهرية · 20 يدوية (التقليم تلقائي بعد كل نسخة ناجحة).
 
