@@ -276,6 +276,8 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 29–30 | `AddBookReplies` · `AddCaseFiles` | المعاملات (ADR-045) — مُطبَّقتان |
 | 31 | `AddClientRequests` | جدول `ClientRequests` + فهرسٌ فريد `(UserId, Key)` — ADR-051. **إضافة بحتة** (جدولٌ جديد لا يمسّ القائم). طُبِّقت على `DmsDb` **2026-09-24** |
 | 32 | `AddOutgoingMovementsAndUserPhoto` | جدول `OutgoingMovements` (FK Cascade + فهرسان) + عمود `Users.PhotoBlobKey` — ADR-056. **إضافة بحتة**. ⚠️ **تُطبَّق على `DmsDb` عند أوّل تشغيلٍ لخادم المالك بعد الدمج** |
+| 33 | `AddOutgoingBookTypesAndPrintOptions` | جدول `OutgoingBookTypes` (فريدٌ بالاسم لكل شركة) وبذرُه الثلاثيّ لكل شركةٍ قائمة · `OutgoingBooks.OutgoingBookTypeId` (القائمة ⟵ «كتاب رسمي») · أعمدة خيارات الطباعة الأربعة · `OutgoingMovements.Details` — ADR-057. **إضافة بحتة**. **مطبَّقةٌ على `DmsDb` منذ 2026-10-04** |
+| 34 | `AddTemplatePageNumberPosition` | `Templates.PageNumberAlign` (نصّ ≤ 10، افتراضه `center`) + `PageNumberOffsetX` و`PageNumberOffsetY` (مم، افتراضهما 0) — ADR-058. **إضافة بحتة** بقيمٍ تطابق السلوك السابق. **مطبَّقةٌ على `DmsDb` (2026-10-06)** |
 
 > **ملاحظات:**
 > - 🔴 **الدفعة ٦ (الخدمة الخلفية — ADR-039) بلا مهاجرة** — أعمدةُ حالة التصعيد الثلاثة
