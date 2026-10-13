@@ -657,7 +657,10 @@ public sealed record RestoreBackupRequest(string Confirmation);
 
 // ----------------- Audit / Verify -----------------
 public sealed record AuditResponse(long LogId, int? UserId, string Action, string EntityType, string? EntityId, string? Details, DateTime Timestamp);
-public sealed record VerifyResponse(bool IsValid, string Message, string? Number, string? Date, string? Entity, string? AmountInIqd, bool FoundInDb);
+/// <summary>نتيجة التحقق — و`Verdict` (Genuine · Withdrawn · Tampered) مع عنوانه وملاحظته بنصّ صفحة الهاتف العامّة نفسه (ADR-061).
+/// الحقول الجديدة اختيارية فلا يتأثّر عميلٌ أقدم.</summary>
+public sealed record VerifyResponse(bool IsValid, string Message, string? Number, string? Date, string? Entity, string? AmountInIqd, bool FoundInDb,
+    string? Verdict = null, string? Title = null, string? Note = null, string? CompanyName = null, int? VersionNo = null);
 
 // ═══════════════ البروفايل الشخصي (ADR-033) ═══════════════
 

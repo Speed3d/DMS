@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<IPublicBookVerifier, PublicBookVerifier>();   // صفحة الهاتف العامّة وشاشة التحقق داخل النظام (ADR-061)
         services.AddScoped<INumberingService, NumberingService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
