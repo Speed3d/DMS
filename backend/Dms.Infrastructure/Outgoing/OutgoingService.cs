@@ -208,6 +208,7 @@ public sealed class OutgoingService(
         if (book.Status != BookStatus.Draft)
             throw new ValidationException("الكتاب معتمد بالفعل.");
         ValidateRequired(book.Subject, book.BodyHtml);
+        BookTableRules.EnsureNoFormulaErrors(book.BodyHtml);   // ADR-060: لا يُعتمد كتابٌ بمعادلةٍ خاطئة — قبل أيّ ترقيم
 
         var (company, template, entity) = await LoadRefsAsync(book, ct);
 
@@ -288,6 +289,7 @@ public sealed class OutgoingService(
         ValidateRequired(input.Subject, input.BodyHtml);
         ValidateSize(input.BodyHtml, input.BodyJson, input.ChangeNote);
         BookTableRules.ValidateBody(input.BodyHtml);
+        BookTableRules.EnsureNoFormulaErrors(input.BodyHtml);   // ADR-060: الكتاب المعتمد لا يُطبع بـ«#خطأ»
         var choice = PrintChoice.Of(input);
         var typeId = await ResolveBookTypeAsync(book.CompanyId, choice.OutgoingBookTypeId, book.OutgoingBookTypeId, ct);
 

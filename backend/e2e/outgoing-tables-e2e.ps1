@@ -1,7 +1,7 @@
 ﻿param([string]$AdminPwd='Admin@12345', [string]$Base='http://localhost:5091/api',
       [string]$Db='Server=.;Database=DmsE2E_New;Integrated Security=true;TrustServerCertificate=True')
 # ════════════════════════════════════════════════════════════════════════════
-#  الجداول داخل الكتاب الصادر · أنواع الصادر · خيارات الطباعة (ADR-057 — الإصدار 0.12.0):
+#  الجداول داخل الكتاب الصادر · أنواع الصادر · خيارات الطباعة (ADR-057 — الإصدار 0.12.0) · ومعادلاتها (ADR-060 — 0.15.0):
 #   - أنواع الصادر: البذر الثلاثيّ · الإنشاء والتكرار (409) · الحذف وهو مستعمل (409) · الكتابة للمدير فأعلى.
 #   - كتابٌ بجدول فاتورة بالشكل الذي تحفظه الواجهة نفسه (`<div data-dms-table="…">`) ⟵ معاينة · حفظ · تفاصيل.
 #   - 🔐 **الخادم حَكَمُ الطباعة**: جدولٌ معطوب ⟵ 400 بالعربية بلا أثر · **والجمع يُعاد حسابه** ولو أرسل العميل رقماً مزوّراً.
@@ -259,6 +259,77 @@ $pv=Bytes POST "/outgoing/preview" (Book "ترقيم يمين $mk" $long $null $
 if(IsPdf $pv){ Ok "المعاينة بالموضع الجديد: PDF" } else { Bad "المعاينة بالموضع الجديد: $($pv.S)" }
 $r=Api PUT "/templates/$tplId" (TplBody $t0 @{pageNumberAlign='center';pageNumberOffsetX=0;pageNumberOffsetY=0}) $admin $cid
 Expect "الإعادة إلى الوسط" "$($r.B.pageNumberAlign)|$($r.B.pageNumberOffsetX)|$($r.B.pageNumberOffsetY)" 'center|0|0'
+
+Write-Host "`n=== ١٣) معادلات الجداول + − × ÷ (ADR-060 — الإصدار 0.15.0) ===" -ForegroundColor Cyan
+# فاتورةٌ بـ«عمودٍ محسوب»: السعر الكلي = الكمية × سعر المفرد — وصفّ «الضريبة» معادلةٌ تقرأ Σ.
+#  خلايا العمود المحسوب ترسل نصّاً مزوَّراً (77) — والخادم يتجاهله ويحسب.
+function CalcInvoice([string]$taxExpr){
+  $t=Invoice @(@('Localizer','لوكلايزر','2','1,425,000,000','77'),@('Cable','كابل','3','1,500.5','77'))
+  $t.cols[5].calc=[ordered]@{expr="{$($t.cols[3].id)}*{$($t.cols[4].id)}"}
+  $sumId=$t.rows[-1].cells[2].id
+  $grey='#AEAAAA'
+  $tax=Cell '<p><strong></strong></p>' @{colSpan=2;bg=$grey;calc=[ordered]@{expr=$(if($taxExpr){$taxExpr}else{"{$sumId}*0.15"})}}
+  $t.rows+=Row @((Cell (P 'الضريبة 15%') @{colSpan=2;bg=$grey}),$null,$tax,$null,(Cell (P '') @{colSpan=2;bg=$grey}),$null)
+  return $t
+}
+$ci=CalcInvoice
+$c1=Api POST "/outgoing" (Book "فاتورة بمعادلات $mk" (Body @($ci)) $tInvoice $null) $tE $cid
+Expect "كتابٌ بعمودٍ محسوب ومعادلة ضريبة يُحفظ" $c1.S 200
+$cOid=[int]$c1.B.outgoingId
+Expect "   معاينته PDF" (IsPdf (Bytes GET "/outgoing/$cOid/preview-draft" $null $tE $cid)) 'True'
+$xml=DocXml (Bytes GET "/outgoing/$cOid/word" $null $tE $cid).Bytes
+if($xml -match '2,850,000,000' -and $xml -match '4,501\.50'){ Ok "   العمود المحسوب: 2 × 1,425,000,000 = 2,850,000,000 · و3 × 1,500.5 = 4,501.50" } else { Bad "   نواتج العمود المحسوب غائبة" }
+if($xml -notmatch '>77<'){ Ok "   🔐 والنصّ المزوَّر في خلايا العمود (77) لم يُطبع" } else { Bad "   النصّ المزوَّر طُبع" }
+if($xml -match '2,850,004,501\.50'){ Ok "   Σ يجمع نواتج المعادلات: 2,850,004,501.50" } else { Bad "   Σ لم يجمع نواتج المعادلات" }
+if($xml -match '427,500,675\.23'){ Ok "   والضريبة تقرأ Σ: 427,500,675.23 (تقريبٌ إلى منزلتين)" } else { Bad "   معادلة الضريبة غائبة" }
+$cw=(Api GET "/outgoing/number-words?value=2850004501.50&currency=IQD" $null $tE $cid).B.words
+if($cw -and $xml.Contains($cw)){ Ok "   والمبلغ كتابةً من Σ المحسوب" } else { Bad "   المبلغ كتابةً لا يطابق Σ المحسوب" }
+
+function CalcBroken($label,$t){ $r=Api POST "/outgoing" (Book "معادلة معطوبة $mk" (Body @($t)) $tOfficial $null) $tE $cid
+  if($r.S -eq 400 -and "$($r.B.error)" -match '\p{IsArabic}'){ Ok "$label ⟵ 400: $($r.B.error)" } else { Bad "$label (الحالة $($r.S)) $($r.B.error)" } }
+$count=[int](Sql "SELECT COUNT(*) FROM OutgoingBooks")
+CalcBroken "معادلةٌ ناقصة الصياغة ({…}*)" (CalcInvoice "{$((NewId 'x'))}*")
+CalcBroken "🔐 مرجعٌ برموزٍ خارج المعرّف ({../x})" (CalcInvoice '{../x}+1')
+$t=CalcInvoice; $t.rows[-2].cells[2].calc=[ordered]@{expr='1+1'}
+CalcBroken "خليةٌ جمعٌ ومعادلةٌ معاً" $t
+$t=CalcInvoice; $t.cols[5].calc=[ordered]@{expr='2 ^ 3'}
+CalcBroken "معادلة عمودٍ بعمليةٍ غير مدعومة (^)" $t
+Expect "   ولم يُحفظ كتابٌ من المعطوبة" ([int](Sql "SELECT COUNT(*) FROM OutgoingBooks")) $count
+
+# قسمةٌ على صفر: المسودّة تُحفظ (قرار المالك) — والاعتماد يُمنع برسالةٍ عربية حتى تُصحَّح
+$dz=CalcInvoice '100/0'
+$c2=Api POST "/outgoing" (Book "قسمة على صفر $mk" (Body @($dz)) $tInvoice $null) $tE $cid
+Expect "قسمةٌ على صفر: المسودّة تُحفظ" $c2.S 200
+$zOid=[int]$c2.B.outgoingId
+Expect "   ومعاينتها تُطبع (#خطأ ظاهر)" (IsPdf (Bytes GET "/outgoing/$zOid/preview-draft" $null $tE $cid)) 'True'
+$ap=Api POST "/outgoing/$zOid/approve" $null $admin $cid
+if($ap.S -eq 400 -and "$($ap.B.error)" -match 'قسمة على صفر' -and "$($ap.B.error)" -match 'قبل الاعتماد'){ Ok "   🔑 الاعتماد ممنوع: $($ap.B.error)" } else { Bad "   الاعتماد مع خطأ: $($ap.S) $($ap.B.error)" }
+$g=(Api GET "/outgoing/$zOid" $null $admin $cid).B
+Expect "   ولا رقمَ ولا QR (الدورة لم تبدأ)" "$([string]::IsNullOrEmpty("$($g.number)"))|$([string]::IsNullOrEmpty("$($g.qrContent)"))" 'True|True'
+$fixed=$dz | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+$fixed.rows[-1].cells[2].calc.expr="{$($fixed.rows[-2].cells[2].id)}*0.15"
+Expect "   تصحيح المعادلة" (Api PUT "/outgoing/$zOid" (Book "قسمة على صفر $mk" (Body @($fixed)) $tInvoice $null) $tE $cid).S 200
+$last=(Moves $zOid $tE)[-1]
+if("$($last.details)" -match 'معادلة خلية'){ Ok "   وتفاصيل الحركة تسمّيها: $(("$($last.details)" -split "`n")[0])" } else { Bad "   تفاصيل الحركة: $($last.details)" }
+$ap=Api POST "/outgoing/$zOid/approve" $null $admin $cid
+$g=(Api GET "/outgoing/$zOid" $null $admin $cid).B
+if($ap.S -eq 200 -and "$($g.number)" -and "$($g.qrContent)" -and $g.hasPdf){ Ok "   بعد التصحيح يُعتمد: رقمٌ ($($g.number)) وQR وPDF" } else { Bad "   الاعتماد بعد التصحيح: $($ap.S) $($ap.B.error)" }
+$broken=$fixed | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+$broken.rows[-1].cells[2].calc.expr='5/0'
+$ea=Book "قسمة على صفر $mk" (Body @($broken)) $tInvoice @{rowVersion=$g.rowVersion;changeNote='تجربة معادلة خاطئة'}
+$ea.Remove('companyId')
+$r=Api PUT "/outgoing/$zOid/edit-approved" $ea $admin $cid
+if($r.S -eq 400 -and "$($r.B.error)" -match 'قبل الاعتماد'){ Ok "   🔐 والتعديل بعد الاعتماد لا يُدخل معادلةً خاطئة ⟵ 400" } else { Bad "   التعديل بعد الاعتماد بمعادلة خاطئة: $($r.S)" }
+Expect "   والرقم الرسميّ كما هو" (Api GET "/outgoing/$zOid" $null $admin $cid).B.number "$($g.number)"
+
+# معادلةٌ دائرية: تُحفظ — والاعتماد ممنوع
+$cy=CalcInvoice
+$a=$cy.rows[-1].cells[2]; $b=$cy.rows[-1].cells[4]
+$a.calc=[ordered]@{expr="{$($b.id)}+1"}; $b.calc=[ordered]@{expr="{$($a.id)}+1"}
+$c3=Api POST "/outgoing" (Book "دائرية $mk" (Body @($cy)) $tInvoice $null) $tE $cid
+Expect "معادلةٌ دائرية: المسودّة تُحفظ" $c3.S 200
+$ap=Api POST "/outgoing/$([int]$c3.B.outgoingId)/approve" $null $admin $cid
+if($ap.S -eq 400 -and "$($ap.B.error)" -match 'دائرية'){ Ok "   والاعتماد ممنوع: $($ap.B.error)" } else { Bad "   الدائرية اعتُمدت: $($ap.S)" }
 
 Write-Host "`n============ النتيجة ============" -ForegroundColor Cyan
 Write-Host "  نجح: $pass" -ForegroundColor Green

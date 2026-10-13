@@ -61,6 +61,11 @@ public sealed record TableColumn
 
     /// <summary>عرضٌ نسبيّ — يُوزَّع عرض الجدول على مجموع الأوزان.</summary>
     public double Weight { get; init; } = 1;
+
+    /// <summary>
+    /// **عمودٌ محسوب** (ADR-060): معادلةٌ بمعرّفات الأعمدة (<c>{k3}*{k4}</c>) تنطبق على كل صفّ بندٍ — والصفّ الجديد يرثها.
+    /// </summary>
+    public CellCalc? Calc { get; init; }
 }
 
 public sealed record TableRow
@@ -91,6 +96,9 @@ public sealed record TableCell
 
     /// <summary>المبلغ كتابةً من خليةٍ أخرى — يُعاد توليده عند كل طباعة.</summary>
     public CellWords? Words { get; init; }
+
+    /// <summary>معادلةٌ بمعرّفات الخلايا (<c>{c8f2}*{c9a1}</c>) — يُعاد حسابها عند كل طباعة (ADR-060).</summary>
+    public CellCalc? Calc { get; init; }
 }
 
 /// <summary>صيغة الخلية — اليوم <c>sum</c> وحدها: كل رقمٍ فوقها في العمود <see cref="Col"/> حتى العناوين.</summary>
@@ -98,6 +106,12 @@ public sealed record CellFormula
 {
     public string Type { get; init; } = "sum";
     public int Col { get; init; }
+}
+
+/// <summary>معادلة خليةٍ أو عمود (ADR-060) — الشكل المخزَّن تقرؤه <see cref="TableExpression"/>.</summary>
+public sealed record CellCalc
+{
+    public string Expr { get; init; } = "";
 }
 
 /// <summary>«كتابة بالحروف»: نصٌّ مولَّد من رقم خليةٍ أخرى، بين «قبل» و«بعد» يكتبهما المستخدم.</summary>

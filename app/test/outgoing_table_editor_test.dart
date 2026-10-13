@@ -573,6 +573,172 @@ void main() {
     });
   });
 
+  group('شريط المعادلة (ADR-060)', () {
+    Finder input() => find.byKey(const Key('bt-formula-input'));
+    String text(WidgetTester t) => t.widget<TextField>(input()).controller!.text;
+
+    /// كميةٌ وسعرٌ في البند الأوّل (الصفّ 2 في الجدول: D2 و E2).
+    Future<void> fillItem(WidgetTester tester, int row, String qty, String price) async {
+      await tapCell(tester, row, 3);
+      await type(tester, qty);
+      await tapCell(tester, row, 4);
+      await type(tester, price);
+    }
+
+    testWidgets('«=» في خليةٍ فارغة يفتح الشريط · النقر على الخلايا يُدرج مراجعها · والناتج قبل التطبيق وبعده', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await fillItem(tester, 1, '2', '1,500');
+      final shape = jsonEncode(stored(h).rows[1].cells[5]!.delta);   // سطرٌ فارغ بمحاذاة الوسط
+      await tapCell(tester, 1, 5);
+      await type(tester, '=');
+      await wait(tester);
+      expect(find.byKey(const Key('bt-formula-bar')), findsOneWidget);
+      expect(find.byKey(const Key('bt-formula-target')).evaluate().isNotEmpty, isTrue);
+      expect(h.editing, isFalse, reason: '«=» لا يُحفظ نصّاً في الخلية');
+      // 🐛 كان «=» يُفرغ الخلية بمستندٍ جديد فيضيع تنسيق سطرها — والناتج يظهر على طرفها لا وسطها (كشفه المتصفّح)
+      expect(jsonEncode(stored(h).rows[1].cells[5]!.delta), shape, reason: 'الخلية كما كانت بتنسيقها');
+
+      await tapCell(tester, 1, 3);
+      expect(text(tester), 'D2');
+      await tapCell(tester, 2, 3);
+      expect(text(tester), 'D3', reason: 'نقرةٌ تالية بلا كتابةٍ بينهما تستبدل المرجع');
+      await tapCell(tester, 1, 3);
+      await tester.tap(find.byKey(const Key('bt-formula-op-times')));
+      await wait(tester);
+      await tapCell(tester, 1, 4);
+      expect(text(tester), 'D2 × E2');
+      await wait(tester, 200);
+      expect(find.text('= 3,000'), findsOneWidget, reason: 'المعاينة الحيّة');
+
+      await tester.tap(find.byKey(const Key('bt-formula-apply')));
+      await wait(tester);
+      final t = stored(h);
+      expect(t.rows[1].cells[5]!.calc?.expr, '{${t.rows[1].cells[3]!.id}}*{${t.rows[1].cells[4]!.id}}');
+      expect(find.byKey(const Key('bt-formula-bar')), findsNothing);
+      expect(find.text('3,000'), findsWidgets, reason: 'الخلية تعرض الناتج — والمجموع يجمعه');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('🔴 على الويب يفقد الحقل اتصاله بلوحة المفاتيح بالنقر على الخلية (blur) — فيعود إليه ولا يُغلَق الجدول', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await fillItem(tester, 1, '2', '1,500');
+      await tapCell(tester, 1, 5);
+      await type(tester, '=');
+      await wait(tester);
+      // نقرةٌ على خلية ⟵ المتصفّح يُغلق اتصال الحقل (كما يفعل blur الحقل المخفيّ في Flutter web)
+      await tapCell(tester, 1, 3);
+      tester.testTextInput.closeConnection();
+      await wait(tester, 100);
+      expect(h.formula, isNotNull, reason: 'الشريط باقٍ');
+      expect(h.active, isTrue, reason: 'الجدول لم يُغادَر');
+      expect(h.formula!.focus.hasFocus, isTrue, reason: 'الحقل استعاد التركيز فتصل الكتابة إليه');
+      // والكتابة بعدها تصل الحقل لا الخلية ولا المتن
+      tester.testTextInput.enterText('${text(tester)} × ');
+      await wait(tester);
+      await tapCell(tester, 1, 4);
+      tester.testTextInput.closeConnection();
+      await wait(tester, 100);
+      expect(text(tester), 'D2 × E2');
+      expect(h.active, isTrue);
+      await tester.tap(find.byKey(const Key('bt-formula-apply')));
+      await wait(tester);
+      expect(stored(h).rows[1].cells[5]!.calc, isNotNull);
+    });
+
+    testWidgets('🔴 في العرض الضيّق الشريط مثبَّتٌ خارج القائمة — فالكتابة فيه لا تجرّ الجدول من تحت الفأرة', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await tapCell(tester, 1, 5);
+      await type(tester, '=');
+      await wait(tester);
+      // ثم يضيق العرض (أضيق من 1200 ⟵ تبويبا «الورقة» و«المعاينة» وقائمةٌ واحدة تُمرَّر) والشريط مفتوح
+      tester.view.physicalSize = const Size(1000, 900);
+      await wait(tester, 300);
+      final bar = find.byKey(const Key('bt-formula-bar'));
+      expect(bar, findsOneWidget);
+      expect(find.ancestor(of: bar, matching: find.byType(ListView)), findsNothing, reason: 'خارج القائمة التي تُمرَّر');
+      expect(h.formula!.focus.hasFocus, isTrue);
+    });
+
+    testWidgets('«للعمود كلّه»: معادلةٌ واحدة لكل البنود — والمجموع والصفّ الجديد يتبعانها', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await fillItem(tester, 1, '2', '1,500');
+      await fillItem(tester, 2, '3', '10');
+      await tapCell(tester, 1, 5);
+      await key(tester, LogicalKeyboardKey.escape);
+      await tester.tap(find.byKey(const Key('bt-calc')));
+      await wait(tester);
+      await tester.tap(find.byKey(const Key('bt-formula-column')));
+      await wait(tester);
+      await tester.enterText(input(), 'D × E');
+      await tester.tap(find.byKey(const Key('bt-formula-apply')));
+      await wait(tester);
+      final t = stored(h);
+      expect(t.cols[5].calc?.expr, '{${t.cols[3].id}}*{${t.cols[4].id}}');
+      expect(find.text('3,030'), findsOneWidget, reason: 'المجموع: 3,000 + 30');
+
+      await tapCell(tester, 2, 3);
+      await tester.tap(find.byKey(const Key('bt-row-below')));
+      await wait(tester);
+      await tapCell(tester, 3, 3);
+      await type(tester, '1');
+      await tapCell(tester, 3, 4);
+      await type(tester, '5');
+      await tapCell(tester, 1, 1);
+      expect(find.text('3,035'), findsOneWidget, reason: 'الصفّ الجديد ورث معادلة العمود');
+    });
+
+    testWidgets('القسمة على صفر «#خطأ» بالأحمر · والمعادلة الناقصة تُرفض في الشريط ولا تُطبَّق', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await tapCell(tester, 1, 5);
+      await key(tester, LogicalKeyboardKey.escape);
+      await tester.tap(find.byKey(const Key('bt-calc')));
+      await wait(tester);
+      await tester.enterText(input(), 'D2 +');
+      await tester.tap(find.byKey(const Key('bt-formula-apply')));
+      await wait(tester);
+      expect(find.byKey(const Key('bt-formula-bar')), findsOneWidget, reason: 'الشريط يبقى برسالة الخطأ');
+      expect(stored(h).rows[1].cells[5]!.calc, isNull);
+
+      await tester.enterText(input(), '1 ÷ 0');
+      await tester.tap(find.byKey(const Key('bt-formula-apply')));
+      await wait(tester);
+      expect(stored(h).rows[1].cells[5]!.calc?.expr, '1/0', reason: 'تُحفظ — والخادم يمنع الاعتماد حتى تُصحَّح');
+      expect(find.text('#خطأ'), findsWidgets);
+    });
+
+    testWidgets('إزالة المعادلة تُبقي ناتجها نصّاً · وEsc يُغلق الشريط بلا تغيير', (tester) async {
+      await pump(tester);
+      final h = hubOf(tester);
+      await tapCell(tester, 1, 5);
+      await type(tester, '=');
+      await wait(tester);
+      await tester.enterText(input(), '7 × 6');
+      await tester.tap(find.byKey(const Key('bt-formula-apply')));
+      await wait(tester);
+      await tapCell(tester, 1, 5);
+      await tester.tap(find.byKey(const Key('bt-calc')));
+      await wait(tester);
+      expect(text(tester), '7 × 6', reason: 'يفتح بالمعادلة القائمة');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await wait(tester);
+      expect(find.byKey(const Key('bt-formula-bar')), findsNothing);
+      expect(stored(h).rows[1].cells[5]!.calc?.expr, '7*6');
+
+      await tester.tap(find.byKey(const Key('bt-calc')));
+      await wait(tester);
+      await tester.tap(find.byKey(const Key('bt-formula-remove')));
+      await wait(tester);
+      final c = stored(h).rows[1].cells[5]!;
+      expect(c.calc, isNull);
+      expect(c.text, '42');
+    });
+  });
+
   group('شريط الجدول والتراجع', () {
     testWidgets('«صفٌّ تحت» ثم Ctrl+Z يتراجع عنه وحده — والمكتوب قبله يبقى · وCtrl+Y يعيده', (tester) async {
       await pump(tester);

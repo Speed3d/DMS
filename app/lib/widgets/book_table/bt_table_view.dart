@@ -5,6 +5,9 @@ import '../../core/book_table/table_formulas.dart';
 import 'bt_grid.dart';
 import 'bt_rich_text.dart';
 
+/// لون «#خطأ» في المحرّر — والورقة بيضاء في الوضعين فاللون ثابت.
+const kCalcErrorColor = Color(0xFFC00000);
+
 /// خطّ المتن والجداول وحجمه على الورقة (قرار المالك: Times New Roman 12 — والوحدة نقطة).
 const kPaperFont = 'Times New Roman';
 const kPaperBase = TextStyle(fontFamily: kPaperFont, fontSize: 12, height: 1.25, color: Color(0xFF111111));
@@ -24,6 +27,7 @@ class BtTableView extends StatelessWidget {
     this.contentBuilder,
     this.cellBuilder,
     this.gridWrapper,
+    this.computed,
   });
 
   final BtTable table;
@@ -41,9 +45,12 @@ class BtTableView extends StatelessWidget {
   /// يلفّ الشبكة داخل إطار عرضها (مقابض سحب حدود الأعمدة).
   final Widget Function(Widget grid)? gridWrapper;
 
+  /// القيم المحسوبة إن حسبها مَن يبني العرض (المحرّر يحتاجها لعلاماته) — فلا يُحسب الجدول مرّتين.
+  final Map<String, BtComputed>? computed;
+
   @override
   Widget build(BuildContext context) {
-    final computed = BtFormulas.evaluate(table);
+    final computed = this.computed ?? BtFormulas.evaluate(table);
     final grid = BtGrid(
       weights: weights ?? [for (final c in table.cols) c.weight],
       rowCount: table.rowCount,
@@ -68,14 +75,19 @@ class BtTableView extends StatelessWidget {
     final cell = s.cell;
     final style = btSpanStyle(kPaperBase, cell.inlineStyle ?? const {});
     Widget? content = contentBuilder?.call(s);
+    final value = computed[cell.id];
     if (content == null) {
-      if (cell.formula != null) {
-        content = _single(computed[cell.id]?.text ?? '', style, cell, number: true);
+      if (value != null && value.isError) {
+        // معادلةٌ خاطئة (ADR-060): «#خطأ» بالأحمر — والاعتماد ممنوعٌ حتى تُصحَّح
+        content = _single(value.text, style.copyWith(color: kCalcErrorColor, fontWeight: FontWeight.bold), cell, number: true);
       } else if (cell.words != null) {
         final w = cell.words!;
         final core = words[cell.id];
         final text = [w.prefix?.trim(), core ?? '…', w.suffix?.trim()].where((x) => x != null && x.isNotEmpty).join(' ');
         content = _single(text, core == null ? style.copyWith(color: const Color(0xFF888888)) : style, cell);
+      } else if (value != null) {
+        // جمعٌ أو معادلةٌ أو خليةُ عمودٍ محسوب — الناتج كما يُطبع
+        content = _single(value.text, style, cell, number: true);
       } else if (_isNumber(cell)) {
         content = _single(cell.text, style, cell, number: true);
       } else {

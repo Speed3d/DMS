@@ -347,12 +347,13 @@ class BtOps {
       t = insertCol(t, t.colCount);
     }
     t = t.copy();
+    final computed = _computedIds(t);
     for (var i = 0; i < grid.length; i++) {
       for (var j = 0; j < grid[i].length; j++) {
         final rr = r + i, cc = c + j;
         if (rr >= t.rowCount || cc >= t.colCount) continue;
         final cell = t.rows[rr].cells[cc];
-        if (cell == null || cell.formula != null) continue;   // خانةٌ مدموجة أو خلية جمعٍ حيّ
+        if (cell == null || computed.contains(cell.id)) continue;   // خانةٌ مدموجة أو خليةٌ محسوبة (جمع · معادلة · عمودٌ محسوب)
         setText(cell, grid[i][j]);
       }
     }
@@ -373,12 +374,13 @@ class BtOps {
     // الصفوف المُدرجة قبل صفّ المجموع تُزيح المواضع — فالمواضع تُعاد من الشبكة كما وقعت في اللصق
     final targets = _pasteTargets(src, r, grid.length);
     t = t.copy();
+    final computed = _computedIds(t);
     for (var i = 0; i < grid.length && i < targets.length; i++) {
       for (var j = 0; j < grid[i].length; j++) {
         final rr = targets[i], cc = c + j;
         if (rr >= t.rowCount || cc >= t.colCount) continue;
         final cell = t.rows[rr].cells[cc];
-        if (cell == null || cell.formula != null) continue;
+        if (cell == null || computed.contains(cell.id)) continue;
         final p = grid[i][j];
         if (p.bg != null) cell.bg = p.bg;
         if (p.bold != null) _setInline(cell, {'bold': p.bold! ? true : null});
@@ -414,12 +416,14 @@ class BtOps {
         if (attrs.containsKey('align')) _setBlock(cell, 'align', attrs['align']);
       });
 
-  /// يمسح محتوى الخلايا المحدّدة — النصّ **والجمع والكتابة بالحروف** (كما يفعل Delete في Excel) ويُبقي شكلها.
+  /// يمسح محتوى الخلايا المحدّدة — النصّ **والجمع والمعادلة والكتابة بالحروف** (كما يفعل Delete في Excel) ويُبقي شكلها.
+  /// ⚠️ ومعادلة **العمود** لا تُمسح من خلية — تُزال من العمود نفسه ([setColumnCalc]).
   static BtTable clearCells(BtTable src, int r1, int c1, int r2, int c2) {
     final t = editCells(src, r1, c1, r2, c2, (cell) {
       setText(cell, '');
       cell
         ..formula = null
+        ..calc = null
         ..words = null;
     });
     return t;
@@ -437,6 +441,7 @@ class BtOps {
     setText(s.cell, '');
     s.cell
       ..words = null
+      ..calc = null
       ..formula = BtFormula(col: col.clamp(0, t.colCount - 1));
     return t;
   }
@@ -448,11 +453,67 @@ class BtOps {
     if (s == null || words?.sourceCellId == cellId) return src;
     if (words != null) {
       setText(s.cell, '');
-      s.cell.formula = null;
+      s.cell
+        ..formula = null
+        ..calc = null;
     }
     s.cell.words = words;
     return t;
   }
+
+  /// معادلةٌ للخلية (ADR-060) — بصيغتها المخزَّنة (`{id}`). تُزيل نصّها والجمع والحروف فيها (الخادم يرفض اجتماعها).
+  /// و`null` يُزيل المعادلة **ويُبقي آخر ناتجٍ لها نصّاً** (لا يختفي رقمٌ رآه المستخدم بإزالة معادلته).
+  static BtTable setCalc(BtTable src, String cellId, String? expr) {
+    final t = src.copy();
+    final s = t.findCell(cellId);
+    if (s == null) return src;
+    if (expr == null) {
+      if (s.cell.calc == null) return src;
+      final last = BtFormulas.evaluate(src)[cellId];
+      s.cell.calc = null;
+      setText(s.cell, last == null || last.isError ? '' : last.text);
+      return t;
+    }
+    setText(s.cell, '');
+    s.cell
+      ..formula = null
+      ..words = null
+      ..calc = BtCalc(expr);
+    return t;
+  }
+
+  /// «عمودٌ محسوب» (ADR-060): معادلةٌ واحدة لكل صفّ بندٍ في العمود [col] — مراجعها معرّفات أعمدة (`{k3}*{k4}`).
+  /// صفوف البند تُفرَّغ (نصّها يولّده الحساب) ويبقى شكلها، والصفّ الجديد يرثها تلقائياً.
+  /// و`null` يُزيل المعادلة **ويُبقي نواتجها نصّاً** في خلاياها.
+  static BtTable setColumnCalc(BtTable src, int col, String? expr) {
+    if (col < 0 || col >= src.colCount) return src;
+    final t = src.copy();
+    if (expr == null) {
+      if (t.cols[col].calc == null) return src;
+      final last = BtFormulas.evaluate(src);
+      final targets = BtFormulas.columnTargets(src);
+      t.cols[col].calc = null;
+      for (final s in t.masters) {
+        if (s.col != col || !targets.contains(s.cell.id)) continue;
+        final v = last[s.cell.id];
+        setText(s.cell, v == null || v.isError ? '' : v.text);
+      }
+      return t;
+    }
+    t.cols[col].calc = BtCalc(expr);
+    final targets = BtFormulas.columnTargets(t);
+    for (final s in t.masters) {
+      if (s.col == col && targets.contains(s.cell.id)) setText(s.cell, '');
+    }
+    return t;
+  }
+
+  /// معرّفات الخلايا التي يولّد الحساب نصّها — لا تُكتب يدوياً ولا يُلصق فوقها.
+  static Set<String> _computedIds(BtTable t) => {
+        for (final s in t.masters)
+          if (s.cell.formula != null || s.cell.calc != null) s.cell.id,
+        if (t.cols.any((c) => c.calc != null)) ...BtFormulas.columnTargets(t),
+      };
 
   /// المصدر المقترح لـ«كتابة بالحروف»: خلية جمعٍ في الصفّ نفسه، وإلا آخر خلية جمعٍ قبلها في الجدول.
   static String? suggestWordsSource(BtTable t, String cellId) {
@@ -499,17 +560,18 @@ class BtOps {
     return t;
   }
 
-  /// نصوص المستطيل المحدّد للنسخ — خلية الجمع **بقيمتها المحسوبة**، والخانة المدموجة فارغة (كما يفعل Excel).
+  /// نصوص المستطيل المحدّد للنسخ — خلية الجمع والمعادلة **بقيمتها المحسوبة**، والخانة المدموجة فارغة (كما يفعل Excel).
   static List<List<String>> copyGrid(BtTable t, int r1, int c1, int r2, int c2, {Map<String, String> words = const {}}) {
     final (top, left, bottom, right) = _norm(r1, c1, r2, c2);
     final computed = BtFormulas.evaluate(t);
+    final targets = _computedIds(t);
     return [
       for (var r = top; r <= bottom && r < t.rowCount; r++)
         [
           for (var c = left; c <= right && c < t.colCount; c++)
             switch (t.rows[r].cells[c]) {
               null => '',
-              final BtCell cell when cell.formula != null => computed[cell.id]?.text ?? '',
+              final BtCell cell when targets.contains(cell.id) => computed[cell.id]?.text ?? '',
               final BtCell cell when cell.words != null => words[cell.id] ?? '',
               final BtCell cell => cell.text,
             }
