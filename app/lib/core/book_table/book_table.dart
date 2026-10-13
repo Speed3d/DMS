@@ -94,10 +94,13 @@ class BtSlot {
 }
 
 class BtCol {
-  BtCol({required this.id, this.weight = 1});
+  BtCol({required this.id, this.weight = 1, this.calc});
   final String id;
   double weight;
-  BtCol copy() => BtCol(id: id, weight: weight);
+
+  /// «عمودٌ محسوب» (ADR-060): معادلةٌ واحدة تسري على كل صفّ بند — مراجعها **معرّفات أعمدة** (`{k3}*{k4}`).
+  BtCalc? calc;
+  BtCol copy() => BtCol(id: id, weight: weight, calc: calc?.copy());
 }
 
 class BtRow {
@@ -119,6 +122,7 @@ class BtCell {
     List<Map<String, dynamic>>? delta,
     this.formula,
     this.words,
+    this.calc,
     this.textStyle,
   }) : delta = delta ?? emptyDelta();
 
@@ -132,6 +136,9 @@ class BtCell {
   List<Map<String, dynamic>> delta;
   BtFormula? formula;
   BtWords? words;
+
+  /// معادلة الخلية (ADR-060) — مراجعها **معرّفات خلايا** (`{c8f2}*{c9a1}`)، ونصّها يولّده الحساب كخلية الجمع.
+  BtCalc? calc;
 
   /// تنسيق النصّ للخلية الفارغة (عريض · حجم · خط …) — يُطبَّق على ما يُكتب أو يُلصق فيها.
   ///
@@ -153,6 +160,7 @@ class BtCell {
         delta: [for (final op in delta) _deepCopy(op)],
         formula: formula?.copy(),
         words: words?.copy(),
+        calc: calc?.copy(),
         textStyle: textStyle == null ? null : Map<String, dynamic>.from(textStyle!),
       );
 
@@ -185,6 +193,13 @@ class BtFormula {
   final String type;
   int col;
   BtFormula copy() => BtFormula(type: type, col: col);
+}
+
+/// معادلةٌ بصيغتها المخزَّنة (ADR-060) — `{id}` للمرجع، و`+ - * /` والأقواس. تقرؤها `BtExpression` (`table_calc.dart`).
+class BtCalc {
+  BtCalc(this.expr);
+  final String expr;
+  BtCalc copy() => BtCalc(expr);
 }
 
 /// «كتابة بالحروف»: نصٌّ يولّده الخادم من رقم خليةٍ أخرى، بين «قبل» و«بعد» يكتبهما المستخدم.

@@ -129,7 +129,15 @@ class BtTableToolbar extends StatelessWidget {
             -1: 'إيقاف الترقيم',
           }, current: t.numberingCol ?? -1, onPick: (v) => hub.apply((t, _) => BtOps.setNumberingCol(t, v < 0 ? null : v))),
           gap(),
-          // ── الجمع والحروف ──
+          // ── المعادلة والجمع والحروف ──
+          btn(
+              'bt-calc',
+              Icons.calculate_outlined,
+              hub.formula != null
+                  ? 'شريط المعادلة مفتوح'
+                  : (head.cell.calc != null || t.cols[head.col].calc != null ? 'تعديل المعادلة أو إزالتها (=)' : 'معادلة: + − × ÷ بين الخلايا (=)'),
+              hub.sel!.single && hub.formula == null ? hub.openFormula : null,
+              color: head.cell.calc != null || t.cols[head.col].calc != null ? action : null),
           Builder(
             builder: (context) => btn('bt-sum', Icons.functions_rounded, head.cell.formula != null ? 'تغيير الجمع أو إزالته' : 'جمعٌ حيّ (Σ)',
                 hub.sel!.single ? () => _sum(context, t, head) : null,

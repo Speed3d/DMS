@@ -215,6 +215,9 @@ class _WordsDialogState extends State<_WordsDialog> {
       for (final s in t.masters)
         if (s.cell.id != widget.target.id && s.cell.formula != null)
           (s.cell.id, 'Σ ${btColumnLabel(t, s.cell.formula!.col)} — ${computed[s.cell.id]?.text ?? ''}')
+        else if (s.cell.id != widget.target.id && s.cell.words == null && computed[s.cell.id] != null && s.row >= t.headerRows)
+          // معادلةٌ أو خليةُ عمودٍ محسوب (ADR-060)
+          (s.cell.id, 'ƒ ${btColumnLetter(s.col)}${s.row + 1} — ${computed[s.cell.id]!.text}')
         else if (s.cell.id != widget.target.id && s.cell.words == null && BtFormulas.parseNumber(s.cell.text) != null && s.row >= t.headerRows)
           (s.cell.id, '«${s.cell.text}» — الصفّ ${s.row + 1}'),
     ].take(60).toList();

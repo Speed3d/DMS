@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import '../../core/book_table/book_table.dart';
+import '../../core/book_table/table_formula_text.dart';
 import '../../core/book_table/table_formulas.dart';
 import '../../core/book_table/table_serializer.dart';
 import 'bt_editor_hub.dart';
@@ -87,13 +88,18 @@ class BtTableEditor extends StatelessWidget {
         }
         final table = hub.current(stored);
         final active = hub.sel?.tableId == table.id;
+        final computed = BtFormulas.evaluate(table);
+        final f = active ? hub.formula : null;
+        // شريط المعادلة مفتوح ⟵ عنوان كل خلية ظاهر، والمراجع المكتوبة ملوّنة على الجدول (للمحرّر وحده — لا يُطبع)
+        final refs = f == null ? const <String>{} : BtFormulaText.refsOf(table, f.text.text, column: f.column);
         final view = BtTableView(
           key: ValueKey('bt-table-${table.id}'),
           table: table,
+          computed: computed,
           words: hub.wordsFor(table),
           weights: active && hub.dragTableId == table.id ? hub.dragWeights : null,
           contentBuilder: active && hub.editing ? (s) => s.cell.id == hub.editingCellId ? hub.buildCellEditor() : null : null,
-          cellBuilder: (s, box) => _cell(table, s, box, active),
+          cellBuilder: (s, box) => _cell(table, s, box, active, computed, f, refs),
           gridWrapper: active ? (grid) => _ColumnHandles(hub: hub, table: table, child: grid) : null,
         );
         Widget body = Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: view);
@@ -136,23 +142,51 @@ class BtTableEditor extends StatelessWidget {
     );
   }
 
-  Widget _cell(BtTable table, BtSlot s, Widget box, bool active) {
+  Widget _cell(BtTable table, BtSlot s, Widget box, bool active, Map<String, BtComputed> computed, BtFormulaSession? f, Set<String> refs) {
     final editingThis = active && hub.editingCellId == s.cell.id;
     final selected = active && hub.inSelection(table.id, s);
     final head = active && hub.isHead(table.id, s);
     final multi = active && !(hub.sel?.single ?? true);
     Widget w = box;
-    // علامة الجمع والحروف — في المحرّر وحده، لا تُطبع
-    if (s.cell.formula != null || s.cell.words != null) {
+    final value = computed[s.cell.id];
+    final generated = value != null;   // جمعٌ · حروف · معادلة · خليةُ عمودٍ محسوب
+    // علامة الخلية المحسوبة — في المحرّر وحده، لا تُطبع. والخطأ بعلامةٍ حمراء وسببُه عند الوقوف عليها.
+    final mark = value != null && value.isError
+        ? '!'
+        : s.cell.formula != null
+            ? 'Σ'
+            : s.cell.words != null
+                ? 'حروف'
+                : generated
+                    ? 'ƒ'
+                    : null;
+    final address = f != null ? BtFormulaText.address(s.row, s.col) : null;
+    if (mark != null || address != null) {
+      const markStyle = TextStyle(fontSize: 6, color: Color(0xFF2563EB), fontWeight: FontWeight.bold, height: 1);
       w = Stack(children: [
         w,
-        PositionedDirectional(
-          top: 0,
-          start: 1,
-          child: Text(s.cell.formula != null ? 'Σ' : 'حروف',
-              style: const TextStyle(fontSize: 6, color: Color(0xFF2563EB), fontWeight: FontWeight.bold, height: 1)),
-        ),
+        if (mark != null)
+          PositionedDirectional(
+            top: 0,
+            start: 1,
+            child: Text(mark, style: mark == '!' ? markStyle.copyWith(color: kCalcErrorColor, fontSize: 8) : markStyle),
+          ),
+        if (address != null)
+          PositionedDirectional(
+            bottom: 0,
+            end: 1,
+            child: Text(address, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 6, color: Color(0xFF9A6700), height: 1)),
+          ),
       ]);
+    }
+    if (value != null && value.isError) w = Tooltip(message: calcErrorMessage(value.error!), child: w);
+    final referenced = f != null && refs.contains(f.column ? table.cols[s.col].id : s.cell.id);
+    if (referenced) {
+      w = DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(color: const Color(0x22F59E0B), border: Border.all(color: const Color(0xFFF59E0B), width: 1.4)),
+        child: w,
+      );
     }
     if (selected || head) {
       w = DecoratedBox(
@@ -168,7 +202,11 @@ class BtTableEditor extends StatelessWidget {
       // النقر والسحب يعالجهما `Listener` الجدول — وهنا **تُكسب الضغطة بالفأرة فوراً** (`EagerGestureRecognizer`) فيخسر
       // سحبُ تحديد النصّ في محرّر المتن ولا يغطّي الجدول. والخلية المفتوحة بلا هذا: النقر والسحب فيها لنصّها.
       w = MouseRegion(
-        cursor: s.cell.formula != null || s.cell.words != null ? SystemMouseCursors.basic : SystemMouseCursors.text,
+        cursor: f != null
+            ? SystemMouseCursors.precise   // النقر يُدرج مرجعاً
+            : generated
+                ? SystemMouseCursors.basic
+                : SystemMouseCursors.text,
         child: RawGestureDetector(
           behavior: HitTestBehavior.opaque,
           gestures: _eager,

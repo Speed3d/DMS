@@ -12,6 +12,7 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:quill_native_bridge/quill_native_bridge.dart';
 
 import '../../core/book_table/book_table.dart';
+import '../../core/book_table/table_formula_text.dart';
 import '../../core/book_table/table_formulas.dart';
 import '../../core/book_table/table_ops.dart';
 import '../../core/book_table/table_paste.dart';
@@ -163,6 +164,15 @@ class BtEditorHub extends ChangeNotifier {
 
   /// ضغطةٌ على خلية — لا تفتح شيئاً حتى يُعرف: نقرةٌ هي أم سحب.
   void pressCell(String tableId, int r, int c, Offset at, {bool touch = false}) {
+    final f = formula;
+    if (f != null) {
+      if (f.tableId == tableId) {
+        _press = null;   // لا تحديدَ ولا فتح — النقرة مرجعٌ في المعادلة
+        formulaInsertRef(r, c);
+        return;
+      }
+      closeFormula(refocus: false);
+    }
     _press = _Press(tableId, r, c, at, touch: touch);
     _dragging = false;
     // جدولٌ غير نشط يصير نشطاً **لحظة الضغط بالفأرة** لا في منتصف السحب: ظهور شريط الجدول يُغيّر التخطيط، فإن وقع أثناء السحب
@@ -479,7 +489,7 @@ class BtEditorHub extends ChangeNotifier {
     _arm();
     _embedInto(index, 0, t, TextSelection.collapsed(offset: index + 1), keepFocus: false, lineAfter: true);
     final first = t.ownerOf(0, 0)!.cell;
-    if (_editable(first)) {
+    if (_editable(t, first)) {
       _beginEdit(first);
     } else {
       _focusTableSoon();
@@ -515,7 +525,7 @@ class BtEditorHub extends ChangeNotifier {
     _clamp(next);
     if (editingId != null) {
       final now = next.findCell(editingId);
-      if (now == null || !_editable(now.cell)) {
+      if (now == null || !_editable(next, now.cell)) {
         _endEdit();
         _focusTableSoon();
       } else if (jsonEncode(now.cell.delta) != jsonEncode(_cellDelta())) {
@@ -560,10 +570,11 @@ class BtEditorHub extends ChangeNotifier {
     if (o == null) return;
     if (editingCellId == o.cell.id) return;
     commitCell();
-    final fresh = locate(tableId)?.table.ownerOf(r, c);   // الحفظ قد غيّر المستند
+    final freshTable = locate(tableId)?.table;   // الحفظ قد غيّر المستند
+    final fresh = freshTable?.ownerOf(r, c);
     if (fresh == null) return;
     sel = BtSelection(tableId, fresh.row, fresh.col, fresh.row, fresh.col);
-    if (_editable(fresh.cell)) {
+    if (_editable(freshTable!, fresh.cell)) {
       _beginEdit(fresh.cell);
     } else {
       _endEdit();
@@ -572,8 +583,22 @@ class BtEditorHub extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// خلية الجمع والحروف يولّدها النظام — لا تُكتب.
-  static bool _editable(BtCell c) => c.formula == null && c.words == null;
+  /// خلية الجمع والحروف **والمعادلة وخلية العمود المحسوب** يولّدها النظام — لا تُكتب (ADR-060).
+  bool _editable(BtTable t, BtCell c) =>
+      c.formula == null && c.words == null && c.calc == null && !_columnTargets(t).contains(c.id);
+
+  BtTable? _targetsFor;
+  Set<String> _targets = const {};
+
+  /// خلايا الأعمدة المحسوبة — محفوظةٌ للجدول نفسه (التنقّل بـTab يسأل عن كل خلية).
+  Set<String> _columnTargets(BtTable t) {
+    if (!t.cols.any((c) => c.calc != null)) return const {};
+    if (!identical(_targetsFor, t)) {
+      _targetsFor = t;
+      _targets = BtFormulas.columnTargets(t);
+    }
+    return _targets;
+  }
 
   /// تحديدٌ يقطع دمجاً يتّسع ليشمله كلَّه (كما يفعل Excel) — فالدمج والتنسيق لا يقعان على نصف خلية.
   BtSelection _expand(String tableId, BtSelection s) {
@@ -646,6 +671,17 @@ class BtEditorHub extends ChangeNotifier {
   }
 
   void _onCellChanged() {
+    final c = cell;
+    if (_wasEmpty && c != null && c.document.toPlainText().trim() == '=') {
+      // تُغلق الخلية **بلا حفظ** (لا يُحفظ «=» نصّاً) ثم يُفتح الشريط — بعد انتهاء حدث الكتابة نفسه.
+      // 🐛 كانت تُفرَّغ بمستندٍ جديد ثم تُحفظ فيضيع تنسيق سطرها (المحاذاة) — والناتج يظهر على طرف الخلية لا وسطها (كشفه المتصفّح).
+      scheduleMicrotask(() {
+        if (_disposed || cell != c) return;
+        _endEdit();
+        openFormula();
+      });
+      return;
+    }
     _typingTimer?.cancel();
     _typingTimer = Timer(const Duration(milliseconds: 150), () {
       if (_disposed) return;
@@ -744,6 +780,7 @@ class BtEditorHub extends ChangeNotifier {
   /// الخروج من الجدول: تُحفظ الخلية المفتوحة ويزول التحديد.
   void exit() {
     if (sel == null && !editing) return;
+    closeFormula(refocus: false);
     stopEditing(notify: false);
     sel = null;
     dragTableId = null;
@@ -759,7 +796,11 @@ class BtEditorHub extends ChangeNotifier {
   void onMainFocus(bool hasPrimaryFocus) {
     if (!hasPrimaryFocus || sel == null) return;
     if (_activating) {
-      editing ? _focusCellSoon(arm: false) : _focusTableSoon(arm: false);
+      if (formula != null) {
+        _focusFormulaSoon(arm: false);
+      } else {
+        editing ? _focusCellSoon(arm: false) : _focusTableSoon(arm: false);
+      }
       return;
     }
     exit();
@@ -802,7 +843,7 @@ class BtEditorHub extends ChangeNotifier {
   void _focusTableSoon({bool arm = true}) {
     if (arm) _arm();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_disposed && sel != null && !editing) tableFocus.requestFocus();
+      if (!_disposed && sel != null && !editing && formula == null) tableFocus.requestFocus();
     });
   }
 
@@ -813,7 +854,7 @@ class BtEditorHub extends ChangeNotifier {
     commitCell();
     final t = locate(s.tableId)?.table;
     if (t == null) return;
-    final order = [for (final m in t.masters) if (_editable(m.cell)) m];
+    final order = [for (final m in t.masters) if (_editable(t, m.cell)) m];
     final head = t.ownerOf(s.hr, s.hc);
     final i = order.indexWhere((m) => m.cell.id == head?.cell.id);
     if (!backward) {
@@ -825,7 +866,7 @@ class BtEditorHub extends ChangeNotifier {
           onMessage?.call('بلغ الجدول الحدّ الأعلى للصفوف (600).');
         } else if (_replace(s.tableId, BtOps.insertRow(t, at))) {
           final nt = locate(s.tableId)!.table;
-          final first = [for (final m in nt.masters) if (m.row == at && _editable(m.cell)) m];
+          final first = [for (final m in nt.masters) if (m.row == at && _editable(nt, m.cell)) m];
           // عمود الترقيم امتلأ وحده ⟵ تبدأ الكتابة في الخلية التي بعده
           final target = first.length > 1 && nt.numberingCol == first.first.col ? first[1] : (first.isEmpty ? null : first.first);
           if (target != null) {
@@ -853,6 +894,162 @@ class BtEditorHub extends ChangeNotifier {
 
   static bool _isTotalRow(BtTable t, int r) =>
       t.rows[r].cells.any((c) => c != null && (c.formula != null || c.words != null));
+
+  // ─────────────────────────── شريط المعادلة (ADR-060) ───────────────────────────
+  //
+  // 🔑 **المعادلة تُكتب في شريطٍ لا في الخلية** — الخلية تعرض الناتج وحده (كما يُطبع)، والنقر على أيّ خليةٍ والشريط مفتوح
+  //    **يُدرج مرجعها** بدل أن يفتحها، كالإكسل. والمراجع تُعرض بحروف الأعمدة وأرقام الصفوف وتُخزَّن بالمعرّفات.
+
+  BtFormulaSession? formula;
+
+  /// يفتح شريط المعادلة لخلية الرأس — بمعادلتها إن كانت، أو بمعادلة عمودها إن كانت خليةَ عمودٍ محسوب.
+  void openFormula() {
+    final s = sel;
+    final t = activeTable;
+    final head = headSlot;
+    if (s == null || t == null || head == null) return;
+    stopEditing(notify: false);
+    final colCalc = t.cols[head.col].calc;
+    final column = colCalc != null && _columnTargets(t).contains(head.cell.id);
+    final expr = column ? colCalc.expr : head.cell.calc?.expr;
+    formula?.dispose();
+    formula = BtFormulaSession(
+      tableId: t.id,
+      cellId: head.cell.id,
+      row: head.row,
+      col: head.col,
+      column: column,
+      text: expr == null ? '' : BtFormulaText.toDisplay(t, expr, column: column),
+      existing: expr != null,
+    )
+      ..text.addListener(_onFormulaTyped)
+      ..focus.addListener(_onFormulaFocus);
+    sel = BtSelection(t.id, head.row, head.col, head.row, head.col);
+    _focusFormulaSoon();
+    notifyListeners();
+  }
+
+  /// النقر على خلية والشريط مفتوح: يُدرج مرجعها عند المؤشّر — **ونقرةٌ تالية بلا كتابةٍ بينهما تستبدله** (تجرّب الخلايا
+  /// حتى تصيب، كما في الإكسل).
+  void formulaInsertRef(int r, int c) {
+    final f = formula;
+    final t = f == null ? null : locate(f.tableId)?.table;
+    final o = t?.ownerOf(r, c);
+    if (f == null || t == null || o == null) return;
+    final label = f.column ? btColumnLetter(o.col) : BtFormulaText.address(o.row, o.col);
+    final text = f.text.text;
+    var sel0 = f.text.selection;
+    if (!sel0.isValid) sel0 = TextSelection.collapsed(offset: text.length);
+    var start = sel0.start, end = sel0.end;
+    final last = f.lastRef;
+    if (last != null && sel0.isCollapsed && start == last.end && f.lastRefText == text) start = last.start;
+    final next = text.replaceRange(start, end, label);
+    f.text.value = TextEditingValue(text: next, selection: TextSelection.collapsed(offset: start + label.length));
+    f.lastRef = TextRange(start: start, end: start + label.length);
+    f.lastRefText = next;
+    f.error = null;
+    _focusFormulaSoon();
+    notifyListeners();
+  }
+
+  /// يُدرج عمليةً أو قوساً عند المؤشّر (أزرار الشريط).
+  void formulaInsert(String op) {
+    final f = formula;
+    if (f == null) return;
+    final text = f.text.text;
+    final sel0 = f.text.selection.isValid ? f.text.selection : TextSelection.collapsed(offset: text.length);
+    final piece = op == '(' || op == ')' ? op : ' $op ';
+    final next = text.replaceRange(sel0.start, sel0.end, piece);
+    f.text.value = TextEditingValue(text: next, selection: TextSelection.collapsed(offset: sel0.start + piece.length));
+    f.error = null;
+    _focusFormulaSoon();
+    notifyListeners();
+  }
+
+  /// «للعمود كلّه» ⟷ «لهذه الخلية» — والمراجع المكتوبة تتحوّل معها (`B3 × C3` ⟷ `B × C`).
+  void toggleFormulaColumn() {
+    final f = formula;
+    final t = f == null ? null : locate(f.tableId)?.table;
+    if (f == null || t == null) return;
+    f.column = !f.column;
+    f.text.text = BtFormulaText.switchMode(f.text.text, toColumn: f.column, row: f.row);
+    final colCalc = t.cols[f.col].calc;
+    f.existing = f.column ? colCalc != null : t.findCell(f.cellId)?.cell.calc != null;
+    f.error = null;
+    _focusFormulaSoon();
+    notifyListeners();
+  }
+
+  /// يطبّق المعادلة — أو يُبقي الشريط مفتوحاً برسالة الخطأ.
+  bool applyFormula() {
+    final f = formula;
+    final t = f == null ? null : locate(f.tableId)?.table;
+    if (f == null || t == null) return false;
+    final String stored;
+    try {
+      stored = BtFormulaText.toStorage(t, f.text.text, column: f.column);
+    } on BtExprError catch (e) {
+      f.error = e.message;
+      notifyListeners();
+      return false;
+    }
+    final column = f.column, col = f.col, cellId = f.cellId;
+    closeFormula();
+    apply((t, _) => column ? BtOps.setColumnCalc(t, col, stored) : BtOps.setCalc(t, cellId, stored));
+    return true;
+  }
+
+  /// يُزيل المعادلة (الخلية أو العمود بحسب وضع الشريط) — ويبقى آخر ناتجٍ لها نصّاً.
+  void removeFormula() {
+    final f = formula;
+    if (f == null) return;
+    final column = f.column, col = f.col, cellId = f.cellId;
+    closeFormula();
+    apply((t, _) => column ? BtOps.setColumnCalc(t, col, null) : BtOps.setCalc(t, cellId, null));
+  }
+
+  Timer? _formulaTimer;
+
+  /// الكتابة في الشريط ⟵ المراجع الملوّنة على الجدول تتبعها (بعد توقّفٍ قصير كالكتابة في الخلية).
+  void _onFormulaTyped() {
+    _formulaTimer?.cancel();
+    _formulaTimer = Timer(const Duration(milliseconds: 120), () {
+      if (!_disposed && formula != null) notifyListeners();
+    });
+  }
+
+  void closeFormula({bool refocus = true}) {
+    final f = formula;
+    if (f == null) return;
+    formula = null;
+    _formulaTimer?.cancel();
+    f.text.removeListener(_onFormulaTyped);
+    f.focus.removeListener(_onFormulaFocus);
+    WidgetsBinding.instance.addPostFrameCallback((_) => f.dispose());
+    if (refocus) _focusTableSoon();
+    notifyListeners();
+  }
+
+  /// 🔴 **على الويب يُغلق المتصفّح اتصال الحقل بلوحة المفاتيح عند النقر على خلية** (blur الحقل المخفيّ ⟵ `connectionClosed` ⟵
+  /// `unfocus`) — فيسقط التركيز إلى نطاق الشاشة، وتضيع الكتابة بعدها، **والنقرة التالية تُخرج من الجدول** (كشفه المتصفّح الحقيقيّ:
+  /// المرجع الثاني حلّ محلّ الأوّل ثم أُغلق الجدول). ⟵ حين يفقد الحقل تركيزه **ولم يأخذه عنصرٌ آخر** (صار التركيز للنطاق نفسه) يعود
+  /// إليه. وإن أخذه حقلٌ آخر (الموضوع · الجهة) فذاك اختيار المستخدم — والشريط يبقى مفتوحاً بلا تركيز.
+  void _onFormulaFocus() {
+    final f = formula;
+    if (f == null || f.focus.hasFocus) return;
+    scheduleMicrotask(() {
+      if (_disposed || formula != f || f.focus.hasFocus) return;
+      final primary = FocusManager.instance.primaryFocus;
+      if (primary == null || primary is FocusScopeNode) _focusFormulaSoon();
+    });
+  }
+
+  void _focusFormulaSoon({bool arm = true}) {
+    if (arm) _arm();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_disposed) formula?.focus.requestFocus();
+    });
+  }
 
   // ─────────────────────────── لوحة المفاتيح ───────────────────────────
 
@@ -922,7 +1119,7 @@ class BtEditorHub extends ChangeNotifier {
     }
     if (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.numpadEnter || k == LogicalKeyboardKey.f2) {
       final h = t.ownerOf(s.hr, s.hc);
-      if (h != null && _editable(h.cell)) {
+      if (h != null && _editable(t, h.cell)) {
         sel = BtSelection(s.tableId, h.row, h.col, h.row, h.col);
         _beginEdit(h.cell);
         notifyListeners();
@@ -945,11 +1142,15 @@ class BtEditorHub extends ChangeNotifier {
       _move(t, s, d.$1, d.$2, extend: shift);
       return KeyEventResult.handled;
     }
-    // حرفٌ يُكتب ⟵ تُفتح الخلية بهذا الحرف بدل نصّها (كما في Excel)
+    // حرفٌ يُكتب ⟵ تُفتح الخلية بهذا الحرف بدل نصّها (كما في Excel) — و«=» يفتح شريط المعادلة
     final ch = e.character;
+    if (ch == '=') {
+      openFormula();
+      return KeyEventResult.handled;
+    }
     if (_printable(ch)) {
       final h = t.ownerOf(s.hr, s.hc);
-      if (h != null && _editable(h.cell)) {
+      if (h != null && _editable(t, h.cell)) {
         sel = BtSelection(s.tableId, h.row, h.col, h.row, h.col);
         _beginEdit(h.cell, typed: ch);
         notifyListeners();
@@ -1040,9 +1241,12 @@ class BtEditorHub extends ChangeNotifier {
     if (grid == null || sel == null) return;
     if (!_isGrid(grid)) {
       final text = grid.first.first.text;
-      applyRect((t, top, left, bottom, right) => BtOps.editCells(t, top, left, bottom, right, (c) {
-            if (_editable(c)) BtOps.setText(c, text);
-          }));
+      applyRect((t, top, left, bottom, right) {
+        final targets = BtFormulas.columnTargets(t);
+        return BtOps.editCells(t, top, left, bottom, right, (c) {
+          if (c.formula == null && c.words == null && c.calc == null && !targets.contains(c.id)) BtOps.setText(c, text);
+        });
+      });
       return;
     }
     _pasteGrid(grid, s.top, s.left);
@@ -1241,10 +1445,12 @@ class BtEditorHub extends ChangeNotifier {
     _main?.removeListener(_onMainChanged);
     _typingTimer?.cancel();
     _wordsTimer?.cancel();
+    _formulaTimer?.cancel();
     cell?.dispose();
     cellFocus?.dispose();
     _cellScroll?.dispose();
     tableFocus.dispose();
+    formula?.dispose();
     contentTick.dispose();
     activeNotifier.dispose();
     super.dispose();
@@ -1268,5 +1474,43 @@ class _OwnAction<T extends Intent> extends ContextAction<T> {
     final a = callingAction;
     if (a is ContextAction<T>) return a.invoke(intent, context);
     return a?.invoke(intent);
+  }
+}
+
+/// شريط المعادلة المفتوح (ADR-060): الخلية الهدف — أو عمودها في «العمود المحسوب» — والنصّ كما يُعرض.
+class BtFormulaSession {
+  BtFormulaSession({
+    required this.tableId,
+    required this.cellId,
+    required this.row,
+    required this.col,
+    required this.column,
+    required String text,
+    required this.existing,
+  }) : text = TextEditingController(text: text);
+
+  final String tableId;
+  final String cellId;
+  final int row, col;
+
+  /// «للعمود كلّه»: معادلةٌ واحدة لكل صفوف البند في العمود [col].
+  bool column;
+
+  /// للهدف معادلةٌ قائمة (فيظهر «إزالة المعادلة»).
+  bool existing;
+
+  final TextEditingController text;
+  final focus = FocusNode(debugLabel: 'bt-formula');
+
+  /// آخر مرجعٍ أُدرج بالنقر — تستبدله النقرة التالية ما لم يُكتب بينهما شيء.
+  TextRange? lastRef;
+  String? lastRefText;
+
+  /// رسالة رفض التطبيق.
+  String? error;
+
+  void dispose() {
+    text.dispose();
+    focus.dispose();
   }
 }

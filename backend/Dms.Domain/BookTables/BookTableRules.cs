@@ -76,8 +76,11 @@ public static partial class BookTableRules
         if (t.NumberingCol is { } nc && (nc < 0 || nc >= cols)) Fail("عمود الترقيم خارج الجدول.");
 
         foreach (var c in t.Cols)
+        {
             if (string.IsNullOrWhiteSpace(c.Id) || double.IsNaN(c.Weight) || double.IsInfinity(c.Weight) || c.Weight <= 0 || c.Weight > 10_000)
                 Fail("عرض عمودٍ غير صالح.");
+            if (c.Calc is { } cc) CheckExpr(cc.Expr, "معادلة العمود", Fail);
+        }
         if (t.Cols.Select(c => c.Id).Distinct().Count() != cols) Fail("عمودان بالمعرّف نفسه.");
         if (t.Rows.Any(r => string.IsNullOrWhiteSpace(r.Id)) || t.Rows.Select(r => r.Id).Distinct().Count() != rows)
             Fail("صفّان بالمعرّف نفسه أو صفٌّ بلا معرّف.");
@@ -118,6 +121,14 @@ public static partial class BookTableRules
                     Fail($"صيغة جمعٍ غير صالحة (الصفّ {r + 1}).");
                 if (cell.Formula is not null && cell.Words is not null)
                     Fail("الخلية لا تكون جمعاً وكتابةً بالحروف معاً.");
+                if (cell.Calc is { } calc)
+                {
+                    // ADR-060: معادلةٌ تُقرأ بحدودها — ومرجعٌ إلى خليةٍ حُذفت **ليس رفضاً** بل خطأٌ ظاهر يمنع الاعتماد وحده،
+                    // فتُحفظ المسوّدة ويُصحَّح لاحقاً (قرار المالك).
+                    if (cell.Formula is not null || cell.Words is not null)
+                        Fail($"الخلية لا تكون معادلةً وجمعاً أو كتابةً بالحروف معاً (الصفّ {r + 1}).");
+                    CheckExpr(calc.Expr, $"معادلة الخلية (الصفّ {r + 1}، العمود {c + 1})", Fail);
+                }
             }
         }
 
@@ -129,6 +140,31 @@ public static partial class BookTableRules
             if (!Currencies.Contains(w.Currency)) Fail("عملة «كتابة بالحروف» غير معروفة.");
             if ((w.Prefix?.Length ?? 0) > MaxWordsAffixChars || (w.Suffix?.Length ?? 0) > MaxWordsAffixChars)
                 Fail("نصّ «قبل» أو «بعد» المبلغ كتابةً أطول من اللازم.");
+        }
+    }
+
+    private static void CheckExpr(string? expr, string what, Action<string> fail)
+    {
+        try { TableExpression.Parse(expr); }
+        catch (ValidationException ex) { fail($"{what}: {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// 🔒 **لا يُعتمد كتابٌ في جدوله معادلةٌ خاطئة** (ADR-060، قرار المالك): قسمةٌ على صفر · مرجعٌ إلى نصٍّ أو إلى خليةٍ حُذفت ·
+    /// معادلةٌ دائرية — فلا يُطبع كتابٌ رسميٌّ بـ«#خطأ». **والمسوّدة تُحفظ عادياً**، والحارس يُنادى عند الاعتماد والتعديل بعده وحدهما.
+    /// </summary>
+    public static void EnsureNoFormulaErrors(string? bodyHtml)
+    {
+        var tables = ValidateBody(bodyHtml);
+        for (var i = 0; i < tables.Count; i++)
+        {
+            var t = tables[i];
+            var computed = TableFormulas.Evaluate(t);
+            for (var r = 0; r < t.Rows.Count; r++)
+                for (var c = 0; c < t.Rows[r].Cells.Count; c++)
+                    if (t.Rows[r].Cells[c] is { } cell && computed.TryGetValue(cell.Id, out var v) && v.Error is { } code)
+                        throw new ValidationException(
+                            $"الجدول {i + 1}، الخلية {TableFormulas.ColumnLetter(c)}{r + 1}: {TableFormulas.ErrorMessage(code)} — صحّح المعادلة قبل الاعتماد.");
         }
     }
 

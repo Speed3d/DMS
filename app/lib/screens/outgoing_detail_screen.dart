@@ -790,10 +790,18 @@ class _ReplyTargetsScreenState extends ConsumerState<_ReplyTargetsScreen> {
                             title: Text(b.incomingNumber ?? '#${b.incomingId}',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w700, fontSize: 13.5)),
-                            subtitle: Text(b.subject,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 12, color: muted)),
+                            // الموضوع هو ما يقرؤه المعتمِد ليقرّر الربط — أكبر وبلون النصّ الكامل لا الباهت (طلب المالك 2026-10-13)
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(b.subject,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 15,
+                                      height: 1.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.onSurface)),
+                            ),
                           );
                         },
                       );

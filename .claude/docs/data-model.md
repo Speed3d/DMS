@@ -95,6 +95,10 @@
   `<div data-dms-table="JSON مُهرَّب">` (نموذج `v: 1` بـ`html` كل خلية) — والخادم يقرأ النموذج (`Dms.Domain/BookTables/BookTableCodec`)
   ويفحصه (`BookTableRules`: 30 عموداً · 600 صفّ · 25 جدولاً) ويعيد حساب الجمع عند كل طباعة. حدّ المتن (`OutgoingContentLimits`):
   `BodyHtml` ≤ 4M حرف · `BodyJson` ≤ 6M.
+- **معادلات الجداول (ADR-060 — بلا مهاجرة)**: حقلٌ في JSON الجدول نفسه — **`calc: { expr }`** على الخلية (`CellCalc`) **وعلى العمود**
+  (`cols[i].calc` — «عمودٌ محسوب» يسري على كل صفوف البنود). **المرجع معرّفٌ لا موضع**: `{cellId}` في معادلة الخلية و`{colId}` في معادلة العمود ·
+  العمليات `+ - * /` (وتُقبل `× ÷ −`) والأقواس والأرقام (والهندية). الخلية لا تجمع `calc` مع `formula` أو `words`. **النصّ المحسوب لا يُخزَّن** —
+  يُعاد حسابه عند كل طباعة (`TableFormulas.Evaluate`)، والاعتماد يُمنع ما بقي فيه خطأ (`BookTableRules.EnsureNoFormulaErrors`).
 
 ### OutgoingBookType (أنواع الصادر — ADR-057، migration 33)
 `OutgoingBookTypeId, CompanyId, Name(100)` — فريدٌ على `(CompanyId, Name)` · فلترٌ عام بالشركة · **منفصلٌ عن `DocumentType` (أنواع الوارد)**.

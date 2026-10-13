@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../quill_html.dart';
 import 'book_table.dart';
+import 'table_formulas.dart';
 
 /// نوع البلوك المضمَّن في مستند Quill — والوسم في `BodyHtml` (ADR-057).
 const kDmsTableEmbed = 'dms-table';
@@ -15,7 +16,10 @@ const kDmsTableEmbed = 'dms-table';
 class BtJson {
   BtJson._();
 
-  static Map<String, dynamic> toJson(BtTable t, {bool forPrint = false}) => {
+  static Map<String, dynamic> toJson(BtTable t, {bool forPrint = false}) {
+    // خلايا العمود المحسوب نصّها يولّده الحساب كخلية الجمع — فتُرسَل للطباعة غلافَ تنسيقها فارغاً (ADR-060)
+    final targets = forPrint && t.cols.any((c) => c.calc != null) ? BtFormulas.columnTargets(t) : const <String>{};
+    return {
         'id': t.id,
         'v': BtTable.version,
         'dir': t.dir,
@@ -25,25 +29,29 @@ class BtJson {
         'headerRows': t.headerRows,
         'repeatHeader': t.repeatHeader,
         if (t.numberingCol != null) 'numberingCol': t.numberingCol,
-        'cols': [for (final c in t.cols) {'id': c.id, 'weight': c.weight}],
+        'cols': [
+          for (final c in t.cols) {'id': c.id, 'weight': c.weight, if (c.calc != null) 'calc': {'expr': c.calc!.expr}}
+        ],
         'rows': [
           for (final r in t.rows)
             {
               'id': r.id,
-              'cells': [for (final c in r.cells) c == null ? null : _cell(c, forPrint)],
+              'cells': [for (final c in r.cells) c == null ? null : _cell(c, forPrint, targets.contains(c.id))],
             }
         ],
       };
+  }
 
-  static Map<String, dynamic> _cell(BtCell c, bool forPrint) => {
+  static Map<String, dynamic> _cell(BtCell c, bool forPrint, bool columnTarget) => {
         'id': c.id,
         'rowSpan': c.rowSpan,
         'colSpan': c.colSpan,
         if (c.bg != null) 'bg': c.bg,
         'vAlign': c.vAlign,
-        if (forPrint) 'html': cellHtml(c) else 'delta': c.delta,
+        if (forPrint) 'html': cellHtml(c, computed: columnTarget) else 'delta': c.delta,
         if (!forPrint && c.textStyle != null) 'textStyle': c.textStyle,   // للمحرّر وحده
         if (c.formula != null) 'formula': {'type': c.formula!.type, 'col': c.formula!.col},
+        if (c.calc != null) 'calc': {'expr': c.calc!.expr},
         if (c.words != null)
           'words': {
             'sourceCellId': c.words!.sourceCellId,
@@ -59,9 +67,11 @@ class BtJson {
   /// ويُطبع المجموع **رفيعاً صغيراً** وهو في المحرّر وفي نموذج المالك **عريضٌ بحجم 14** (كشفته فاتورة المالك مبنيّةً بعمليات المحرّر).
   /// الآن تُرسَل **غلافَ تنسيقها فارغاً** (`<p …><strong><span style="font-size: 14pt"></span></strong></p>`) — والخادم يُدرج الرقم في
   /// أعمق وسمٍ فارغ (`TableFormulas.WithText`) فيرثه كاملاً.
-  static String cellHtml(BtCell c) {
+  ///
+  /// والمعادلة وخلية العمود المحسوب ([computed]) كذلك (ADR-060).
+  static String cellHtml(BtCell c, {bool computed = false}) {
     final style = c.textStyle;
-    if ((c.formula != null || c.words != null) && c.isEmpty && style != null && style.isNotEmpty) {
+    if ((c.formula != null || c.words != null || c.calc != null || computed) && c.isEmpty && style != null && style.isNotEmpty) {
       Map<String, dynamic>? block;
       for (final op in c.delta) {
         final a = op['attributes'];
@@ -93,7 +103,11 @@ class BtJson {
       numberingCol: (j['numberingCol'] as num?)?.toInt(),
       cols: [
         for (final c in (j['cols'] as List? ?? const []))
-          BtCol(id: (c as Map)['id'] as String? ?? btNewId('k'), weight: (c['weight'] as num?)?.toDouble() ?? 1),
+          BtCol(
+            id: (c as Map)['id'] as String? ?? btNewId('k'),
+            weight: (c['weight'] as num?)?.toDouble() ?? 1,
+            calc: _calcFrom(c['calc']),
+          ),
       ],
       rows: [
         for (final r in (j['rows'] as List? ?? const []))
@@ -117,6 +131,7 @@ class BtJson {
       vAlign: j['vAlign'] as String? ?? 'middle',
       delta: delta == null || delta.isEmpty ? null : delta,
       textStyle: (j['textStyle'] as Map?)?.cast<String, dynamic>(),
+      calc: _calcFrom(j['calc']),
       formula: f == null ? null : BtFormula(type: f['type'] as String? ?? 'sum', col: (f['col'] as num?)?.toInt() ?? 0),
       words: w == null
           ? null
@@ -127,6 +142,11 @@ class BtJson {
               suffix: w['suffix'] as String?,
             ),
     );
+  }
+
+  static BtCalc? _calcFrom(Object? j) {
+    final expr = j is Map ? j['expr'] : null;
+    return expr is String && expr.trim().isNotEmpty ? BtCalc(expr) : null;
   }
 
   /// نصّ البلوك المضمَّن في Quill — JSON كامل بـDelta الخلايا.

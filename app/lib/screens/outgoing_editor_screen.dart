@@ -24,6 +24,7 @@ import '../widgets/book_paper.dart';
 import '../widgets/book_table/bt_dialogs.dart';
 import '../widgets/book_table/bt_editor_hub.dart';
 import '../widgets/book_table/bt_table_editor.dart';
+import '../widgets/book_table/bt_formula_bar.dart';
 import '../widgets/book_table/bt_table_toolbar.dart';
 import '../widgets/book_table/bt_table_view.dart';
 import '../widgets/custom_card.dart';
@@ -796,19 +797,32 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
             Expanded(
               child: TabBarView(
                 children: [
-                  ListView(
-                    controller: _narrowScroll,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  Column(
                     children: [
-                      _financialBar(),
-                      const SizedBox(height: 16),
-                      ..._panel(refs),
-                      const SizedBox(height: 16),
-                      _HeightChange(onChange: (d) => _keepPaperStill(_narrowScroll, d), child: _toolbar()),
-                      _paperCaption(),
-                      Container(color: _desk(context), padding: const EdgeInsets.all(12), child: _paper()),
-                      const SizedBox(height: 16),
-                      _errorAndSave(),
+                      // شريط المعادلة مثبَّتٌ فوق القائمة (كشريط الإكسل) — لا يتحرّك الجدول تحته مع الكتابة
+                      ListenableBuilder(
+                        listenable: _tables,
+                        builder: (context, _) => _tables.formula == null
+                            ? const SizedBox.shrink()
+                            : Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 0), child: BtFormulaBar(hub: _tables)),
+                      ),
+                      Expanded(
+                        child: ListView(
+                          controller: _narrowScroll,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          children: [
+                            _financialBar(),
+                            const SizedBox(height: 16),
+                            ..._panel(refs),
+                            const SizedBox(height: 16),
+                            _HeightChange(onChange: (d) => _keepPaperStill(_narrowScroll, d), child: _toolbar(formulaBar: false)),
+                            _paperCaption(),
+                            Container(color: _desk(context), padding: const EdgeInsets.all(12), child: _paper()),
+                            const SizedBox(height: 16),
+                            _errorAndSave(),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                   Padding(padding: const EdgeInsets.all(16), child: _previewPane()),
@@ -847,7 +861,10 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
     });
   }
 
-  Widget _toolbar() {
+  /// [formulaBar]: شريط المعادلة تحت شريط الجدول — في العرض الواسع (الشريط ثابتٌ فوق الورقة). وفي الضيّق يُثبَّت تحت التبويبين
+  /// خارج القائمة (`_narrow`): 🔴 الحقل المركَّز يجرّ القائمة إليه مع كل حرف (`showOnScreen`) فيتحرّك الجدول تحت الفأرة وتخطئ
+  /// النقرة التالية خليتها (كشفه المتصفّح الحقيقيّ).
+  Widget _toolbar({bool formulaBar = true}) {
     final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
@@ -893,6 +910,7 @@ class _OutgoingEditorScreenState extends ConsumerState<OutgoingEditorScreen> {
                 ],
               ),
               if (_tables.active) BtTableToolbar(hub: _tables),
+              if (formulaBar && _tables.formula != null) BtFormulaBar(hub: _tables),
             ],
           );
         },

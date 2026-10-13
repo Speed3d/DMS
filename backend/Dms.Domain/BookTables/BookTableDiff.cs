@@ -56,7 +56,7 @@ public static class BookTableDiff
             if (addedCols > 0) parts.Add($"أُضيف {Count(addedCols, "عمود", "عمودان", "أعمدة", "عموداً")}");
             if (removedCols > 0) parts.Add($"حُذف {Count(removedCols, "عمود", "عمودان", "أعمدة", "عموداً")}");
 
-            int textChanged = 0, styleChanged = 0;
+            int textChanged = 0, styleChanged = 0, calcChanged = 0;
             var mergeChanged = false;
             for (var r = 0; r < a.Rows.Count; r++)
             {
@@ -74,6 +74,7 @@ public static class BookTableDiff
                         continue;
                     }
                     if (ac.RowSpan != old.RowSpan || ac.ColSpan != old.ColSpan) mergeChanged = true;
+                    if (!Equals(ac.Calc, old.Calc)) calcChanged++;   // ADR-060 — مستقلٌّ عن النصّ (المعادلة تُفرغ نصّ خليتها)
 
                     var at = BookTableCodec.PlainText(ac.Html);
                     var bt = BookTableCodec.PlainText(old.Html);
@@ -92,7 +93,11 @@ public static class BookTableDiff
 
             if (textChanged > 0) parts.Add($"تغيّرت {Count(textChanged, "خلية", "خليتان", "خلايا", "خلية")}");
             if (styleChanged > 0) parts.Add($"تنسيق {Count(styleChanged, "خلية", "خليتين", "خلايا", "خلية")}");
+            if (calcChanged > 0) parts.Add($"معادلة {Count(calcChanged, "خلية", "خليتين", "خلايا", "خلية")}");
             if (mergeChanged) parts.Add("دمج الخلايا");
+            // ADR-060: معادلة عمودٍ أُضيفت أو تغيّرت أو أُزيلت
+            if (a.Cols.Any(col => b.Cols.FirstOrDefault(x => x.Id == col.Id) is { } bcol && !Equals(bcol.Calc, col.Calc)))
+                parts.Add("معادلة عمود");
             if (ShapeChanged(b, a)) parts.Add("شكل الجدول");
             if (parts.Count > 0) summaries.Add($"الجدول {n}: {string.Join(" · ", parts)}");
         }

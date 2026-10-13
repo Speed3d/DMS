@@ -79,10 +79,12 @@
 ```
 الواجهة (Flutter)                                   الخادم (.NET)
 core/book_table/   النموذج Bt* · BtOps (نقيّة)      Dms.Domain/BookTables/  BookTable · BookTableCodec ·
-                   BtFormulas · BtJson · BtPaste                            BookTableRules · TableFormulas ·
-widgets/book_table/ BtGrid (دمجٌ عموديّ) ·                                  ArabicNumberWords · BookTableDiff
-                   BtTableView · BtEditorHub ·      Dms.Infrastructure/Documents/BookTablePrintMapper
-                   BtTableEditor · Toolbar · Dialogs  ⟵ يجسر (Documents لا يعرف Domain)
+                   BtFormulas · BtJson · BtPaste ·                          BookTableRules · TableFormulas ·
+                   table_calc (BtRational ·                                 ArabicNumberWords · BookTableDiff ·
+                   BtExpression) · BtFormulaText                            Rational · TableExpression (ADR-060)
+widgets/book_table/ BtGrid (دمجٌ عموديّ) ·          Dms.Infrastructure/Documents/BookTablePrintMapper
+                   BtTableView · BtEditorHub ·        ⟵ يجسر (Documents لا يعرف Domain)
+                   BtTableEditor · Toolbar · Dialogs · BtFormulaBar
 screens/outgoing_editor_screen  (الشاشة الواحدة)    Dms.Documents/  PrintTable · HtmlToQuestPdf (فقراتٌ مشتركة +
 widgets/book_paper · book_pdf_view                                  جداول) · PdfGenerator · Word/{WordExporter,
                                                                     WordHtml, WordTables, WordImages}
@@ -90,7 +92,12 @@ widgets/book_paper · book_pdf_view                                  جداول)
 - **مصدرٌ واحد بصورتين**: Delta المحرّر (`BodyJson`) يحمل الجدول **بـDelta كل خلية**، و`BodyHtml` يحمله **وسماً واحداً بـ`html` كل خلية**
   — والخادم لا يفهم Delta ولا يحتاج.
 - **الخادم حَكَم الطباعة**: يفحص كل جدولٍ في الإنشاء والتعديل والمعاينة (`ValidateBody`) **ويعيد حساب الجمع والحروف عند كل طباعة**.
-- **خلية الجمع والحروف** تُرسَل **غلافَ تنسيقها فارغاً** (`<p><strong><span style="font-size: 14pt"></span></strong></p>`) والخادم يُدرج
+- **المعادلات (ADR-060)**: `Rational`/`TableExpression` في `Dms.Domain/BookTables` **ومرآتهما** `BtRational`/`BtExpression` في
+  `core/book_table/table_calc.dart` — **كسرٌ دقيق في الطرفين** (`BigInteger` ⟷ `BigInt`) فيتطابق ما يُريه المحرّر وما يطبعه الخادم رقماً برقم،
+  **وأمثلةٌ مشتركة** (`backend/Dms.Tests/Fixtures/table-calc-vectors.json`) يقرؤها اختبار الطرفين. `TableFormulas.Evaluate` يحسب **بالاعتماد لا
+  بالموضع** (Σ والمعادلات والأعمدة المحسوبة والحروف) والدائرة خطأ. والمحرّر يعرض المراجع بحروف الأعمدة وأرقام الصفوف (`table_formula_text.dart`)
+  ويكتبها في **شريط المعادلة** (`BtFormulaBar` · `BtFormulaSession` في `BtEditorHub`): النقر على خليةٍ والشريط مفتوح **يُدرج مرجعها**.
+- **خلية الجمع والحروف** (والمعادلة وخلية العمود المحسوب) تُرسَل **غلافَ تنسيقها فارغاً** (`<p><strong><span style="font-size: 14pt"></span></strong></p>`) والخادم يُدرج
   النصّ في أعمق وسمٍ فارغ (`TableFormulas.WithText`) فيرثه.
 - **المحرّر (`BtEditorHub`)** يحمل التحديد والخلية المفتوحة **خارج شجرة Quill** — لأن Quill يعيد بناء البلوك مع كل تغيير — ومحرّرَ خليةٍ
   **واحداً** للجلسة ينتقل بمفتاحه العامّ. ⚠️ **ودروس محرّرٍ داخل محرّر** (أفعالٌ «قابلة للتجاوز» · نقرةٌ «شفّافة» · `ignoreFocus` لا يعيد البناء ·
