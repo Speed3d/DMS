@@ -38,14 +38,15 @@ public sealed class PublicVerifyController(
     AppDbContext db,
     IOptions<QrSigningOptions> qr,
     IFileStorage storage,
-    IAuditService audit) : ControllerBase
+    IAuditService audit,
+    IPublicBookVerifier verifier) : ControllerBase
 {
     /// <summary>صفحة التحقق — `GET /v/{token}`.</summary>
     [EnableRateLimiting(RateLimitPolicies.PublicVerify)]
     [HttpGet("/v/{token}")]
     public async Task<IActionResult> Page(string token, CancellationToken ct)
     {
-        var view = await BuildAsync(token, ct);
+        var view = await verifier.EvaluateAsync(token, "فحصٌ عامّ", ClientIp(), ct);
 
         // ⚠️ **الردّ 200 في كل الحالات** — بما فيها التلاعب. صفحةُ خطأ 404 من المتصفّح
         //    تقول «الرابط معطوب» وهي رسالةٌ خاطئة: الرابط وصل، **والكتاب هو المشكوك فيه**.
@@ -92,88 +93,7 @@ public sealed class PublicVerifyController(
 
     // ─────────────────────────── المنطق ───────────────────────────
 
-    private sealed record VerifyView(
-        string Verdict,          // Genuine | Withdrawn | Tampered
-        string Title,
-        string Note,
-        string? Number,
-        string? Date,
-        string? Entity,
-        string? CompanyName,
-        int VersionNo,
-        string? Token);
-
-    private async Task<VerifyView> BuildAsync(string token, CancellationToken ct)
-    {
-        // 🔐 **الفشل قبل أي استعلام** — فرمزٌ مزوَّر لا يكشف إن كان الكتاب موجوداً.
-        if (!PublicLink.TryParse(token, qr.Value.PrivateKeyBase64, out var bookId))
-            return Tampered();
-
-        // ⚠️ **`IgnoreQueryFilters` مقصود**: الطلب مجهول، ولولاه لسقط فلترُ الشركة… ولا يسقط
-        //    فلترُ الحذف الناعم. والفرق بين «مزوَّر» و«مسحوب» **معلومةٌ يحتاجها المتحقِّق**،
-        //    فيُقرأ الكتاب ولو كان محذوفاً ثم يُقال له الصدق.
-        var book = await db.OutgoingBooks
-            .IgnoreQueryFilters()
-            .Where(b => b.OutgoingId == bookId)
-            .Select(b => new
-            {
-                b.OutgoingId, b.Number, b.Date, b.Status, b.IsDeleted,
-                b.QrContent, b.CompanyId, b.EntityId, b.GeneratedPdfBlobKey,
-            })
-            .FirstOrDefaultAsync(ct);
-
-        // رمزٌ سليم البصمة لكتابٍ لا وجود له = قاعدةٌ استُعيدت أو صفٌّ مُحي — لا تزوير.
-        if (book is null) return Withdrawn(null);
-
-        // 🔴 **يُتحقَّق من التوقيع المحفوظ لا من الرمز**: الرمز يثبت **أي كتابٍ** يُقصد،
-        //    والتوقيع يثبت أن بيانات الكتاب لم تُمسّ منذ اعتماده. حارسان لا واحد.
-        if (string.IsNullOrEmpty(book.QrContent)) return Tampered();
-
-        var signed = QrSigner.Verify(book.QrContent, qr.Value.PublicKeyBase64);
-        if (!signed.IsValid) return Tampered();
-
-        if (book.IsDeleted || book.Status != BookStatus.Final)
-            return Withdrawn(book.Number);
-
-        var company = await db.Companies.IgnoreQueryFilters()
-            .Where(c => c.CompanyId == book.CompanyId)
-            .Select(c => c.Name).FirstOrDefaultAsync(ct);
-
-        var entity = await db.Entities.IgnoreQueryFilters()
-            .Where(e => e.EntityId == book.EntityId)
-            .Select(e => e.Name).FirstOrDefaultAsync(ct);
-
-        // ⚠️ **عددُ الإصدارات يُعلَن** — فورقةٌ قديمة لكتابٍ عُدِّل بعد اعتماده لا تُقرأ
-        //    على أنها الأحدث. الصمتُ هنا يجعل الصفحة تكذب على من يقارن.
-        var versions = await db.DocumentVersions
-            .IgnoreQueryFilters()
-            .CountAsync(v => v.DocType == OwnerType.Outgoing && v.DocId == book.OutgoingId, ct);
-
-        audit.Add("VerifyScan", nameof(OutgoingBook), book.OutgoingId.ToString(),
-            $"فحصٌ عامّ للكتاب {book.Number} من {ClientIp()}", book.CompanyId);
-        await db.SaveChangesAsync(ct);
-
-        return new VerifyView(
-            "Genuine",
-            "تم إصدار هذا الكتاب فعلاً من الشركة",
-            "طابِق البيانات أدناه مع الورقة التي بين يديك.",
-            book.Number, book.Date.ToString("yyyy-MM-dd"), entity, company,
-            versions + 1,
-            // ⚠️ **الزرّ يغيب حين يُطفأ المفتاح** — لا يُعرض ما يردّ 404.
-            book.GeneratedPdfBlobKey is null || !qr.Value.AllowPublicPdfDownload ? null : token);
-    }
-
-    private static VerifyView Tampered() => new(
-        "Tampered",
-        "تم التلاعب بالكتاب",
-        "هذا الرمز لا يطابق أي كتابٍ صادرٍ عن الشركة. لا تعتمد على هذه الورقة.",
-        null, null, null, null, 0, null);
-
-    private static VerifyView Withdrawn(string? number) => new(
-        "Withdrawn",
-        "هذا الكتاب لم يعُد ضمن سجلّات الشركة",
-        "قد يكون سُحب أو أُلغي. راجِع الجهة المُصدِرة قبل الاعتماد عليه.",
-        number, null, null, null, 0, null);
+    // منطق الحكم في `PublicBookVerifier` (Infrastructure) — موضعٌ واحد لصفحة الهاتف وشاشة التحقق داخل النظام (ADR-061).
 
     private string ClientIp() =>
         HttpContext.Connection.RemoteIpAddress?.ToString() ?? "غير معروف";
@@ -182,7 +102,7 @@ public sealed class PublicVerifyController(
 
     private static string E(string? s) => WebUtility.HtmlEncode(s ?? "");
 
-    private static string RenderHtml(VerifyView v)
+    private static string RenderHtml(PublicVerdict v)
     {
         var (accent, glyph) = v.Verdict switch
         {

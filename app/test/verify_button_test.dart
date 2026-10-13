@@ -64,11 +64,12 @@ void main() {
     test('🔴 والشاشة تفرّق بين ثلاث حالات لا اثنتين', () {
       // توقيعٌ صحيحٌ لكتابٍ مسحوب **ليس «صحيحاً»** — ودمجُ الحالتين يُخفي معلومةً
       // يحتاجها من يقرّر الاعتماد على الورقة.
+      // ⚠️ منذ ADR-061 بنصّ صفحة الهاتف العامّة نفسه، والحكم من الخادم (`verdict`) — والنموذج يشتقّه من `foundInDb` لخادمٍ أقدم.
       final src = read('lib/screens/verify_screen.dart');
-      expect(src, contains('foundInDb'));
+      expect(read('lib/models.dart'), contains("foundInDb ? 'Genuine' : 'Withdrawn'"));
       expect(src, contains('تم التلاعب بالكتاب'));
       expect(src, contains('تم إصدار هذا الكتاب فعلاً من الشركة'));
-      expect(src, contains('ليس في السجلّ'));
+      expect(src, contains('هذا الكتاب لم يعُد ضمن سجلّات الشركة'));
     });
   });
 }

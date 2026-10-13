@@ -141,6 +141,43 @@ $other=PageAs "/v/$token" '198.51.100.99'
 if($other.S -eq 200){ Ok "🔐 وعنوانٌ آخر ما زال يُخدَم — العزل لكل IP لا للتطبيق" }
 else { Bad "عنوانٌ بريء رُدَّ بـ$($other.S) — الحدّ عامّ لا لكل IP" }
 
+Write-Host "`n=== التحقق برابط الختم داخل النظام — مسح الكاميرا (ADR-061) ===" -ForegroundColor Cyan
+# الختم المطبوع رابط — والكاميرا داخل النظام تقرؤه فتُرسله إلى /api/verify. يُحكم عليه بمنطق الصفحة العامّة نفسه.
+function VerifyAs($content,$ip){
+  $p=@{Uri="$Base/verify";Method='POST';ContentType="application/json; charset=utf-8";Headers=@{'X-Forwarded-For'=$ip}
+       Body=[Text.Encoding]::UTF8.GetBytes((@{qrContent=$content}|ConvertTo-Json -Compress))}
+  try{$r=Invoke-WebRequest @p -UseBasicParsing; return @{S=[int]$r.StatusCode;B=($r.Content|ConvertFrom-Json)}}
+  catch{$resp=$_.Exception.Response; return @{S=$(if($resp){[int]$resp.StatusCode}else{0});B=$null}}
+}
+$v=VerifyAs "$Root/v/$token" $runIp
+if($v.S -eq 200 -and $v.B.verdict -eq 'Genuine' -and $v.B.isValid -and $v.B.foundInDb -and $v.B.number -eq $detail.number){
+  Ok "رابط الختم (بلا حساب) ⇒ Genuine برقم الكتاب $($v.B.number)" } else { Bad "رابط الختم: $($v.S) $($v.B.verdict) $($v.B.number)" }
+if([string]::IsNullOrEmpty("$($v.B.amountInIqd)")){ Ok "🔐 وبلا مبلغ — كالصفحة العامّة (قرار المالك)" } else { Bad "المبلغ ظهر برابطٍ مجهول: $($v.B.amountInIqd)" }
+if("$($v.B.companyName)" -and "$($v.B.title)" -and "$($v.B.note)"){ Ok "والشركة والعنوان والملاحظة بنصّ الصفحة العامّة" } else { Bad "حقول الحكم ناقصة" }
+if($v.B.versionNo -ge 1){ Ok "ورقم الإصدار ($($v.B.versionNo))" } else { Bad "رقم الإصدار غائب" }
+$v=VerifyAs "  $Root/v/$token/  " $runIp
+if($v.B.verdict -eq 'Genuine'){ Ok "ورابطٌ بمسافاتٍ وشرطةٍ أخيرة (كما يأتي من الماسح) يُقرأ" } else { Bad "الرابط المنسَّق: $($v.B.verdict)" }
+$v=VerifyAs "https://other-host.example/v/$token" $runIp
+if($v.B.verdict -eq 'Genuine'){ Ok "والمضيف لا يُشترط — البصمة وحدها تحكم" } else { Bad "مضيفٌ آخر: $($v.B.verdict)" }
+$v=VerifyAs "$Root/v/AAAAAAAAAAAAAAAAAAAAAA" $runIp
+if($v.S -eq 200 -and $v.B.verdict -eq 'Tampered' -and -not $v.B.isValid -and -not $v.B.number){ Ok "🔐 ورمزٌ مزوَّر ⇒ Tampered بلا رقمٍ ولا بيانات" } else { Bad "المزوَّر: $($v.B.verdict) $($v.B.number)" }
+$v=VerifyAs "$($detail.qrContent)" $runIp
+if($v.S -eq 200 -and $v.B.isValid -and $v.B.foundInDb -and $v.B.verdict -eq 'Genuine'){ Ok "والمحتوى الموقّع الخامّ يعمل كما كان (ومعه الحكم)" } else { Bad "المحتوى الخامّ: $($v.S) $($v.B.verdict)" }
+$v=VerifyAs "DMS2|مزوَّر|x" $runIp
+if($v.S -eq 200 -and $v.B.verdict -eq 'Tampered'){ Ok "ومحتوى خامّ مزوَّر ⇒ Tampered" } else { Bad "الخامّ المزوَّر: $($v.B.verdict)" }
+$logs=@((Api GET "/audit?take=80" $null $admin $cid).B)
+$inApp=@($logs | Where-Object { $_.action -eq 'VerifyScan' -and $_.entityId -eq "$oid" })
+if($inApp.Count -ge 4){ Ok "وكلُّ فحصٍ برابطٍ مسجَّلٌ في سجلّ التدقيق ($($inApp.Count) مع فحوص الصفحة)" } else { Bad "فحوص الرابط غير مسجَّلة ($($inApp.Count))" }
+# حدّ الطلبات نفسه (30 في الدقيقة لكل عنوان) — بعنوانٍ يُحرَق وحده
+$vb='198.51.100.23'; $vc=@(); for($i=0;$i -lt 35;$i++){ $vc+=(VerifyAs "DMS2|x" $vb).S }
+if(@($vc | Where-Object { $_ -eq 429 }).Count -ge 1){ Ok "🔐 والنقطة المجهولة محدودةٌ لكل عنوان (429 بعد الحدّ)" } else { Bad "لا حدّ لطلبات /verify" }
+# كتابٌ حُذف بعد اعتماده ⟵ «لم يعُد ضمن السجلّات» لا «مزوَّر»
+$del=Api DELETE "/outgoing/$oid" $null $admin $cid
+if($del.S -in 200,204){
+  $v=VerifyAs "$Root/v/$token" $runIp
+  if($v.B.verdict -eq 'Withdrawn' -and $v.B.isValid -and -not $v.B.foundInDb){ Ok "وكتابٌ حُذف بعد اعتماده ⇒ Withdrawn (لا Tampered)" } else { Bad "المحذوف: $($v.B.verdict)" }
+} else { Write-Host "  (حذف المعتمد غير متاح هنا — $($del.S) — تُخطّى فحص Withdrawn)" -ForegroundColor DarkGray }
+
 Write-Host "`n=== النتيجة ===" -ForegroundColor Cyan
 Write-Host "نجح: $pass" -ForegroundColor Green
 Write-Host "فشل: $fail" -ForegroundColor $(if($fail -gt 0){'Red'}else{'Green'})

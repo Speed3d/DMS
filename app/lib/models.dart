@@ -1603,10 +1603,22 @@ class VerifyResult {
   final String? amountInIqd;
   final bool foundInDb;
 
+  /// الحكم بنصّ صفحة الهاتف العامّة (ADR-061): `Genuine` · `Withdrawn` · `Tampered` — وخادمٌ أقدم بلا الحقل يُشتقّ حكمه.
+  final String? verdictCode;
+  final String? title;
+  final String? note;
+  final String? companyName;
+
+  /// رقم الإصدار — أكبر من 1 يعني أن الكتاب عُدِّل بعد اعتماده.
+  final int? versionNo;
+
   VerifyResult({
     required this.isValid, required this.message, required this.foundInDb,
     this.number, this.date, this.entity, this.amountInIqd,
+    this.verdictCode, this.title, this.note, this.companyName, this.versionNo,
   });
+
+  String get verdict => verdictCode ?? (!isValid ? 'Tampered' : foundInDb ? 'Genuine' : 'Withdrawn');
 
   factory VerifyResult.fromJson(Map<String, dynamic> j) => VerifyResult(
         isValid: j['isValid'] ?? false,
@@ -1616,6 +1628,11 @@ class VerifyResult {
         entity: j['entity'],
         amountInIqd: j['amountInIqd'],
         foundInDb: j['foundInDb'] ?? false,
+        verdictCode: j['verdict'],
+        title: j['title'],
+        note: j['note'],
+        companyName: j['companyName'],
+        versionNo: (j['versionNo'] as num?)?.toInt(),
       );
 }
 
