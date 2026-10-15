@@ -7,7 +7,7 @@
 #>
 
 param(
-    [string]$Domain = "dms.nociraq.com"
+    [string]$Domain = "dms.denland.net"
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

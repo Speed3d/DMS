@@ -391,7 +391,7 @@
     <div class="config-card">
       <div class="config-field">
         <label class="config-label">اسم الدومين (Domain):</label>
-        <input type="text" id="cfgDomain" class="config-input" value="dms.nociraq.com">
+        <input type="text" id="cfgDomain" class="config-input" value="dms.denland.net">
       </div>
       <div class="config-field">
         <label class="config-label">خادم/مثيل SQL Server:</label>
@@ -509,7 +509,7 @@ Remove-Item -Path "C:\Windows\System32\config\systemprofile\.cloudflared" -Recur
       <div class="runner-box">
         <div class="runner-details">
           <div class="runner-title">⚡ تشغيل السكربت المؤتمت بالكامل (يفحص الحراس ويضغط تلقائياً):</div>
-          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\01-dev-build-and-pack.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>" -OutputDir "<span class="dyn-output">D:\DMS-نشر</span>"</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\01-dev-build-and-pack.ps1 -Domain "<span class="dyn-domain">dms.denland.net</span>" -OutputDir "<span class="dyn-output">D:\DMS-نشر</span>"</div>
         </div>
         <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\01-dev-build-and-pack.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot; -OutputDir &quot;' + getVal('cfgOutputDir') + '&quot;')">نسخ أمر السكربت</button>
       </div>
@@ -525,10 +525,10 @@ dotnet publish Dms.Api -c Release -r win-x64 --self-contained false -o "C:\temp\
 
 # 2. بناء الواجهة بالدومين المخبوز
 cd D:\DMS\app
-flutter build web --release --dart-define=API_BASE_URL=https://<span class="dyn-domain">dms.nociraq.com</span>/api
+flutter build web --release --dart-define=API_BASE_URL=https://<span class="dyn-domain">dms.denland.net</span>/api
 
 # 3. فحص الحراس
-Select-String -Path "D:\DMS\app\build\web\main.dart.js" -Pattern "<span class="dyn-domain">dms.nociraq.com</span>" -Quiet  # يجب True
+Select-String -Path "D:\DMS\app\build\web\main.dart.js" -Pattern "<span class="dyn-domain">dms.denland.net</span>" -Quiet  # يجب True
 Test-Path "C:\temp\dms-publish\ops\update-dms.ps1"                                              # يجب True
 Test-Path "C:\temp\dms-publish\appsettings.Development.json"                                    # يجب False
 
@@ -619,7 +619,7 @@ Expand-Archive -Path "<span class="dyn-drive">E:\</span>dms-app.zip" -Destinatio
       <div class="runner-box">
         <div class="runner-details">
           <div class="runner-title">⚡ تشغيل سكربت الفحص المسبق الشامل:</div>
-          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\03-trial-preflight.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>" -DbName "<span class="dyn-dbname">DmsTrial</span>"</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\03-trial-preflight.ps1 -Domain "<span class="dyn-domain">dms.denland.net</span>" -DbName "<span class="dyn-dbname">DmsTrial</span>"</div>
         </div>
         <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\03-trial-preflight.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot; -DbName &quot;' + getVal('cfgDbName') + '&quot;')">نسخ أمر السكربت</button>
       </div>
@@ -664,7 +664,7 @@ Expand-Archive -Path "<span class="dyn-drive">E:\</span>dms-app.zip" -Destinatio
       <div class="runner-box">
         <div class="runner-details">
           <div class="runner-title">⚡ تشغيل السكربت المؤتمت (يولد الأسرار ويضبط الصلاحيات ويفحص المهاجرات):</div>
-          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\04-trial-secrets-and-db.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>" -DbServer "<span class="dyn-dbserver">.</span>" -DbName "<span class="dyn-dbname">DmsTrial</span>"</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\04-trial-secrets-and-db.ps1 -Domain "<span class="dyn-domain">dms.denland.net</span>" -DbServer "<span class="dyn-dbserver">.</span>" -DbName "<span class="dyn-dbname">DmsTrial</span>"</div>
         </div>
         <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\04-trial-secrets-and-db.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot; -DbServer &quot;' + getVal('cfgDbServer') + '&quot; -DbName &quot;' + getVal('cfgDbName') + '&quot;')">نسخ أمر السكربت</button>
       </div>
@@ -824,7 +824,7 @@ icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
       <div class="runner-box">
         <div class="runner-details">
           <div class="runner-title">⚡ تشغيل سكربت النفق المتكامل وحل ثغرة الخدمة الفارغة:</div>
-          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\07-trial-tunnel-setup.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>"</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\07-trial-tunnel-setup.ps1 -Domain "<span class="dyn-domain">dms.denland.net</span>"</div>
         </div>
         <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\07-trial-tunnel-setup.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot;')">نسخ أمر السكربت</button>
       </div>
@@ -835,11 +835,11 @@ icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
           <button class="btn-copy" onclick="copyText(this.closest('.cmd-card').querySelector('pre').innerText)">نسخ القواعد</button>
         </div>
         <pre><code>ingress:
-  - hostname: <span class="dyn-domain">dms.nociraq.com</span>
+  - hostname: <span class="dyn-domain">dms.denland.net</span>
     path: "^/(api|v)(/|$)"
     service: http://localhost:5080
 
-  - hostname: <span class="dyn-domain">dms.nociraq.com</span>
+  - hostname: <span class="dyn-domain">dms.denland.net</span>
     service: http://localhost:80
 
   - service: http_status:404</code></pre>
@@ -878,7 +878,7 @@ icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
       <div class="runner-box">
         <div class="runner-details">
           <div class="runner-title">⚡ تشغيل الفحص النهائي الشامل:</div>
-          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\08-trial-verify-final.ps1 -Domain "<span class="dyn-domain">dms.nociraq.com</span>"</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File .\scripts\08-trial-verify-final.ps1 -Domain "<span class="dyn-domain">dms.denland.net</span>"</div>
         </div>
         <button class="btn btn-primary" onclick="copyText('powershell -ExecutionPolicy Bypass -File .\\scripts\\08-trial-verify-final.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot;')">نسخ أمر السكربت</button>
       </div>
@@ -887,7 +887,7 @@ icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
         <div class="guard-box">
           <div class="guard-title">🎯 قائمة التحقق الذهبية:</div>
           • الخدمات الثلاث (<code>Cloudflared, DmsApi, W3SVC</code>) بحالة <strong>Running + Automatic</strong>.<br>
-          • فتح <code>https://<span class="dyn-domain">dms.nociraq.com</span></code> من هاتف على بيانات 4G يعرض شاشة الدخول.<br>
+          • فتح <code>https://<span class="dyn-domain">dms.denland.net</span></code> من هاتف على بيانات 4G يعرض شاشة الدخول.<br>
           • الدخول بـ <code>admin</code> وكلمة المرور وتغييرها بنجاح.
         </div>
         <div class="guard-box" style="border-right-color: var(--cyan-primary);">
@@ -912,7 +912,7 @@ icacls "C:\DMS\app" /grant "IIS_IUSRS:(OI)(CI)(RX)"
   }
 
   function updateVariables() {
-    const domain = getVal('cfgDomain') || 'dms.nociraq.com';
+    const domain = getVal('cfgDomain') || 'dms.denland.net';
     const dbServer = getVal('cfgDbServer') || '.';
     const dbName = getVal('cfgDbName') || 'DmsTrial';
     const drive = getVal('cfgDrive') || 'E:\\';

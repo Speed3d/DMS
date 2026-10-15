@@ -15,7 +15,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 param(
-    [string]$Domain  = "dms.nociraq.com",
+    [string]$Domain  = "dms.denland.net",
     [string]$DbName  = "DmsTrial",
     [string]$ApiDir  = "C:\DMS\api",
     [string]$AppDir  = "C:\DMS\app",

@@ -7,7 +7,7 @@
 #>
 
 param(
-    [string]$Domain = "dms.nociraq.com",
+    [string]$Domain = "dms.denland.net",
     [string]$OutputDir = "D:\DMS-نشر",
     [string]$TempPublish = "C:\temp\dms-publish"
 )
