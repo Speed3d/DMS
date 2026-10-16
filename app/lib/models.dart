@@ -743,13 +743,21 @@ class BackupRecordModel {
   final String category;
   final String status;
   final String? note;
+
+  /// ملفّ النسخة على القرص (ADR-062) — `false` ⟵ «الملف مفقود»: لا تنزيل ولا استعادة، والحذف مسموح.
+  /// ⚠️ الخادم الأقدم لا يرسله ⟵ `true` (لا نُعلن فقداً لم يُقَس).
+  final bool fileExists;
   BackupRecordModel(this.id, this.createdAt, this.fileName, this.sizeBytes, this.type,
-      this.scope, this.category, this.status, this.note);
+      this.scope, this.category, this.status, this.note, {this.fileExists = true});
   factory BackupRecordModel.fromJson(Map<String, dynamic> j) => BackupRecordModel(
         j['backupRecordId'], parseInstant(j['createdAt']),
         j['fileName'] ?? '', j['sizeBytes'] ?? 0, j['type'] ?? 'Manual',
         j['scope'] ?? 'Full', j['category'] ?? 'Manual',
-        j['status'] ?? 'Success', j['note']);
+        j['status'] ?? 'Success', j['note'],
+        fileExists: j['fileExists'] ?? true);
+
+  /// تُنزَّل وتُستعاد؟ — ناجحةٌ **وملفّها موجود**.
+  bool get isUsable => status == 'Success' && fileExists;
 }
 
 /// ملفُّ نسخةٍ على القرص **لا يعرفه النظام** (ADR-059) — بعد استعادة نسخةٍ قديمة تختفي سجلّات ما أُخذ بعدها، فقد يكون
@@ -1092,16 +1100,33 @@ class BackupCoverage {
   final int maxAgeDays;
 
   /// `Ok` · `Soon` · `Urgent` · `Overdue` — وتصاعدها يُحدّد لون التنبيه.
+  /// (ADR-062) **الأشدّ** بين عمر النسخة الكاملة ([fullUrgency]) وتنبيهات الصحّة.
   final String urgency;
   final String message;
 
+  /// درجة عمر النسخة الكاملة وحده — الخادم الأقدم لا يرسله ⟵ [urgency].
+  final String fullUrgency;
+
+  /// نصوص التنبيهات بالشدّة (الجدولة متوقّفة · لا نسخة منذ أيام · ملفاتٌ مفقودة · عمر الكاملة).
+  final List<String> warnings;
+  final bool scheduleEnabled;
+  final int missingFiles;
+
   BackupCoverage({
     required this.urgency, required this.message, required this.maxAgeDays,
-    this.lastFullBackupAt, this.daysSince,
-  });
+    this.lastFullBackupAt, this.daysSince, String? fullUrgency,
+    this.warnings = const [], this.scheduleEnabled = true, this.missingFiles = 0,
+  }) : fullUrgency = fullUrgency ?? urgency;
 
   bool get isOk => urgency == 'Ok';
   bool get isOverdue => urgency == 'Overdue';
+
+  /// شارة القائمة: **عدد أيام الكاملة حين تكون هي السبب** — وإلا «!» (فلا يُقرأ «3» تأخّراً
+  /// والسبب جدولةٌ متوقّفة).
+  String get badge => (fullUrgency != 'Ok' && daysSince != null) ? '$daysSince' : '!';
+
+  /// كل التنبيهات سطراً سطراً — أو الرسالة وحدها من خادمٍ أقدم.
+  String get details => warnings.isEmpty ? message : warnings.join('\n');
 
   factory BackupCoverage.fromJson(Map<String, dynamic> j) => BackupCoverage(
         urgency: j['urgency'] ?? 'Overdue',
@@ -1109,6 +1134,10 @@ class BackupCoverage {
         maxAgeDays: j['maxAgeDays'] ?? 30,
         lastFullBackupAt: j['lastFullBackupAt'] == null ? null : DateTime.tryParse(j['lastFullBackupAt']),
         daysSince: j['daysSinceFullBackup'],
+        fullUrgency: j['fullUrgency'],
+        warnings: [for (final w in (j['warnings'] as List? ?? const [])) '$w'],
+        scheduleEnabled: j['scheduleEnabled'] ?? true,
+        missingFiles: j['missingFiles'] ?? 0,
       );
 }
 

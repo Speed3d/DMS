@@ -148,8 +148,13 @@ Expect "ولا عملية جارية الآن ⇒ 204" (Api GET "/system/jobs/cu
 Section "9) تغطية النسخ — تذكير النسخة الكاملة"
 $cov = Api GET "/backup/coverage" $null $tok $null
 Expect "نقطة التغطية تعمل" $cov.Status 200
-if ($cov.Body.urgency -eq "Ok") { Ok "التغطية سليمة بعد نسخة كاملة حديثة" }
-else { Bad "التغطية غير متوقّعة: $($cov.Body.urgency)" }
+# (ADR-062) عمر الكاملة في `fullUrgency`؛ و`urgency` الكلّية تضمّ صحّة النسخ — والجدولة هنا متوقّفة (افتراض التثبيت)
+#   فالمتوقَّع «Soon» بتنبيه الجدولة وحده، لا «Ok».
+if ($cov.Body.fullUrgency -eq "Ok") { Ok "عمر النسخة الكاملة سليم بعد نسخة كاملة حديثة" }
+else { Bad "عمر الكاملة غير متوقّع: $($cov.Body.fullUrgency)" }
+$expectAll = if ($cov.Body.scheduleEnabled) { "Ok" } else { "Soon" }
+Expect "   والدرجة الكلّية بحسب الجدولة (متوقّفة ⟵ Soon)" $cov.Body.urgency $expectAll
+if ([int]$cov.Body.missingFiles -eq 0) { Ok "   ولا ملفّ مفقود" } else { Bad "   ملفات مفقودة: $($cov.Body.missingFiles)" }
 
 # ───────────────── المرآة: نسخة كاملة يدوية إلى مسار خارجي ─────────────────
 # ⚠️ المرآة هي ما يحمي المرفقات فعلاً بعد أن صارت المجدولة «قاعدة فقط».

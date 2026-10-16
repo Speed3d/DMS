@@ -626,22 +626,29 @@ public sealed record TaskDetailReportDto(
     int AverageProgress, List<CountRowDto> ByStatus);
 
 // ----------------- Backup -----------------
-public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupScope Scope, RetentionCategory Category, BackupStatus Status, string? Note);
+/// <remarks><c>FileExists</c> (ADR-062): ملفّ النسخة على القرص — <c>false</c> ⟵ «الملف مفقود»: لا تنزيل ولا استعادة، والحذف مسموح.</remarks>
+public sealed record BackupRecordDto(int BackupRecordId, DateTime CreatedAt, int? CreatedByUserId, string FileName, long SizeBytes, BackupType Type, BackupScope Scope, RetentionCategory Category, BackupStatus Status, string? Note, bool FileExists = true);
 
-/// <summary>
-/// تغطية النسخ الاحتياطي — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة جديدة.
-/// </summary>
-/// <remarks>
-/// المجدولة صارت «قاعدة فقط» فهي لا تحمي المرفقات؛ الحماية من نسخة كاملة يدوية.
-/// <paramref name="Urgency"/>: <c>Ok</c> · <c>Soon</c> (٣ أيام) · <c>Urgent</c> (يوم/يومان) ·
-/// <c>Overdue</c> (تجاوزت الحدّ **أو لم تُؤخذ قط**).
-/// </remarks>
 /// <summary>ملفُّ نسخةٍ على القرص لا يعرفه النظام (ADR-059).</summary>
 public sealed record UnrecordedBackupDto(string FileName, long SizeBytes, DateTime ModifiedAtUtc, bool HasFiles,
     string? AppVersion, string? LastMigration, DateTime? CreatedAtUtc, string? Problem);
 
+/// <summary>
+/// تغطية النسخ الاحتياطي — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة جديدة، **وصحّة النسخ ككلّ** (ADR-062).
+/// </summary>
+/// <remarks>
+/// المجدولة صارت «قاعدة فقط» فهي لا تحمي المرفقات؛ الحماية من نسخة كاملة يدوية.
+/// <paramref name="FullUrgency"/>: <c>Ok</c> · <c>Soon</c> (٣ أيام) · <c>Urgent</c> (يوم/يومان) ·
+/// <c>Overdue</c> (تجاوزت الحدّ **أو لم تُؤخذ قط**).
+/// <paramref name="Urgency"/> (ADR-062): **الأشدّ** بينه وبين تنبيهات الصحّة — الجدولة متوقّفة (Soon) ·
+/// لا نسخة منذ أكثر من يومين (Urgent) · سجلّاتٌ ملفّها مفقود (Soon). و<paramref name="Warnings"/> نصوصُها
+/// بالشدّة، و<paramref name="Message"/> أوّلُها (فيبقى العميل الأقدم صادقاً).
+/// ⚠️ **والمفقود ملفُّه لا يُحسب نسخةً** في أيّ رقمٍ هنا.
+/// </remarks>
 public sealed record BackupCoverageDto(
-    DateTime? LastFullBackupAt, int? DaysSinceFullBackup, int MaxAgeDays, string Urgency, string Message);
+    DateTime? LastFullBackupAt, int? DaysSinceFullBackup, int MaxAgeDays, string Urgency, string Message,
+    string? FullUrgency = null, bool ScheduleEnabled = true, int? DaysSinceAnyBackup = null, int MissingFiles = 0,
+    IReadOnlyList<string>? Warnings = null);
 
 /// <summary>مسار المرآة — يُدخله المالك في كل مرة، **بلا افتراض** (قراره).</summary>
 public sealed record MirrorRequest(string TargetPath);

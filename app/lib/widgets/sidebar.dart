@@ -185,7 +185,7 @@ class Sidebar extends ConsumerWidget {
                 builder: (context, ref, child) {
                   final alert = backupAlertOf(ref.watch(backupCoverageProvider));
                   return _buildItem(8, Icons.security_rounded, 'النسخ الاحتياطي',
-                      badge: alert == null ? null : (alert.daysSince?.toString() ?? '!'),
+                      badge: alert?.badge,
                       badgeColor:
                           alert == null ? null : backupUrgencyColor(alert.urgency));
                 },
