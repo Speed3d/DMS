@@ -193,6 +193,8 @@ class _State extends ConsumerState<BackupScreen> {
     try {
       _schedule = await ref.read(apiClientProvider).updateBackupSchedule(_freq, _enabled, _hour);
       _info = 'تم حفظ الجدولة.';
+      // (ADR-062) «النسخ التلقائي متوقّف» يزول مع التفعيل فوراً.
+      ref.invalidate(backupCoverageProvider);
     } on ApiException catch (e) {
       _error = e.message;
     } finally {
@@ -255,8 +257,12 @@ class _State extends ConsumerState<BackupScreen> {
       builder: (c) => AlertDialog(
         title: const Text('حذف نسخة احتياطية'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Text('سيُحذف الأرشيف «${r.fileName}» (${_size(r.sizeBytes)}) نهائياً من الخادم.\n'
-            'لن يمكن الاستعادة منه بعد الحذف.'),
+        content: Text(r.status == 'Success' && !r.fileExists
+            // (ADR-062) لا ملفَّ يُحذف — السجلُّ وحده، وحذفه مسموحٌ دائماً.
+            ? 'ملف «${r.fileName}» مفقودٌ من القرص أصلاً، فهذه النسخة لا تُستعاد.\n'
+                'سيُحذف سجلّها من القائمة فقط.'
+            : 'سيُحذف الأرشيف «${r.fileName}» (${_size(r.sizeBytes)}) نهائياً من الخادم.\n'
+                'لن يمكن الاستعادة منه بعد الحذف.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
           FilledButton(
@@ -274,6 +280,8 @@ class _State extends ConsumerState<BackupScreen> {
       await ref.read(apiClientProvider).backupDelete(r.id);
       _info = 'تم حذف النسخة «${r.fileName}».';
       _list = await ref.read(apiClientProvider).backupList();
+      // التنبيه يعدّ الملفات المفقودة — فيتحدّث مع الحذف لا بعد التنقّل.
+      ref.invalidate(backupCoverageProvider);
     } on ApiException catch (e) {
       _error = e.message;
     } finally {
@@ -429,10 +437,19 @@ class _State extends ConsumerState<BackupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('تغطية المرفقات والأرشيف',
+                  Text(c.isOk ? 'النسخ الاحتياطي سليم' : 'تنبيه النسخ الاحتياطي',
                       style: TextStyle(fontWeight: FontWeight.bold, color: color)),
                   const SizedBox(height: 4),
-                  Text(c.message, style: const TextStyle(fontSize: 13, height: 1.6)),
+                  // (ADR-062) كل التنبيهات لا أوّلها — الجدولة المتوقّفة والملف المفقود لا يختبئان
+                  // خلف رسالة عمر النسخة الكاملة.
+                  if (c.warnings.length > 1)
+                    for (final w in c.warnings)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text('• $w', style: const TextStyle(fontSize: 13, height: 1.6)),
+                      )
+                  else
+                    Text(c.isOk ? c.message : c.details, style: const TextStyle(fontSize: 13, height: 1.6)),
                 ],
               ),
             ),
@@ -728,9 +745,34 @@ class _State extends ConsumerState<BackupScreen> {
           else
             ..._shown.map((r) => Card(
                   child: ListTile(
-                    leading: Icon(r.status == 'Success' ? Icons.check_circle : Icons.error,
-                        color: r.status == 'Success' ? Colors.green : Colors.red),
-                    title: Text(_dt(r.createdAt)),
+                    // 🔴 **«الملف مفقود» (ADR-062)** — سجلٌّ ملفّه غير موجود على القرص ليس نسخة: لا يُنزَّل
+                    //    ولا يُستعاد، ويُحذف سجلّه. كانت تظهر بعلامة نجاحٍ خضراء كأيّ نسخةٍ سليمة.
+                    leading: Icon(
+                        r.status != 'Success'
+                            ? Icons.error
+                            : r.fileExists ? Icons.check_circle : Icons.report_problem_rounded,
+                        color: r.status != 'Success'
+                            ? Colors.red
+                            : r.fileExists ? Colors.green : AppColors.warn),
+                    title: Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(_dt(r.createdAt)),
+                        if (r.status == 'Success' && !r.fileExists)
+                          Container(
+                            key: ValueKey('missing-${r.id}'),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.warn.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text('الملف مفقود',
+                                style: TextStyle(
+                                    color: AppColors.warn, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                      ],
+                    ),
                     // النطاق والتصنيف يوضّحان ماذا تتضمّن النسخة ولماذا يختلف حجمها.
                     subtitle: Text(
                         '${backupKindLabel(r)} • ${backupScopeLabel(r.scope)} • ${_size(r.sizeBytes)}'
@@ -740,13 +782,15 @@ class _State extends ConsumerState<BackupScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.download),
-                          tooltip: 'تنزيل',
-                          onPressed: (_busy || r.status != 'Success') ? null : () => _download(r),
+                          tooltip: r.isUsable || r.status != 'Success' ? 'تنزيل' : 'الملف مفقود — لا يُنزَّل',
+                          onPressed: (_busy || !r.isUsable) ? null : () => _download(r),
                         ),
                         IconButton(
                           icon: const Icon(Icons.restore, color: AppColors.danger),
-                          tooltip: 'استعادة هذه النسخة',
-                          onPressed: (_busy || r.status != 'Success') ? null : () => _restore(r),
+                          tooltip: r.isUsable || r.status != 'Success'
+                              ? 'استعادة هذه النسخة'
+                              : 'الملف مفقود — لا تُستعاد',
+                          onPressed: (_busy || !r.isUsable) ? null : () => _restore(r),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline),

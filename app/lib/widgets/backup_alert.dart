@@ -43,12 +43,14 @@ class BackupAlertIcon extends ConsumerWidget {
     if (alert == null) return const SizedBox.shrink();
 
     final color = backupUrgencyColor(alert.urgency);
-    final days = alert.daysSince;
+    // ⚠️ **الرقم لعمر النسخة الكاملة وحده** (ADR-062) — حين يكون السبب جدولةً متوقّفة أو ملفاً
+    //    مفقوداً لا يُعرض «3 يوم» فيُقرأ تأخّراً ليس هو.
+    final days = alert.fullUrgency != 'Ok' ? alert.daysSince : null;
 
     return Padding(
       padding: const EdgeInsetsDirectional.only(end: 8),
       child: Tooltip(
-        message: alert.message,
+        message: alert.details,
         child: Material(
           color: color.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),

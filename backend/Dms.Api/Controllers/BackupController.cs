@@ -18,7 +18,7 @@ public sealed class BackupController(
 {
     [HttpGet]
     public async Task<ActionResult<List<BackupRecordDto>>> List(CancellationToken ct)
-        => (await backup.ListAsync(ct)).Select(Map).ToList();
+        => (await backup.ListAsync(ct)).Select(r => Map(r, backup.FileExists(r))).ToList();
 
     /// <summary>حالة تغطية النسخ — عمر آخر نسخة **كاملة** ومدى إلحاح أخذ واحدة جديدة.</summary>
     /// <remarks>
@@ -32,23 +32,47 @@ public sealed class BackupController(
     public async Task<ActionResult<BackupCoverageDto>> Coverage(CancellationToken ct)
     {
         var records = await backup.ListAsync(ct);
+        var schedule = await backup.GetScheduleAsync(ct);
+
         // ⚠️ **المرفوعة من جهازٍ آخر لا تُحسب** (ADR-055) — التغطية سؤالٌ عن بيانات **هذا** الخادم،
         //    ونسخةٌ جاءت من غيره لا تحميها.
-        var lastFull = records
-            .Where(r => r.Scope == BackupScope.Full && r.Status == BackupStatus.Success && r.Type != BackupType.Uploaded)
-            .OrderByDescending(r => r.CreatedAt)
-            .FirstOrDefault();
+        // 🔴 **ولا ما اختفى ملفّه (ADR-062)** — كان سجلٌّ بلا ملفٍّ يُطمئن التنبيه على نسخةٍ لا تُستعاد.
+        var success = records.Where(r => r.Status == BackupStatus.Success).ToList();
+        var present = success.Where(backup.FileExists).ToList();
+        var missing = success.Count - present.Count;
+        var own = present.Where(r => r.Type != BackupType.Uploaded).OrderByDescending(r => r.CreatedAt).ToList();
+        var lastFull = own.FirstOrDefault(r => r.Scope == BackupScope.Full);
+        var lastAny = own.FirstOrDefault();
 
         var now = DateTime.UtcNow;
-        var urgency = BackupRetention.ClassifyFullBackupAge(lastFull?.CreatedAt, now);
+        var scheduleOn = schedule.Enabled && schedule.Frequency != BackupFrequency.Off;
+        var health = BackupHealth.Assess(lastFull?.CreatedAt, lastAny?.CreatedAt, scheduleOn, missing, now);
         var days = lastFull is null ? (int?)null : (int)(now - lastFull.CreatedAt).TotalDays;
+
+        // الترتيب بالشدّة: ما يضيع به العملُ أوّلاً.
+        var warnings = new List<string>();
+        if (health.Warnings.Contains(BackupHealth.Warning.Stale))
+            warnings.Add(health.DaysSinceAnyBackup is null
+                ? "⚠️ لا توجد أيّ نسخة احتياطية على الخادم — خذ نسخة الآن."
+                : $"⚠️ لم تُؤخذ أيّ نسخة احتياطية منذ {health.DaysSinceAnyBackup} يوماً.");
+        if (health.Warnings.Contains(BackupHealth.Warning.ScheduleOff))
+            warnings.Add("النسخ التلقائي متوقّف — فعّل الجدولة (يومي) من «الجدولة التلقائية» أدناه.");
+        if (health.Warnings.Contains(BackupHealth.Warning.MissingFiles))
+            warnings.Add($"{missing} من النسخ في القائمة ملفّها مفقودٌ من القرص — لا تُستعاد، واحذف سجلّها.");
+        var fullMessage = MessageFor(health.FullUrgency, days);
+        if (health.FullUrgency != BackupRetention.FullBackupUrgency.Ok) warnings.Add(fullMessage);
 
         return new BackupCoverageDto(
             lastFull?.CreatedAt,
             days,
             BackupRetention.FullBackupMaxAgeDays,
-            urgency.ToString(),
-            MessageFor(urgency, days));
+            health.Urgency.ToString(),
+            warnings.Count > 0 ? warnings[0] : fullMessage,
+            health.FullUrgency.ToString(),
+            scheduleOn,
+            health.DaysSinceAnyBackup,
+            missing,
+            warnings);
     }
 
     private static string MessageFor(BackupRetention.FullBackupUrgency u, int? days) => u switch
@@ -229,8 +253,10 @@ public sealed class BackupController(
         return PhysicalFile(path, "application/zip");
     }
 
-    private static BackupRecordDto Map(BackupRecord r) =>
-        new(r.BackupRecordId, r.CreatedAt, r.CreatedByUserId, r.FileName, r.SizeBytes, r.Type, r.Scope, r.Category, r.Status, r.Note);
+    // ⚠️ `fileExists` يمرّره القائمة وحدها — ما يُنشأ الآن (نسخة · رفع · إعادة) ملفُّه موجودٌ بالبناء.
+    private static BackupRecordDto Map(BackupRecord r, bool fileExists = true) =>
+        new(r.BackupRecordId, r.CreatedAt, r.CreatedByUserId, r.FileName, r.SizeBytes, r.Type, r.Scope, r.Category, r.Status, r.Note,
+            fileExists);
 
     private static BackupScheduleDto MapSchedule(BackupSchedule s) =>
         new(s.Frequency, s.Enabled, s.Hour, s.LastRunAt, s.NextRunAt);

@@ -21,6 +21,9 @@ public interface IBackupService
         CancellationToken ct = default, IJobProgress? progress = null);
 
     Task<List<BackupRecord>> ListAsync(CancellationToken ct = default);
+
+    /// <summary>هل ملفّ هذه النسخة موجودٌ على القرص؟ (ADR-062) — سجلٌّ بلا ملفٍّ ليس نسخة.</summary>
+    bool FileExists(BackupRecord rec);
     Task<BackupSchedule> GetScheduleAsync(CancellationToken ct = default);
     Task<BackupSchedule> UpdateScheduleAsync(UpdateScheduleInput input, CancellationToken ct = default);
 
@@ -1031,6 +1034,14 @@ public sealed class BackupService(
         return s;
     }
 
+    public bool FileExists(BackupRecord rec)
+    {
+        // ⚠️ الاسم يدخل في مسار ⇒ نمط النظام وحده، وإلا فالملف «مفقود» (لا نفحص مساراً خارج مجلد النسخ).
+        var name = Path.GetFileName(rec.FileName);
+        if (name != rec.FileName || !BackupFiles.IsBackupFileName(name)) return false;
+        return File.Exists(Path.Combine(paths.BackupDir, name));
+    }
+
     public async Task<(string path, string fileName)> GetFileAsync(int id, CancellationToken ct = default)
     {
         var rec = await db.BackupRecords.FirstOrDefaultAsync(r => r.BackupRecordId == id, ct)
@@ -1047,10 +1058,15 @@ public sealed class BackupService(
 
         // Hint: حارس أساسي — لا نترك النظام بلا أي نسخة صالحة للاستعادة.
         //       (النسخ الفاشلة لا تُحسب لأنها غير قابلة للاستعادة أصلاً.)
-        if (rec.Status == BackupStatus.Success)
+        // 🐛 **ولا السجلّات التي اختفى ملفّها (ADR-062)**: كان العدّ يشملها، فيُسمح بحذف النسخة الوحيدة
+        //    الحقيقية ما دام بجانبها سجلٌّ بلا ملف — **ويُمنع حذفُ سجلٍّ مفقود لأنه «الوحيد»**.
+        //    الآن: المفقود ملفُّه يُحذف دائماً، والموجود لا يُحذف إن لم يبقَ غيرُه موجوداً.
+        if (rec.Status == BackupStatus.Success && FileExists(rec))
         {
-            var successCount = await db.BackupRecords.CountAsync(r => r.Status == BackupStatus.Success, ct);
-            if (successCount <= 1)
+            var others = await db.BackupRecords
+                .Where(r => r.Status == BackupStatus.Success && r.BackupRecordId != rec.BackupRecordId)
+                .ToListAsync(ct);
+            if (!others.Any(FileExists))
                 throw new ConflictException("لا يمكن حذف النسخة الناجحة الوحيدة — خذ نسخة جديدة أولاً.");
         }
 

@@ -176,6 +176,43 @@ if(-not (Test-Path $BackupDir)){ Bad "مجلد النسخ غير موجود: $Ba
   Remove-Item $fresh, $foreign -Force -ErrorAction SilentlyContinue
 }
 
+Write-Host "`n=== ٧) سجلٌّ ملفّه مفقود · وتنبيه صحّة النسخ (ADR-062) ===" -ForegroundColor Cyan
+if(Test-Path $BackupDir){
+  # 🐛 على جهاز التطوير وُجد سجلّان بلا ملفّ يظهران «ناجحين» ويُحسبان في التغطية وفي حارس «الوحيدة».
+  $cov0=(Api GET "/backup/coverage" $null $admin).B
+  $lost=Join-Path $BackupDir 'backup-20200101-000010.zip'; Copy-Item $zip $lost; (Get-Item $lost).LastWriteTime=(Get-Date).AddHours(-1)
+  $adL=(Api POST "/backup/unrecorded/backup-20200101-000010.zip/adopt" $null $admin).B
+  $row=@((Api GET "/backup" $null $admin).B) | Where-Object { $_.backupRecordId -eq $adL.backupRecordId }
+  Expect "سجلٌّ ملفّه موجود ⟵ fileExists = true" $row.fileExists 'True'
+  Remove-Item $lost -Force
+  $row=@((Api GET "/backup" $null $admin).B) | Where-Object { $_.backupRecordId -eq $adL.backupRecordId }
+  Expect "🔴 حُذف ملفّه من القرص ⟵ fileExists = false" $row.fileExists 'False'
+  $other=@((Api GET "/backup" $null $admin).B) | Where-Object { $_.backupRecordId -ne $adL.backupRecordId -and $_.status -eq 'Success' } | Select-Object -First 1
+  if($other){ Expect "   والسليم بجانبه fileExists = true" $other.fileExists 'True' }
+  $cov=(Api GET "/backup/coverage" $null $admin).B
+  Expect "التغطية تعدّ المفقود (+1)" $cov.missingFiles ([int]$cov0.missingFiles + 1)
+  if(@($cov.warnings) -match 'مفقود'){ Ok "   وتنبيهٌ نصّيّ بالملف المفقود" } else { Bad "   التنبيهات: $($cov.warnings -join ' | ')" }
+  if($cov.urgency -ne 'Ok'){ Ok "   والدرجة ليست «سليم» ($($cov.urgency))" } else { Bad "   الدرجة Ok رغم الملف المفقود" }
+  Expect "لا يُستعاد ⟵ 404" (Api POST "/backup/$($adL.backupRecordId)/restore" @{confirmation='استعادة'} $admin).S 404
+  Expect "ولا يُنزَّل ⟵ 404" (Api GET "/backup/$($adL.backupRecordId)/download" $null $admin).S 404
+  Expect "ويُحذف سجلّه ⟵ 204" (Api DELETE "/backup/$($adL.backupRecordId)" $null $admin).S 204
+  Expect "   والتغطية تعود" (Api GET "/backup/coverage" $null $admin).B.missingFiles ([int]$cov0.missingFiles)
+
+  # الجدولة المتوقّفة تنبيه — والتفعيل يُزيله فوراً.
+  $sch0=(Api GET "/backup/schedule" $null $admin).B
+  [void](Api PUT "/backup/schedule" @{frequency='Off';enabled=$false;hour=2} $admin)
+  $cov=(Api GET "/backup/coverage" $null $admin).B
+  Expect "الجدولة متوقّفة ⟵ scheduleEnabled = false" $cov.scheduleEnabled 'False'
+  if(@($cov.warnings) -match 'متوقّف'){ Ok "   وتنبيه «النسخ التلقائي متوقّف»" } else { Bad "   لا تنبيه للجدولة" }
+  [void](Api PUT "/backup/schedule" @{frequency='Daily';enabled=$true;hour=2} $admin)
+  $cov=(Api GET "/backup/coverage" $null $admin).B
+  Expect "التفعيل ⟵ scheduleEnabled = true" $cov.scheduleEnabled 'True'
+  if(-not (@($cov.warnings) -match 'متوقّف')){ Ok "   وزال التنبيه" } else { Bad "   التنبيه باقٍ" }
+  if($null -ne $cov.daysSinceAnyBackup){ Ok "   وعمر آخر نسخة معروف ($($cov.daysSinceAnyBackup) يوم)" } else { Bad "   daysSinceAnyBackup فارغ ونسخةٌ أُخذت للتوّ" }
+  [void](Api PUT "/backup/schedule" @{frequency=$sch0.frequency;enabled=$sch0.enabled;hour=$sch0.hour} $admin)
+  Expect "🔐 التغطية للسوبر أدمن وحده — المجهول 401" (Api GET "/backup/coverage" $null $null).S 401
+}
+
 Write-Host "`n=== ٥) الرفع الصحيح ثم الاستعادة — سيناريو المالك ===" -ForegroundColor Cyan
 $u=UploadFile $zip "dev-machine-$mk.zip" $admin
 if($u.Chunks -gt 1){ Ok "رُفعت بـ$($u.Chunks) قطع" } else { Bad "قطعةٌ واحدة — لم يُختبر التعدّد" }

@@ -136,3 +136,66 @@ public class BackupSchedule
     public DateTime? LastRunAt { get; set; }
     public DateTime? NextRunAt { get; set; }
 }
+
+/// <summary>
+/// صحّة النسخ الاحتياطي ككلّ (ADR-062) — فوق تغطية النسخة الكاملة.
+/// </summary>
+/// <remarks>
+/// 🔴 **كان التنبيه يسأل سؤالاً واحداً: كم مضى على آخر نسخة كاملة؟** فبقي صامتاً في حالاتٍ
+/// ثلاث وُجدت فعلاً على جهاز التطوير (2026-10-15): **الجدولة متوقّفة** (والتثبيت الجديد يبدأ
+/// متوقّفاً) · **لا نسخةَ منذ عشرة أيام** · **وسجلّان ملفّاهما مفقودان من القرص** — وكان
+/// السجلُّ المفقود ملفُّه يُحسب «نسخةً كاملة» فيُطمئن التنبيه على ما لا يُستعاد.
+///
+/// ⚠️ **المفقود ملفُّه لا يُحسب نسخةً في أيّ موضع** — لا في التغطية ولا في «آخر نسخة»
+/// ولا في حارس «لا تحذف النسخة الوحيدة». **النسخة التي لا ملفَّ لها ليست نسخة.**
+/// </remarks>
+public static class BackupHealth
+{
+    /// <summary>بعد كم يوماً بلا أيّ نسخة يصير الأمر تنبيهاً (طلب المالك: «أكثر من يومين»).</summary>
+    public const int StaleAfterDays = 2;
+
+    public enum Warning { ScheduleOff, Stale, MissingFiles }
+
+    public sealed record Assessment(
+        BackupRetention.FullBackupUrgency Urgency,
+        BackupRetention.FullBackupUrgency FullUrgency,
+        IReadOnlyList<Warning> Warnings,
+        int? DaysSinceAnyBackup);
+
+    /// <param name="lastFullUtc">آخر نسخة كاملة ناجحة **ملفُّها موجود** (غير مرفوعة).</param>
+    /// <param name="lastAnyUtc">آخر نسخة ناجحة أيّاً كان نطاقها **ملفُّها موجود** (غير مرفوعة).</param>
+    /// <param name="scheduleOn">الجدولة مفعّلةٌ بتكرارٍ غير «متوقّف».</param>
+    /// <param name="missingFiles">عدد السجلّات الناجحة التي اختفى ملفّها من القرص.</param>
+    public static Assessment Assess(DateTime? lastFullUtc, DateTime? lastAnyUtc, bool scheduleOn,
+        int missingFiles, DateTime nowUtc)
+    {
+        var full = BackupRetention.ClassifyFullBackupAge(lastFullUtc, nowUtc);
+        var warnings = new List<Warning>();
+        var urgency = full;
+
+        if (!scheduleOn)
+        {
+            warnings.Add(Warning.ScheduleOff);
+            urgency = Max(urgency, BackupRetention.FullBackupUrgency.Soon);
+        }
+
+        // ⚠️ «لا نسخة قطّ» تنبيهٌ أيضاً — فشلٌ مغلق كالتغطية.
+        int? daysAny = lastAnyUtc is null ? null : (int)(nowUtc - lastAnyUtc.Value).TotalDays;
+        if (lastAnyUtc is null || (nowUtc - lastAnyUtc.Value).TotalDays > StaleAfterDays)
+        {
+            warnings.Add(Warning.Stale);
+            urgency = Max(urgency, BackupRetention.FullBackupUrgency.Urgent);
+        }
+
+        if (missingFiles > 0)
+        {
+            warnings.Add(Warning.MissingFiles);
+            urgency = Max(urgency, BackupRetention.FullBackupUrgency.Soon);
+        }
+
+        return new Assessment(urgency, full, warnings, daysAny);
+    }
+
+    private static BackupRetention.FullBackupUrgency Max(BackupRetention.FullBackupUrgency a, BackupRetention.FullBackupUrgency b)
+        => (int)a >= (int)b ? a : b;
+}
