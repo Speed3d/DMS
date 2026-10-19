@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -49,8 +51,23 @@ const List<({String status, String label, IconData icon})> _boardColumns = [
 class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
   /// المهمة المسحوبة الآن — لتُبرَز أعمدةُ الإفلات الصالحة وحدها.
   TaskListItem? _dragging;
+  Timer? _pollTimer;
 
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) ref.invalidate(unreadTaskNotificationsProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
 
   Future<void> _move(TaskListItem task, String to) async {
     if (task.status == to) return;
@@ -123,8 +140,11 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
     }
 
     final page = ref.watch(taskBoardProvider);
+    final unreadComments =
+        unreadTaskCommentCountsOf(ref.watch(unreadTaskNotificationsProvider));
 
     return page.when(
+      skipLoadingOnRefresh: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('$e')),
       data: (data) {
@@ -163,6 +183,7 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
                         col,
                         data.items.where((t) => t.status == col.status).toList(),
                         colWidth,
+                        unreadComments,
                       ),
                   ],
                 );
@@ -213,7 +234,7 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
   }
 
   Widget _column(({String status, String label, IconData icon}) col,
-      List<TaskListItem> items, double width) {
+      List<TaskListItem> items, double width, Map<int, int> unreadComments) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = TaskStatusPill.colorFor(col.status, isDark);
 
@@ -296,7 +317,8 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
                     : ListView.builder(
                         padding: const EdgeInsets.all(8),
                         itemCount: items.length,
-                        itemBuilder: (_, i) => _card(items[i], width),
+                        itemBuilder: (_, i) =>
+                            _card(items[i], width, unreadComments[items[i].taskId] ?? 0),
                       ),
               ),
             ],
@@ -306,14 +328,14 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
     );
   }
 
-  Widget _card(TaskListItem t, double columnWidth) {
-    final card = _CardBody(task: t);
+  Widget _card(TaskListItem t, double columnWidth, int unreadCount) {
+    final card = _CardBody(task: t, unreadCommentsCount: unreadCount);
 
     // مهمةٌ في حالةٍ نهائية لا تُسحَب — والسحبُ الذي لا يقود إلى شيء يُربك.
     if (t.nextStatuses.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: _tappable(t, Opacity(opacity: 0.75, child: card)),
+        child: _tappable(t, unreadCount, Opacity(opacity: 0.75, child: card)),
       );
     }
 
@@ -331,18 +353,22 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
           child: SizedBox(width: columnWidth - 16, child: card),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: card),
-        child: _tappable(t, card),
+        child: _tappable(t, unreadCount, card),
       ),
     );
   }
 
-  Widget _tappable(TaskListItem t, Widget child) => InkWell(
+  Widget _tappable(TaskListItem t, int unreadCount, Widget child) => InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: () async {
           await Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => TaskDetailScreen(taskId: t.taskId)));
+              builder: (_) => TaskDetailScreen(
+                    taskId: t.taskId,
+                    initialTab: unreadCount > 0 ? 1 : 0,
+                  )));
+          if (!mounted) return;
+          invalidateTasks(ref);
           ref.invalidate(taskBoardProvider);
-      ref.invalidate(tasksPageProvider);
         },
         child: child,
       );
@@ -351,7 +377,8 @@ class _TaskBoardScreenState extends ConsumerState<TaskBoardScreen> {
 /// بطاقة المهمة على اللوحة — مفصولةٌ لأنها تُرسَم **ثلاث مرات** (ثابتة · مسحوبة · شبح).
 class _CardBody extends StatelessWidget {
   final TaskListItem task;
-  const _CardBody({required this.task});
+  final int unreadCommentsCount;
+  const _CardBody({required this.task, this.unreadCommentsCount = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -372,10 +399,18 @@ class _CardBody extends StatelessWidget {
           Row(
             children: [
               TaskPriorityBadge(priority: task.priority, label: task.priorityLabel),
+              if (unreadCommentsCount > 0) ...[
+                const SizedBox(width: 6),
+                TaskUnreadCommentsBadge(count: unreadCommentsCount, compact: true),
+              ],
               const Spacer(),
               if (task.taskNumber != null)
-                Text(task.taskNumber!,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                Flexible(
+                  child: Text(task.taskNumber!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                ),
             ],
           ),
           const SizedBox(height: 6),

@@ -58,10 +58,11 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
 
     return Scaffold(
       body: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: EdgeInsets.all(isMobileScreen ? 16 : 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -162,10 +163,18 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       searchWidget,
-                      const SizedBox(height: 16),
-                      filterWidget,
-                      if (typeWidget != null) ...[const SizedBox(height: 16), typeWidget],
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
+                      if (typeWidget != null)
+                        Row(
+                          children: [
+                            Expanded(child: filterWidget),
+                            const SizedBox(width: 10),
+                            Expanded(child: typeWidget),
+                          ],
+                        )
+                      else
+                        filterWidget,
+                      const SizedBox(height: 10),
                       buttonWidget,
                     ],
                   );
@@ -199,7 +208,7 @@ class _OutgoingListScreenState extends ConsumerState<OutgoingListScreen> {
                 );
               }
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: isMobileScreen ? 16 : 32),
 
             // Hint: عرض البيانات داخل CustomCard كجدول
             Expanded(

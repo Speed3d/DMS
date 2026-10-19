@@ -424,42 +424,59 @@ class _State extends ConsumerState<BackupScreen> {
     //    **فيتناقض التنبيه مع نفسه فلا يُصدَّق**.
     final color = backupUrgencyColor(c.urgency);
     final icon = backupUrgencyIcon(c.urgency);
+    final isNarrow = MediaQuery.sizeOf(context).width < 550;
+
+    final actionButton = !c.isOk
+        ? FilledButton.icon(
+            onPressed: _busy ? null : _runMirror,
+            style: FilledButton.styleFrom(backgroundColor: color),
+            icon: const Icon(Icons.backup_rounded, size: 18),
+            label: const Text('خذ نسخة الآن'),
+          )
+        : null;
 
     return Card(
       color: color.withValues(alpha: 0.08),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(c.isOk ? 'النسخ الاحتياطي سليم' : 'تنبيه النسخ الاحتياطي',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: color)),
-                  const SizedBox(height: 4),
-                  // (ADR-062) كل التنبيهات لا أوّلها — الجدولة المتوقّفة والملف المفقود لا يختبئان
-                  // خلف رسالة عمر النسخة الكاملة.
-                  if (c.warnings.length > 1)
-                    for (final w in c.warnings)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Text('• $w', style: const TextStyle(fontSize: 13, height: 1.6)),
-                      )
-                  else
-                    Text(c.isOk ? c.message : c.details, style: const TextStyle(fontSize: 13, height: 1.6)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: color, size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(c.isOk ? 'النسخ الاحتياطي سليم' : 'تنبيه النسخ الاحتياطي',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+                      const SizedBox(height: 4),
+                      // (ADR-062) كل التنبيهات لا أوّلها — الجدولة المتوقّفة والملف المفقود لا يختبئان
+                      // خلف رسالة عمر النسخة الكاملة.
+                      if (c.warnings.length > 1)
+                        for (final w in c.warnings)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text('• $w', style: const TextStyle(fontSize: 13, height: 1.6)),
+                          )
+                      else
+                        Text(c.isOk ? c.message : c.details, style: const TextStyle(fontSize: 13, height: 1.6)),
+                    ],
+                  ),
+                ),
+                if (actionButton != null && !isNarrow) ...[
+                  const SizedBox(width: 12),
+                  actionButton,
                 ],
-              ),
+              ],
             ),
-            if (!c.isOk)
-              FilledButton.icon(
-                onPressed: _busy ? null : _runMirror,
-                style: FilledButton.styleFrom(backgroundColor: color),
-                icon: const Icon(Icons.backup_rounded, size: 18),
-                label: const Text('خذ نسخة الآن'),
-              ),
+            if (actionButton != null && isNarrow) ...[
+              const SizedBox(height: 12),
+              Align(alignment: AlignmentDirectional.centerEnd, child: actionButton),
+            ],
           ],
         ),
       ),

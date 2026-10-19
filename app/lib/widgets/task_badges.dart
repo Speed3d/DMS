@@ -181,3 +181,51 @@ class CaseFileBadge extends StatelessWidget {
     );
   }
 }
+
+/// شارةُ محادثةٍ (تعليقات) غير مقروءة على بطاقة المهمة.
+class TaskUnreadCommentsBadge extends StatelessWidget {
+  final int count;
+  final bool compact;
+
+  const TaskUnreadCommentsBadge({
+    super.key,
+    required this.count,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return const SizedBox.shrink();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? Colors.blueAccent.shade100 : Colors.blueAccent;
+    final label = compact
+        ? '$count'
+        : (count == 1 ? 'تعليق جديد' : 'تعليقات جديدة ($count)');
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.mark_chat_unread_rounded, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

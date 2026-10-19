@@ -362,6 +362,30 @@ void main() {
       expect(find.text('99+'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    for (final w in <double>[300, 340, 360]) {
+      testWidgets('📱 تظهر جميع أزرار الشريط العلوي في الوضع العمودي ($w بكسل) بلا فيض',
+          (tester) async {
+        await pumpTopbar(
+          tester,
+          width: w,
+          modules: const ['Outgoing', 'Incoming'],
+          unread: 3,
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull, reason: 'حدث فيض على شاشة الهاتف العمودية عند $w');
+        expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
+        expect(find.byIcon(Icons.qr_code_scanner), findsOneWidget,
+            reason: 'زر التحقق QR يجب أن يظهر في الوضع العمودي للهاتف');
+        expect(find.byIcon(Icons.move_to_inbox_rounded), findsOneWidget,
+            reason: 'زر الوارد يجب أن يظهر في الوضع العمودي للهاتف');
+        expect(find.byIcon(Icons.notifications_none), findsOneWidget,
+            reason: 'جرس الإشعارات يجب أن يظهر في الوضع العمودي للهاتف');
+        expect(find.byIcon(Icons.pending_actions), findsOneWidget,
+            reason: 'زر مسودات الصادر يجب أن يظهر في الوضع العمودي للهاتف');
+      });
+    }
   });
 }
 

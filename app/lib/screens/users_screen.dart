@@ -146,9 +146,10 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
 
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isMobileScreen ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -166,7 +167,7 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3A8A),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: EdgeInsets.symmetric(horizontal: isMobileScreen ? 16 : 24, vertical: isMobileScreen ? 12 : 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
@@ -181,7 +182,7 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                   icon: const Icon(Icons.how_to_reg_rounded, size: 18),
                   label: const Text('تفويضات الاعتماد'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: EdgeInsets.symmetric(horizontal: isMobileScreen ? 14 : 20, vertical: isMobileScreen ? 12 : 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
@@ -189,7 +190,7 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: isMobileScreen ? 16 : 24),
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -210,30 +211,35 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                   final users = data.users;
                   if (users.isEmpty) return const Center(child: Text('لا يوجد مستخدمون أدنى منك.'));
                   
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header Row
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: isDark ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : const Color(0xFFF8FAFC),
-                          border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.5))),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(flex: 2, child: Text('المستخدم', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textTheme.bodyLarge?.color, fontSize: 13), textAlign: TextAlign.right)),
-                            const Expanded(flex: 2, child: Text('الدور', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
-                            const Expanded(flex: 2, child: Text('الشركة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
-                            const Expanded(flex: 1, child: Text('الاعتماد', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
-                            const Expanded(flex: 1, child: Text('الحالة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
-                            const SizedBox(width: 56), // Action button space
-                          ],
-                        ),
-                      ),
-                      
-                      // Data Rows
-                      Expanded(
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      const minWidth = 750.0;
+                      final needsScroll = constraints.maxWidth < minWidth;
+
+                      final tableContent = Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Header Row
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            decoration: BoxDecoration(
+                              color: isDark ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3) : const Color(0xFFF8FAFC),
+                              border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.5))),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(flex: 2, child: Text('المستخدم', style: TextStyle(fontWeight: FontWeight.bold, color: theme.textTheme.bodyLarge?.color, fontSize: 13), textAlign: TextAlign.right)),
+                                const Expanded(flex: 2, child: Text('الدور', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                                const Expanded(flex: 2, child: Text('الشركة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                                const Expanded(flex: 1, child: Text('الاعتماد', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                                const Expanded(flex: 1, child: Text('الحالة', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF64748B), fontSize: 13), textAlign: TextAlign.center)),
+                                const SizedBox(width: 56), // Action button space
+                              ],
+                            ),
+                          ),
+                          
+                          // Data Rows
+                          Expanded(
                         child: ListView.separated(
                           itemCount: users.length,
                           separatorBuilder: (context, index) => Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.5)),
@@ -383,6 +389,19 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                         ),
                       ),
                     ],
+                  );
+
+                      if (needsScroll) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: minWidth,
+                            child: tableContent,
+                          ),
+                        );
+                      }
+                      return tableContent;
+                    },
                   );
                 },
               ),

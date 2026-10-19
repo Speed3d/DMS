@@ -90,8 +90,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               //       الوارد لم يعُد يُسجَّل بمبالغ منذ قرار 2026-07-25، فالبطاقة تعرض صفراً دائماً
               //       وتوحي بأن الحقل ما زال مستخدَماً. (الصادر يحتفظ ببطاقته لأنه ما زال مالياً.)
 
+              final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
+
               return SingleChildScrollView(
-                padding: const EdgeInsets.all(32),
+                padding: EdgeInsets.all(isMobileScreen ? 16 : 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -106,7 +108,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           crossAxisCount = 2;
                         }
                         
-                        final double spacing = 24.0;
+                        final double spacing = width < 500 ? 12.0 : 24.0;
                         final double totalSpacing = spacing * (crossAxisCount - 1);
                         final double cardWidth = (width - totalSpacing) / crossAxisCount;
 
@@ -299,8 +301,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   builder: (context, constraints) {
                     final isSmall = constraints.maxWidth < 900;
 
+                    final cardPadding = EdgeInsets.all(isMobileScreen ? 16 : 28);
+
                     final chartCard = CustomCard(
-                      padding: const EdgeInsets.all(28),
+                      padding: cardPadding,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -345,7 +349,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     );
 
                     final activitiesCard = CustomCard(
-                      padding: const EdgeInsets.all(28),
+                      padding: cardPadding,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -379,7 +383,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     // ── «آخر الوارد» (طلب المالك 2026-08-10) ──
                     // نظير «أحدث الصادر» تماماً، ويُخفى مع قسمه لا مع قسم الصادر.
                     final incomingCard = CustomCard(
-                      padding: const EdgeInsets.all(28),
+                      padding: cardPadding,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

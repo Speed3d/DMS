@@ -55,14 +55,14 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
 
     return Scaffold(
       body: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: EdgeInsets.all(isMobileScreen ? 16 : 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Hint: شريط الأدوات العلوي (بحث، فلترة، إضافة)
             // Hint: شريط الأدوات العلوي (بحث، فلترة، إضافة)
             LayoutBuilder(
               builder: (context, constraints) {
@@ -85,14 +85,18 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                       if (created == true) _reload();
                     },
                     icon: const Icon(Icons.add_rounded),
-                    label: const Text('أرشفة مستند جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('أرشفة مستند جديد',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmall ? 12.5 : 14)),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.action(context),
                       foregroundColor: AppColors.onAction(context),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 8,
                       shadowColor: AppColors.action(context).withValues(alpha: 0.5),
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 24),
                     ),
                   ),
                 );
@@ -108,12 +112,16 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                       _reload();
                     },
                     icon: const Icon(Icons.drive_folder_upload_rounded),
-                    label: const Text('استيراد دفعة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('استيراد دفعة',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmall ? 12.5 : 14)),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.action(context),
                       side: BorderSide(color: AppColors.action(context).withValues(alpha: 0.5), width: 1.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 20),
                     ),
                   ),
                 );
@@ -123,10 +131,14 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       searchWidget,
-                      const SizedBox(height: 16),
-                      bulkWidget,
-                      const SizedBox(height: 16),
-                      buttonWidget,
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(child: bulkWidget),
+                          const SizedBox(width: 10),
+                          Expanded(child: buttonWidget),
+                        ],
+                      ),
                     ],
                   );
                 }
@@ -142,12 +154,12 @@ class _ArchiveListScreenState extends ConsumerState<ArchiveListScreen> {
                 );
               }
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isMobileScreen ? 10 : 16),
 
             // شريط الفلاتر — الأرشيف يُقرأ بالسنة والشهر أساساً (المحور الزمني)،
             // والقسم والمصدر ثانويان. Wrap لا Row: العناصر خمسة وتلتفّ على الضيق.
             _filtersBar(theme),
-            const SizedBox(height: 24),
+            SizedBox(height: isMobileScreen ? 12 : 24),
 
             // Hint: عرض البيانات داخل CustomCard كجدول
             Expanded(

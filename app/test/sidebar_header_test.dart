@@ -134,6 +134,46 @@ void main() {
   testWidgets('📝 والسطر الثاني يصف النظام فيبقى ثابتاً', (tester) async {
     await pumpSidebar(tester, company(1, 'شركة ما'));
     expect(find.text('إدارة الوثائق'), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsNothing,
+        reason: 'في وضع الحاسوب (onClose == null) لا يظهر زر الإغلاق داخل القائمة');
+  });
+
+  testWidgets('📱 زرّ الإغلاق في القائمة الجانبية يظهر على الهاتف ويستدعي onClose',
+      (tester) async {
+    var closed = false;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        quietSystemStatus,
+        sessionProvider.overrideWith(() => _FixedSession(session())),
+        activeCompanyProvider.overrideWith((ref) async => company(1, 'شركة الهاتف')),
+        pendingDraftsProvider.overrideWith((ref) async => <OutgoingListItem>[]),
+      ],
+      child: MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: SizedBox(
+              height: 900,
+              child: Sidebar(
+                selectedIndex: 0,
+                onSelected: (_) {},
+                onClose: () => closed = true,
+                canManageUsers: false,
+                isSuperAdmin: false,
+                modules: const ['Outgoing'],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+    expect(closed, isTrue);
   });
 }
 

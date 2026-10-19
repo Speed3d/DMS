@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/incoming_providers.dart';
+import '../core/notification_providers.dart';
 import '../core/session.dart';
 import '../core/task_providers.dart';
 import '../core/theme.dart';
@@ -20,8 +22,13 @@ import 'task_form_screen.dart';
 /// تمريرُه. فلا يتعلّم المستخدم واجهتين لشيءٍ واحد.
 class TaskDetailScreen extends ConsumerStatefulWidget {
   final int taskId;
+  final int initialTab;
 
-  const TaskDetailScreen({super.key, required this.taskId});
+  const TaskDetailScreen({
+    super.key,
+    required this.taskId,
+    this.initialTab = 0,
+  });
 
   @override
   ConsumerState<TaskDetailScreen> createState() => _TaskDetailScreenState();
@@ -29,12 +36,74 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   final _commentController = TextEditingController();
+  final _commentsScrollController = ScrollController();
+  Timer? _pollTimer;
+  bool _polling = false;
+  int? _lastLatestCommentId;
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _markTaskNotificationsRead());
+    // استقصاء خفيف كل 3 ثوانٍ طالما شاشة المهمة مفتوحة ليظهر الحوار لحظياً بين الطرفين.
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollUpdates());
+  }
+
+  @override
   void dispose() {
+    _pollTimer?.cancel();
+    _commentsScrollController.dispose();
     _commentController.dispose();
     super.dispose();
+  }
+
+  /// يَسِم إشعارات هذه المهمة بالمقروء تلقائياً عند فتحها أو وصول تعليقٍ أثناء عرضها.
+  Future<void> _markTaskNotificationsRead() async {
+    if (!mounted) return;
+    try {
+      final api = ref.read(apiClientProvider);
+      final page = await api.notifications(pageSize: 100, unreadOnly: true);
+      final toMark = page.items
+          .where((n) => !n.isRead && n.entityType == 'DmsTask' && n.entityId == widget.taskId)
+          .toList();
+      if (toMark.isEmpty) return;
+      for (final n in toMark) {
+        await api.markNotificationRead(n.notificationId);
+      }
+      if (mounted) {
+        invalidateNotifications(ref);
+        ref.invalidate(unreadTaskNotificationsProvider);
+      }
+    } catch (_) {
+      // فشلُ وسم الإشعار لا يعطّل عرض المهمة أو المحادثة.
+    }
+  }
+
+  Future<void> _pollUpdates() async {
+    if (!mounted || _busy || _polling) return;
+    final current = ref.read(taskUpdatesProvider(widget.taskId)).asData?.value;
+    if (current == null) return;
+    _polling = true;
+    try {
+      final fresh = await ref.read(apiClientProvider).taskUpdates(widget.taskId);
+      if (!mounted) return;
+      final changed = fresh.length != current.length ||
+          (fresh.isNotEmpty &&
+              current.isNotEmpty &&
+              fresh.first.updateId != current.first.updateId);
+      if (changed) {
+        ref.invalidate(taskUpdatesProvider(widget.taskId));
+        if (fresh.isNotEmpty && fresh.first.updateType != 'Comment') {
+          ref.invalidate(taskDetailProvider(widget.taskId));
+        }
+        unawaited(_markTaskNotificationsRead());
+      }
+    } catch (_) {
+      // خطأ شبكة عابر أثناء الاستقصاء الخلفي الصامت — يُتجاهل لئلا يقطع الحوار.
+    } finally {
+      _polling = false;
+    }
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -92,6 +161,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         ],
       ),
       body: taskAsync.when(
+        skipLoadingOnRefresh: true,
+        skipLoadingOnReload: true,
+        skipError: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
           child: Padding(
@@ -103,6 +175,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         ),
         data: (t) => DefaultTabController(
           length: 4,
+          initialIndex: widget.initialTab.clamp(0, 3),
           child: Column(
             children: [
               _header(t),
@@ -333,6 +406,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     final updatesAsync = ref.watch(taskUpdatesProvider(t.taskId));
 
     return updatesAsync.when(
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+      skipError: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('$e')),
       data: (rows) => rows.isEmpty
@@ -398,6 +474,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         ),
         Expanded(
           child: attachmentsAsync.when(
+            skipLoadingOnRefresh: true,
+            skipLoadingOnReload: true,
+            skipError: true,
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('$e')),
             data: (list) => list.isEmpty
@@ -487,28 +566,64 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   /// تبويب التعليقات — **حوارٌ لا أثرُ تدقيق**: الأقدم أعلى وصندوق الكتابة في أسفله.
   Widget _commentsTab(TaskModel t) {
-    final updatesAsync = ref.watch(taskUpdatesProvider(t.taskId));
+    // يُبقى المزوّد حيّاً طوال بقاء الشاشة مفتوحة حتى عند التنقّل بين التبويبات.
+    ref.watch(taskUpdatesProvider(t.taskId));
     final myId = ref.read(sessionProvider).auth?.userId;
 
     return Column(
       children: [
         Expanded(
-          child: updatesAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('$e')),
-            data: (rows) {
-              // ⚠️ **التعليقات وحدها** لا تغييرات الحالة. والترتيب **الأقدم أعلى** عكس
-              //    السجلّ: الحوار يُقرأ من أوّله، والأثر يُقرأ من آخره.
-              final comments =
-                  rows.where((u) => u.updateType == 'Comment').toList().reversed.toList();
+          child: Consumer(
+            builder: (context, ref, _) {
+              final updatesAsync = ref.watch(taskUpdatesProvider(t.taskId));
+              return updatesAsync.when(
+                skipLoadingOnRefresh: true,
+                skipLoadingOnReload: true,
+                skipError: true,
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('$e')),
+                data: (rows) {
+                  // ⚠️ **التعليقات وحدها** لا تغييرات الحالة. والترتيب **الأقدم أعلى** عكس
+                  //    السجلّ: الحوار يُقرأ من أوّله، والأثر يُقرأ من آخره.
+                  final comments = rows
+                      .where((u) => u.updateType == 'Comment')
+                      .toList()
+                      .reversed
+                      .toList();
 
-              if (comments.isEmpty) return _noComments();
+                  if (comments.isEmpty) {
+                    _lastLatestCommentId = null;
+                    return _noComments();
+                  }
 
-              return ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: comments.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _commentBubble(comments[i], comments[i].updatedByUserId == myId),
+                  final latestId = comments.last.updateId;
+                  if (_lastLatestCommentId != latestId) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted || !_commentsScrollController.hasClients) return;
+                      final isInitial = _lastLatestCommentId == null;
+                      _lastLatestCommentId = latestId;
+                      final target = _commentsScrollController.position.maxScrollExtent;
+                      if (isInitial) {
+                        _commentsScrollController.jumpTo(target);
+                      } else {
+                        _commentsScrollController.animateTo(
+                          target,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOut,
+                        );
+                      }
+                    });
+                  }
+
+                  return ListView.separated(
+                    controller: _commentsScrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: comments.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) => _commentBubble(
+                        comments[i], comments[i].updatedByUserId == myId),
+                  );
+                },
               );
             },
           ),
@@ -602,12 +717,24 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   Future<void> _sendComment(TaskModel t) async {
     final text = _commentController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _busy) return;
 
-    await _run(() async {
+    setState(() => _busy = true);
+    try {
       await ref.read(apiClientProvider).addTaskComment(t.taskId, text);
       _commentController.clear();
-    });
+      if (mounted) {
+        ref.invalidate(taskUpdatesProvider(t.taskId));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: AppColors.danger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _promptReopen(TaskModel t) async {
@@ -720,6 +847,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           ),
           const SizedBox(height: 8),
           async.when(
+            skipLoadingOnRefresh: true,
+            skipLoadingOnReload: true,
+            skipError: true,
             loading: () => const LinearProgressIndicator(),
             error: (e, _) => Text('$e', style: const TextStyle(color: AppColors.danger)),
             data: (rows) {

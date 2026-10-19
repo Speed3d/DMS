@@ -20,12 +20,13 @@ class IncomingListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
     
     final asyncList = ref.watch(incomingListProvider);
 
     return Scaffold(
       body: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: EdgeInsets.all(isMobileScreen ? 16 : 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -44,7 +45,7 @@ class IncomingListScreen extends ConsumerWidget {
 
               final filterWidget = Container(
                 height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
@@ -77,7 +78,7 @@ class IncomingListScreen extends ConsumerWidget {
               // فلتر القسم — يعرض الأقسام المحال إليها، ليتابع المدير عمل كل قسم.
               final deptFilterWidget = Container(
                 height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
@@ -111,7 +112,7 @@ class IncomingListScreen extends ConsumerWidget {
               // فتعذّر البحث بالنوع رغم أن كل ما تحته جاهز.
               final typeFilterWidget = Container(
                 height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(12),
@@ -152,15 +153,18 @@ class IncomingListScreen extends ConsumerWidget {
                     }
                   },
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('تسجيل وارد جديد',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('تسجيل وارد جديد',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmall ? 13 : 14)),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.gold,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 8,
                     shadowColor: AppColors.gold.withValues(alpha: 0.5),
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 24),
                   ),
                 ),
               );
@@ -170,14 +174,22 @@ class IncomingListScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     searchWidget,
-                    const SizedBox(height: 16),
-                    filterWidget,
-                    const SizedBox(height: 16),
-                    deptFilterWidget,
-                    const SizedBox(height: 16),
-                    typeFilterWidget,
-                    const SizedBox(height: 16),
-                    buttonWidget,
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: filterWidget),
+                        const SizedBox(width: 10),
+                        Expanded(child: deptFilterWidget),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: typeFilterWidget),
+                        const SizedBox(width: 10),
+                        Expanded(child: buttonWidget),
+                      ],
+                    ),
                   ],
                 );
               } else if (isMedium) {
@@ -214,7 +226,7 @@ class IncomingListScreen extends ConsumerWidget {
                 ],
               );
             }),
-            const SizedBox(height: 32),
+            SizedBox(height: isMobileScreen ? 16 : 32),
 
             // محتوى الجدول
             Expanded(

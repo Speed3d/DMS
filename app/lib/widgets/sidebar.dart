@@ -30,6 +30,9 @@ class Sidebar extends ConsumerWidget {
   /// قسم المهام — القسم **مع** دورٍ فوق القارئ (ADR-037).
   final bool canSeeTasks;
 
+  /// إغلاق القائمة في وضع الهاتف/الشاشة الضيّقة.
+  final VoidCallback? onClose;
+
   const Sidebar({
     super.key,
     required this.selectedIndex,
@@ -40,6 +43,7 @@ class Sidebar extends ConsumerWidget {
     this.canSeeEmployees = false,
     this.canSeePayroll = false,
     this.canSeeTasks = false,
+    this.onClose,
   });
 
   /// 🔐 **أحد القسمين يكفي** — مرآةُ `RequireReadAccess` في `CaseFileService` (ADR-045).
@@ -82,7 +86,7 @@ class Sidebar extends ConsumerWidget {
           //    `activeCompanyProvider` يُبطَل حينها.
           //
           // ⚠️ **والسطر الثاني «إدارة الوثائق» يصف النظام لا الشركة** — فيبقى كما هو.
-          _CompanyHeader(),
+          _CompanyHeader(onClose: onClose),
           const SizedBox(height: 24),
 
           // Main Menu
@@ -323,6 +327,9 @@ class Sidebar extends ConsumerWidget {
 /// 🔴 **وفشلُ الشعار لا يُفرغ الصدر**: تعذّرُ تحميل الصورة (شبكةٌ منقطعة · ملفٌّ محذوف)
 /// يعود بالأيقونة العامّة — **وصدرٌ فارغ يُقرأ عطلاً في البرنامج لا نقصاً في صورة**.
 class _CompanyHeader extends ConsumerWidget {
+  final VoidCallback? onClose;
+  const _CompanyHeader({this.onClose});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final company = ref.watch(activeCompanyProvider).asData?.value;
@@ -371,6 +378,21 @@ class _CompanyHeader extends ConsumerWidget {
             ],
           ),
         ),
+        if (onClose != null) ...[
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              onTap: onClose,
+              borderRadius: BorderRadius.circular(10),
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

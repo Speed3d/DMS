@@ -185,6 +185,39 @@ final assignableUsersProvider = FutureProvider.autoDispose<List<AssignableUser>>
   return ref.read(apiClientProvider).assignableUsers();
 });
 
+/// إشعارات المهام غير المقروءة — لشارات المحادثات الجديدة على بطاقات المهام.
+///
+/// ⚠️ يُبتلع الخطأ عمداً ويعود بقائمة فارغة عند انقطاع الشبكة أو في اختبارات الواجهة
+/// المعزولة فلا يُسقط شاشة المهام لأجل شارةٍ ثانوية.
+final unreadTaskNotificationsProvider =
+    FutureProvider.autoDispose<List<NotificationModel>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session.auth == null || !session.canSeeTasks) return const <NotificationModel>[];
+  try {
+    final page = await ref
+        .read(apiClientProvider)
+        .notifications(pageSize: 100, unreadOnly: true);
+    return page.items.where((n) => !n.isRead && n.entityType == 'DmsTask').toList();
+  } catch (_) {
+    return const <NotificationModel>[];
+  }
+});
+
+/// عدد التعليقات غير المقروءة لكل مهمة — دالّةٌ نقيّة بلا سلسلة `watch` (درس `provider_resume_test`).
+Map<int, int> unreadTaskCommentCountsOf(AsyncValue<List<NotificationModel>> listAsync) {
+  final items = listAsync.asData?.value;
+  if (items == null || items.isEmpty) return const <int, int>{};
+  final counts = <int, int>{};
+  for (final n in items) {
+    final id = n.entityId;
+    if (id == null) continue;
+    if (n.title.contains('تعليق')) {
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
 /// يُبطل مزوّدات المهام كلها بعد أي عملية كتابة أو تبديل شركة.
 ///
 /// ⚠️ **مركزيّ عمداً**: نسيانُ إبطال أحدها يُبقي القائمة تعرض حالةً قديمة بعد تغييرها،
@@ -196,4 +229,6 @@ void invalidateTasks(WidgetRef ref) {
   ref.invalidate(taskUpdatesProvider);
   ref.invalidate(taskAttachmentsProvider);
   ref.invalidate(taskParticipantsProvider);
+  ref.invalidate(unreadTaskNotificationsProvider);
 }
+

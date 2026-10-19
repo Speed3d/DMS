@@ -41,6 +41,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
   bool _isSidebarOpen = true;
   bool _initialized = false;
+  bool _wasMobile = false;
 
   @override
   void initState() {
@@ -72,11 +73,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final isMobile = MediaQuery.of(context).size.width < 900;
     if (!_initialized) {
-      if (MediaQuery.of(context).size.width < 900) {
-        _isSidebarOpen = false;
-      }
+      _isSidebarOpen = !isMobile;
+      _wasMobile = isMobile;
       _initialized = true;
+    } else if (isMobile && !_wasMobile) {
+      _isSidebarOpen = false;
+      _wasMobile = true;
+    } else if (!isMobile && _wasMobile) {
+      _isSidebarOpen = true;
+      _wasMobile = false;
     }
   }
 
@@ -132,69 +139,103 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     // إن كان القسم الحالي غير مسموح، عُد للرئيسية.
     if (!_isIndexAllowed(_index, session, canManageUsers, isSuper)) _index = 0;
 
-    return Scaffold(
-      body: Row(
-        children: [
-          // Hint: القائمة الجانبية (Sidebar) مع حركة انزلاق ناعمة
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            width: _isSidebarOpen ? 266 : 0,
-            child: ClipRect(
-              child: OverflowBox(
-                minWidth: 266,
-                maxWidth: 266,
-                alignment: Alignment.centerRight,
-                child: Sidebar(
-                  selectedIndex: _index,
-                  onSelected: (i) => setState(() => _index = i),
-                  canManageUsers: canManageUsers,
-                  isSuperAdmin: isSuper,
-                  modules: session.modules,
-                  canSeeEmployees: session.canSeeEmployees,
-                  canSeePayroll: session.canSeePayroll,
-                  canSeeTasks: session.canSeeTasks,
-                ),
-              ),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobileLayout = screenWidth < 900;
+    final isSmallScreen = screenWidth < 600;
+
+    final sidebarWidget = AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      width: _isSidebarOpen ? 266 : 0,
+      child: ClipRect(
+        child: OverflowBox(
+          minWidth: 266,
+          maxWidth: 266,
+          alignment: Alignment.centerRight,
+          child: Sidebar(
+            selectedIndex: _index,
+            onSelected: (i) => setState(() {
+              _index = i;
+              if (isMobileLayout) _isSidebarOpen = false;
+            }),
+            onClose: isMobileLayout ? () => setState(() => _isSidebarOpen = false) : null,
+            canManageUsers: canManageUsers,
+            isSuperAdmin: isSuper,
+            modules: session.modules,
+            canSeeEmployees: session.canSeeEmployees,
+            canSeePayroll: session.canSeePayroll,
+            canSeeTasks: session.canSeeTasks,
+          ),
+        ),
+      ),
+    );
+
+    final mainContent = Column(
+      children: [
+        Consumer(
+          builder: (context, ref, child) {
+            final company = ref.watch(activeCompanyProvider).value;
+            final companyName = company?.name ?? 'جاري التحميل...';
+            final logoUrl = companyLogoUrl(company);
+            final pageTitle = _getPageTitle(_index, canManageUsers, isSuper);
+            return Topbar(
+              title: isSmallScreen ? pageTitle : '$pageTitle - $companyName',
+              subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
+              logoUrl: logoUrl,
+              onProfileTap: _showProfileMenu,
+              onMenuTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+              onNavigate: (i) => setState(() => _index = i),
+            );
+          },
+        ),
+        Expanded(
+          child: ClipRect( // لمنع المحتوى من التجاوز
+            child: Consumer(
+              builder: (context, ref, child) {
+                final session = ref.watch(sessionProvider);
+                return KeyedSubtree(
+                  key: ValueKey(session.effectiveCompanyId),
+                  child: pages[_index],
+                );
+              }
             ),
           ),
-          
-          // Hint: القسم الأيسر (الرئيسي) يحتوي الشريط العلوي + محتوى الصفحة
-          Expanded(
-            child: Column(
-              children: [
-                Consumer(
-                  builder: (context, ref, child) {
-                    final company = ref.watch(activeCompanyProvider).value;
-                    final companyName = company?.name ?? 'جاري التحميل...';
-                    final logoUrl = companyLogoUrl(company);
-                    return Topbar(
-                      title: '${_getPageTitle(_index, canManageUsers, isSuper)} - $companyName',
-                      subtitle: _getPageSubtitle(_index, canManageUsers, isSuper),
-                      logoUrl: logoUrl,
-                      onProfileTap: _showProfileMenu,
-                      onMenuTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
-                      onNavigate: (i) => setState(() => _index = i),
-                    );
-                  },
-                ),
-                Expanded(
-                  child: ClipRect( // لمنع المحتوى من التجاوز
-                    child: Consumer(
-                      builder: (context, ref, child) {
-                        final session = ref.watch(sessionProvider);
-                        return KeyedSubtree(
-                          key: ValueKey(session.effectiveCompanyId),
-                          child: pages[_index],
-                        );
-                      }
+        ),
+      ],
+    );
+
+    return PopScope(
+      canPop: !(isMobileLayout && _isSidebarOpen),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _isSidebarOpen) {
+          setState(() => _isSidebarOpen = false);
+        }
+      },
+      child: Scaffold(
+        body: isMobileLayout
+            ? Stack(
+                children: [
+                  Positioned.fill(child: mainContent),
+                  if (_isSidebarOpen)
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _isSidebarOpen = false),
+                        child: Container(color: Colors.black54),
+                      ),
                     ),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: sidebarWidget,
                   ),
-                ),
-              ],
-            ),
-          ),
-        ],
+                ],
+              )
+            : Row(
+                children: [
+                  sidebarWidget,
+                  Expanded(child: mainContent),
+                ],
+              ),
       ),
     );
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,10 +28,15 @@ class TaskListScreen extends ConsumerStatefulWidget {
 
 class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   final _searchController = TextEditingController();
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
+
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) ref.invalidate(unreadTaskNotificationsProvider);
+    });
 
     // «نيّة التنقّل» — الضاغط في لوحة التحكم يكتب نيّته، وهذه الشاشة تقرؤها **وتمسحها**.
     // ⚠️ قراءةٌ متزامنة (`peek`) ومسحٌ **مؤجَّلٌ بعد الإطار ومشروطٌ**: المسح داخل
@@ -51,6 +58,7 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -67,6 +75,8 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     final session = ref.watch(sessionProvider);
     final filters = ref.watch(taskFilterProvider);
     final pageAsync = ref.watch(tasksPageProvider);
+    final unreadComments =
+        unreadTaskCommentCountsOf(ref.watch(unreadTaskNotificationsProvider));
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -77,11 +87,12 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
           const SizedBox(height: 14),
           Expanded(
             child: pageAsync.when(
+              skipLoadingOnRefresh: true,
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => _errorBox(e),
               data: (page) => page.items.isEmpty
                   ? _emptyState(filters, session)
-                  : _list(page),
+                  : _list(page, unreadComments),
             ),
           ),
         ],
@@ -183,20 +194,28 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
         ),
       );
 
-  Widget _list(TaskPage page) => Column(
+  Widget _list(TaskPage page, Map<int, int> unreadComments) => Column(
         children: [
           Expanded(
             child: ListView.separated(
               itemCount: page.items.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) => _TaskRow(
-                item: page.items[i],
-                onTap: () async {
-                  await Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => TaskDetailScreen(taskId: page.items[i].taskId)));
-                  if (mounted) invalidateTasks(ref);
-                },
-              ),
+              itemBuilder: (_, i) {
+                final item = page.items[i];
+                final unreadCount = unreadComments[item.taskId] ?? 0;
+                return _TaskRow(
+                  item: item,
+                  unreadCommentsCount: unreadCount,
+                  onTap: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => TaskDetailScreen(
+                              taskId: item.taskId,
+                              initialTab: unreadCount > 0 ? 1 : 0,
+                            )));
+                    if (mounted) invalidateTasks(ref);
+                  },
+                );
+              },
             ),
           ),
           if (page.total > page.pageSize) _pager(page),
@@ -289,9 +308,14 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
 /// صفُّ مهمة — **يلتفّ ولا يفيض**، والعناصر الثانوية تسقط أولاً عند الضيق.
 class _TaskRow extends StatelessWidget {
   final TaskListItem item;
+  final int unreadCommentsCount;
   final VoidCallback onTap;
 
-  const _TaskRow({required this.item, required this.onTap});
+  const _TaskRow({
+    required this.item,
+    this.unreadCommentsCount = 0,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -330,6 +354,8 @@ class _TaskRow extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     TaskStatusPill(status: item.status, label: item.statusLabel),
+                    if (unreadCommentsCount > 0)
+                      TaskUnreadCommentsBadge(count: unreadCommentsCount),
                     TaskPriorityBadge(
                         priority: item.priority, label: item.priorityLabel),
                     TaskDueLabel(

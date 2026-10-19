@@ -47,29 +47,31 @@ class BackupAlertIcon extends ConsumerWidget {
     //    مفقوداً لا يُعرض «3 يوم» فيُقرأ تأخّراً ليس هو.
     final days = alert.fullUrgency != 'Ok' ? alert.daysSince : null;
 
+    final isSmall = MediaQuery.sizeOf(context).width < 600;
+
     return Padding(
-      padding: const EdgeInsetsDirectional.only(end: 8),
+      padding: EdgeInsetsDirectional.only(end: isSmall ? 5 : 8),
       child: Tooltip(
         message: alert.details,
         child: Material(
           color: color.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(isSmall ? 10 : 12),
           child: InkWell(
             onTap: onOpenBackup,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(isSmall ? 10 : 12),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: EdgeInsets.symmetric(horizontal: isSmall ? 7 : 10, vertical: isSmall ? 6 : 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(backupUrgencyIcon(alert.urgency), size: 18, color: color),
+                  Icon(backupUrgencyIcon(alert.urgency), size: isSmall ? 16 : 18, color: color),
                   // ⚠️ **الرقم يُعرض إن وُجد**: «مضى 42 يوماً» يُقرأ فوراً، و«تحذير» وحده
                   //    يحتاج ضغطةً ليُعرف مداه. ومن لا نسخةَ له قطّ بلا رقم — فلا يُختلق.
                   if (days != null) ...[
-                    const SizedBox(width: 6),
+                    SizedBox(width: isSmall ? 4 : 6),
                     Text('$days يوم',
                         style: TextStyle(
-                            color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+                            color: color, fontSize: isSmall ? 11 : 12, fontWeight: FontWeight.bold)),
                   ],
                 ],
               ),

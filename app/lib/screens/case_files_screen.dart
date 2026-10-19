@@ -29,9 +29,10 @@ class CaseFilesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(caseFilesProvider);
     final muted = Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+    final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
 
     return Padding(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.all(isMobileScreen ? 16 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

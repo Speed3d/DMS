@@ -329,4 +329,9 @@ class _BoardApi extends ApiClient {
   Future<TaskSummaryModel> taskSummary() async =>
       TaskSummaryModel(total: 0, active: 0, overdue: 0, dueToday: 0,
           completedThisMonth: 0, mineActive: 0);
+
+  @override
+  Future<NotificationPage> notifications(
+          {int page = 1, int pageSize = 25, bool unreadOnly = false}) async =>
+      NotificationPage.empty;
 }

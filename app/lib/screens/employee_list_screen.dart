@@ -128,10 +128,11 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canManage = ref.watch(sessionProvider).canManageEmployees;
+    final isMobileScreen = MediaQuery.sizeOf(context).width < 600;
 
     return Scaffold(
       body: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: EdgeInsets.all(isMobileScreen ? 16 : 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
