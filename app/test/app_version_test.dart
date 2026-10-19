@@ -104,13 +104,33 @@ void main() {
       expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
     });
 
-    testWidgets('النقر يفتح «حول النظام» بإصدارَي الطرفين وآخر مهاجرة', (tester) async {
+    testWidgets('النقر للسوبر أدمن يفتح «حول النظام» بالتفاصيل الكاملة (إصدارَي الطرفين وآخر مهاجرة)', (tester) async {
       await pump(tester, role: 'SuperAdmin', server: '0.9.0');
       await tester.tap(find.byKey(const Key('version-tag')));
       await tester.pumpAndSettle();
       expect(find.text('حول النظام'), findsWidgets);
       expect(find.textContaining('الإصدار 0.9.0 (abc1234)'), findsOneWidget);
       expect(find.textContaining('31 مهاجرة'), findsOneWidget);
+    });
+
+    testWidgets('🔴 النقر لغير السوبر أدمن (رئيس/مدير/موظف/قارئ) يعرض «حول النظام 0.17.0» فقط بلا تفاصيل تقنية', (tester) async {
+      for (final role in ['President', 'Manager', 'Employee', 'Reader']) {
+        await pump(tester, role: role, server: '0.17.0', ui: '0.17.0');
+        await tester.tap(find.byKey(const Key('version-tag')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('حول النظام 0.17.0'), findsOneWidget);
+        // لا تفاصيل تقنية لغير السوبر أدمن
+        expect(find.text('الواجهة'), findsNothing);
+        expect(find.text('الخادم'), findsNothing);
+        expect(find.text('بناء الخادم'), findsNothing);
+        expect(find.text('قاعدة البيانات'), findsNothing);
+        expect(find.textContaining('abc1234'), findsNothing);
+        expect(find.textContaining('مهاجرة'), findsNothing);
+
+        await tester.tap(find.text('حسناً'));
+        await tester.pumpAndSettle();
+      }
     });
   });
 }

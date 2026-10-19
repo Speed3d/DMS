@@ -16,6 +16,11 @@ Write-Host "==========================================================" -Foregro
 # 1. استيراد إدارة IIS
 Write-Host "`n[1/4] استيراد وحدة إدارة IIS (WebAdministration)..." -ForegroundColor Green
 try {
+    if (-not (Get-Service W3SVC -ErrorAction SilentlyContinue)) {
+        Write-Host "  ⚠️ خادم IIS غير مثبت حالياً — جاري تثبيت وتفعيل ميزات IIS تلقائياً (انتظر قليلاً)..." -ForegroundColor Yellow
+        Enable-WindowsOptionalFeature -Online -All -NoRestart -FeatureName IIS-WebServerRole, IIS-WebServer, IIS-CommonHttpFeatures, IIS-StaticContent, IIS-DefaultDocument, IIS-HttpErrors, IIS-ManagementConsole | Out-Null
+        Write-Host "  ✔ تم تثبيت وتفعيل خادم IIS بنجاح!" -ForegroundColor Green
+    }
     Import-Module WebAdministration -ErrorAction Stop
 } catch {
     Write-Host "🔴 فشل استيراد وحدة WebAdministration! تأكد من تثبيت IIS على هذا الجهاز." -ForegroundColor Red

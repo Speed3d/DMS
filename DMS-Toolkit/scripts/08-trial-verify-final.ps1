@@ -28,7 +28,7 @@ $allRunning = $true
 foreach ($s in $svcs) {
     $stat = $s.Status
     $sColor = if ($stat -eq 'Running') { 'Green' } else { 'Red' }
-    Write-Host "  - خدمة $($s.Name): $stat ($startType)" -ForegroundColor $sColor
+    Write-Host "  - خدمة $($s.Name): $stat ($($s.StartType))" -ForegroundColor $sColor
     if ($stat -ne 'Running') { $allRunning = $false }
 }
 
@@ -72,9 +72,11 @@ if ($qc -match 'tunnel run' -and $qc -match 'config\.yml') {
 # 4. فحص صلاحية NT AUTHORITY\SYSTEM في SQL
 Write-Host "`n[4/6] فحص صلاحيات حساب النظام في SQL Server..." -ForegroundColor Green
 try {
-    $checkOut = sqlcmd -S . -Q "SELECT IS_SRVROLEMEMBER('sysadmin', 'NT AUTHORITY\SYSTEM');" -h -1
-    if ($checkOut.Trim() -match '1') {
-        Write-Host "✔ حساب NT AUTHORITY\SYSTEM يحمل صلاحية sysadmin (النتيجة: 1)." -ForegroundColor Green
+    $sqlSvc = Get-Service | Where-Object { $_.Name -eq 'MSSQLSERVER' -or $_.Name -like 'MSSQL$*' } | Select-Object -First 1
+    $dbSrv = if ($sqlSvc -and $sqlSvc.Name -ne 'MSSQLSERVER') { ".\" + $sqlSvc.Name.Split('$')[1] } else { "." }
+    $checkOut = (sqlcmd -S $dbSrv -C -Q "SELECT IS_SRVROLEMEMBER('sysadmin', 'NT AUTHORITY\SYSTEM');" -h -1 | Out-String)
+    if ($checkOut -and $checkOut.Trim() -match '1') {
+        Write-Host "✔ حساب NT AUTHORITY\SYSTEM يحمل صلاحية sysadmin على ($dbSrv) (النتيجة: 1)." -ForegroundColor Green
         $score++
     } else {
         Write-Host "🔴 حساب NT AUTHORITY\SYSTEM ليس sysadmin! (النتيجة: 0)." -ForegroundColor Red

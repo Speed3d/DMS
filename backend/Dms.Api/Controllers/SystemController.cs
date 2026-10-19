@@ -1,5 +1,6 @@
 using Dms.Api.Dtos;
 using Dms.Domain;
+using Dms.Infrastructure.Auth;
 using Dms.Infrastructure.Jobs;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
@@ -7,13 +8,20 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Dms.Api.Ops;
-using Dms.Api.Seeding;
 
 namespace Dms.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SystemController(AppDbContext db, IServiceProvider services, IConfiguration config, IWebHostEnvironment env, ILogger<SystemController> logger, IMaintenanceState maintenance, ISystemControl system, IAuditService audit, ICurrentUser current) : ControllerBase
+public class SystemController(
+    AppDbContext db,
+    ILogger<SystemController> logger,
+    IMaintenanceState maintenance,
+    ISystemControl system,
+    IAuditService audit,
+    ICurrentUser current,
+    IPasswordHasher hasher,
+    AppPaths paths) : ControllerBase
 {
     /// <summary>
     /// حالة النظام — مسموح بلا مصادقة ليعرف العميل متى يكون النظام قيد الصيانة (أثناء استعادة نسخة)
@@ -39,13 +47,11 @@ public class SystemController(AppDbContext db, IServiceProvider services, IConfi
 
     /// <summary>
     /// «حول النظام» — الإصدار والـcommit ولحظة البناء وآخر مهاجرة (ADR-054).
+    /// Hint: التفاصيل التقنية الكاملة (commit، وقت البناء، والمهاجرات) محصورة بالسوبر أدمن وحده،
+    ///       بينما تعرض الواجهة لبقية الأدوار (رئيس/مدير/موظف/قارئ) رقم الإصدار فقط.
     /// </summary>
-    /// <remarks>
-    /// ⚠️ **آخر مهاجرةٍ في الكود مقابل آخر ما طُبّق على القاعدة** — اختلافُهما يعني تحديثاً لم يكتمل
-    /// (والطبيعيّ أن يتساويا: الإقلاع يطبّق المهاجرات). 🔐 للمصادَق وحده، والقراءة خفيفة (لا تُستطلع).
-    /// </remarks>
     [HttpGet("about")]
-    [Authorize]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<SystemAboutResponse> About(CancellationToken ct)
     {
         var all = db.Database.GetMigrations().ToList();
@@ -167,16 +173,163 @@ public class SystemController(AppDbContext db, IServiceProvider services, IConfi
     public IActionResult CurrentJob([FromServices] IBackgroundJobs jobs)
         => jobs.Current is { } j ? Ok(JobResponse.From(j)) : NoContent();
 
+    /// <summary>
+    /// تصفير قاعدة البيانات بالكامل ومسح جميع البيانات والمرفقات للبدء من الصفر — **للسوبر أدمن حصراً**.
+    /// Hint: يتحقّق أولاً من كلمة التأكيد «تصفير» ومن كلمة مرور السوبر أدمن الفعلية عبر IPasswordHasher.Verify.
+    /// Hint: يحذف جميع الجداول داخل معاملة واحدة (Transaction) مرتّبة حسب المفاتيح الأجنبية بدلاً من DROP DATABASE،
+    ///       مع الإبقاء على حساب السوبر أدمن الحالي وحده دون غيره حتى لا يُقفل المالك خارج النظام أبداً.
+    /// </summary>
     [HttpPost("reset-db")]
     [Authorize(Roles = "SuperAdmin")]
-    public async Task<IActionResult> ResetDb()
+    public async Task<IActionResult> ResetDb([FromBody] ResetDatabaseRequest req, CancellationToken ct)
     {
-        // عملية تدميرية شاملة — متاحة في بيئة التطوير فقط (لا يجوز مسح قاعدة الإنتاج عبر الـ API).
-        if (!env.IsDevelopment())
-            throw new ForbiddenException("تصفير قاعدة البيانات غير متاح في بيئة الإنتاج.");
+        // Hint: فحص مزدوج لصلاحية السوبر أدمن (فوق [Authorize(Roles = "SuperAdmin")]) لضمان الأمان 100%.
+        if (!current.IsSuperAdmin || current.UserId is not { } superAdminId)
+            throw new ForbiddenException("هذا الإجراء مخصّص للسوبر أدمن حصراً.");
 
-        await db.Database.EnsureDeletedAsync();
-        await DbSeeder.MigrateAndSeedAsync(services, config, logger);
-        return Ok(new { message = "تم تصفير قاعدة البيانات بنجاح." });
+        if (req is null || !string.Equals(req.Confirmation?.Trim(), "تصفير", StringComparison.Ordinal))
+            throw new ValidationException("يرجى كتابة كلمة التأكيد «تصفير» بشكل صحيح.");
+
+        if (string.IsNullOrWhiteSpace(req.Password))
+            throw new ValidationException("كلمة مرور السوبر أدمن مطلوبة للتأكيد.");
+
+        var superUser = await db.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.UserId == superAdminId && u.Role == UserRole.SuperAdmin && u.IsActive, ct)
+            ?? throw new ForbiddenException("حساب السوبر أدمن غير صالح.");
+
+        // Hint: نرمي ValidationException (400) عند خطأ كلمة المرور بدلاً من Unauthorized (401)
+        //       لئلا يظنّ عميل الواجهة أن جلسة JWT انتهت فيُخرج السوبر أدمن من الشاشة قبل أن يصحّح الكلمة.
+        if (!hasher.Verify(req.Password, superUser.PasswordHash))
+            throw new ValidationException("كلمة مرور السوبر أدمن غير صحيحة.");
+
+        var none = CancellationToken.None;
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(none);
+
+            // 1) فكّ المراجع الذاتية والمراجع الاختيارية المتقاطعة قبل الحذف لتجنّب تعارض المفاتيح الأجنبية (Restrict/NoAction)
+            await db.DmsTasks.IgnoreQueryFilters()
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.ParentRecurringTaskId, (int?)null)
+                    .SetProperty(t => t.RelatedIncomingId, (int?)null)
+                    .SetProperty(t => t.RelatedOutgoingId, (int?)null), none);
+
+            await db.PayrollPeriods.IgnoreQueryFilters()
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.OutgoingBookId, (int?)null), none);
+
+            await db.OutgoingBooks.IgnoreQueryFilters()
+                .ExecuteUpdateAsync(s => s.SetProperty(b => b.CaseFileId, (int?)null), none);
+
+            await db.IncomingBooks.IgnoreQueryFilters()
+                .ExecuteUpdateAsync(s => s.SetProperty(b => b.CaseFileId, (int?)null), none);
+
+            // Hint: فكّ ارتباط حساب السوبر أدمن بأي شركة أو صورة قبل حذف الشركات والملفات
+            await db.Users.IgnoreQueryFilters()
+                .Where(u => u.UserId == superAdminId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.CompanyId, (int?)null)
+                    .SetProperty(u => u.PhotoBlobKey, (string?)null)
+                    .SetProperty(u => u.FailedLoginCount, 0)
+                    .SetProperty(u => u.LockedUntil, (DateTime?)null), none);
+
+            // 2) حذف الجداول الفرعية والمرفقات والإشعارات والمهام
+            await db.Attachments.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.DocumentVersions.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.ClientRequests.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Notifications.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+
+            await db.DmsTaskUpdates.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.DmsTaskParticipants.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.DmsTasks.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+
+            // 3) حذف حركات الكتب والردود والإحالات
+            await db.BookReplies.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.OutgoingMovements.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.MovementLogs.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Set<IncomingAssignment>().IgnoreQueryFilters().ExecuteDeleteAsync(none);
+
+            // 4) حذف بيانات الموارد البشرية والرواتب والإجازات والموظفين
+            await db.EmployeeLeaveSettlements.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.PayrollEntries.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.PayrollPeriods.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.EmployeeLeaves.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.EmployeeLogs.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.EmployeeCompanies.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Employees.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.HrSettings.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+
+            // 5) حذف الكتب الصادرة والواردة والأرشيف والمعاملات
+            await db.OutgoingBooks.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.IncomingBooks.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.ArchiveDocs.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.CaseFiles.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+
+            // 6) حذف التفويضات وإسنادات الشركات ورموز الدخول وجميع المستخدمين عدا السوبر أدمن الحالي
+            await db.ApprovalDelegations.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.UserCompanies.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.RefreshTokens.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Users.IgnoreQueryFilters().Where(u => u.UserId != superAdminId).ExecuteDeleteAsync(none);
+
+            // 7) حذف القوالب وأنواع الكتب والجهات والأقسام والعدّادات وأسعار الصرف والشركات وسجلّ التدقيق
+            await db.Templates.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.OutgoingBookTypes.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.DocumentTypes.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Entities.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Departments.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Counters.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.ExchangeRates.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.Companies.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.AuditLogs.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+
+            // 8) تصفير عدّادات الترقيم التلقائي (IDENTITY) في SQL Server لتبدأ الجداول الجديدة من الرقم 1
+            if (db.Database.IsSqlServer())
+            {
+                string[] tablesToReseedZero =
+                [
+                    "Companies", "Templates", "UserCompanies", "ApprovalDelegations",
+                    "Entities", "Departments", "DocumentTypes", "OutgoingBookTypes",
+                    "ExchangeRates", "OutgoingBooks", "ArchiveDocs", "IncomingBooks",
+                    "IncomingAssignments", "MovementLogs", "OutgoingMovements",
+                    "BookReplies", "CaseFiles", "Attachments", "DocumentVersions",
+                    "AuditLogs", "RefreshTokens", "Employees", "EmployeeCompanies",
+                    "PayrollPeriods", "PayrollEntries", "HrSettings", "EmployeeLeaves",
+                    "EmployeeLogs", "EmployeeLeaveSettlements", "DmsTasks",
+                    "DmsTaskUpdates", "DmsTaskParticipants", "Notifications", "ClientRequests"
+                ];
+
+                foreach (var tbl in tablesToReseedZero)
+                {
+                    var target = $"[{tbl}]";
+                    await db.Database.ExecuteSqlAsync($"DBCC CHECKIDENT ({target}, RESEED, 0);", none);
+                }
+                await db.Database.ExecuteSqlAsync($"DBCC CHECKIDENT ('[Users]', RESEED, {superAdminId});", none);
+            }
+
+            await tx.CommitAsync(none);
+        });
+
+        // 9) مسح جميع الملفات المرفوعة والمولّدة داخل StorageRoot (مع عدم المساس بمجلد النسخ الاحتياطية BackupDir)
+        if (Directory.Exists(paths.StorageRoot))
+        {
+            try
+            {
+                foreach (var file in Directory.GetFiles(paths.StorageRoot))
+                {
+                    try { System.IO.File.Delete(file); } catch { /* أفضل جهد */ }
+                }
+                foreach (var dir in Directory.GetDirectories(paths.StorageRoot))
+                {
+                    try { Directory.Delete(dir, recursive: true); } catch { /* أفضل جهد */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "تعذّر مسح بعض ملفات التخزين أثناء تصفير النظام.");
+            }
+        }
+
+        logger.LogWarning("تم تصفير قاعدة البيانات بالكامل بواسطة السوبر أدمن '{User}' (ID={Id}).", superUser.Username, superAdminId);
+        return Ok(new { message = "تم تصفير قاعدة البيانات بالكامل بنجاح." });
     }
 }

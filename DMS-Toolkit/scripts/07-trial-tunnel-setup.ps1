@@ -57,15 +57,22 @@ Write-Host "✔ شهادة التفويض موجودة في: $certPath" -Foregro
 # 4. إنشاء النفق أو استخدام النفق القائم
 Write-Host "`n[3/6] تهيئة النفق ($TunnelName)..." -ForegroundColor Green
 $existingTunnel = cloudflared tunnel list | Select-String $TunnelName
+$localCredFile  = Get-ChildItem "$userCfDir\*.json" -ErrorAction SilentlyContinue | Where-Object BaseName -match '^[0-9a-f-]{36}$' | Select-Object -First 1
+
 if (-not $existingTunnel) {
     Write-Host "  - إنشاء نفق جديد باسم $TunnelName..." -ForegroundColor Gray
     cloudflared tunnel create $TunnelName
+} elseif (-not $localCredFile) {
+    Write-Host "  ℹ النفق $TunnelName مسجل في Cloudflare ولكن ملف اعتماده (UUID.json) غير موجود على هذه الحاسبة — جاري إعادة إنشائه..." -ForegroundColor Yellow
+    cloudflared tunnel cleanup $TunnelName 2>$null | Out-Null
+    cloudflared tunnel delete -f $TunnelName 2>$null | Out-Null
+    cloudflared tunnel create $TunnelName
 } else {
-    Write-Host "  ℹ النفق $TunnelName منشأ مسبقاً." -ForegroundColor Gray
+    Write-Host "  ℹ النفق $TunnelName منشأ مسبقاً وملف اعتماده موجود محلياً." -ForegroundColor Gray
 }
 
 # استخراج معرف النفق UUID
-$id = (Get-ChildItem "$userCfDir\*.json" | Where-Object BaseName -match '^[0-9a-f-]{36}$' | Select-Object -First 1).BaseName
+$id = (Get-ChildItem "$userCfDir\*.json" -ErrorAction SilentlyContinue | Where-Object BaseName -match '^[0-9a-f-]{36}$' | Select-Object -First 1).BaseName
 if (-not $id) {
     Write-Host "🔴 تعذر العثور على ملف بيانات اعتماد النفق (UUID.json)!" -ForegroundColor Red
     exit 1
@@ -95,9 +102,9 @@ $configContent | Out-File -FilePath "$userCfDir\config.yml" -Encoding ascii -For
 cloudflared tunnel ingress validate
 Write-Host "✔ قواعد التوجيه صحيحة نحو 5080 للـ API و 80 للواجهة." -ForegroundColor Green
 
-# ربط الـ DNS
+# ربط الـ DNS (مع --overwrite-dns لتحديث السجل إن كان مرتبطاً بنفق سابق)
 Write-Host "  - ربط مسار DNS للدومين $Domain..." -ForegroundColor Gray
-cloudflared tunnel route dns $TunnelName $Domain -ErrorAction SilentlyContinue | Out-Null
+cloudflared tunnel route dns --overwrite-dns $TunnelName $Domain 2>$null | Out-Null
 
 # 6. [علاج العطل 7]: تجهيز إعدادات حساب SYSTEM وتصحيح ImagePath في السجل
 Write-Host "`n[5/6] تجهيز إعدادات SYSTEM وتصحيح مسار خدمة النفق (حل العطل 7)..." -ForegroundColor Yellow

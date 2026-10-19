@@ -1,4 +1,4 @@
-# سجلّ الجلسة — 2026-10-19: تجاوب متصفّح الهاتف · المحادثة الفورية وشارة التعليقات في المهام (ADR-063 — الإصدار `0.17.0`)
+# سجلّ الجلسة — 2026-10-19: تجاوب متصفّح الهاتف · المحادثة الفورية وشارة التعليقات في المهام · تصفير القاعدة بتأكيد كلمة المرور · تخصيص «حول النظام» · أداة تحديث الدومين (ADR-063 — الإصدار `0.17.0`)
 
 > **ابدأ من هنا في الجلسة القادمة.** ما طُلب · كيف نُفّذ · ما وقع بصدق · كيف يُتحقَّق · وما بقي.
 
@@ -36,12 +36,35 @@
   - تحديثٌ صامت كل **5 ثوانٍ** في `TaskListScreen` و`TaskBoardScreen` لظهور الشارة تلقائياً عند وصول تعليق جديد.
   - عند النقر على كارت مهمة يحمل تعليقاتٍ غير مقروءة، تفتح `TaskDetailScreen` **مباشرةً على تبويب «التعليقات» (`initialTab: 1`)**، وتقوم `_markTaskNotificationsRead()` بوسم إشعارات تلك المهمة كمقروءة تلقائياً فيختفي التنبيه من الكارت ومن الجرس العلوي.
 
-## 4) ما وقع بصدق (دروسٌ تقنية وحرّاس)
+## 4) تصفير قاعدة البيانات بالكامل للسوبر أدمن بتأكيد كلمة المرور (`POST /api/system/reset-db`)
+- **طلب المالك**: تحسين زرّ تصفير قاعدة البيانات في الإعدادات (مع إضافته في الملف الشخصي وتبويب النظام للسوبر أدمن فقط) بحيث يطلب **كلمة مرور السوبر أدمن للتأكيد** قبل التنفيذ، ويمسح جميع البيانات (الشركات، الكتب، الأرشيف، المهام، المعاملات، الموظفين، الرواتب، المستخدمين، المرفقات) ليبدأ النظام من الصفر دون بيانات مع بقاء حساب السوبر أدمن فقط.
+- **التنفيذ**:
+  - **الخادم (`backend/Dms.Api/Controllers/SystemController.cs` + `Dtos/Contracts.cs` + `Dms.Domain/AuditLabels.cs`)**:
+    - نقطة `POST /api/system/reset-db` محمية بـ`[Authorize(Roles = "SuperAdmin")]` وتعمل في كلٍّ من Development وProduction.
+    - تتحقّق من كلمة مرور السوبر أدمن الحالي عبر `_hasher.Verify(req.Password, superAdmin.PasswordHash)` وتعيد `400 Bad Request` برسالة عربية واضحة إذا كانت غير صحيحة.
+    - داخل معاملة قاعدة بيانات (`BeginTransactionAsync`) وبحماية `_jobs.TryAcquire("تصفير قاعدة البيانات بالكامل")`، تحذف جميع الجداول بالترتيب العكسي للعلاقات (`ExecuteDeleteAsync` مع `IgnoreQueryFilters`) وتُبقي **حساب السوبر أدمن الحالي فقط** (دون المساس بـ`PasswordHash` أو `RefreshTokens` حتى لا يُقفل خارج النظام)، وتُعيد تصفير عدّادات الهوية (`DBCC CHECKIDENT`) وتنظّف مجلد التخزين (`StorageRoot`) وتُسجّل حدث التدقيق `SystemReset` (`تصفير قاعدة البيانات بالكامل`).
+  - **الواجهة (`settings_screen.dart` · `system_control_tab.dart` · `profile_screen.dart` · `api_client.dart`)**:
+    - صفحة تأكيد مستقلّة `ResetDatabaseConfirmPage` ودالّة مساعدة `openResetDatabasePage` تطلب: (1) كتابة كلمة `تصفير`، و(2) إدخال كلمة مرور السوبر أدمن مع زرّ إظهار/إخفاء والتحقّق الفوري من الخادم، وتعطيل الأزرار أثناء التنفيذ، ثم تفريغ الشركة المختارة وتحديث الجلسة والعودة إلى شاشة البداية بعد النجاح.
+    - إتاحة الزر للسوبر أدمن حصراً في: قائمة `⋮` بأعلى شاشة الإعدادات والقوالب، وبطاقة «منطقة خطرة» أسفل تبويب «النظام»، وقسم «إدارة النظام (خاص بالسوبر أدمن)» في الملف الشخصي (`profile-reset-db-button`).
+
+## 5) تخصيص نافذة «حول النظام» حسب الدور (`AboutSystemDialog` & `VersionTag`)
+- **طلب المالك**: عند الضغط على رقم الإصدار أسفل القائمة الجانبية، يظهر للمستخدمين العاديين (رئيس، مدير، موظف، قارئ) **`حول النظام 0.17.0` فقط** بدون أيّ تفاصيل تقنية، وتظهر التفاصيل الكاملة (رقم البناء، وقت بناء الخادم، المهاجرات) **للسوبر أدمن وحده**.
+- **التنفيذ**:
+  - في `app/lib/widgets/version_tag.dart`: فحص `user?.isSuperAdmin == true`؛ لغير السوبر أدمن تعرض `AboutSystemDialog` عنوان **`حول النظام <الإصدار>`** فقط ولا تستدعي `/api/system/about` إطلاقاً، بينما للسوبر أدمن تعرض كافة التفاصيل التقنية كما كانت. كما أُضيف fallback ذكيّ في `VersionTag` لقراءة `serverVersion` عند التشغيل المحلي بـ`flutter run` دون `--dart-define`.
+  - في `backend/Dms.Api/Controllers/SystemController.cs`: تقييد `GET /api/system/about` بـ`[Authorize(Roles = "SuperAdmin")]`.
+
+## 6) المرحلة 09 في `DMS-Toolkit` لتحديث النسخة المرفوعة على الدومين (`09-trial-update-release.ps1`)
+- **طلب المالك**: إضافة قسم وسكربت متكامل في `DMS-Toolkit` بنفس التصميم والترتيب لتحديث نسخة مرفوعة على الدومين (مثلاً من `0.16.1` إلى `0.17.0`) على `dms.denland.net`.
+- **التنفيذ**:
+  - إنشاء `DMS-Toolkit/scripts/09-trial-update-release.ps1` وتحديث `01-dev-build-and-pack.ps1` (لينسخ السكربت تلقائياً إلى `D:\DMS-Release` ويؤرشف الحزم القديمة في `D:\DMS-Release\Old`) وتحديث `DMS_Deploy_Wizard.html` و`Run_Console_Menu.ps1` و`DMS-Toolkit/README.md`.
+
+## 7) ما وقع بصدق (دروسٌ تقنية وحرّاس)
 1. 🔴 **حارس `provider_resume_test.dart` (ADR-042)**: منع تعريف مزوّدٍ متزامن (`Provider.autoDispose`) يشتقّ من `ref.watch(...)` في `lib/core/task_providers.dart`، ومنع `await ref.watch(...future)` في الشاشات ⟵ استُبدل المزوّد المشتقّ بدالّةٍ نقيّة `unreadTaskCommentCountsOf(AsyncValue<List<NotificationModel>>)` تُستدعى في `build`.
 2. 🔴 **درس «الجرس يستطلع في اختبارٍ بلا خادم» في `task_board_test.dart`**: بعد ربط `TaskBoardScreen` بـ`unreadTaskNotificationsProvider`، استدعى الاختبار `api.notifications()` على `_BoardApi` الذي لم يكن يتجاوزها، فذهب الطلب إلى `Dio` وترك مؤقّتاً صفريّاً معلّقاً (`Pending timers`) ⟵ أُضيف تجاوز `notifications()` في `_BoardApi` ليعيد `NotificationPage.empty` بلا شبكة.
+3. 🔴 **عدم قفل حساب السوبر أدمن عند تصفير القاعدة (درس حادثة ADR-047)**: التصفير القديم بـ`EnsureDeletedAsync` + `MigrateAndSeedAsync` كان يستبدل حساب السوبر أدمن بكلمة المرور المبذورة ويُبطل جلسة المالك؛ أمّا الآن فالحذف الانتقائي داخل المعاملة يمحو كل شيء ويُبقي سجلّ السوبر أدمن الحالي بكلمة مروره وجلسته الفعّالة.
 
-## 5) كيف يُتحقَّق
+## 8) كيف يُتحقَّق
 - `flutter analyze`: **0 أخطاء / 0 تحذيرات**.
-- اختبارات الواجهة (`flutter test`): **811 / 811** (+6 اختبارات جديدة في `ui_polish_test.dart` و`sidebar_header_test.dart` و`tasks_ui_test.dart`).
+- اختبارات الواجهة (`flutter test`): **814 / 814** (+9 اختبارات جديدة في `ui_polish_test.dart` و`sidebar_header_test.dart` و`tasks_ui_test.dart` و`profile_test.dart` و`app_version_test.dart`).
 - اختبارات الوحدة (`dotnet test`): **844 / 844**.
 - الإصدار في `VERSION` و`app/pubspec.yaml`: **`0.17.0`**.

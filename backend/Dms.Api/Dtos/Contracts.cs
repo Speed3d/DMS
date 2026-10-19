@@ -900,3 +900,9 @@ public sealed record SystemControlResponse(
 public sealed record SetLockdownRequest(bool Active, string? Message);
 public sealed record SetAnnouncementRequest(bool Visible, string? Text, AnnouncementKind Kind);
 public sealed record SavedTextRequest(SavedTextKind Kind, string Text);
+
+/// <summary>
+/// طلب تصفير قاعدة البيانات بالكامل — محصور بالسوبر أدمن حصراً.
+/// Hint: يتطلّب كلمة مرور السوبر أدمن الفعلية + كلمة التأكيد «تصفير» لمنع التنفيذ بالخطأ.
+/// </summary>
+public sealed record ResetDatabaseRequest(string Password, string Confirmation);

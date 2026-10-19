@@ -64,10 +64,12 @@ try {
 # 4. حذف قاعدة البيانات التجريبية DmsTrial
 Write-Host "`n[4/5] حذف قاعدة البيانات DmsTrial في SQL Server..." -ForegroundColor Cyan
 try {
+    $sqlSvc = Get-Service | Where-Object { $_.Name -eq 'MSSQLSERVER' -or $_.Name -like 'MSSQL$*' } | Select-Object -First 1
+    $dbSrv = if ($sqlSvc -and $sqlSvc.Name -ne 'MSSQLSERVER') { ".\" + $sqlSvc.Name.Split('$')[1] } else { "." }
     $dropSql = "IF EXISTS (SELECT name FROM sys.databases WHERE name = 'DmsTrial') BEGIN ALTER DATABASE DmsTrial SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE DmsTrial; END"
-    sqlcmd -S . -Q $dropSql -b
+    sqlcmd -S $dbSrv -C -Q $dropSql -b
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "  ✔ تم حذف قاعدة البيانات DmsTrial إن وجدت بنجاح." -ForegroundColor Green
+        Write-Host "  ✔ تم حذف قاعدة البيانات DmsTrial إن وجدت على ($dbSrv) بنجاح." -ForegroundColor Green
     } else {
         Write-Host "  ⚠️ فشل أمر sqlcmd، تحقق من تشغيل خدمة SQL Server." -ForegroundColor DarkYellow
     }

@@ -9,12 +9,24 @@
 
 param(
     [string]$Domain   = "dms.denland.net",
-    [string]$DbServer = ".",
+    [string]$DbServer = ".\SQLEXPRESS",
     [string]$DbName   = "DmsTrial"
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Host.UI.RawUI.WindowTitle = "DMS Toolkit - 04 الأسرار وقاعدة البيانات"
+
+# كشف حساب ومثيل خدمة SQL الفعلي تلقائياً
+$sqlSvc = Get-Service | Where-Object { $_.Name -eq 'MSSQLSERVER' -or $_.Name -like 'MSSQL$*' } | Select-Object -First 1
+$sqlAccount = if ($sqlSvc -and $sqlSvc.Name -ne 'MSSQLSERVER') { "NT SERVICE\$($sqlSvc.Name)" } else { "NT SERVICE\MSSQLSERVER" }
+$detectedDbServer = if ($sqlSvc) {
+    if ($sqlSvc.Name -eq 'MSSQLSERVER') { "." } else { ".\" + $sqlSvc.Name.Split('$')[1] }
+} else { $DbServer }
+
+if ($DbServer -ne $detectedDbServer) {
+    Write-Host "  ℹ تم التصحيح التلقائي لاسم خادم SQL حسب المثيل المثبت: $detectedDbServer (بدلاً من $DbServer)" -ForegroundColor Cyan
+    $DbServer = $detectedDbServer
+}
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  🧪 [حاسبة التجربة] توليد الأسرار وتهيئة قاعدة البيانات" -ForegroundColor Cyan
@@ -27,10 +39,6 @@ Write-Host "`n[1/6] إنشاء مجلدات التخزين والنسخ الاح
 'C:\DMS\api','C:\DMS\app','C:\DMS\data\storage','C:\DMS\data\backups' |
     ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
 
-# كشف حساب خدمة SQL
-$sqlSvc = Get-Service | Where-Object { $_.Name -eq 'MSSQLSERVER' -or $_.Name -like 'MSSQL$*' } | Select-Object -First 1
-$sqlAccount = if ($sqlSvc.Name -eq 'MSSQLSERVER') { "NT SERVICE\MSSQLSERVER" } else { "NT SERVICE\$($sqlSvc.Name)" }
-
 Write-Host "  - منح إذن الكتابة لحساب محرك SQL ($sqlAccount) على مجلد النسخ الاحتياطي..." -ForegroundColor Gray
 icacls "C:\DMS\data\backups" /grant "`"$sqlAccount`":(OI)(CI)(M)" | Out-Null
 Write-Host "✔ تم ضبط أذونات مجلد النسخ الاحتياطي." -ForegroundColor Green
@@ -39,6 +47,10 @@ Write-Host "✔ تم ضبط أذونات مجلد النسخ الاحتياطي.
 Write-Host "`n[2/6] توليد أسرار الإنتاج (Dms.Api.exe generate-secrets)..." -ForegroundColor Green
 Set-Location "C:\DMS\api"
 
+if (Test-Path "C:\DMS\api\appsettings.Production.json") {
+    icacls "C:\DMS\api\appsettings.Production.json" /grant "Administrators:(F)" | Out-Null
+}
+
 $genArgs = @(
     "generate-secrets",
     "--out",       "C:\DMS\api\appsettings.Production.json",
@@ -46,7 +58,8 @@ $genArgs = @(
     "--db-server", $DbServer,
     "--db-name",   $DbName,
     "--storage",   "C:\DMS\data\storage",
-    "--backup",    "C:\DMS\data\backups"
+    "--backup",    "C:\DMS\data\backups",
+    "--force"
 )
 
 & .\Dms.Api.exe $genArgs
@@ -65,11 +78,11 @@ Write-Host "✔ تم قفل أذونات الملف (SYSTEM و Administrators ف
 # 4. [علاج العطل 4]: منح حساب SYSTEM صلاحية sysadmin قبل تشغيل الخدمة
 Write-Host "`n[4/6] منح صلاحية sysadmin لحساب NT AUTHORITY\SYSTEM في SQL..." -ForegroundColor Yellow
 $grantSql = "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'NT AUTHORITY\SYSTEM') CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];"
-sqlcmd -S $DbServer -Q $grantSql -b | Out-Null
+sqlcmd -S $DbServer -C -Q $grantSql -b | Out-Null
 
-$checkSql = "SELECT IS_SRVROLEMEMBER('sysadmin', 'NT AUTHORITY\SYSTEM') AS IsSysadmin;"
-$checkOut = sqlcmd -S $DbServer -Q $checkSql -h -1
-if ($checkOut.Trim() -match '1') {
+$checkSql = "SET NOCOUNT ON; SELECT IS_SRVROLEMEMBER('sysadmin', 'NT AUTHORITY\SYSTEM') AS IsSysadmin;"
+$checkOut = (sqlcmd -S $DbServer -C -Q $checkSql -h -1 -W | Out-String)
+if ($checkOut -and $checkOut.Trim() -match '1') {
     Write-Host "  ✔ تم التحقق: حساب NT AUTHORITY\SYSTEM يحمل صلاحية sysadmin بنجاح." -ForegroundColor Green
 } else {
     Write-Host "🔴 تحذير خطير: حساب NT AUTHORITY\SYSTEM لم يحصل على sysadmin! الخدمة ستفشل عند الإقلاع." -ForegroundColor Red
@@ -91,9 +104,10 @@ if (-not $proc.HasExited) {
 Write-Host "✔ انتهى الإقلاع الأول." -ForegroundColor Green
 
 # التحقق من المهاجرات في قاعدة البيانات
-$migSql = "SELECT COUNT(*) FROM __EFMigrationsHistory;"
+$migSql = "SET NOCOUNT ON; SELECT COUNT(*) FROM __EFMigrationsHistory;"
 try {
-    $migCount = (sqlcmd -S $DbServer -d $DbName -Q $migSql -h -1).Trim()
+    $migOut = (sqlcmd -S $DbServer -C -d $DbName -Q $migSql -h -1 -W | Out-String)
+    $migCount = if ($migOut) { $migOut.Trim() } else { "غير معروف" }
     Write-Host "  ✔ عدد المهاجرات المطبقة في ${DbName}: $migCount مهاجرة." -ForegroundColor Green
 } catch {
     Write-Host "⚠️ تعذر قراءة جدول المهاجرات: $($_.Exception.Message)" -ForegroundColor DarkYellow

@@ -202,13 +202,17 @@ cd $ApiDir
     --db-server "$DbServer" ``
     --db-name   $DbName ``
     --storage   $DataDir\storage ``
-    --backup    $DataDir\backups
+    --backup    $DataDir\backups ``
+    --force
+
+# (2-ب) منح حساب SYSTEM صلاحية sysadmin في SQL (مع -C لـ ODBC Driver 18)
+sqlcmd -S "$DbServer" -C -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'NT AUTHORITY\SYSTEM') CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];"
 
 # (3) أول إقلاع — ينشئ القاعدة ويطبّق المهاجرات، ثم Ctrl+C
 `$env:ASPNETCORE_ENVIRONMENT = "Production"
 .\Dms.Api.exe
 #    انتظر:  Now listening on: http://localhost:5080    ثم  Ctrl+C
-#    تحقّق في SSMS:  USE $DbName; SELECT COUNT(*) FROM __EFMigrationsHistory;   -- يجب 30
+#    تحقّق في SSMS:  USE $DbName; SELECT COUNT(*) FROM __EFMigrationsHistory;   -- يجب 34
 
 # (4) تسجيل الخدمة   (لاحظ الاقتباس المفرد في depend= — `$ في PowerShell متغيّر)
 sc.exe create DmsApi binPath= "$ApiDir\Dms.Api.exe" start= auto DisplayName= "DMS API Service"

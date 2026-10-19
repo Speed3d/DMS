@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,95 +5,227 @@ import '../models.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../widgets/password_field.dart';
 
 import 'company_edit_screen.dart';
 import 'hr_settings_screen.dart';
 import 'system_control_tab.dart';
 import 'template_edit_screen.dart';
 
-class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+/// فتح شاشة تأكيد تصفير قاعدة البيانات بالكامل — **للسوبر أدمن حصراً**.
+/// Hint: نستخدم شاشة كاملة (Scaffold) بدل showDialog لتفادي خلل محرّك Flutter Web مع الحقول النصّية،
+///       ولكي تبقى الشاشة مفتوحة عند إدخال كلمة مرور خاطئة فيرى السوبر أدمن رسالة الخطأ ويصحّحها فوراً.
+Future<void> openResetDatabasePage(BuildContext context) {
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => const ResetDatabaseConfirmPage()),
+  );
+}
 
-  /// تصفيرُ القاعدة — **منطقة خطر: بيئة التطوير وحدها، وبتأكيدٍ بالكتابة** (ADR-047).
-  ///
-  /// 🔴 **وُلد هذا العلاج من حادثةٍ وقعت 2026-09-21**: كان زرّاً بأيقونة
-  /// `delete_forever` حمراء **في شريط تبويبات الإعدادات، بجوار تبويب «الشركات»** —
-  /// أي بجوار المكان الذي تُحذف منه الشركات. فلمّا أُغلق في وجه المالك بابا حذف الجهة
-  /// وحذف الشركة برسالتين غامضتين، ضغط الزرّ الأحمر الثالث ظانّاً أنه «حذفُ الشركة
-  /// بالكامل» — **فأُسقطت القاعدة كلُّها وخرج من النظام مقفولاً خارجه**.
-  ///
-  /// **وثلاثة تغييرات، لا تحذيرٌ أشدّ:**
-  /// 1. **خرج من شريط التبويبات** إلى قائمةٍ منسدلة — إيماءةٌ مختلفة لا تُضغط مصادفةً.
-  /// 2. **`kDebugMode` وحده** — فلا وجود له في نسخة الإنتاج أصلاً.
-  /// 3. **كتابةُ «تصفير»** بدل زرّ «نعم» — والكتابة لا تقع بالخطأ.
-  void _confirmReset(BuildContext context, WidgetRef ref) {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setInner) {
-          final ok = ctrl.text.trim() == 'تصفير';
-          return AlertDialog(
-            title: const Text('منطقة خطر — تصفير قاعدة البيانات',
-                style: TextStyle(color: Colors.red)),
-            content: SizedBox(
-              width: 420,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                      'سيُحذف **كل شيء**: الشركات والمستخدمون والكتب والأرشيف والموظفون '
-                      'والرواتب والمهام — ولا تراجع.\n\n'
-                      'هذا ليس «حذف شركة». لحذف شركةٍ واحدة: الإعدادات ← الشركات ← '
-                      'عطّلها ثم احذفها.',
-                      style: TextStyle(height: 1.8)),
-                  const SizedBox(height: 16),
-                  const Text('للتأكيد اكتب كلمة: تصفير'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                        border: OutlineInputBorder(), isDense: true),
-                    onChanged: (_) => setInner(() {}),
+/// شاشة تأكيد تصفير قاعدة البيانات بالكامل — محمية بكلمة مرور السوبر أدمن + كتابة كلمة «تصفير».
+/// Hint: تتحقّق من شرطين معاً قبل تفعيل زرّ التنفيذ:
+///       1. إدخال كلمة مرور السوبر أدمن الحالية (يتحقّق منها الخادم عبر IPasswordHasher.Verify).
+///       2. كتابة كلمة «تصفير» صراحةً لمنع الضغطة العابرة.
+class ResetDatabaseConfirmPage extends ConsumerStatefulWidget {
+  const ResetDatabaseConfirmPage({super.key});
+
+  @override
+  ConsumerState<ResetDatabaseConfirmPage> createState() => _ResetDatabaseConfirmPageState();
+}
+
+class _ResetDatabaseConfirmPageState extends ConsumerState<ResetDatabaseConfirmPage> {
+  final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordCtrl.addListener(_onChanged);
+    _confirmCtrl.addListener(_onChanged);
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _canSubmit =>
+      !_busy &&
+      _passwordCtrl.text.isNotEmpty &&
+      _confirmCtrl.text.trim() == 'تصفير';
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(apiClientProvider).resetDb(
+            password: _passwordCtrl.text,
+            confirmation: _confirmCtrl.text.trim(),
+          );
+      messenger.showSnackBar(const SnackBar(
+        content: Text('تم تصفير قاعدة البيانات بالكامل بنجاح. سجّل الدخول بحساب السوبر أدمن للبدء من الصفر.'),
+      ));
+      await ref.read(sessionProvider.notifier).logout();
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'خطأ: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('منطقة خطر — تصفير قاعدة البيانات بالكامل'),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.danger.withValues(alpha: 0.45)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 28),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'تحذير نهائي — لا يمكن التراجع عن هذا الإجراء',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: AppColors.danger,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'عند التنفيذ سيتم مسح جميع البيانات بالكامل والبدء من الصفر:\n'
+                        '• جميع الشركات والمستخدمين وتفويضات الاعتماد\n'
+                        '• جميع الكتب الصادرة والواردة والأرشيف والمعاملات والردود\n'
+                        '• جميع الموظفين والرواتب والإجازات والمهام والإشعارات\n'
+                        '• جميع الأقسام والجهات والقوالب وأنواع الكتب والملفات المرفوعة\n\n'
+                        '✅ يبقى حساب السوبر أدمن الحالي وحده فقط (بنفس اسم المستخدم وكلمة المرور الحالية) لتتمكّن من تسجيل الدخول والبدء من جديد.\n\n'
+                        '⚠️ هذا ليس «حذف شركة». لحذف شركةٍ واحدة: الإعدادات ← الشركات ← عطّلها ثم احذفها.',
+                        style: TextStyle(height: 1.75),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                PasswordField(
+                  key: const Key('reset-db-password'),
+                  controller: _passwordCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'كلمة مرور السوبر أدمن الحالية (للتأكيد)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  key: const Key('reset-db-confirm'),
+                  controller: _confirmCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'اكتب كلمة التأكيد: تصفير',
+                    hintText: 'تصفير',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => _submit(),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.danger, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
-              ),
+                const SizedBox(height: 24),
+                // Hint: نستخدم Wrap بدل Row لتفادي فيض الأزرار على الشاشات الضيقة (درس G12).
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                      child: const Text('إلغاء'),
+                    ),
+                    FilledButton.icon(
+                      key: const Key('reset-db-submit'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _canSubmit ? _submit : null,
+                      icon: _busy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.delete_forever_rounded),
+                      label: const Text('تصفير قاعدة البيانات بالكامل'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('إلغاء')),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: !ok
-                    ? null
-                    : () async {
-                        Navigator.pop(ctx);
-                        final msg = ScaffoldMessenger.of(context);
-                        try {
-                          await ref.read(apiClientProvider).resetDb();
-                          msg.showSnackBar(const SnackBar(
-                              content: Text(
-                                  'تم تصفير قاعدة البيانات. سجّل الدخول بحساب المدير المبذور.')));
-                          await ref.read(sessionProvider.notifier).logout();
-                          if (!context.mounted) return;
-                          Navigator.of(context).popUntil((route) => route.isFirst);
-                        } catch (e) {
-                          msg.showSnackBar(SnackBar(
-                              content: Text('خطأ: $e'),
-                              backgroundColor: Colors.red));
-                        }
-                      },
-                child: const Text('صفّر كل شيء'),
-              ),
-            ],
-          );
-        },
+          ),
+        ),
       ),
-    ).then((_) => ctrl.dispose());
+    );
   }
+}
+
+class SettingsScreen extends ConsumerWidget {
+  const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -126,21 +257,21 @@ class SettingsScreen extends ConsumerWidget {
                   if (isSuper) const Tab(text: 'النظام'),
                 ]),
               ),
-              // 🔴 **قائمةٌ لا زرّ، وبيئةُ تطويرٍ لا إنتاج** (ADR-047): أيقونةُ حذفٍ
-              //    حمراء بجوار تبويب «الشركات» كانت تُضغط مكان «حذف الشركة».
-              if (isSuper && kDebugMode)
+              // 🔴 **قائمةٌ منسدلة للسوبر أدمن حصراً** (ADR-047): مفصولة عن شريط التبويبات
+              //    ومحميةٌ بشاشة تأكيد تطلب كلمة مرور السوبر أدمن + كتابة كلمة «تصفير».
+              if (isSuper)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert),
-                    tooltip: 'أدوات المطوّر',
+                    tooltip: 'إجراءات السوبر أدمن',
                     onSelected: (v) {
-                      if (v == 'reset') _confirmReset(context, ref);
+                      if (v == 'reset') openResetDatabasePage(context);
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(
                         value: 'reset',
-                        child: Text('منطقة خطر — تصفير قاعدة البيانات',
+                        child: Text('منطقة خطر — تصفير قاعدة البيانات بالكامل',
                             style: TextStyle(color: Colors.red)),
                       ),
                     ],

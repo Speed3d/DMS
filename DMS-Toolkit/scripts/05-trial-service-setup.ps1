@@ -40,7 +40,7 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\DmsApi" `
 # 5. تشغيل الخدمة
 Write-Host "`n[3/4] تشغيل الخدمة Start-Service DmsApi..." -ForegroundColor Green
 try {
-    Start-Service DmsApi
+    Start-Service DmsApi -ErrorAction Stop
     Start-Sleep -Seconds 5
 } catch {
     Write-Host "🔴 فشل تشغيل خدمة DmsApi!" -ForegroundColor Red

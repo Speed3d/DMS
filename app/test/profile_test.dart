@@ -7,6 +7,7 @@ import 'package:dms_app/core/api_client.dart';
 import 'package:dms_app/core/session.dart';
 import 'package:dms_app/models.dart';
 import 'package:dms_app/screens/profile_screen.dart';
+import 'package:dms_app/screens/settings_screen.dart';
 
 /// حرّاس البروفايل الشخصي (ADR-033).
 ///
@@ -240,6 +241,55 @@ void main() {
       await pumpProfile(tester, _SuperAdminApi());
       expect(find.widgetWithText(OutlinedButton, 'تغيير الصورة الشخصية'), findsOneWidget);
       expect(find.byTooltip('تغيير صورتي'), findsOneWidget);
+      expect(find.byKey(const Key('profile-reset-db-button')), findsOneWidget);
+    });
+
+    testWidgets('🔴 غير السوبر أدمن لا يرى زرّ تصفير قاعدة البيانات في الملف الشخصي', (tester) async {
+      await pumpProfile(tester, _LinkedApi());
+      expect(find.byKey(const Key('profile-reset-db-button')), findsNothing);
+    });
+
+    testWidgets('🔐 شاشة تصفير القاعدة تتطلّب كلمة مرور السوبر أدمن + كلمة «تصفير» معاً', (tester) async {
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(() => _FixedSession(_session())),
+          apiClientProvider.overrideWithValue(_SuperAdminApi()),
+        ],
+        child: const MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: ResetDatabaseConfirmPage(),
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      FilledButton submitBtn() =>
+          tester.widget<FilledButton>(find.byKey(const Key('reset-db-submit')));
+
+      // 1) معطّل في البداية
+      expect(submitBtn().onPressed, isNull);
+
+      // 2) كتابة «تصفير» وحدها بدون كلمة المرور لا تفعّل الزر
+      await tester.enterText(find.byKey(const Key('reset-db-confirm')), 'تصفير');
+      await tester.pump();
+      expect(submitBtn().onPressed, isNull);
+
+      // 3) كتابة كلمة المرور مع كلمة تأكيد غير مطابقة لا تفعّل الزر
+      await tester.enterText(find.byKey(const Key('reset-db-password')), 'WrongPass123');
+      await tester.enterText(find.byKey(const Key('reset-db-confirm')), 'مسح');
+      await tester.pump();
+      expect(submitBtn().onPressed, isNull);
+
+      // 4) كتابة كلمة المرور + كلمة «تصفير» تفعّل الزر، وعند الخطأ تظهر الرسالة دون إغلاق الشاشة
+      await tester.enterText(find.byKey(const Key('reset-db-confirm')), 'تصفير');
+      await tester.pump();
+      expect(submitBtn().onPressed, isNotNull);
+
+      await tester.ensureVisible(find.byKey(const Key('reset-db-submit')));
+      await tester.tap(find.byKey(const Key('reset-db-submit')));
+      await tester.pump();
+      expect(find.text('كلمة مرور السوبر أدمن غير صحيحة.'), findsOneWidget);
     });
   });
 
@@ -377,4 +427,11 @@ class _SuperAdminApi extends _SilentApi {
         'role': 'SuperAdmin',
         'canChangePhoto': true,
       });
+
+  @override
+  Future<void> resetDb({required String password, String confirmation = 'تصفير'}) async {
+    if (password != 'AdminPass123!') {
+      throw ApiException(400, 'كلمة مرور السوبر أدمن غير صحيحة.');
+    }
+  }
 }

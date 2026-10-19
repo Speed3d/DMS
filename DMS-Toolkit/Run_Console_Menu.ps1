@@ -4,7 +4,16 @@
 #>
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "DMS Deployment Toolkit - القائمة التفاعلية"
+
+# التحقق من صلاحيات المسؤول والترقية التلقائية إن لزم
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "جاري إعادة فتح القائمة بصلاحيات المسؤول (Administrator)..." -ForegroundColor Yellow
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    exit
+}
+
+$Host.UI.RawUI.WindowTitle = "DMS Deployment Toolkit - القائمة التفاعلية (Administrator)"
 
 function Show-Menu {
     Clear-Host
@@ -22,6 +31,8 @@ function Show-Menu {
     Write-Host "  [6] 🧪 [حاسبة التجربة] إعداد موقع IIS وفحص WASM (06-trial-iis-setup.ps1)" -ForegroundColor Cyan
     Write-Host "  [7] 🧪 [حاسبة التجربة] تثبيت نفق Cloudflare كخدمة (07-trial-tunnel-setup.ps1)" -ForegroundColor Cyan
     Write-Host "  [8] 🎯 [فحص شامل] الفحص الحاسم النهائي (08-trial-verify-final.ps1)" -ForegroundColor Green
+    Write-Host "------------------------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host "  [9] 🚀 [تحديث إصدار] تحديث نسخة مرفوعة بأمان (09-trial-update-release.ps1)" -ForegroundColor Green
     Write-Host "------------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  [H] 🌐 فتح الكتالوج الرسومي في المتصفح (DMS_Deploy_Wizard.html)" -ForegroundColor Magenta
     Write-Host "  [Q] 🚪 خروج" -ForegroundColor Gray
@@ -43,6 +54,7 @@ do {
         "6" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\06-trial-iis-setup.ps1" }
         "7" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\07-trial-tunnel-setup.ps1" }
         "8" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\08-trial-verify-final.ps1" }
+        "9" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\09-trial-update-release.ps1" }
         "H" { Start-Process "$PSScriptRoot\DMS_Deploy_Wizard.html" }
         "Q" { break }
         default { Write-Host "خيار غير صالح! اضغط Enter..." -ForegroundColor Red }

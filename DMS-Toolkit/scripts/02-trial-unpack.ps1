@@ -7,7 +7,7 @@
 #>
 
 param(
-    [string]$SourceDrive = "E:\"
+    [string]$SourceDrive = "D:\"
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -23,7 +23,7 @@ $appZip = Join-Path $SourceDrive "dms-app.zip"
 
 if (-not (Test-Path $apiZip) -or -not (Test-Path $appZip)) {
     Write-Host "لم يتم العثور على الحزم في $SourceDrive، جاري البحث في المحركات المتصلة..." -ForegroundColor Yellow
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne 'C:\' -and $_.Root -ne 'D:\' }
+    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne 'C:\' }
     foreach ($d in $drives) {
         $candidateApi = Join-Path $d.Root "dms-api.zip"
         $candidateApp = Join-Path $d.Root "dms-app.zip"

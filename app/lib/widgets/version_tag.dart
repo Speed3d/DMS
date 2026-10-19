@@ -24,6 +24,8 @@ class VersionTag extends ConsumerWidget {
     final server = ref.watch(systemStatusProvider).serverVersion;
     final mismatch = isSuper && versionsDiffer(uiVersion, server);
     final color = mismatch ? AppColors.goldBright : const Color(0xFF7F93B5);
+    // Hint: في بيئة التطوير (flutter run بدون dart-define) يكون uiVersion فارغاً، فنقرأ رقم الإصدار من الخادم (server) ليظهر 0.17.0 بدلاً من «نسخة تطوير».
+    final displayVersion = uiVersion.isNotEmpty ? uiVersion : (server ?? '');
 
     return Tooltip(
       message: mismatch ? 'الواجهة $uiVersion والخادم $server — تحديثٌ لم يكتمل' : 'حول النظام',
@@ -39,7 +41,7 @@ class VersionTag extends ConsumerWidget {
               Icon(mismatch ? Icons.warning_amber_rounded : Icons.info_outline_rounded, size: 14, color: color),
               const SizedBox(width: 6),
               Flexible(
-                child: Text(appVersionLabel(uiVersion),
+                child: Text(appVersionLabel(displayVersion),
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
               ),
@@ -51,7 +53,8 @@ class VersionTag extends ConsumerWidget {
   }
 }
 
-/// «حول النظام» — إصدار الواجهة والخادم والـcommit ولحظة البناء وآخر مهاجرة.
+/// «حول النظام» — يعرض للسوبر أدمن كافة التفاصيل التقنية (الواجهة، الخادم، الـcommit، وقت البناء، والمهاجرات)،
+/// بينما يعرض لبقية الأدوار (رئيس، مدير، موظف، قارئ) «حول النظام 0.17.0» فقط بدون أي تفاصيل تقنية.
 class AboutSystemDialog extends ConsumerStatefulWidget {
   const AboutSystemDialog({super.key, this.uiVersion = kAppVersion, this.uiCommit = kAppCommit});
   final String uiVersion;
@@ -62,11 +65,38 @@ class AboutSystemDialog extends ConsumerStatefulWidget {
 }
 
 class _AboutSystemDialogState extends ConsumerState<AboutSystemDialog> {
-  late final Future<SystemAboutInfo> _about = ref.read(apiClientProvider).systemAbout();
+  Future<SystemAboutInfo>? _about;
 
   @override
   Widget build(BuildContext context) {
     final isSuper = ref.watch(sessionProvider).auth?.isSuperAdmin == true;
+    final serverVersion = ref.watch(systemStatusProvider).serverVersion;
+    final effectiveVersion = widget.uiVersion.isNotEmpty ? widget.uiVersion : (serverVersion ?? '');
+
+    // Hint: للمستخدم العادي (رئيس، مدير، موظف، قارئ) نعرض فقط «حول النظام <الإصدار>»
+    //       بدون أي تفاصيل تقنية أخرى (لا commit، ولا وقت بناء الخادم، ولا المهاجرات).
+    if (!isSuper) {
+      final titleText = effectiveVersion.isEmpty ? 'حول النظام' : 'حول النظام $effectiveVersion';
+      return AlertDialog(
+        icon: Icon(Icons.info_outline_rounded, color: AppColors.action(context), size: 32),
+        title: Text(titleText, textAlign: TextAlign.center),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.action(context),
+              foregroundColor: AppColors.onAction(context),
+            ),
+            child: const Text('حسناً'),
+          ),
+        ],
+      );
+    }
+
+    // Hint: للسوبر أدمن وحده (المالك/المطوّر) نطلب تفاصيل الخادم الكاملة (الـcommit، وقت البناء، والمهاجرات).
+    _about ??= ref.read(apiClientProvider).systemAbout();
+
     return AlertDialog(
       icon: Icon(Icons.info_outline_rounded, color: AppColors.action(context), size: 32),
       title: const Text('حول النظام'),
@@ -80,7 +110,7 @@ class _AboutSystemDialogState extends ConsumerState<AboutSystemDialog> {
               ('الواجهة', _withCommit(appVersionLabel(widget.uiVersion), widget.uiCommit)),
               if (a != null) ('الخادم', _withCommit('الإصدار ${a.version}', a.commit ?? '')),
               if (a?.builtAt != null) ('بناء الخادم', DateFormat('yyyy-MM-dd HH:mm').format(a!.builtAt!)),
-              if (a != null && isSuper) ('قاعدة البيانات', '${a.migrationCount} مهاجرة — آخرُها ${a.appliedMigration ?? '—'}'),
+              if (a != null) ('قاعدة البيانات', '${a.migrationCount} مهاجرة — آخرُها ${a.appliedMigration ?? '—'}'),
             ];
             final differ = a != null && versionsDiffer(widget.uiVersion, a.version);
             return Column(
@@ -105,12 +135,11 @@ class _AboutSystemDialogState extends ConsumerState<AboutSystemDialog> {
                     padding: EdgeInsets.only(top: 8),
                     child: Text('تعذّر سؤال الخادم عن إصداره.', style: TextStyle(color: AppColors.warn)),
                   ),
-                // 🔴 للسوبر أدمن وحده — هو مَن ينشر، وبيده الإصلاح.
-                if (isSuper && differ) ...[
+                if (differ) ...[
                   const SizedBox(height: 10),
                   _Warning('الواجهة والخادم من إصدارين مختلفين — أكمل التحديث (انشر الطرف الآخر) ثم أعد تحميل الصفحة.'),
                 ],
-                if (isSuper && a != null && !a.migrationsUpToDate) ...[
+                if (a != null && !a.migrationsUpToDate) ...[
                   const SizedBox(height: 10),
                   _Warning('في الكود مهاجرةٌ لم تُطبَّق على القاعدة (${a.latestMigration}) — أعد تشغيل الخدمة.'),
                 ],

@@ -9,6 +9,7 @@ import '../core/theme.dart';
 import '../models.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/system_shell.dart';
+import 'settings_screen.dart';
 
 /// تبويب «النظام» في الإعدادات — **للسوبر أدمن وحده** (ADR-050).
 ///
@@ -178,6 +179,8 @@ class _SystemControlTabState extends ConsumerState<SystemControlTab> {
         _lockdownCard(info),
         const SizedBox(height: 16),
         _announcementCard(info),
+        const SizedBox(height: 16),
+        _dangerZoneCard(),
       ],
     );
   }
@@ -341,6 +344,62 @@ class _SystemControlTabState extends ConsumerState<SystemControlTab> {
                 label: Text(a.visible ? 'تحديث الشريط' : 'إظهار للجميع'),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// بطاقة «منطقة خطر» لتصفير قاعدة البيانات بالكامل — للسوبر أدمن حصراً.
+  /// Hint: تفتح شاشة التأكيد المستقلّة (ResetDatabaseConfirmPage) التي تطلب كلمة مرور السوبر أدمن + كتابة كلمة «تصفير».
+  Widget _dangerZoneCard() {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final dangerColor = dark ? AppColors.dangerDark : AppColors.danger;
+
+    return CustomCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.delete_forever_rounded, color: dangerColor, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'منطقة خطر — تصفير قاعدة البيانات بالكامل',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: dangerColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'مسح جميع الشركات والمستخدمين والكتب الواردة والصادرة والأرشيف والموظفين والرواتب والمهام والبدء من الصفر (مع بقاء حساب السوبر أدمن الحالي فقط). يتطلّب التحقّق من كلمة مرور السوبر أدمن.',
+                      style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: FilledButton.icon(
+              key: const Key('open-reset-db-page'),
+              style: FilledButton.styleFrom(
+                backgroundColor: dangerColor,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _busy ? null : () => openResetDatabasePage(context),
+              icon: const Icon(Icons.delete_forever_rounded),
+              label: const Text('تصفير قاعدة البيانات بالكامل...'),
+            ),
           ),
         ],
       ),

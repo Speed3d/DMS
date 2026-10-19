@@ -179,7 +179,10 @@ class ApiClient {
     }
   }
 
-  Future<void> resetDb() async => _post('/system/reset-db', {});
+  /// تصفير قاعدة البيانات بالكامل — محصور بالسوبر أدمن ويتطلّب كلمة مروره الفعلية وكلمة التأكيد «تصفير».
+  /// Hint: يرسل كلمة المرور للتحقّق على الخادم قبل مسح أيّ شيء، ويبقى حساب السوبر أدمن وحده فعّالاً.
+  Future<void> resetDb({required String password, String confirmation = 'تصفير'}) async =>
+      _post('/system/reset-db', {'password': password, 'confirmation': confirmation});
 
   Future<List<EntityModel>> entities() async =>
       (await _get('/entities') as List).map((e) => EntityModel.fromJson(e)).toList();

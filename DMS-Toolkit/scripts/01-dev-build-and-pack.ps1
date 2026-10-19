@@ -99,15 +99,28 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $apiZip = "$OutputDir\dms-api.zip"
 $appZip = "$OutputDir\dms-app.zip"
 
+# أرشفة الحزم السابقة إن وجدت لمنع ضياع الإصدار السابق
+if ((Test-Path $apiZip) -or (Test-Path $appZip)) {
+    $oldStamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $oldArchiveDir = "$OutputDir\Old\backup-$oldStamp"
+    New-Item -ItemType Directory -Force -Path $oldArchiveDir | Out-Null
+    if (Test-Path $apiZip) { Move-Item $apiZip "$oldArchiveDir\dms-api.zip" -Force }
+    if (Test-Path $appZip) { Move-Item $appZip "$oldArchiveDir\dms-app.zip" -Force }
+    Write-Host "  - تم أرشفة الحزم السابقة تلقائياً في: $oldArchiveDir" -ForegroundColor Gray
+}
+
 Write-Host "  - ضغط الباك إند إلى $apiZip..."
 Compress-Archive -Path "$TempPublish\*" -DestinationPath $apiZip -Force
 
 Write-Host "  - ضغط الواجهة إلى $appZip..."
 Compress-Archive -Path "D:\DMS\app\build\web\*" -DestinationPath $appZip -Force
 
-# نسخ سكربتات التجربة المساعدة إلى مجلد النشر
+# نسخ سكربتات التجربة والتحديث المساعدة إلى مجلد النشر
 if (Test-Path "D:\DMS\DMS-Toolkit\scripts\03-trial-preflight.ps1") {
     Copy-Item "D:\DMS\DMS-Toolkit\scripts\03-trial-preflight.ps1" "$OutputDir\" -Force
+}
+if (Test-Path "D:\DMS\DMS-Toolkit\scripts\09-trial-update-release.ps1") {
+    Copy-Item "D:\DMS\DMS-Toolkit\scripts\09-trial-update-release.ps1" "$OutputDir\" -Force
 }
 
 # 5. التحقق من أحجام الملفات

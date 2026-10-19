@@ -12,6 +12,7 @@ import '../models.dart';
 import '../widgets/attachment_viewer.dart';
 import '../widgets/custom_card.dart';
 import 'change_password_screen.dart';
+import 'settings_screen.dart';
 
 /// الملف الشخصي — **ما يخصّ صاحب الجلسة وحده** (ADR-033).
 ///
@@ -402,6 +403,34 @@ class _IdentityTab extends StatelessWidget {
               ],
             ),
           ),
+          // Hint: قسم خاص بالسوبر أدمن حصراً في الملف الشخصي لتصفير قاعدة البيانات بالكامل،
+          //       يفتح شاشة التأكيد المحمية بكلمة مرور السوبر أدمن + كتابة كلمة «تصفير».
+          if (profile.role == 'SuperAdmin') ...[
+            const SizedBox(height: 14),
+            CustomCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionTitle('منطقة خطر — إدارة النظام للسوبر أدمن'),
+                  const Text(
+                    'تصفير قاعدة البيانات بالكامل ومسح جميع الشركات والمستخدمين والكتب الواردة والصادرة والأرشيف والموظفين والرواتب والمهام للبدء من الصفر (مع بقاء حساب السوبر أدمن الحالي فقط).',
+                    style: TextStyle(fontSize: 12.5, height: 1.6),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const Key('profile-reset-db-button'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                      side: const BorderSide(color: AppColors.danger),
+                    ),
+                    onPressed: () => openResetDatabasePage(context),
+                    icon: const Icon(Icons.delete_forever_rounded, size: 18),
+                    label: const Text('تصفير قاعدة البيانات بالكامل...'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
