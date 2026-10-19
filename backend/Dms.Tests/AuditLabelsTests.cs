@@ -145,4 +145,30 @@ public class AuditLabelsTests
         Assert.DoesNotContain("Dms.Infrastructure", referenced);
         Assert.DoesNotContain("Microsoft.EntityFrameworkCore", referenced);
     }
+
+    [Fact]
+    public void ResetDb_TablesToReseedZero_AllMatchActualSqlTableNamesInModel()
+    {
+        // 🔴 حارس يمنع خطأ Msg 2501 عند تصفير القاعدة (مثل كتابة IncomingAssignments بالجمع بينما اسم الجدول IncomingAssignment بالمفرد).
+        using var db = new Dms.Infrastructure.Persistence.AppDbContextFactory().CreateDbContext([]);
+        var modelTables = Microsoft.EntityFrameworkCore.RelationalEntityTypeExtensions
+            .GetTableName(db.Model.FindEntityType(typeof(Company))!) is not null
+            ? db.Model.GetEntityTypes()
+                .Select(Microsoft.EntityFrameworkCore.RelationalEntityTypeExtensions.GetTableName)
+                .Where(t => !string.IsNullOrEmpty(t))
+                .ToHashSet(StringComparer.Ordinal)
+            : [];
+
+        foreach (var table in Dms.Infrastructure.Persistence.AppDbContext.TablesToReseedZero)
+        {
+            Assert.True(modelTables.Contains(table), $"الجدول '{table}' في قائمة تصفير العدّادات غير موجود في نموذج قاعدة البيانات الفعلي.");
+        }
+
+        // جميع الجداول عدا المستثناة عمداً (Users و RefreshTokens تُصفّر إلى MAX، و Counters بلا Identity، و BackupRecords/BackupSchedules تبقى)
+        string[] excluded = ["Users", "RefreshTokens", "Counters", "BackupRecords", "BackupSchedules"];
+        foreach (var modelTable in modelTables.Except(excluded))
+        {
+            Assert.Contains(modelTable!, Dms.Infrastructure.Persistence.AppDbContext.TablesToReseedZero);
+        }
+    }
 }

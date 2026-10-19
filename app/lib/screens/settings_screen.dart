@@ -239,46 +239,20 @@ class SettingsScreen extends ConsumerWidget {
       length: 7 + (showHr ? 1 : 0) + (isSuper ? 1 : 0),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TabBar(isScrollable: true, tabs: [
-                  const Tab(text: 'الشركات'),
-                  const Tab(text: 'الجهات'),
-                  const Tab(text: 'الأقسام'),
-                  const Tab(text: 'أنواع المستندات'),
-                  // ADR-057: قائمةٌ منفصلة لما تُصدره الشركة (قرار المالك) — لا «شكوى» و«مخطّط» في إنشاء فاتورة.
-                  const Tab(text: 'أنواع الصادر'),
-                  const Tab(text: 'القوالب'),
-                  const Tab(text: 'أسعار الصرف'),
-                  if (showHr) const Tab(text: 'الموظفون والرواتب'),
-                  // ⏸️ إيقاف النظام وشريط الإعلان (ADR-050) — للسوبر أدمن وحده، **وفي الإنتاج**
-                  //    (لا `kDebugMode`): هو أداةُ تشغيلٍ يوميّ لا أداةُ مطوّر.
-                  if (isSuper) const Tab(text: 'النظام'),
-                ]),
-              ),
-              // 🔴 **قائمةٌ منسدلة للسوبر أدمن حصراً** (ADR-047): مفصولة عن شريط التبويبات
-              //    ومحميةٌ بشاشة تأكيد تطلب كلمة مرور السوبر أدمن + كتابة كلمة «تصفير».
-              if (isSuper)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    tooltip: 'إجراءات السوبر أدمن',
-                    onSelected: (v) {
-                      if (v == 'reset') openResetDatabasePage(context);
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: 'reset',
-                        child: Text('منطقة خطر — تصفير قاعدة البيانات بالكامل',
-                            style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          TabBar(isScrollable: true, tabs: [
+            const Tab(text: 'الشركات'),
+            const Tab(text: 'الجهات'),
+            const Tab(text: 'الأقسام'),
+            const Tab(text: 'أنواع المستندات'),
+            // ADR-057: قائمةٌ منفصلة لما تُصدره الشركة (قرار المالك) — لا «شكوى» و«مخطّط» في إنشاء فاتورة.
+            const Tab(text: 'أنواع الصادر'),
+            const Tab(text: 'القوالب'),
+            const Tab(text: 'أسعار الصرف'),
+            if (showHr) const Tab(text: 'الموظفون والرواتب'),
+            // ⏸️ إيقاف النظام وشريط الإعلان (ADR-050) — للسوبر أدمن وحده، **وفي الإنتاج**
+            //    (لا `kDebugMode`): هو أداةُ تشغيلٍ يوميّ لا أداةُ مطوّر.
+            if (isSuper) const Tab(text: 'النظام'),
+          ]),
           Expanded(
             child: TabBarView(children: [
               _CompaniesTab(canCreate: isSuper),

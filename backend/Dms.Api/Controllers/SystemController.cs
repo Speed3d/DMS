@@ -174,6 +174,11 @@ public class SystemController(
         => jobs.Current is { } j ? Ok(JobResponse.From(j)) : NoContent();
 
     /// <summary>
+    /// قائمة الجداول التي يُعاد تصفير عدّاد الترقيم التلقائي (IDENTITY) لها إلى الصفر عند تصفير القاعدة.
+    /// </summary>
+    public static IReadOnlyList<string> TablesToReseedZero => AppDbContext.TablesToReseedZero;
+
+    /// <summary>
     /// تصفير قاعدة البيانات بالكامل ومسح جميع البيانات والمرفقات للبدء من الصفر — **للسوبر أدمن حصراً**.
     /// Hint: يتحقّق أولاً من كلمة التأكيد «تصفير» ومن كلمة مرور السوبر أدمن الفعلية عبر IPasswordHasher.Verify.
     /// Hint: يحذف جميع الجداول داخل معاملة واحدة (Transaction) مرتّبة حسب المفاتيح الأجنبية بدلاً من DROP DATABASE،
@@ -268,7 +273,7 @@ public class SystemController(
             // 6) حذف التفويضات وإسنادات الشركات ورموز الدخول وجميع المستخدمين عدا السوبر أدمن الحالي
             await db.ApprovalDelegations.IgnoreQueryFilters().ExecuteDeleteAsync(none);
             await db.UserCompanies.IgnoreQueryFilters().ExecuteDeleteAsync(none);
-            await db.RefreshTokens.IgnoreQueryFilters().ExecuteDeleteAsync(none);
+            await db.RefreshTokens.IgnoreQueryFilters().Where(r => r.UserId != superAdminId).ExecuteDeleteAsync(none);
             await db.Users.IgnoreQueryFilters().Where(u => u.UserId != superAdminId).ExecuteDeleteAsync(none);
 
             // 7) حذف القوالب وأنواع الكتب والجهات والأقسام والعدّادات وأسعار الصرف والشركات وسجلّ التدقيق
@@ -283,28 +288,31 @@ public class SystemController(
             await db.AuditLogs.IgnoreQueryFilters().ExecuteDeleteAsync(none);
 
             // 8) تصفير عدّادات الترقيم التلقائي (IDENTITY) في SQL Server لتبدأ الجداول الجديدة من الرقم 1
+            // Hint:
+            //   1. جدول إحالات الوارد اسمه الفعلي في القاعدة [IncomingAssignment] بالمفرد (وليس بالجمع).
+            //   2. في SQL Server، إذا لم يُدرج في الجدول أيّ صفّ من قبل تكون (last_value IS NULL) في sys.identity_columns؛
+            //      واستدعاء RESEED, 0 على جدول بـ last_value = NULL يجعل أوّل صفّ جديد يأخذ الرقم 0 بدل 1!
+            //      لذلك نفحص (last_value IS NOT NULL) قبل تنفيذ DBCC CHECKIDENT ليبدأ أوّل صفّ دائماً من 1.
             if (db.Database.IsSqlServer())
             {
-                string[] tablesToReseedZero =
-                [
-                    "Companies", "Templates", "UserCompanies", "ApprovalDelegations",
-                    "Entities", "Departments", "DocumentTypes", "OutgoingBookTypes",
-                    "ExchangeRates", "OutgoingBooks", "ArchiveDocs", "IncomingBooks",
-                    "IncomingAssignments", "MovementLogs", "OutgoingMovements",
-                    "BookReplies", "CaseFiles", "Attachments", "DocumentVersions",
-                    "AuditLogs", "RefreshTokens", "Employees", "EmployeeCompanies",
-                    "PayrollPeriods", "PayrollEntries", "HrSettings", "EmployeeLeaves",
-                    "EmployeeLogs", "EmployeeLeaveSettlements", "DmsTasks",
-                    "DmsTaskUpdates", "DmsTaskParticipants", "Notifications", "ClientRequests"
-                ];
-
-                foreach (var tbl in tablesToReseedZero)
+                foreach (var tbl in TablesToReseedZero)
                 {
                     var target = $"[{tbl}]";
-                    await db.Database.ExecuteSqlAsync($"DBCC CHECKIDENT ({target}, RESEED, 0);", none);
+                    await db.Database.ExecuteSqlAsync(
+                        $"IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID({target}, 'U') AND last_value IS NOT NULL) DBCC CHECKIDENT ({target}, RESEED, 0);",
+                        none);
                 }
-                await db.Database.ExecuteSqlAsync($"DBCC CHECKIDENT ('[Users]', RESEED, {superAdminId});", none);
+                await db.Database.ExecuteSqlAsync(
+                    $"IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID('[Users]', 'U') AND last_value IS NOT NULL) BEGIN DECLARE @maxUser int = ISNULL((SELECT MAX(UserId) FROM [Users]), 0); DBCC CHECKIDENT ('[Users]', RESEED, @maxUser); END",
+                    none);
+                await db.Database.ExecuteSqlAsync(
+                    $"IF EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID('[RefreshTokens]', 'U') AND last_value IS NOT NULL) BEGIN DECLARE @maxRt int = ISNULL((SELECT MAX(RefreshTokenId) FROM [RefreshTokens]), 0); DBCC CHECKIDENT ('[RefreshTokens]', RESEED, @maxRt); END",
+                    none);
             }
+
+            audit.Add("SystemReset", SystemControlWatcher.SystemAuditEntity, null,
+                "تصفير قاعدة البيانات بالكامل للبدء من الصفر");
+            await db.SaveChangesAsync(none);
 
             await tx.CommitAsync(none);
         });

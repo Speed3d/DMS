@@ -66,6 +66,23 @@ public class AppDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<ClientRequest> ClientRequests => Set<ClientRequest>();
 
+    /// <summary>
+    /// قائمة الجداول التي يُعاد تصفير عدّاد الترقيم التلقائي (IDENTITY) لها إلى الصفر عند تصفير القاعدة.
+    /// Hint: جدول إحالات الوارد اسمه الفعلي في SQL Server هو [IncomingAssignment] بالمفرد لأن ليس له DbSet بالجمع.
+    /// </summary>
+    public static readonly IReadOnlyList<string> TablesToReseedZero =
+    [
+        "Companies", "Templates", "UserCompanies", "ApprovalDelegations",
+        "Entities", "Departments", "DocumentTypes", "OutgoingBookTypes",
+        "ExchangeRates", "OutgoingBooks", "ArchiveDocs", "IncomingBooks",
+        "IncomingAssignment", "MovementLogs", "OutgoingMovements",
+        "BookReplies", "CaseFiles", "Attachments", "DocumentVersions",
+        "AuditLogs", "Employees", "EmployeeCompanies",
+        "PayrollPeriods", "PayrollEntries", "HrSettings", "EmployeeLeaves",
+        "EmployeeLogs", "EmployeeLeaveSettlements", "DmsTasks",
+        "DmsTaskUpdates", "DmsTaskParticipants", "Notifications", "ClientRequests"
+    ];
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         // ---- Company ----
