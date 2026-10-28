@@ -6,6 +6,7 @@ using Dms.Infrastructure.Documents;
 using Dms.Infrastructure.Notifications;
 using Dms.Infrastructure.Persistence;
 using Dms.Infrastructure.Services;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dms.Infrastructure.Outgoing;
@@ -57,6 +58,22 @@ internal sealed record PrintChoice(
 /// <summary>حركةٌ في سجلّ الصادر مع اسم منفّذها (ADR-056).</summary>
 public sealed record OutgoingMovementData(OutgoingMovement Log, string PerformedByUserName);
 
+public sealed record CheckSerialResult(
+    int Serial,
+    string FormattedNumber,
+    int CurrentCounter,
+    bool IsAvailable,
+    string? ExistingBookSubject,
+    DateTime? ExistingBookDate,
+    string Status);
+
+public sealed record NumberingInfoResult(
+    int CurrentCounter,
+    int NextSerial,
+    string NextFormattedNumber,
+    int Year,
+    string CompanyPrefix);
+
 public interface IOutgoingService
 {
     /// <summary>سجلّ حركة الكتاب — لكل مَن يراه عدا القارئ (ADR-056).</summary>
@@ -68,7 +85,9 @@ public interface IOutgoingService
     Task<OutgoingBook> GetAsync(int id, CancellationToken ct = default);
     Task<OutgoingBook> CreateDraftAsync(CreateOutgoingInput input, CancellationToken ct = default);
     Task<OutgoingBook> UpdateDraftAsync(int id, UpdateOutgoingInput input, CancellationToken ct = default);
-    Task ApproveAsync(int id, CancellationToken ct = default);
+    Task ApproveAsync(int id, int? manualSerial = null, CancellationToken ct = default);
+    Task<CheckSerialResult> CheckSerialAsync(int serial, int? year = null, CancellationToken ct = default);
+    Task<NumberingInfoResult> GetNumberingInfoAsync(int? year = null, CancellationToken ct = default);
     Task EditAfterApprovalAsync(int id, EditApprovedInput input, CancellationToken ct = default);
     Task SoftDeleteAsync(int id, CancellationToken ct = default);
     Task<byte[]> GetPdfAsync(int id, CancellationToken ct = default);
@@ -199,7 +218,54 @@ public sealed class OutgoingService(
         return book;
     }
 
-    public async Task ApproveAsync(int id, CancellationToken ct = default)
+    public async Task<NumberingInfoResult> GetNumberingInfoAsync(int? year = null, CancellationToken ct = default)
+    {
+        var companyId = ResolveCompanyId(null);
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId, ct)
+            ?? throw new NotFoundException("الشركة غير موجودة.");
+
+        var currentYear = year ?? LocalClock.CurrentYear;
+        var counter = await numbering.GetCurrentCounterAsync(companyId, currentYear, CounterType, ct);
+
+        var nextSerial = counter + 1;
+        while (await db.OutgoingBooks.IgnoreQueryFilters()
+            .AnyAsync(b => b.CompanyId == companyId && b.Year == currentYear && !b.IsDeleted && b.Status == BookStatus.Final && b.SerialNo == nextSerial, ct))
+        {
+            nextSerial++;
+        }
+
+        var formatted = $"{company.Prefix}-{currentYear}-{nextSerial:D5}";
+        return new NumberingInfoResult(counter, nextSerial, formatted, currentYear, company.Prefix);
+    }
+
+    public async Task<CheckSerialResult> CheckSerialAsync(int serial, int? year = null, CancellationToken ct = default)
+    {
+        if (serial <= 0)
+            throw new ValidationException("رقم التسلسل يجب أن يكون رقماً موجباً أكبر من الصفر.");
+
+        var companyId = ResolveCompanyId(null);
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId, ct)
+            ?? throw new NotFoundException("الشركة غير موجودة.");
+
+        var currentYear = year ?? LocalClock.CurrentYear;
+        var formatted = $"{company.Prefix}-{currentYear}-{serial:D5}";
+        var counter = await numbering.GetCurrentCounterAsync(companyId, currentYear, CounterType, ct);
+
+        var existing = await db.OutgoingBooks.IgnoreQueryFilters()
+            .Where(b => b.CompanyId == companyId && b.Year == currentYear && !b.IsDeleted && b.Status == BookStatus.Final && b.SerialNo == serial)
+            .Select(b => new { b.Subject, b.Date })
+            .FirstOrDefaultAsync(ct);
+
+        if (existing != null)
+        {
+            return new CheckSerialResult(serial, formatted, counter, false, existing.Subject, existing.Date, OutgoingSerialRules.AlreadyUsed);
+        }
+
+        var status = OutgoingSerialRules.ClassifyFree(serial, counter);
+        return new CheckSerialResult(serial, formatted, counter, true, null, null, status);
+    }
+
+    public async Task ApproveAsync(int id, int? manualSerial = null, CancellationToken ct = default)
     {
         if (!EffectiveCanApprove())
             throw new ForbiddenException("لا تملك صلاحية الاعتماد.");
@@ -209,6 +275,9 @@ public sealed class OutgoingService(
             throw new ValidationException("الكتاب معتمد بالفعل.");
         ValidateRequired(book.Subject, book.BodyHtml);
         BookTableRules.EnsureNoFormulaErrors(book.BodyHtml);   // ADR-060: لا يُعتمد كتابٌ بمعادلةٍ خاطئة — قبل أيّ ترقيم
+
+        if (manualSerial.HasValue && manualSerial.Value <= 0)
+            throw new ValidationException("رقم التسلسل اليدوي يجب أن يكون أكبر من الصفر.");
 
         var (company, template, entity) = await LoadRefsAsync(book, ct);
 
@@ -230,7 +299,18 @@ public sealed class OutgoingService(
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
 
                 var year = LocalClock.CurrentYear;   // بغداد لا UTC — وإلا أخذ كتابُ فجر 1 يناير سنةً سابقة (G21)
-                var serial = await numbering.NextSerialAsync(book.CompanyId, year, CounterType, ct);
+                int serial;
+
+                if (manualSerial.HasValue)
+                {
+                    if (!await numbering.TryRegisterManualSerialAsync(book.CompanyId, year, CounterType, manualSerial.Value, ct))
+                        throw new ConflictException(UsedSerialMessage(company.Prefix, year, manualSerial.Value));
+                    serial = manualSerial.Value;
+                }
+                else
+                {
+                    serial = await numbering.NextSerialAsync(book.CompanyId, year, CounterType, ct);
+                }
 
                 book.Year = year;
                 book.SerialNo = serial;
@@ -246,8 +326,9 @@ public sealed class OutgoingService(
                 pendingPdfKey = await storage.SaveAsync($"{book.Number}.pdf", render.Pdf, ct);
                 book.GeneratedPdfBlobKey = pendingPdfKey;
 
-                audit.Add("Approve", nameof(OutgoingBook), id.ToString(), $"اعتماد ورقم {book.Number}", book.CompanyId);
-                Log(book, OutgoingActions.Approved, $"اعتماد برقم {book.Number}");
+                var manualNote = manualSerial.HasValue ? " (ترقيم يدوي)" : "";
+                audit.Add("Approve", nameof(OutgoingBook), id.ToString(), $"اعتماد ورقم {book.Number}{manualNote}", book.CompanyId);
+                Log(book, OutgoingActions.Approved, $"اعتماد برقم {book.Number}{manualNote}");
 
                 // 🔔 **إشعارُ الاعتماد** (الدفعة ٤): يصل **مُنشئ المسودّة** — فهو مَن ينتظر
                 //    صدور الرقم الرسميّ ليتصرّف بالكتاب.
@@ -268,16 +349,25 @@ public sealed class OutgoingService(
                 await tx.CommitAsync(ct);
             });
         }
-        catch
+        catch (Exception ex)
         {
             // فشل نهائي (بعد استنفاد المحاولات): الـ DB لم يُثبَّت ⇒ احذف الـ PDF اليتيم.
             if (pendingPdfKey is not null)
             {
                 try { await storage.DeleteAsync(pendingPdfKey, ct); } catch { /* تجاهل */ }
             }
+
+            // 🛡️ **الفهرس الفريد آخرُ حارس** (ADR-064): إن سبق كتابٌ إلى الرقم رغم القفل، يُقال ذلك بـ409 لا بـ500.
+            if (ex is DbUpdateException { InnerException: SqlException { Number: 2601 or 2627 } })
+                throw new ConflictException(manualSerial.HasValue
+                    ? UsedSerialMessage(company.Prefix, LocalClock.CurrentYear, manualSerial.Value)
+                    : "سبق كتابٌ آخر إلى الرقم نفسه. أعِد المحاولة.");
             throw;
         }
     }
+
+    private static string UsedSerialMessage(string prefix, int year, int serial) =>
+        $"الرقم {prefix}-{year}-{serial:D5} مستخدم بالفعل لكتاب صادر آخر.";
 
     public async Task EditAfterApprovalAsync(int id, EditApprovedInput input, CancellationToken ct = default)
     {
@@ -384,12 +474,40 @@ public sealed class OutgoingService(
         //    سجلّ الحركة، ويُنزلها المستخدم يدوياً إن شاء.
         db.BookReplies.RemoveRange(db.BookReplies.Where(r => r.OutgoingId == id));
 
+        var wasFinal = book.Status == BookStatus.Final && book.SerialNo.HasValue && book.Year.HasValue;
+        var serialToFree = book.SerialNo;
+        var yearToFree = book.Year;
+        var numberToFree = book.Number;
+
         book.IsDeleted = true;
         book.DeletedByUserId = current.UserId;
         book.DeletedAt = DateTime.UtcNow;
-        audit.Add("Delete", nameof(OutgoingBook), id.ToString(), "حذف ناعم", book.CompanyId);
-        Log(book, OutgoingActions.Deleted, "حذف الكتاب");
-        await db.SaveChangesAsync(ct);
+
+        audit.Add("Delete", nameof(OutgoingBook), id.ToString(), $"حذف ناعم — الرقم {numberToFree ?? "مسودة"}", book.CompanyId);
+        Log(book, OutgoingActions.Deleted, $"حذف الكتاب — {numberToFree ?? "مسودة"}");
+
+        if (!wasFinal)
+        {
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        // 🔄 **التراجع عن العداد إن كان المحذوف آخر رقم (ADR-064) — في معاملةٍ واحدة مع الحذف وسطر التدقيق**:
+        //    القفل يبقى حتى الالتزام فلا يعتمد غيرُه بينهما، ولا يُثبَّت حذفٌ بلا تراجعه ولا تراجعٌ بلا سطره.
+        var rollbackLogged = false;
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            if (await numbering.DecrementIfLastAsync(book.CompanyId, yearToFree!.Value, CounterType, serialToFree!.Value, ct)
+                && !rollbackLogged)
+            {
+                audit.Add("CounterRollback", nameof(Counter), book.CompanyId.ToString(),
+                    $"تراجع عداد الصادر لسنة {yearToFree.Value} بعد حذف آخر كتاب معتمد ({numberToFree})", book.CompanyId);
+                rollbackLogged = true;
+            }
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        });
     }
 
     public async Task<byte[]> GetPdfAsync(int id, CancellationToken ct = default)

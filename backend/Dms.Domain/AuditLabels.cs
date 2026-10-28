@@ -31,6 +31,7 @@ public static class AuditLabels
         // ── الصادر ──
         ["Approve"] = "اعتماد",
         ["EditApproved"] = "تعديل بعد الاعتماد",
+        ["CounterRollback"] = "تراجع عداد الترقيم",
 
         // ── الوارد ──
         ["ChangeStatus"] = "تغيير حالة",
@@ -125,6 +126,7 @@ public static class AuditLabels
         ["Template"] = "قالب",
         ["DocumentType"] = "نوع مستند",
         ["OutgoingBookType"] = "نوع كتاب صادر",
+        ["Counter"] = "عداد الترقيم",
         ["ExchangeRate"] = "سعر صرف",
         ["User"] = "مستخدم",
         ["ApprovalDelegation"] = "تفويض اعتماد",

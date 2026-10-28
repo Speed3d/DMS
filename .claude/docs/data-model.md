@@ -86,7 +86,7 @@
 
 ### OutgoingBook (الصادر)
 `OutgoingId, CompanyId, Number?, Year?, SerialNo?, Date, EntityId→Entity, Subject, BodyHtml, TemplateId→Template, Status(Draft/Final), Amount?(18,2), Currency?, ExchangeRate?(18,4), AmountInIqd?(18,2), QrContent?, QrSignature?, GeneratedPdfBlobKey?, CreatedByUserId, CreatedAt, ApprovedByUserId?, ApprovedAt?, UpdatedAt?, IsDeleted, DeletedByUserId?, DeletedAt?, RowVersion`.
-- فهارس فريدة: `(CompanyId, Year, SerialNo)` و `Number` (حيث ليست null).
+- فهارس فريدة: `(CompanyId, Year, SerialNo)` و `Number` (حيث ليست null ومفلترة بـ `[IsDeleted] = 0` — ADR-064 عبر migration 35 `FilterOutgoingUniqueIndexesByIsDeleted`) لتمكين إعادة استخدام تسلسل آخر كتاب معتمد ملغي/محذوف ناعماً دون تعارض فرادة.
 - **ADR-057 (migration `AddOutgoingBookTypesAndPrintOptions` — 33):** `OutgoingBookTypeId?→OutgoingBookType (Restrict)` ·
   `PrintEntity` · `PrintSubject` · `PageNumbers` (bool — **الافتراض `1` في المهاجرة لا `HasDefaultValue(true)`**: EF لا يُرسل `false`
   حين يساوي الافتراض) · `SignaturePlacement` (int: `LastPage=0` الافتراض للجديد · `StampEveryPage=1` · `EveryPage=2` — **والكتب القائمة
@@ -250,7 +250,7 @@
 dotnet ef migrations add <Name> -p Dms.Infrastructure -s Dms.Api
 dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 ```
-**السلسلة الحالية — 32 migration** (آخرها `AddOutgoingMovementsAndUserPhoto`، 2026-09-25). ✅ **كلُّها مُطبَّقة على `DmsDb`**. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`) — و`AddClientRequests` نفسها طُبّقت قبل الدمج بتشغيلٍ للتجربة (`dotnet run` يطبّق عند الإقلاع)، وسلمت لأنها جدولٌ جديد. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
+**السلسلة الحالية — 35 migration** (آخرها `FilterOutgoingUniqueIndexesByIsDeleted`، 2026-10-20). ✅ **كلُّها مُطبَّقة على `DmsDb`**. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`) — و`AddClientRequests` نفسها طُبّقت قبل الدمج بتشغيلٍ للتجربة (`dotnet run` يطبّق عند الإقلاع)، وسلمت لأنها جدولٌ جديد. ⚠️ القاعدة موردٌ مشترك: **لا تُطبَّق مهاجرة قبل دمج كودها في `main`** (`rules/workflow.md`). الجدول أدناه يُظهر أولى الحلقات، والثلاث الأخيرة في ذيله:
 
 | # | Migration | ما أضافه |
 |---|---|---|
@@ -282,6 +282,7 @@ dotnet ef database update      -p Dms.Infrastructure -s Dms.Api
 | 32 | `AddOutgoingMovementsAndUserPhoto` | جدول `OutgoingMovements` (FK Cascade + فهرسان) + عمود `Users.PhotoBlobKey` — ADR-056. **إضافة بحتة**. ⚠️ **تُطبَّق على `DmsDb` عند أوّل تشغيلٍ لخادم المالك بعد الدمج** |
 | 33 | `AddOutgoingBookTypesAndPrintOptions` | جدول `OutgoingBookTypes` (فريدٌ بالاسم لكل شركة) وبذرُه الثلاثيّ لكل شركةٍ قائمة · `OutgoingBooks.OutgoingBookTypeId` (القائمة ⟵ «كتاب رسمي») · أعمدة خيارات الطباعة الأربعة · `OutgoingMovements.Details` — ADR-057. **إضافة بحتة**. **مطبَّقةٌ على `DmsDb` منذ 2026-10-04** |
 | 34 | `AddTemplatePageNumberPosition` | `Templates.PageNumberAlign` (نصّ ≤ 10، افتراضه `center`) + `PageNumberOffsetX` و`PageNumberOffsetY` (مم، افتراضهما 0) — ADR-058. **إضافة بحتة** بقيمٍ تطابق السلوك السابق. **مطبَّقةٌ على `DmsDb` (2026-10-06)** |
+| 35 | `FilterOutgoingUniqueIndexesByIsDeleted` | تحديث الفهرسين الفريدين `IX_OutgoingBooks_CompanyId_Year_SerialNo` و`IX_OutgoingBooks_Number` لفلترة `[IsDeleted] = 0` — ADR-064. **مطبَّقةٌ على `DmsDb` (2026-10-20)** |
 
 > **ملاحظات:**
 > - 🔴 **الدفعة ٦ (الخدمة الخلفية — ADR-039) بلا مهاجرة** — أعمدةُ حالة التصعيد الثلاثة

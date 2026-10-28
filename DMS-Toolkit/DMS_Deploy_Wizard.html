@@ -420,7 +420,7 @@
       <button class="filter-btn active" data-filter="all">عرض الكل (الكتالوج الكامل)</button>
       <button class="filter-btn" data-filter="dev">💻 جهاز التطوير (مرحلة 1)</button>
       <button class="filter-btn" data-filter="trial">🧪 حاسبة التجربة (مراحل 2 - 8)</button>
-      <button class="filter-btn" data-filter="update">🚀 تحديث نسخة مرفوعة (مرحلة 9)</button>
+      <button class="filter-btn" data-filter="update">🚀 تحديث نسخة مرفوعة (مرحلة 9 و10)</button>
       <button class="filter-btn" data-filter="reset">🔄 تصفير حاسبة التجربة (مرحلة 0)</button>
     </div>
 
@@ -1010,6 +1010,51 @@ if ($lastSnap) {
           <div class="error-title">⚠️ القاعدة الذهبية عند التحديث:</div>
           • عند ترقية نسخة مرفوعة (مثل <code>0.16.1</code> ⬅️ <code>0.17.0</code>)، <strong>لا تشغّل أبداً</strong> المرحلة <code>00</code> (التصفير) ولا المرحلة <code>04</code> (توليد أسرار جديدة <code>--force</code>).<br>
           • اكتفِ فقط بتشغيل المرحلة <code>01</code> على جهاز التطوير، ثم المرحلة <code>09</code> على حاسبة التجربة!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 10: CLOUDFLARED UPDATE -->
+  <div class="phase-card machine-update" data-machine="update">
+    <div class="phase-header">
+      <div class="phase-header-info">
+        <div class="phase-num" style="color: var(--accent-success);">10</div>
+        <div>
+          <div class="phase-title-text">تحديث نفق Cloudflare (cloudflared) بأمان</div>
+          <div class="phase-sub">عند كل تنبيهٍ أمني من Cloudflare — الخدمة تعمل بـ <code>--no-autoupdate</code> فلا تتحدّث وحدها أبداً (تنبيه eMudhra 2026-10-28: الحدّ الأدنى <code>2026.10.2</code>)</div>
+        </div>
+      </div>
+      <div class="phase-badges">
+        <span class="badge badge-trial">🧪 حاسبة التجربة</span>
+        <span class="badge badge-update">🔐 تحديث أمني</span>
+        <label class="chk-done"><input type="checkbox" class="step-chk"> اكتملت</label>
+      </div>
+    </div>
+    <div class="phase-body">
+      <div class="runner-box" style="border-color: var(--accent-success);">
+        <div class="runner-details">
+          <div class="runner-title" style="color: var(--accent-success);">🧪 [على حاسبة التجربة]: تحديث cloudflared بضغطة زر (يُنسخ السكربت مع الحزمة في مجلد النشر):</div>
+          <div class="runner-cmd">powershell -ExecutionPolicy Bypass -File <span class="dyn-drive">D:\</span>DMS-Toolkit\scripts\10-trial-cloudflared-update.ps1 -Domain "<span class="dyn-domain">dms.denland.net</span>"</div>
+        </div>
+        <button class="btn btn-primary" style="background: var(--accent-success); border-color: var(--accent-success);" onclick="copyText('powershell -ExecutionPolicy Bypass -File ' + getVal('cfgDrive') + 'DMS-Toolkit\\scripts\\10-trial-cloudflared-update.ps1 -Domain &quot;' + getVal('cfgDomain') + '&quot;')">نسخ أمر تحديث النفق</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="guard-box">
+          <div class="guard-title">🎯 ما يفعله السكربت (بالترتيب):</div>
+          • يقرأ مسار <code>cloudflared.exe</code> ونسخته من <code>ImagePath</code> الخدمة، ويحفظ نسخةً للتراجع في <code>C:\DMS\releases\cloudflared-...</code>.<br>
+          • يسأل GitHub عن آخر إصدار، ويخرج بلا تغيير إن كانت النسخة حديثة.<br>
+          • ينزّل الـMSI الرسمي <strong>ويرفضه إن لم يكن موقّعاً من Cloudflare</strong>.<br>
+          • <strong>[العطل 7]:</strong> يعيد <code>ImagePath</code> كما كان حرفياً بعد التثبيت، فلا تخرج الخدمة صامتة.<br>
+          • يفحص النسخة والخدمة و<code>https://<span class="dyn-domain">dms.denland.net</span>/api/system/status</code> — <strong>وعند أيّ فشل يُرجع النسخة السابقة تلقائياً</strong>.
+        </div>
+        <div class="error-box">
+          <div class="error-title">⚠️ قبل وبعد:</div>
+          • <strong>لا تضغط روابط إيميلات Cloudflare</strong> — افتح <code>dash.cloudflare.com</code> بنفسك ثم <code>Networking ⟵ Tunnels</code> لمعرفة النسخة.<br>
+          • النظام ينقطع <strong>ثوانيَ معدودة</strong> أثناء إعادة التشغيل — شغّله في وقتٍ هادئ.<br>
+          • بعده: النفق <strong>Healthy</strong> في اللوحة، ثم افتح النظام من الهاتف على بيانات الجوال.<br>
+          • تحذير «HTTPS origins» في رسالة Cloudflare <strong>لا يخصّنا</strong> — الأصل <code>http://localhost</code> بلا شهادات.
         </div>
       </div>
     </div>

@@ -183,10 +183,10 @@ public class AppDbContext : DbContext
             e.Property(x => x.AmountInIqd).HasPrecision(18, 2);
             e.Property(x => x.RowVersion).IsRowVersion();
 
-            // رقم فريد لكل (شركة + سنة) + رقم رسمي فريد
+            // رقم فريد لكل (شركة + سنة) + رقم رسمي فريد (للصفوف غير المحذوفة — ADR-064)
             e.HasIndex(x => new { x.CompanyId, x.Year, x.SerialNo })
-                .IsUnique().HasFilter("[SerialNo] IS NOT NULL");
-            e.HasIndex(x => x.Number).IsUnique().HasFilter("[Number] IS NOT NULL");
+                .IsUnique().HasFilter("[SerialNo] IS NOT NULL AND [IsDeleted] = 0");
+            e.HasIndex(x => x.Number).IsUnique().HasFilter("[Number] IS NOT NULL AND [IsDeleted] = 0");
 
             e.HasOne(x => x.Entity).WithMany()
                 .HasForeignKey(x => x.EntityId).OnDelete(DeleteBehavior.Restrict);

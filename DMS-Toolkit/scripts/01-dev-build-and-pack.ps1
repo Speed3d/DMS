@@ -122,6 +122,9 @@ if (Test-Path "D:\DMS\DMS-Toolkit\scripts\03-trial-preflight.ps1") {
 if (Test-Path "D:\DMS\DMS-Toolkit\scripts\09-trial-update-release.ps1") {
     Copy-Item "D:\DMS\DMS-Toolkit\scripts\09-trial-update-release.ps1" "$OutputDir\" -Force
 }
+if (Test-Path "D:\DMS\DMS-Toolkit\scripts\10-trial-cloudflared-update.ps1") {
+    Copy-Item "D:\DMS\DMS-Toolkit\scripts\10-trial-cloudflared-update.ps1" "$OutputDir\" -Force
+}
 
 # 5. التحقق من أحجام الملفات
 Write-Host "`n[5/5] فحص أحجام الحزم الناتجة..." -ForegroundColor Green

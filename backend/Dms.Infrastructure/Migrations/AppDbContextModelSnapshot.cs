@@ -1657,7 +1657,7 @@ namespace Dms.Infrastructure.Migrations
 
                     b.HasIndex("Number")
                         .IsUnique()
-                        .HasFilter("[Number] IS NOT NULL");
+                        .HasFilter("[Number] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.HasIndex("OutgoingBookTypeId");
 
@@ -1665,7 +1665,7 @@ namespace Dms.Infrastructure.Migrations
 
                     b.HasIndex("CompanyId", "Year", "SerialNo")
                         .IsUnique()
-                        .HasFilter("[SerialNo] IS NOT NULL");
+                        .HasFilter("[SerialNo] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("OutgoingBooks");
                 });

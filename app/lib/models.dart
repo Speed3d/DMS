@@ -1769,3 +1769,59 @@ class CaseFileDetail {
         hiddenCount: j['hiddenCount'] ?? 0,
       );
 }
+
+/// فحص توفر تسلسل يدوي قبل الاعتماد (ADR-064).
+class CheckSerialModel {
+  final int serial;
+  final String formattedNumber;
+  final int currentCounter;
+  final bool isAvailable;
+  final String? existingBookSubject;
+  final DateTime? existingBookDate;
+  final String status;
+
+  CheckSerialModel({
+    required this.serial,
+    required this.formattedNumber,
+    required this.currentCounter,
+    required this.isAvailable,
+    this.existingBookSubject,
+    this.existingBookDate,
+    required this.status,
+  });
+
+  factory CheckSerialModel.fromJson(Map<String, dynamic> j) => CheckSerialModel(
+        serial: j['serial'] ?? 0,
+        formattedNumber: j['formattedNumber'] ?? '',
+        currentCounter: j['currentCounter'] ?? 0,
+        isAvailable: j['isAvailable'] ?? false,
+        existingBookSubject: j['existingBookSubject'],
+        existingBookDate: j['existingBookDate'] != null ? DateTime.tryParse(j['existingBookDate']) : null,
+        status: j['status'] ?? '',
+      );
+}
+
+/// معلومات الترقيم الحالي والتسلسل التلقائي المقترح (ADR-064).
+class NumberingInfoModel {
+  final int currentCounter;
+  final int nextSerial;
+  final String nextFormattedNumber;
+  final int year;
+  final String companyPrefix;
+
+  NumberingInfoModel({
+    required this.currentCounter,
+    required this.nextSerial,
+    required this.nextFormattedNumber,
+    required this.year,
+    required this.companyPrefix,
+  });
+
+  factory NumberingInfoModel.fromJson(Map<String, dynamic> j) => NumberingInfoModel(
+        currentCounter: j['currentCounter'] ?? 0,
+        nextSerial: j['nextSerial'] ?? 0,
+        nextFormattedNumber: j['nextFormattedNumber'] ?? '',
+        year: j['year'] ?? 0,
+        companyPrefix: j['companyPrefix'] ?? '',
+      );
+}

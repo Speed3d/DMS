@@ -132,11 +132,41 @@ public sealed class OutgoingController(
         return await Get(id, ct);
     }
 
+    /// <summary>معلومات الترقيم الحالي والتسلسل التلقائي المقترح (ADR-064).</summary>
+    [HttpGet("numbering-info")]
+    public async Task<ActionResult<NumberingInfoResponse>> NumberingInfo(
+        [FromQuery] int? year, CancellationToken ct)
+    {
+        var res = await svc.GetNumberingInfoAsync(year, ct);
+        return new NumberingInfoResponse(
+            res.CurrentCounter,
+            res.NextSerial,
+            res.NextFormattedNumber,
+            res.Year,
+            res.CompanyPrefix);
+    }
+
+    /// <summary>فحص توفر تسلسل يدوي قبل الاعتماد (ADR-064).</summary>
+    [HttpGet("check-serial")]
+    public async Task<ActionResult<CheckSerialResponse>> CheckSerial(
+        [FromQuery] int serial, [FromQuery] int? year, CancellationToken ct)
+    {
+        var res = await svc.CheckSerialAsync(serial, year, ct);
+        return new CheckSerialResponse(
+            res.Serial,
+            res.FormattedNumber,
+            res.CurrentCounter,
+            res.IsAvailable,
+            res.ExistingBookSubject,
+            res.ExistingBookDate,
+            res.Status);
+    }
+
     [HttpPost("{id:int}/approve")]
     public async Task<ActionResult<OutgoingDetail>> Approve(
         int id, [FromBody] ApproveOutgoingRequest? req, CancellationToken ct)
     {
-        await svc.ApproveAsync(id, ct);
+        await svc.ApproveAsync(id, req?.ManualSerial, ct);
 
         // ⚠️ **بعد الاعتماد لا قبله** — الربط يشترط صادراً `Final`، والاعتماد هو ما يجعله كذلك.
         // ⚠️ **وكلُّ واردٍ يمرّ بـ`Query()` داخل الخدمة**، فلا يُربط ما لا يراه المعتمِد.

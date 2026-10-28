@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
@@ -98,15 +100,18 @@ class _OutgoingDetailScreenState extends ConsumerState<OutgoingDetailScreen> {
   }
 
   Future<void> _approve() async {
-    final picked = await Navigator.of(context).push<List<int>>(MaterialPageRoute(
+    final config = await Navigator.of(context).push<_ApprovalConfig>(MaterialPageRoute(
         builder: (_) => const _ReplyTargetsScreen(), fullscreenDialog: true));
-    // `null` = تراجَع عن الاعتماد كلّه؛ والقائمة الفارغة = اعتمِد بلا ربط.
-    if (picked == null) return;
+    // `null` = تراجَع عن الاعتماد كلّه.
+    if (config == null) return;
 
     setState(() => _busy = true);
     try {
-      await ref.read(apiClientProvider).approve(widget.id,
-          replyToIncomingIds: picked.isEmpty ? null : picked);
+      await ref.read(apiClientProvider).approve(
+            widget.id,
+            replyToIncomingIds: config.replyToIncomingIds.isEmpty ? null : config.replyToIncomingIds,
+            manualSerial: config.manualSerial,
+          );
       invalidateOutgoing(ref); // تحديث اللوحة/الإشعارات فوراً (يظهر المبلغ المعتمد)
 
       // نسخة محلية تلقائية على جهاز المستخدم بعد الاعتماد.
@@ -697,6 +702,12 @@ class _SplitOrStack extends StatelessWidget {
 /// 🔐 **والقائمة تأتي من `/incoming` المفلترة بقاعدة رؤية الخادم** — فلا يظهر هنا كتابٌ
 /// محجوبٌ بحدّ القسم. وهي **مفلترة على القابل للربط** (جديد · قيد المراجعة · تم الرد)
 /// مرآةً لـ`BookReplyRules.CanLink` — فلا يختار المستخدم كتاباً يرفضه الخادم بعد ضغطتين.
+class _ApprovalConfig {
+  final List<int> replyToIncomingIds;
+  final int? manualSerial;
+  const _ApprovalConfig({required this.replyToIncomingIds, this.manualSerial});
+}
+
 class _ReplyTargetsScreen extends ConsumerStatefulWidget {
   const _ReplyTargetsScreen();
   @override
@@ -704,30 +715,208 @@ class _ReplyTargetsScreen extends ConsumerStatefulWidget {
 }
 
 class _ReplyTargetsScreenState extends ConsumerState<_ReplyTargetsScreen> {
-  late Future<List<IncomingListItem>> _future;
+  late Future<List<IncomingListItem>> _incomingFuture;
+  late Future<NumberingInfoModel> _numberingFuture;
   final Set<int> _selected = {};
   String _search = '';
 
-  /// مرآةُ `BookReplyRules.CanLink` — والمغلق والمؤرشف خارجها.
+  bool _isManualNumbering = false;
+  final TextEditingController _serialCtrl = TextEditingController();
+  CheckSerialModel? _checkResult;
+  bool _isChecking = false;
+  Timer? _debounceTimer;
+
   static const _linkable = {'New', 'InReview', 'Replied'};
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadIncoming();
+    _numberingFuture = ref.read(apiClientProvider).getOutgoingNumberingInfo();
   }
 
-  void _load() {
-    _future = ref.read(apiClientProvider).incomingList(search: _search);
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _serialCtrl.dispose();
+    super.dispose();
+  }
+
+  void _loadIncoming() {
+    _incomingFuture = ref.read(apiClientProvider).incomingList(search: _search);
     setState(() {});
+  }
+
+  void _onSerialChanged(String text, NumberingInfoModel info) {
+    _debounceTimer?.cancel();
+    final clean = text.trim();
+    if (clean.isEmpty) {
+      setState(() {
+        _checkResult = null;
+        _isChecking = false;
+      });
+      return;
+    }
+
+    final serial = int.tryParse(clean);
+    if (serial == null || serial <= 0) {
+      setState(() {
+        _checkResult = null;
+        _isChecking = false;
+      });
+      return;
+    }
+
+    setState(() => _isChecking = true);
+    _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        final res = await ref.read(apiClientProvider).checkOutgoingSerial(serial, year: info.year);
+        if (mounted && _serialCtrl.text.trim() == clean) {
+          setState(() {
+            _checkResult = res;
+            _isChecking = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _isChecking = false);
+      }
+    });
+  }
+
+  Future<void> _proceedToApprove(List<int> replies, NumberingInfoModel? info) async {
+    if (!_isManualNumbering) {
+      Navigator.pop(context, _ApprovalConfig(replyToIncomingIds: replies, manualSerial: null));
+      return;
+    }
+
+    final text = _serialCtrl.text.trim();
+    final serial = int.tryParse(text);
+    if (serial == null || serial <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال رقم تسلسل صحيح أكبر من الصفر.'), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+
+    CheckSerialModel? check = _checkResult;
+    if (check == null || check.serial != serial) {
+      setState(() => _isChecking = true);
+      try {
+        check = await ref.read(apiClientProvider).checkOutgoingSerial(serial, year: info?.year);
+        _checkResult = check;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذّر فحص التسلسل: $e'), backgroundColor: AppColors.danger),
+          );
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _isChecking = false);
+      }
+    }
+
+    if (!mounted) return;
+
+    if (check.status == 'AlreadyUsed') {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.cancel_rounded, color: AppColors.danger),
+              const SizedBox(width: 8),
+              const Text('الرقم مستخدم بالفعل'),
+            ],
+          ),
+          content: Text(
+            'الرقم ${check!.formattedNumber} مستخدم بالفعل لكتاب صادر معتمد بعنوان:\n"${check.existingBookSubject ?? "—"}"\n\nلا يمكن تكرار استخدام هذا الرقم.',
+            style: const TextStyle(height: 1.6),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('حسناً، سأختار تسلسلاً آخر'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    if (check.status == 'AvailableGap') {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: AppColors.warn),
+              const SizedBox(width: 8),
+              const Text('تأكيد استخدام تسلسل شاغر'),
+            ],
+          ),
+          content: Text(
+            'العداد التلقائي وصل حالياً إلى (${check!.currentCounter})، وأنت أدخلت الرقم (${check.serial}) وهو تسلسل متاح وفارغ.\n\nهل تريد اعتماده بهذا الرقم اليدوي (${check.formattedNumber})، أم العودة إلى التسلسل التلقائي الحالي؟\n\n(ملاحظة: الترقيم التلقائي للكتب القادمة سيستمر دون تغيير).',
+            style: const TextStyle(height: 1.6),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('العودة للتلقائي'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+              child: Text('نعم، الاعتماد بالرقم ${check.serial}'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    } else if (check.status == 'AvailableAboveCounter') {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: AppColors.warn),
+              const SizedBox(width: 8),
+              const Text('تنبيه: قفز التسلسل إلى رقم أكبر'),
+            ],
+          ),
+          content: Text(
+            'العداد التلقائي الحالي هو (${check!.currentCounter})، وأنت أدخلت التسلسل (${check.serial}) وهو أكبر من التسلسل الحالي.\n\nالاستمرار سيؤدي لرفع العداد وتعيينه عند (${check.serial})، وستكون الأرقام السابقة فجوات شاغرة يمكن استخدامها يدوياً لاحقاً.\n\nهل تريد الاستمرار وتعيين العداد عند ${check.serial}، أم الرجوع للتسلسل التلقائي؟',
+            style: const TextStyle(height: 1.6),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('الرجوع للتسلسل التلقائي'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.warn),
+              child: Text('الاستمرار بالرقم ${check.serial}'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    if (mounted) {
+      Navigator.pop(context, _ApprovalConfig(replyToIncomingIds: replies, manualSerial: check.serial));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('هل يردّ هذا الكتاب على واردات؟'),
+        title: const Text('خيارات الاعتماد والإصدار'),
         centerTitle: true,
         leading: IconButton(
           tooltip: 'إلغاء الاعتماد',
@@ -737,104 +926,334 @@ class _ReplyTargetsScreenState extends ConsumerState<_ReplyTargetsScreen> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
+          constraints: const BoxConstraints(maxWidth: 820),
           child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                Text(
-                  'اختيارٌ اختياريّ — الكتب المختارة تصير حالتها (تم الرد) وتُربط بهذا الصادر. '
-                  'وتستطيع الاعتماد بلا اختيار.',
-                  style: TextStyle(fontSize: 12.5, height: 1.6, color: muted),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  decoration: const InputDecoration(
-                    labelText: 'بحث برقم الكتاب أو موضوعه',
-                    prefixIcon: Icon(Icons.search_rounded),
-                  ),
-                  onChanged: (v) => _search = v,
-                  onSubmitted: (_) => _load(),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: FutureBuilder<List<IncomingListItem>>(
-                    future: _future,
-                    builder: (context, snap) {
-                      if (snap.connectionState != ConnectionState.done) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snap.hasError) {
-                        return Center(
-                            child: Text('تعذّر جلب الوارد: ${snap.error}',
-                                style: TextStyle(color: AppColors.danger)));
-                      }
-                      final items = (snap.data ?? [])
-                          .where((b) => _linkable.contains(b.status))
-                          .toList();
-                      if (items.isEmpty) {
-                        return Center(
-                            child: Text('لا توجد كتب واردة قابلة للربط.',
-                                style: TextStyle(color: muted)));
-                      }
-                      return ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final b = items[i];
-                          return CheckboxListTile(
-                            value: _selected.contains(b.incomingId),
-                            onChanged: (v) => setState(() => v == true
-                                ? _selected.add(b.incomingId)
-                                : _selected.remove(b.incomingId)),
-                            title: Text(b.incomingNumber ?? '#${b.incomingId}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700, fontSize: 13.5)),
-                            // الموضوع هو ما يقرؤه المعتمِد ليقرّر الربط — أكبر وبلون النصّ الكامل لا الباهت (طلب المالك 2026-10-13)
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(b.subject,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 15,
-                                      height: 1.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: Theme.of(context).colorScheme.onSurface)),
-                            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: FutureBuilder<NumberingInfoModel>(
+              future: _numberingFuture,
+              builder: (context, numberingSnap) {
+                final numberingInfo = numberingSnap.data;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // بطاقة خيارات الترقيم (ADR-064)
+                    _buildNumberingSection(numberingInfo, theme, muted),
+                    const SizedBox(height: 16),
+
+                    // عنوان قسم ربط الوارد
+                    Row(
+                      children: [
+                        const Icon(Icons.link_rounded, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'ربط الكتاب بصادر ووارد (اختياري)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'الكتب المختارة تصير حالتها (تم الرد) وتُربط بهذا الصادر. وتستطيع الاعتماد بلا ربط.',
+                      style: TextStyle(fontSize: 12.5, height: 1.5, color: muted),
+                    ),
+                    const SizedBox(height: 10),
+
+                    TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'بحث برقم الكتاب الوارد أو موضوعه',
+                        prefixIcon: Icon(Icons.search_rounded),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => _search = v,
+                      onSubmitted: (_) => _loadIncoming(),
+                    ),
+                    const SizedBox(height: 10),
+
+                    Expanded(
+                      child: FutureBuilder<List<IncomingListItem>>(
+                        future: _incomingFuture,
+                        builder: (context, snap) {
+                          if (snap.connectionState != ConnectionState.done) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          if (snap.hasError) {
+                            return Center(
+                                child: Text('تعذّر جلب الوارد: ${snap.error}',
+                                    style: const TextStyle(color: AppColors.danger)));
+                          }
+                          final items = (snap.data ?? [])
+                              .where((b) => _linkable.contains(b.status))
+                              .toList();
+                          if (items.isEmpty) {
+                            return Center(
+                                child: Text('لا توجد كتب واردة قابلة للربط.',
+                                    style: TextStyle(color: muted)));
+                          }
+                          return ListView.separated(
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final b = items[i];
+                              return CheckboxListTile(
+                                value: _selected.contains(b.incomingId),
+                                onChanged: (v) => setState(() => v == true
+                                    ? _selected.add(b.incomingId)
+                                    : _selected.remove(b.incomingId)),
+                                title: Text(b.incomingNumber ?? '#${b.incomingId}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700, fontSize: 13.5)),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(b.subject,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.4,
+                                          fontWeight: FontWeight.w600,
+                                          color: theme.colorScheme.onSurface)),
+                                ),
+                              );
+                            },
                           );
                         },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        // ⚠️ **قائمةٌ فارغة لا `null`**: الأولى «اعتمِد بلا ربط»
-                        //    والثانية «تراجعتُ عن الاعتماد» — وخلطُهما يعتمد بلا قصد.
-                        onPressed: () => Navigator.pop(context, <int>[]),
-                        child: const Text('اعتماد بلا ربط'),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _selected.isEmpty
-                            ? null
-                            : () => Navigator.pop(context, _selected.toList()),
-                        icon: const Icon(Icons.verified_rounded, size: 18),
-                        label: Text('اعتماد وربط (${_selected.length})'),
-                      ),
+                    const SizedBox(height: 12),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => _proceedToApprove([], numberingInfo),
+                            child: const Text('اعتماد بلا ربط'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _selected.isEmpty
+                                ? null
+                                : () => _proceedToApprove(_selected.toList(), numberingInfo),
+                            icon: const Icon(Icons.verified_rounded, size: 18),
+                            label: Text('اعتماد وربط (${_selected.length})'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
+                );
+              },
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNumberingSection(NumberingInfoModel? info, ThemeData theme, Color? muted) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.black12,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.tag_rounded, size: 20, color: AppColors.action(context)),
+              const SizedBox(width: 8),
+              const Text(
+                'الترقيم الرسمي للكتاب',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const Spacer(),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment<bool>(
+                    value: false,
+                    label: Text('تلقائي'),
+                    icon: Icon(Icons.auto_mode_rounded, size: 16),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    label: Text('يدوي'),
+                    icon: Icon(Icons.edit_note_rounded, size: 16),
+                  ),
+                ],
+                selected: {_isManualNumbering},
+                onSelectionChanged: (set) {
+                  setState(() {
+                    _isManualNumbering = set.first;
+                    if (!_isManualNumbering) {
+                      _checkResult = null;
+                      _serialCtrl.clear();
+                    }
+                  });
+                },
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          if (!_isManualNumbering) ...[
+            Row(
+              children: [
+                Text('الرقم المتوقع:', style: TextStyle(fontSize: 13, color: muted)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.action(context).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.action(context).withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    info?.nextFormattedNumber ?? 'جاري الحساب...',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: AppColors.action(context),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                if (info != null)
+                  Text(
+                    '(العداد الحالي: ${info.currentCounter})',
+                    style: TextStyle(fontSize: 12, color: muted),
+                  ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _serialCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: 'أدخل رقم التسلسل اليدوي',
+                      hintText: 'مثال: 2 أو 15',
+                      prefixIcon: const Icon(Icons.numbers_rounded),
+                      isDense: true,
+                      suffixIcon: _isChecking
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                            )
+                          : null,
+                    ),
+                    onChanged: (v) {
+                      if (info != null) _onSerialChanged(v, info);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (info != null) ...[
+                  Expanded(
+                    flex: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text('المعاينة: ', style: TextStyle(fontSize: 12, color: muted)),
+                              Text(
+                                _serialCtrl.text.trim().isNotEmpty
+                                    ? '${info.companyPrefix}-${info.year}-${int.tryParse(_serialCtrl.text.trim())?.toString().padLeft(5, '0') ?? '00000'}'
+                                    : '${info.companyPrefix}-${info.year}-_____',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'العداد الحالي وصل إلى: ${info.currentCounter}',
+                            style: TextStyle(fontSize: 11.5, color: muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (_checkResult != null) ...[
+              const SizedBox(height: 8),
+              _buildCheckStatusBanner(_checkResult!),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckStatusBanner(CheckSerialModel check) {
+    Color bg;
+    Color border;
+    Color text;
+    IconData icon;
+    String message;
+
+    if (check.status == 'AlreadyUsed') {
+      bg = AppColors.danger.withValues(alpha: 0.1);
+      border = AppColors.danger.withValues(alpha: 0.4);
+      text = AppColors.danger;
+      icon = Icons.cancel_rounded;
+      message = 'الرقم ${check.formattedNumber} مستخدم بالفعل لكتاب معتمد بعنوان: "${check.existingBookSubject ?? "—"}"';
+    } else if (check.status == 'AvailableGap') {
+      bg = Colors.blue.withValues(alpha: 0.1);
+      border = Colors.blue.withValues(alpha: 0.4);
+      text = Colors.blue.shade700;
+      icon = Icons.info_rounded;
+      message = 'تسلسل شاغر متاح (${check.formattedNumber}) — أصغر من العداد الحالي (${check.currentCounter})';
+    } else if (check.status == 'AvailableAboveCounter') {
+      bg = Colors.orange.withValues(alpha: 0.1);
+      border = Colors.orange.withValues(alpha: 0.4);
+      text = Colors.orange.shade800;
+      icon = Icons.warning_amber_rounded;
+      message = 'تسلسل أكبر من العداد الحالي (${check.formattedNumber}) — سيرتفع العداد إلى ${check.serial}';
+    } else {
+      bg = AppColors.success.withValues(alpha: 0.1);
+      border = AppColors.success.withValues(alpha: 0.4);
+      text = AppColors.success;
+      icon = Icons.check_circle_rounded;
+      message = 'التسلسل متاح للاعتماد (${check.formattedNumber})';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: text),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: text),
+            ),
+          ),
+        ],
       ),
     );
   }

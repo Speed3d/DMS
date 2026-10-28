@@ -1,6 +1,7 @@
 using Dms.Api.Auth;
 using Dms.Api.Dtos;
 using Dms.Documents.Security;
+using Dms.Domain;
 using Dms.Infrastructure.Documents;
 using Dms.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -53,7 +54,17 @@ public sealed class VerifyController(AppDbContext db, IOptions<QrSigningOptions>
             return new VerifyResponse(false, result.Message, null, null, null, null, false, t.Verdict, t.Title, t.Note);
         }
 
-        var found = await db.OutgoingBooks.AnyAsync(b => b.Number == result.Number, ct);
+        // 🔴 **لا يُحكم بالرقم وحده (ADR-064)**: رقم الكتاب المحذوف يُعاد استعماله، فالورقة الملغاة تحمل رقم كتابٍ حيّ.
+        //    ⚠️ **`IgnoreQueryFilters` مقصود**: المحذوف يُقرأ ليُعرف أن الختم له، وفلتر الشركة لا يخصّ متحقِّقاً (الرقم يحمل بادئتها).
+        var holders = (await db.OutgoingBooks.IgnoreQueryFilters()
+                .Where(b => b.Number == result.Number && b.Status == BookStatus.Final)
+                .Select(b => new { b.IsDeleted, b.QrContent, b.Date, Entity = b.Entity!.Name })
+                .ToListAsync(ct))
+            .Select(b => (b.IsDeleted, Candidate: new LegacyQrVerdict.Candidate(b.QrContent, DateOnly.FromDateTime(b.Date).ToString("yyyy-MM-dd"), b.Entity)))   // صيغة الختم نفسها (QrSigner)
+            .ToList();
+        var found = LegacyQrVerdict.IsGenuine(req.QrContent, result.Date, result.Entity,
+            holders.Where(h => !h.IsDeleted).Select(h => h.Candidate).FirstOrDefault(),
+            holders.Where(h => h.IsDeleted).Select(h => h.Candidate).ToList());
         var verdict = found
             ? new PublicVerdict(PublicVerdict.Genuine, "تم إصدار هذا الكتاب فعلاً من الشركة",
                 "طابِق البيانات أدناه مع الورقة التي بين يديك.", null, null, null, null, 0, null)

@@ -318,11 +318,35 @@ class ApiClient {
   ///
   /// ⚠️ **الربط عند الاعتماد لا عند حفظ المسودّة**: الربط يُعلن ردّاً رسمياً وينقل الوارد
   /// إلى «تم الرد»، ومسودّةٌ لم تُعتمد ليست ردّاً بعد.
-  Future<OutgoingDetail> approve(int id, {List<int>? replyToIncomingIds}) async =>
-      OutgoingDetail.fromJson(await _post('/outgoing/$id/approve',
-          replyToIncomingIds == null || replyToIncomingIds.isEmpty
-              ? null
-              : {'replyToIncomingIds': replyToIncomingIds}));
+  Future<OutgoingDetail> approve(int id, {List<int>? replyToIncomingIds, int? manualSerial}) async {
+    final body = <String, dynamic>{};
+    if (replyToIncomingIds != null && replyToIncomingIds.isNotEmpty) {
+      body['replyToIncomingIds'] = replyToIncomingIds;
+    }
+    if (manualSerial != null && manualSerial > 0) {
+      body['manualSerial'] = manualSerial;
+    }
+    return OutgoingDetail.fromJson(await _post(
+      '/outgoing/$id/approve',
+      body.isEmpty ? null : body,
+    ));
+  }
+
+  /// فحص توفر تسلسل يدوي قبل الاعتماد (ADR-064).
+  Future<CheckSerialModel> checkOutgoingSerial(int serial, {int? year}) async {
+    final query = <String, dynamic>{'serial': serial.toString()};
+    if (year != null) query['year'] = year.toString();
+    final data = await _get('/outgoing/check-serial', query: query);
+    return CheckSerialModel.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// معلومات الترقيم الحالي والتسلسل التلقائي المقترح (ADR-064).
+  Future<NumberingInfoModel> getOutgoingNumberingInfo({int? year}) async {
+    final query = <String, dynamic>{};
+    if (year != null) query['year'] = year.toString();
+    final data = await _get('/outgoing/numbering-info', query: query.isEmpty ? null : query);
+    return NumberingInfoModel.fromJson(data as Map<String, dynamic>);
+  }
 
   Future<OutgoingDetail> editApproved(int id, Map<String, dynamic> body) async =>
       OutgoingDetail.fromJson(await _put('/outgoing/$id/edit-approved', body));

@@ -33,6 +33,7 @@ function Show-Menu {
     Write-Host "  [8] 🎯 [فحص شامل] الفحص الحاسم النهائي (08-trial-verify-final.ps1)" -ForegroundColor Green
     Write-Host "------------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  [9] 🚀 [تحديث إصدار] تحديث نسخة مرفوعة بأمان (09-trial-update-release.ps1)" -ForegroundColor Green
+    Write-Host "  [10] 🔐 [تحديث النفق] تحديث cloudflared بأمان (10-trial-cloudflared-update.ps1)" -ForegroundColor Green
     Write-Host "------------------------------------------------------------------------" -ForegroundColor DarkGray
     Write-Host "  [H] 🌐 فتح الكتالوج الرسومي في المتصفح (DMS_Deploy_Wizard.html)" -ForegroundColor Magenta
     Write-Host "  [Q] 🚪 خروج" -ForegroundColor Gray
@@ -55,6 +56,7 @@ do {
         "7" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\07-trial-tunnel-setup.ps1" }
         "8" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\08-trial-verify-final.ps1" }
         "9" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\09-trial-update-release.ps1" }
+        "10" { powershell -ExecutionPolicy Bypass -File "$scriptsDir\10-trial-cloudflared-update.ps1" }
         "H" { Start-Process "$PSScriptRoot\DMS_Deploy_Wizard.html" }
         "Q" { break }
         default { Write-Host "خيار غير صالح! اضغط Enter..." -ForegroundColor Red }

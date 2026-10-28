@@ -373,7 +373,23 @@ public sealed record UpdateOutgoingRequest(
 /// الذهاب إلى شاشة الوارد بعد الاعتماد — وهو أصلُ طلب المالك.
 /// ⚠️ **وجسمُ الطلب اختياريّ كلُّه** فلا ينكسر مُستدعٍ قديم يعتمد بلا جسم.
 /// </remarks>
-public sealed record ApproveOutgoingRequest(List<int>? ReplyToIncomingIds = null);
+public sealed record ApproveOutgoingRequest(List<int>? ReplyToIncomingIds = null, int? ManualSerial = null);
+
+public sealed record CheckSerialResponse(
+    int Serial,
+    string FormattedNumber,
+    int CurrentCounter,
+    bool IsAvailable,
+    string? ExistingBookSubject,
+    DateTime? ExistingBookDate,
+    string Status);
+
+public sealed record NumberingInfoResponse(
+    int CurrentCounter,
+    int NextSerial,
+    string NextFormattedNumber,
+    int Year,
+    string CompanyPrefix);
 
 public sealed record EditApprovedRequest(
     int EntityId, int? TemplateId, DateTime Date,
