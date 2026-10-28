@@ -78,12 +78,19 @@ if (-not (Test-Path $prodConfigPath)) {
     exit 1
 }
 
-# قراءة الإصدار الحالي قبل التحديث إن كانت الخدمة تعمل
-$oldVersion = "غير معروف"
-try {
-    $preStatus = Invoke-RestMethod -Uri "http://localhost:5080/api/system/status" -TimeoutSec 5
-    if ($preStatus.version) { $oldVersion = $preStatus.version }
-} catch {}
+# 🔐 الخادم لا يكشف إصداره للطلب المجهول (ADR-054) ⟵ `/system/status` يعيد version فارغاً دائماً هنا.
+#    فالإصدار يُقرأ من الملف نفسه: InformationalVersion = «0.18.1+<commit>» يُخبَز عند البناء من ملف VERSION.
+function Get-DmsVersion([string]$dll) {
+    if (-not (Test-Path $dll)) { return "غير معروف" }
+    $v = (Get-Item $dll).VersionInfo.ProductVersion
+    if ([string]::IsNullOrWhiteSpace($v)) { return "غير معروف" }
+    $parts = $v.Split('+')
+    if ($parts.Count -gt 1) { return "$($parts[0]) (commit $($parts[1].Substring(0, [Math]::Min(7, $parts[1].Length))))" }
+    return $v
+}
+
+# قراءة الإصدار الحالي قبل التحديث من الملف المثبَّت
+$oldVersion = Get-DmsVersion "C:\DMS\api\Dms.Api.dll"
 Write-Host "  ✔ التثبيت القائم سليم (الإصدار الحالي قبل التحديث: $oldVersion)." -ForegroundColor Green
 
 # حفظ نسخة من ملف الأسرار في الذاكرة كحزام أمان إضافي
@@ -188,18 +195,17 @@ foreach ($s in $svcs) {
     Write-Host "  - خدمة $($s.Name): $($s.Status)" -ForegroundColor $sColor
 }
 
-$newVersion = "غير معروف"
+$newVersion = Get-DmsVersion "C:\DMS\api\Dms.Api.dll"
 try {
     $localRes = Invoke-RestMethod -Uri "http://localhost:5080/api/system/status" -TimeoutSec 10
-    if ($localRes.version) { $newVersion = $localRes.version }
-    Write-Host "  ✔ استجابة الـ API محلياً (5080): الإصدار = $newVersion · الصيانة = $($localRes.maintenance)" -ForegroundColor Green
+    Write-Host "  ✔ استجابة الـ API محلياً (5080): الإصدار المثبَّت = $newVersion · الصيانة = $($localRes.maintenance)" -ForegroundColor Green
 } catch {
     Write-Host "  ⚠️ تعذر فحص الـ API محلياً: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 try {
     $domainRes = Invoke-RestMethod -Uri "https://$Domain/api/system/status" -TimeoutSec 10
-    Write-Host "  ✔ استجابة الـ API عبر الدومين (https://$Domain): الإصدار = $($domainRes.version) · الصيانة = $($domainRes.maintenance)" -ForegroundColor Green
+    Write-Host "  ✔ استجابة الـ API عبر الدومين (https://$Domain): يردّ · الصيانة = $($domainRes.maintenance)" -ForegroundColor Green
 } catch {
     Write-Host "  ⚠️ تعذر الوصول عبر الدومين الخارجي حالياً: $($_.Exception.Message)" -ForegroundColor Yellow
 }
@@ -208,4 +214,5 @@ Write-Host "`n==========================================================" -Foreg
 Write-Host "  ✅ اكتمل تحديث النظام بنجاح: ($oldVersion  --->  $newVersion)" -ForegroundColor Green
 Write-Host "  📦 نسخة التراجع المحفوظة: $rollbackDir" -ForegroundColor Cyan
 Write-Host "  🌐 افتح https://$Domain واضغط Ctrl+F5 (أو حدّث متصفح الهاتف)." -ForegroundColor Green
+Write-Host "  🔎 وللتأكّد من الخادم نفسه: ادخل سوبر أدمن ⟵ «حول النظام» (الإصدار لا يظهر لغير المسجَّل عمداً)." -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Green
